@@ -78,9 +78,20 @@ describe("GET /api/skills cache headers", () => {
     expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
   });
 
-  it("disables shared caching for buyer-scoped responses", async () => {
+  it("keeps shared caching when buyer status is not requested", async () => {
     const res = await GET(
       makeRequest("?sort=newest&page=1&buyer=11111111111111111111111111111111")
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
+  });
+
+  it("disables shared caching for buyer-status responses", async () => {
+    const res = await GET(
+      makeRequest(
+        "?sort=newest&page=1&buyer=11111111111111111111111111111111&buyerStatus=1"
+      )
     );
 
     expect(res.status).toBe(200);

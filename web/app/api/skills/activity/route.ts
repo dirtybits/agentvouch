@@ -18,6 +18,7 @@ type RepoListingActivityRow = {
   on_chain_protocol_version: string | null;
   on_chain_program_id: string | null;
   chain_context: string | null;
+  created_at: string;
 };
 
 type UsdcPurchaseActivityRow = {
@@ -53,9 +54,12 @@ export async function GET() {
           currency_mint,
           on_chain_protocol_version,
           on_chain_program_id,
-          chain_context
+          chain_context,
+          created_at::text AS created_at
         FROM skills
         WHERE on_chain_address IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 20
       `,
       sql()<UsdcPurchaseActivityRow>`
         SELECT

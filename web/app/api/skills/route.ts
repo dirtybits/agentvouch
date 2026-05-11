@@ -199,6 +199,9 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get("sort") || "newest";
     const author = searchParams.get("author");
     const buyer = searchParams.get("buyer");
+    const includeBuyerStatus =
+      searchParams.get("buyerStatus") === "1" ||
+      searchParams.get("includeBuyerStatus") === "true";
     const tags = searchParams.get("tags");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
@@ -331,7 +334,8 @@ export async function GET(request: NextRequest) {
     const total = enriched.length;
     const offset = (page - 1) * PAGE_SIZE;
     const paged = enriched.slice(offset, offset + PAGE_SIZE);
-    const buyerAddress = buyer && isAddress(buyer) ? address(buyer) : null;
+    const buyerAddress =
+      includeBuyerStatus && buyer && isAddress(buyer) ? address(buyer) : null;
     const usdcMint = address(getConfiguredUsdcMint());
     const preflightContext = await createPurchasePreflightContext({
       rpc,
@@ -400,7 +404,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": buyer
+          "Cache-Control": buyerAddress
             ? PRIVATE_NO_STORE_CACHE_CONTROL
             : buildPublicCacheControl(
                 PUBLIC_ROUTE_CACHE_SECONDS.skillsList,

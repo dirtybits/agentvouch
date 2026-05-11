@@ -370,6 +370,32 @@ export function useMarketplaceOracle() {
     }
   }, []);
 
+  const getSkillListingsByAddresses = useCallback(
+    async (skillListings: Address[]) => {
+      if (skillListings.length === 0) return [];
+      try {
+        const accounts = await fetchAllMaybeSkillListing(rpc, skillListings);
+        return accounts.flatMap((account, index) =>
+          account.exists
+            ? [
+                {
+                  publicKey: skillListings[index],
+                  account: account.data,
+                },
+              ]
+            : []
+        );
+      } catch (error) {
+        console.error("Error fetching skill listings by address:", error);
+        throw wrapRpcLookupError(
+          error,
+          "Failed to fetch skill listings by address"
+        );
+      }
+    },
+    []
+  );
+
   const getAllPurchases = useCallback(async () => {
     try {
       const accounts = await rpc
@@ -619,6 +645,7 @@ export function useMarketplaceOracle() {
       walletAddress,
       getAllSkillListings,
       getSkillListingsByAuthor,
+      getSkillListingsByAddresses,
       getAllPurchases,
       getPurchasesByBuyer,
       getPurchasedSkillListingKeys,
@@ -629,6 +656,7 @@ export function useMarketplaceOracle() {
       walletAddress,
       getAllSkillListings,
       getSkillListingsByAuthor,
+      getSkillListingsByAddresses,
       getAllPurchases,
       getPurchasesByBuyer,
       getPurchasedSkillListingKeys,

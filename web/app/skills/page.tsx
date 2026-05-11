@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useWalletConnection } from "@solana/react-hooks";
-import { type Address } from "@solana/kit";
+import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
 import { getConfiguredSolanaExplorerTxUrl } from "@/lib/chains";
@@ -99,10 +99,10 @@ type ActivityRepoListing = {
   name: string;
   author_pubkey: string;
   on_chain_address: string | null;
-  price_lamports: number | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
   payment_flow: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
+  created_at: string;
 };
 type ActivityUsdcPurchase = {
   payment_tx_signature: string;
@@ -199,18 +199,19 @@ export default function MarketplacePage() {
   const [total, setTotal] = useState(0);
 
   // Marketplace state
-  const [listings, setListings] = useState<SkillListingData[]>([]);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [purchasedKeys, setPurchasedKeys] = useState<Set<string>>(new Set());
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
-  const [purchaseStatusReady, setPurchaseStatusReady] = useState(false);
   const [purchaseStatusWarning, setPurchaseStatusWarning] = useState<
     string | null
   >(null);
 
   // My data
   const [myPurchases, setMyPurchases] = useState<PurchaseData[]>([]);
+  const [myPurchaseListings, setMyPurchaseListings] = useState<
+    SkillListingData[]
+  >([]);
   const [myListings, setMyListings] = useState<SkillListingData[]>([]);
   const [myListingDetails, setMyListingDetails] = useState<
     Map<string, SkillRow>
@@ -236,7 +237,6 @@ export default function MarketplacePage() {
       if (search) params.set("q", search);
       params.set("sort", sort);
       params.set("page", String(page));
-      if (publicKey) params.set("buyer", String(publicKey));
 
       const res = await fetch(`/api/skills?${params}`);
       if (!res.ok) throw new Error("Failed to fetch skills");
@@ -251,123 +251,62 @@ export default function MarketplacePage() {
     } finally {
       setLoading(false);
     }
-  }, [page, publicKey, search, sort]);
+  }, [page, search, sort]);
 
-  const loadFeed = useCallback(
-    async (resolvedListings: SkillListingData[]) => {
-      setFeedLoading(true);
-      try {
-        const [purchases, activityRes] = await Promise.all([
-          oracle.getAllPurchases(),
-          fetch("/api/skills/activity"),
-        ]);
-        if (!activityRes.ok) {
-          throw new Error("Failed to fetch marketplace activity");
-        }
-        const activity = (await activityRes.json()) as ActivityResponse;
-        const listingMap = new Map(
-          resolvedListings.map((l) => [l.publicKey as string, l])
-        );
-        const repoListingMap = new Map(
-          activity.repoListings
-            .filter(
-              (
-                listing
-              ): listing is ActivityRepoListing & {
-                on_chain_address: string;
-              } => Boolean(listing.on_chain_address)
-            )
-            .map((listing) => [listing.on_chain_address, listing])
-        );
-        const purchaseItems: FeedItem[] = purchases.map((purchase) => {
-          const skillListing = String(purchase.account.skillListing);
-          const listing = listingMap.get(skillListing);
-          const repoListing = repoListingMap.get(skillListing);
-          return {
-            id: String(purchase.publicKey),
-            type: "purchase",
-            actor: String(purchase.account.buyer),
-            skillListing,
-            skillName:
-              repoListing?.name ?? listing?.account.name ?? "Unknown Skill",
-            skillRepoId: repoListing?.id ?? null,
-            author:
-              repoListing?.author_pubkey ??
-              String(listing?.account.author ?? ""),
-            timestamp: Number(purchase.account.purchasedAt),
-            legacySolLamports: null,
-            priceUsdcMicros: String(purchase.account.pricePaidUsdcMicros),
-          };
-        });
-        const listingItems: FeedItem[] = resolvedListings.map((listing) => {
-          const skillListing = String(listing.publicKey);
-          const repoListing = repoListingMap.get(skillListing);
-          return {
-            id: skillListing,
-            type: "listing",
-            actor: repoListing?.author_pubkey ?? String(listing.account.author),
-            skillListing,
-            skillName: repoListing?.name ?? listing.account.name,
-            skillRepoId: repoListing?.id ?? null,
-            author:
-              repoListing?.author_pubkey ?? String(listing.account.author),
-            timestamp: Number(listing.account.createdAt),
-            legacySolLamports: null,
-            priceUsdcMicros:
-              repoListing?.price_usdc_micros ??
-              String(listing.account.priceUsdcMicros),
-          };
-        });
-        const usdcPurchaseItems: FeedItem[] = activity.usdcPurchases.map(
-          (purchase) => ({
-            id: `usdc-${purchase.payment_tx_signature}`,
-            type: "purchase",
-            actor: purchase.buyer_pubkey,
-            skillListing: purchase.on_chain_address,
-            skillName: purchase.skill_name,
-            skillRepoId: purchase.skill_db_id,
-            author: purchase.author_pubkey,
-            timestamp: Math.floor(
-              new Date(purchase.verified_at).getTime() / 1000
-            ),
-            legacySolLamports: null,
-            priceUsdcMicros: purchase.amount_micros,
-          })
-        );
-        const items: FeedItem[] = [
-          ...purchaseItems,
-          ...listingItems,
-          ...usdcPurchaseItems,
-        ]
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, 20);
-        setFeedItems(items);
-      } catch (e) {
-        console.error("Failed to load feed:", e);
-      } finally {
-        setFeedLoading(false);
-      }
-    },
-    [oracle]
-  );
-
-  const loadListings = useCallback(async () => {
+  const loadFeed = useCallback(async () => {
+    setFeedLoading(true);
     try {
-      const all = await oracle.getAllSkillListings();
-      setListings(all);
-      void loadFeed(all);
+      const activityRes = await fetch("/api/skills/activity");
+      if (!activityRes.ok) {
+        throw new Error("Failed to fetch marketplace activity");
+      }
+      const activity = (await activityRes.json()) as ActivityResponse;
+      const listingItems: FeedItem[] = activity.repoListings.map((listing) => ({
+        id: listing.on_chain_address ?? listing.id,
+        type: "listing",
+        actor: listing.author_pubkey,
+        skillListing: listing.on_chain_address,
+        skillName: listing.name,
+        skillRepoId: listing.id,
+        author: listing.author_pubkey,
+        timestamp: Math.floor(new Date(listing.created_at).getTime() / 1000),
+        legacySolLamports: null,
+        priceUsdcMicros: listing.price_usdc_micros,
+      }));
+      const usdcPurchaseItems: FeedItem[] = activity.usdcPurchases.map(
+        (purchase) => ({
+          id: `usdc-${purchase.payment_tx_signature}`,
+          type: "purchase",
+          actor: purchase.buyer_pubkey,
+          skillListing: purchase.on_chain_address,
+          skillName: purchase.skill_name,
+          skillRepoId: purchase.skill_db_id,
+          author: purchase.author_pubkey,
+          timestamp: Math.floor(
+            new Date(purchase.verified_at).getTime() / 1000
+          ),
+          legacySolLamports: null,
+          priceUsdcMicros: purchase.amount_micros,
+        })
+      );
+      const items: FeedItem[] = [...listingItems, ...usdcPurchaseItems]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 20);
+      setFeedItems(items);
     } catch (e) {
-      console.error("Failed to load listings:", e);
+      console.error("Failed to load feed:", e);
+    } finally {
+      setFeedLoading(false);
     }
-  }, [loadFeed, oracle]);
+  }, []);
 
   const loadMyData = useCallback(async () => {
     if (!publicKey) {
       setMyPurchases([]);
+      setMyPurchaseListings([]);
       setMyListings([]);
       setMyListingDetails(new Map());
       setPurchasedKeys(new Set());
-      setPurchaseStatusReady(false);
       setPurchaseStatusWarning(null);
       purchaseStateWalletRef.current = null;
       return;
@@ -383,10 +322,20 @@ export default function MarketplacePage() {
             )}&sort=newest`
           ),
         ]);
+      const purchasedListingAddresses = [
+        ...new Set(
+          purchases.map((purchase) => String(purchase.account.skillListing))
+        ),
+      ].map((skillListing) => address(skillListing));
+      const purchaseListings =
+        purchasedListingAddresses.length > 0
+          ? await oracle.getSkillListingsByAddresses(purchasedListingAddresses)
+          : [];
       const authoredSkillsData: ApiResponse | null = authoredSkillsResponse.ok
         ? await authoredSkillsResponse.json()
         : null;
       setMyPurchases(purchases);
+      setMyPurchaseListings(purchaseListings);
       setMyListings(authorListings);
       setMyListingDetails(
         new Map(
@@ -398,13 +347,13 @@ export default function MarketplacePage() {
       setPurchasedKeys(
         new Set(purchases.map((p) => String(p.account.skillListing)))
       );
-      setPurchaseStatusReady(true);
       setPurchaseStatusWarning(null);
       purchaseStateWalletRef.current = String(publicKey);
     } catch (e) {
       console.error("Failed to load user data:", e);
       if (purchaseStateWalletRef.current !== String(publicKey)) {
         setMyPurchases([]);
+        setMyPurchaseListings([]);
         setMyListings([]);
         setMyListingDetails(new Map());
         setPurchasedKeys(new Set());
@@ -417,51 +366,21 @@ export default function MarketplacePage() {
     }
   }, [oracle, publicKey]);
 
-  const refreshPurchasedFlags = useCallback(async () => {
-    if (!publicKey || listings.length === 0) {
-      if (!publicKey) setPurchasedKeys(new Set());
-      return;
-    }
-
-    try {
-      const purchasedListingKeys = await oracle.getPurchasedSkillListingKeys(
-        publicKey,
-        listings.map((listing) => listing.publicKey)
-      );
-      setPurchasedKeys((prev) => new Set([...prev, ...purchasedListingKeys]));
-      setPurchaseStatusReady(true);
-      setPurchaseStatusWarning(null);
-      purchaseStateWalletRef.current = String(publicKey);
-    } catch (error) {
-      console.error("Failed to resolve purchased listing flags:", error);
-      if (!purchaseStatusReady && purchasedSkillListingKeys.size === 0) {
-        setPurchaseStatusWarning(
-          isRpcRateLimitError(error)
-            ? "Purchase status is temporarily unavailable because the RPC is rate-limiting requests."
-            : "Purchase status could not be refreshed right now."
-        );
-      }
-    }
-  }, [
-    listings,
-    oracle,
-    publicKey,
-    purchaseStatusReady,
-    purchasedSkillListingKeys.size,
-  ]);
-
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
   useEffect(() => {
-    loadListings();
-  }, [loadListings]);
+    void loadFeed();
+  }, [loadFeed]);
   useEffect(() => {
-    loadMyData();
-  }, [loadMyData]);
-  useEffect(() => {
-    refreshPurchasedFlags();
-  }, [refreshPurchasedFlags]);
+    if (!publicKey) {
+      void loadMyData();
+      return;
+    }
+    if (activeTab === "my-purchases" || activeTab === "my-listings") {
+      void loadMyData();
+    }
+  }, [activeTab, loadMyData, publicKey]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -481,33 +400,25 @@ export default function MarketplacePage() {
       );
       if (alreadyPurchased) {
         setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
-        setPurchaseStatusReady(true);
         setPurchaseStatusWarning(null);
         setTxSuccess("Already purchased with this wallet.");
       } else if (tx) {
         setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
-        setPurchaseStatusReady(true);
         setPurchaseStatusWarning(null);
         setTxSuccess(tx);
       }
-      await Promise.all([loadListings(), loadMyData()]);
+      await Promise.all([
+        fetchSkills(),
+        activeTab === "my-purchases" || activeTab === "my-listings"
+          ? loadMyData()
+          : Promise.resolve(),
+      ]);
     } catch (error: unknown) {
       console.error("Purchase failed:", error);
       setTxError(getErrorMessage(error, "Transaction failed"));
     } finally {
       setPurchasing(null);
     }
-  };
-
-  const getListingForSkill = (
-    skill: SkillRow
-  ): SkillListingData | undefined => {
-    if (skill.on_chain_address) {
-      return listings.find(
-        (l) => (l.publicKey as string) === skill.on_chain_address
-      );
-    }
-    return undefined;
   };
 
   const sortOptions: {
@@ -760,34 +671,32 @@ export default function MarketplacePage() {
                       const downloads =
                         (skill.total_installs ?? 0) +
                         (skill.total_downloads ?? 0);
-                      const listing = getListingForSkill(skill);
+                      const listingPubkey = skill.on_chain_address ?? null;
                       const hasPurchased =
                         Boolean(skill.buyerHasPurchased) ||
-                        (listing
-                          ? purchasedSkillListingKeys.has(
-                              String(listing.publicKey)
-                            )
+                        (listingPubkey
+                          ? purchasedSkillListingKeys.has(listingPubkey)
                           : false);
                       const isOwn =
                         publicKey &&
                         skill.author_pubkey === (publicKey as string);
-                      const isPurchasing = listing
-                        ? purchasing === (listing.publicKey as string)
+                      const isPurchasing = listingPubkey
+                        ? purchasing === listingPubkey
                         : false;
                       const legacySolLamports =
-                        skill.price_usdc_micros || listing
+                        skill.price_usdc_micros || listingPubkey
                           ? 0
                           : skill.price_lamports ?? 0;
                       const purchasePreflightStatus =
                         skill.purchasePreflightStatus ??
-                        (skill.price_usdc_micros || listing
+                        (skill.price_usdc_micros || listingPubkey
                           ? "estimateUnavailable"
                           : "ok");
                       const purchaseBlocked =
-                        Boolean(skill.price_usdc_micros || listing) &&
+                        Boolean(skill.price_usdc_micros || listingPubkey) &&
                         isBlockingPurchaseStatus(purchasePreflightStatus);
                       const hasAccessPath =
-                        skill.source === "repo" || Boolean(listing);
+                        skill.source === "repo" || Boolean(listingPubkey);
                       return (
                         <SkillPreviewCard
                           key={skill.id}
@@ -805,10 +714,10 @@ export default function MarketplacePage() {
                             skill.tags ?? []
                           )}
                           onPurchase={() => {
-                            if (!listing) return;
+                            if (!listingPubkey) return;
                             handlePurchase(
-                              listing.publicKey,
-                              listing.account.author
+                              address(listingPubkey),
+                              address(skill.author_pubkey)
                             );
                           }}
                         />
@@ -967,7 +876,7 @@ export default function MarketplacePage() {
             ) : (
               <div className="space-y-4">
                 {myPurchases.map((purchase) => {
-                  const listing = listings.find(
+                  const listing = myPurchaseListings.find(
                     (l) => l.publicKey === purchase.account.skillListing
                   );
                   return (

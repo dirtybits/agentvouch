@@ -4,22 +4,22 @@ overview: Reduce `/skills` load time by removing duplicated client-side Solana s
 todos:
   - id: baseline-skills-load
     content: Measure current `/skills` reload behavior and confirm browser-side Solana scans to remove.
-    status: pending
+    status: completed
   - id: api-first-skills-page
     content: Refactor `/skills` so initial browse renders from `/api/skills` without client `getProgramAccounts` listing/purchase scans.
-    status: pending
+    status: completed
   - id: defer-wallet-data
     content: Gate wallet-specific purchase/listing RPC behind the `my-purchases` and `my-listings` tabs.
-    status: pending
+    status: completed
   - id: optimize-buyer-status
     content: Batch or defer buyer-specific purchase status so connected browse is not blocked by per-row RPC.
-    status: pending
+    status: completed
   - id: guard-stale-listings
     content: Add M13 layout validation for scanned `SkillListing` accounts and suppress corrupted legacy values.
-    status: pending
+    status: completed
   - id: verify-skills-cleanup
     content: Run targeted tests, `web` build, and local smoke checks for disconnected and connected `/skills` flows.
-    status: pending
+    status: completed
 isProject: false
 ---
 
