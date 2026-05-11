@@ -98,7 +98,7 @@ pub fn handler(ctx: Context<MigrateConfigM13>) -> Result<()> {
             ],
         )?;
     }
-    ctx.accounts.config.realloc(ReputationConfig::LEN, false)?;
+    ctx.accounts.config.resize(ReputationConfig::LEN)?;
 
     let migrated = ReputationConfig {
         authority: legacy.authority,

@@ -134,7 +134,9 @@ export async function installSkill(input: InstallSkillInput) {
 
   if (
     initialDownload.status !== 402 ||
-    (!initialDownload.requirement && !initialDownload.x402PaymentRequired)
+    (!initialDownload.requirement &&
+      !initialDownload.x402PaymentRequired &&
+      !initialDownload.directPurchaseRequired)
   ) {
     throw new CliError(
       `Failed to download skill ${input.id}: ${
@@ -155,14 +157,18 @@ export async function installSkill(input: InstallSkillInput) {
       legacySolBaseUnits: initialDownload.requirement?.amount ?? null,
       priceUsdcMicros:
         initialDownload.x402PaymentRequired?.accepts[0]?.amount ??
+        initialDownload.directPurchaseRequired?.amountMicros ??
         skill.price_usdc_micros ??
         null,
       listingAddress:
         initialDownload.requirement?.skillListingAddress ??
+        initialDownload.directPurchaseRequired?.skillListingAddress ??
         skill.on_chain_address ??
         null,
       requirement:
-        initialDownload.x402PaymentRequired ?? initialDownload.requirement,
+        initialDownload.x402PaymentRequired ??
+        initialDownload.requirement ??
+        initialDownload.directPurchaseRequired,
       dryRun: true,
     };
   }
@@ -232,14 +238,29 @@ export async function installSkill(input: InstallSkillInput) {
 
   const keypair = loadKeypair(input.keypairPath);
   const solana = new AgentVouchSolanaClient(keypair, input.rpcUrl);
+  const skillListingAddress =
+    initialDownload.requirement?.skillListingAddress ??
+    initialDownload.directPurchaseRequired?.skillListingAddress;
+  if (!skillListingAddress) {
+    throw new CliError(
+      `Skill ${input.id} returned a direct-purchase requirement without a listing address.`
+    );
+  }
   const purchase = await solana.purchaseSkill(
-    initialDownload.requirement.skillListingAddress,
+    skillListingAddress,
     skill.author_pubkey
   );
+  if (purchase.tx) {
+    await api.verifyDirectPurchase(input.id, {
+      signature: purchase.tx,
+      buyer: keypair.publicKey.toBase58(),
+      listingAddress: skillListingAddress,
+    });
+  }
   const auth = createDownloadAuthPayload(
     keypair,
     input.id,
-    initialDownload.requirement.skillListingAddress
+    skillListingAddress
   );
   const signedDownload = await api.downloadRaw(input.id, { auth });
 
@@ -263,9 +284,12 @@ export async function installSkill(input: InstallSkillInput) {
     skillId: input.id,
     outputPath,
     metadataPath,
-    legacySolBaseUnits: initialDownload.requirement.amount,
-    priceUsdcMicros: skill.price_usdc_micros ?? null,
-    listingAddress: initialDownload.requirement.skillListingAddress,
+    legacySolBaseUnits: initialDownload.requirement?.amount ?? null,
+    priceUsdcMicros:
+      initialDownload.directPurchaseRequired?.amountMicros ??
+      skill.price_usdc_micros ??
+      null,
+    listingAddress: skillListingAddress,
     purchaseTx: purchase.tx,
     alreadyPurchased: purchase.alreadyPurchased,
     dryRun: false,

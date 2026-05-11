@@ -1,3 +1,5 @@
+#![allow(ambiguous_glob_reexports)]
+
 pub mod claim_purchase_refund;
 pub mod claim_voucher_revenue;
 pub mod close_skill_listing;

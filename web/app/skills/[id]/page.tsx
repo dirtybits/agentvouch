@@ -16,7 +16,6 @@ import {
 import { encodeBase64 } from "@/lib/base64";
 import {
   buildPaidSkillDownloadRequiredMessage,
-  buildSignedDownloadErrorMessage,
 } from "@/lib/skillFlowMessages";
 import {
   navButtonPrimaryInlineClass,
@@ -212,6 +211,45 @@ function extractCapabilitySummary(
         !/^when to use/i.test(block)
     ) ?? null
   );
+}
+
+async function fetchSignedRawSkill({
+  id,
+  walletAddress,
+  signMessage,
+  skill,
+}: {
+  id: string;
+  walletAddress: string;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  skill: SkillDetail;
+}): Promise<string> {
+  const authHeader = JSON.stringify(
+    await createSignedDownloadAuthPayload({
+      walletAddress,
+      signMessage,
+      skillId: skill.id,
+      listingAddress: skill.on_chain_address ?? undefined,
+    })
+  );
+  const rawRes = await fetch(`/api/skills/${id}/raw`, {
+    headers: {
+      "X-AgentVouch-Auth": authHeader,
+    },
+  });
+  if (!rawRes.ok) {
+    const rawBody = (await rawRes.json().catch(() => null)) as {
+      error?: string;
+      message?: string;
+    } | null;
+    throw new Error(
+      rawBody?.error ||
+        rawBody?.message ||
+        "Purchase verified, but download failed"
+    );
+  }
+
+  return rawRes.text();
 }
 
 export default function SkillDetailPage({
@@ -497,32 +535,14 @@ export default function SkillDetailPage({
           setUsdcPurchaseTx(purchaseResult.tx);
         }
 
-        const authHeader = JSON.stringify(
-          await createSignedDownloadAuthPayload({
-            walletAddress,
-            signMessage,
-            skillId: skill.id,
-            listingAddress: skill.on_chain_address,
-          })
-        );
-        const rawRes = await fetch(`/api/skills/${id}/raw`, {
-          headers: {
-            "X-AgentVouch-Auth": authHeader,
-          },
+        const markdown = await fetchSignedRawSkill({
+          id,
+          walletAddress,
+          signMessage,
+          skill,
         });
-        if (!rawRes.ok) {
-          const rawBody = (await rawRes.json().catch(() => null)) as {
-            error?: string;
-            message?: string;
-          } | null;
-          throw new Error(
-            rawBody?.error ||
-              rawBody?.message ||
-              "Purchase verified, but download failed"
-          );
-        }
 
-        downloadSkillFile(skill.skill_id, await rawRes.text());
+        downloadSkillFile(skill.skill_id, markdown);
         await refreshSkill();
         setSkill((current) =>
           current ? { ...current, buyerHasPurchased: true } : current
@@ -585,37 +605,12 @@ export default function SkillDetailPage({
     setDownloading(true);
     setDownloadResult(null);
     try {
-      const authHeader = JSON.stringify(
-        await createSignedDownloadAuthPayload({
-          walletAddress,
-          signMessage,
-          skillId: skill.id,
-          listingAddress: skill.on_chain_address ?? undefined,
-        })
-      );
-
-      const res = await fetch(`/api/skills/${id}/raw`, {
-        headers: {
-          "X-AgentVouch-Auth": authHeader,
-        },
+      const markdown = await fetchSignedRawSkill({
+        id,
+        walletAddress,
+        signMessage,
+        skill,
       });
-
-      if (!res.ok) {
-        let errorMessage = "Signed download failed";
-        try {
-          const data = await res.json();
-          errorMessage = buildSignedDownloadErrorMessage(
-            data.error,
-            data.message ?? errorMessage
-          );
-        } catch {
-          // ignore non-json error bodies
-        }
-        setDownloadResult({ success: false, message: errorMessage });
-        return;
-      }
-
-      const markdown = await res.text();
       downloadSkillFile(skill.skill_id, markdown);
 
       setDownloadResult({

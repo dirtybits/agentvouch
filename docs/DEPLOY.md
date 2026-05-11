@@ -4,7 +4,7 @@ This runbook covers the USDC-native `agentvouch` v0.2.0 program.
 
 ## Active Devnet Program
 
-- Program ID: `AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz`
+- Program ID: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
 - Program name: `agentvouch`
 - Canonical keypair path: `target/deploy/agentvouch-keypair.json`
 - Executable artifact: `target/deploy/agentvouch.so`
@@ -33,7 +33,7 @@ Verify the wallet and program keypair:
 
 ```bash
 solana-keygen pubkey "$ANCHOR_WALLET"
-solana-keygen verify AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+solana-keygen verify AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   target/deploy/agentvouch-keypair.json
 solana balance --url "$ANCHOR_PROVIDER_URL" -k "$ANCHOR_WALLET"
 ```
@@ -41,7 +41,7 @@ solana balance --url "$ANCHOR_PROVIDER_URL" -k "$ANCHOR_WALLET"
 Verify source files agree on the program ID:
 
 ```bash
-rg "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz" \
+rg "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" \
   Anchor.toml programs/agentvouch/src/lib.rs packages/agentvouch-protocol/src/index.ts web/agentvouch.json
 ```
 
@@ -85,14 +85,14 @@ Check the deployed program:
 
 ```bash
 solana program show --url "$ANCHOR_PROVIDER_URL" \
-  AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ
 ```
 
 Verify the executable binary, not just metadata:
 
 ```bash
 solana program dump --url "$ANCHOR_PROVIDER_URL" \
-  AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   /tmp/agentvouch_devnet.so
 
 shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch_devnet.so
@@ -145,7 +145,7 @@ The checked-in web app uses `web/agentvouch.json` and `web/generated/agentvouch/
 Fetch the on-chain IDL:
 
 ```bash
-anchor idl fetch AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+anchor idl fetch AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   --provider.cluster devnet
 ```
 
@@ -153,7 +153,7 @@ Upgrade the IDL if needed:
 
 ```bash
 anchor idl upgrade \
-  AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   -f target/idl/agentvouch.json \
   --provider.cluster devnet \
   --provider.wallet "$ANCHOR_WALLET"
@@ -163,7 +163,7 @@ Initialize the IDL only if the program has never had one:
 
 ```bash
 anchor idl init \
-  AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   -f target/idl/agentvouch.json \
   --provider.cluster devnet \
   --provider.wallet "$ANCHOR_WALLET"
@@ -173,7 +173,7 @@ anchor idl init \
 
 After deploy and config bootstrap:
 
-1. Confirm the app and generated client target `AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz`.
+1. Confirm the app and generated client target `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`.
 2. Register a fresh test agent.
 3. Deposit author bond with USDC.
 4. Create a vouch with USDC.
@@ -205,7 +205,7 @@ After any program, IDL, generated-client, or env change:
 Usually means `declare_id!(...)`, `Anchor.toml`, or `target/deploy/agentvouch-keypair.json` do not agree. Verify before deploying:
 
 ```bash
-solana-keygen verify AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+solana-keygen verify AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   target/deploy/agentvouch-keypair.json
 ```
 
@@ -216,7 +216,7 @@ This usually means the web client or on-chain IDL does not match the deployed ex
 Check:
 
 ```bash
-anchor idl fetch AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz \
+anchor idl fetch AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   --provider.cluster devnet
 
 shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch_devnet.so

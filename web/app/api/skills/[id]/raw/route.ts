@@ -6,7 +6,7 @@ import {
   type Address,
 } from "@solana/kit";
 import { initializeDatabase, sql } from "@/lib/db";
-import { getOnChainUsdcPrice } from "@/lib/onchain";
+import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import {
   verifyWalletSignature,
   buildDownloadRawMessage,
@@ -20,6 +20,7 @@ import {
   encodeX402PaymentResponseHeader,
   generateX402UsdcRequirement,
   getConfiguredUsdcMint,
+  hasOnChainPurchase,
   settleX402Payment,
   verifySettledUsdcTransfer,
   verifyX402Payment,
@@ -37,6 +38,8 @@ import {
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
+
+const CHAIN_PREFIX = "chain-";
 
 type RawSkillContentRow = {
   id: string;
@@ -179,6 +182,65 @@ function validateDownloadAuth(
   }
 
   return { buyerPubkey: verification.pubkey };
+}
+
+async function fetchSkillUriContent(skillUri: string) {
+  const res = await fetch(skillUri);
+  if (!res.ok) {
+    throw new Error(`Skill URI fetch failed with status ${res.status}`);
+  }
+  return res.text();
+}
+
+async function handleChainOnlyRaw(request: NextRequest, id: string) {
+  const onChainAddress = id.slice(CHAIN_PREFIX.length);
+  const listing = await fetchOnChainSkillListing(onChainAddress);
+  if (!listing) {
+    return new NextResponse("Skill not found", { status: 404 });
+  }
+  if (!listing.data.skillUri) {
+    return NextResponse.json(
+      { error: "Chain-only skill has no skill_uri" },
+      { status: 404 }
+    );
+  }
+
+  const priceMicros = BigInt(listing.data.priceUsdcMicros);
+  if (priceMicros <= 0n) {
+    return serveContent(await fetchSkillUriContent(listing.data.skillUri));
+  }
+
+  const authHeader = request.headers.get("x-agentvouch-auth");
+  if (authHeader) {
+    const authResult = validateDownloadAuth(authHeader, id, listing.publicKey);
+    if ("response" in authResult) {
+      return authResult.response;
+    }
+
+    const entitled = await hasOnChainPurchase(
+      authResult.buyerPubkey,
+      listing.publicKey
+    ).catch(() => false);
+    if (entitled) {
+      return serveContent(await fetchSkillUriContent(listing.data.skillUri));
+    }
+  }
+
+  return NextResponse.json(
+    {
+      error: "Direct purchase required",
+      message:
+        "This chain-only skill requires the on-chain purchase_skill flow. After the wallet transaction confirms, sign to download again.",
+      payment_flow: "direct-purchase-skill",
+      amount_micros: priceMicros.toString(),
+      currency_mint: getConfiguredUsdcMint(),
+      chain_context: getAgentVouchChainContext(),
+      on_chain_program_id: getAgentVouchProgramId(),
+      protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
+      on_chain_address: listing.publicKey,
+    },
+    { status: 402 }
+  );
 }
 
 async function handleUsdcDirect(
@@ -412,6 +474,10 @@ export async function GET(
   try {
     const { id } = await params;
     await initializeDatabase();
+
+    if (id.startsWith(CHAIN_PREFIX)) {
+      return handleChainOnlyRaw(request, id);
+    }
 
     const rows = await sql()<RawSkillContentRow>`
       SELECT

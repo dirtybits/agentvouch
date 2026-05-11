@@ -7,7 +7,7 @@ pub mod state;
 use instructions::*;
 use state::{AuthorDisputeReason, AuthorDisputeRuling};
 
-declare_id!("AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz");
+declare_id!("AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ");
 
 #[program]
 pub mod agentvouch {

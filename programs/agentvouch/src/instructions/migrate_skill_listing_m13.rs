@@ -159,9 +159,7 @@ pub fn handler(ctx: Context<MigrateSkillListingM13>) -> Result<()> {
         )?;
     }
 
-    ctx.accounts
-        .skill_listing
-        .realloc(SkillListing::SPACE, false)?;
+    ctx.accounts.skill_listing.resize(SkillListing::SPACE)?;
 
     let migrated = SkillListing {
         author: legacy.author,

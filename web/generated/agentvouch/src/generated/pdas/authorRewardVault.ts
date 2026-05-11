@@ -15,7 +15,7 @@ import {
 } from "@solana/kit";
 
 export type AuthorRewardVaultSeeds = {
-  voucheeProfile: Address;
+  authorProfile: Address;
 };
 
 export async function findAuthorRewardVaultPda(
@@ -23,7 +23,7 @@ export async function findAuthorRewardVaultPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz" as Address<"AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz">,
+    programAddress = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,
@@ -34,7 +34,7 @@ export async function findAuthorRewardVaultPda(
           97, 117, 108, 116,
         ]),
       ),
-      getAddressEncoder().encode(seeds.voucheeProfile),
+      getAddressEncoder().encode(seeds.authorProfile),
     ],
   });
 }

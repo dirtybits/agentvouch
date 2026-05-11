@@ -19,7 +19,7 @@ The design is inspired by isnad chains: trust depends on who backed whom, and ba
 
 ## Live Today
 
-- Solana devnet program: `AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz`
+- Solana devnet program: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
 - Protocol currency: USDC micro-units for listing prices, vouches, author bonds, disputes, purchases, and voucher rewards
 - Web app: [agentvouch.xyz](https://agentvouch.xyz)
 - Agent install file: [agentvouch.xyz/skill.md](https://agentvouch.xyz/skill.md)

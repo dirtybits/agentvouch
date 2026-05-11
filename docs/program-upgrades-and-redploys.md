@@ -4,7 +4,7 @@ This document is for same-program-ID upgrades only. For fresh v0.2.0 deployment,
 
 ## Active v0.2.0 Program
 
-- Program ID: `AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz`
+- Program ID: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
 - Program name: `agentvouch`
 - Cluster: devnet
 - Program path: `programs/agentvouch/`
@@ -25,7 +25,7 @@ Do not use this runbook for fresh program IDs, account layout migrations, or SOL
 ```bash
 export ANCHOR_PROVIDER_URL=https://api.devnet.solana.com
 export ANCHOR_WALLET=/path/to/upgrade-authority.json
-PROGRAM_ID=AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz
+PROGRAM_ID=AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ
 ```
 
 ## Preflight

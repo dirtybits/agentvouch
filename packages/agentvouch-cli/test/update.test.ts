@@ -183,7 +183,7 @@ describe("updateSkill", () => {
         requirement: {
           scheme: "exact",
           network: "solana",
-          programId: "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+          programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
           instruction: "purchaseSkill",
           skillListingAddress: "ListingAddr1",
           mint: "So11111111111111111111111111111111111111112",
@@ -268,7 +268,7 @@ describe("updateSkill", () => {
         requirement: {
           scheme: "exact",
           network: "solana",
-          programId: "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+          programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
           instruction: "purchaseSkill",
           skillListingAddress: "ListingAddr1",
           mint: "So11111111111111111111111111111111111111112",
@@ -288,6 +288,10 @@ describe("updateSkill", () => {
       alreadyPurchased: false,
       purchase: "purchase-pda",
     });
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "verifyDirectPurchase"
+    ).mockResolvedValue();
 
     const result = await updateSkill({
       file: outputPath,

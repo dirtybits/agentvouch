@@ -37,7 +37,8 @@ describe("skill detail source", () => {
     expect(source).toContain("buildDownloadRawMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
-    expect(source).toContain("buildSignedDownloadErrorMessage");
+    expect(source).toContain("fetchSignedRawSkill");
+    expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });
 

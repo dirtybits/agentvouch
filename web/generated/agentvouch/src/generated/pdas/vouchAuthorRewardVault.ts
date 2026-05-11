@@ -7,13 +7,19 @@
  */
 
 import {
+  getAddressEncoder,
   getBytesEncoder,
   getProgramDerivedAddress,
   type Address,
   type ProgramDerivedAddress,
 } from "@solana/kit";
 
-export async function findConfigPda(
+export type VouchAuthorRewardVaultSeeds = {
+  voucheeProfile: Address;
+};
+
+export async function findVouchAuthorRewardVaultPda(
+  seeds: VouchAuthorRewardVaultSeeds,
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
@@ -22,7 +28,13 @@ export async function findConfigPda(
   return await getProgramDerivedAddress({
     programAddress,
     seeds: [
-      getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
+      getBytesEncoder().encode(
+        new Uint8Array([
+          97, 117, 116, 104, 111, 114, 95, 114, 101, 119, 97, 114, 100, 95, 118,
+          97, 117, 108, 116,
+        ]),
+      ),
+      getAddressEncoder().encode(seeds.voucheeProfile),
     ],
   });
 }

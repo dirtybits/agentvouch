@@ -7,6 +7,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/onchain", () => ({
+  fetchOnChainSkillListing: vi.fn(),
   getOnChainUsdcPrice: vi.fn(),
 }));
 
@@ -52,12 +53,14 @@ vi.mock("@/lib/usdcPurchases", () => ({
 
 import { GET } from "@/app/api/skills/[id]/raw/route";
 import { sql } from "@/lib/db";
-import { getOnChainUsdcPrice } from "@/lib/onchain";
+import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import { verifyWalletSignature, buildDownloadRawMessage } from "@/lib/auth";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockFetchOnChainSkillListing =
+  fetchOnChainSkillListing as unknown as ReturnType<typeof vi.fn>;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 const mockVerifySig = verifyWalletSignature as unknown as ReturnType<
   typeof vi.fn
@@ -103,7 +106,7 @@ const PROTOCOL_USDC_SKILL = {
   id: "uuid-direct-usdc",
   on_chain_address: "ListingAddr1",
   on_chain_protocol_version: "v0.2.0",
-  on_chain_program_id: "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+  on_chain_program_id: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
   chain_context: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 };
 
@@ -123,6 +126,46 @@ function validAuthHeader(
 describe("GET /api/skills/[id]/raw", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("proxies chain-only signed downloads through the raw API", async () => {
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: {
+        skillUri: "https://agentvouch.xyz/smoke/v02fresh.md",
+        priceUsdcMicros: 1000000n,
+      },
+    });
+    mockVerifySig.mockReturnValue({ valid: true, pubkey: "BuyerPubkey1" });
+    mockBuildMsg.mockReturnValue("correct-message");
+    mockHasPurchase.mockResolvedValue(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(SKILL_CONTENT));
+
+    const auth = validAuthHeader(
+      "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+    );
+    const { req, params } = makeRequest(
+      "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      {
+        "x-agentvouch-auth": auth,
+      }
+    );
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SKILL_CONTENT);
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockHasPurchase).toHaveBeenCalledWith(
+      "BuyerPubkey1",
+      "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://agentvouch.xyz/smoke/v02fresh.md"
+    );
+    fetchSpy.mockRestore();
   });
 
   it("returns 404 when skill not found", async () => {

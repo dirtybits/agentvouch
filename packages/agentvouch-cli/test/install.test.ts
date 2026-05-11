@@ -74,7 +74,7 @@ describe("installSkill", () => {
         requirement: {
           scheme: "exact",
           network: "solana",
-          programId: "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+          programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
           instruction: "purchaseSkill",
           skillListingAddress: "37Mm4DzMockListing",
           mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
@@ -107,6 +107,9 @@ describe("installSkill", () => {
         alreadyPurchased: false,
         purchase: "purchase-pda",
       });
+    const verifySpy = vi
+      .spyOn(AgentVouchApiClient.prototype, "verifyDirectPurchase")
+      .mockResolvedValue();
 
     const result = await installSkill({
       id: "595f5534-07ae-4839-a45a-b6858ab731fe",
@@ -118,6 +121,13 @@ describe("installSkill", () => {
 
     expect(result.mode).toBe("paid-raw");
     expect(purchaseSpy).toHaveBeenCalledWith("37Mm4DzMockListing", author);
+    expect(verifySpy).toHaveBeenCalledWith(
+      "595f5534-07ae-4839-a45a-b6858ab731fe",
+      expect.objectContaining({
+        signature: "mock-purchase-tx",
+        listingAddress: "37Mm4DzMockListing",
+      })
+    );
     expect(downloadSpy).toHaveBeenCalledTimes(2);
   });
 });

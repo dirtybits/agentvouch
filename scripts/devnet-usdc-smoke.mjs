@@ -23,7 +23,7 @@ const require = createRequire(import.meta.url);
 const idl = require("../target/idl/agentvouch.json");
 
 const PROGRAM_ID = new PublicKey(
-  "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz"
+  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
 );
 const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 const DEVNET_USDC_MINT = new PublicKey(

@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import {
+  verifyDirectPurchase,
   verifyAndRecordDirectPurchase,
   type DirectPurchaseSkillRow,
 } from "@/lib/directPurchaseVerification";
+import { fetchOnChainSkillListing } from "@/lib/onchain";
+import { getConfiguredUsdcMint } from "@/lib/x402";
+import {
+  AGENTVOUCH_PROTOCOL_VERSION,
+  getAgentVouchChainContext,
+  getAgentVouchProgramId,
+} from "@/lib/protocolMetadata";
+
+const CHAIN_PREFIX = "chain-";
 
 type VerifyPurchaseBody = {
   signature?: unknown;
@@ -56,33 +66,28 @@ export async function POST(
     );
   }
 
-  const rows = await sql()<DirectPurchaseSkillRow>`
-    SELECT
-      id,
-      on_chain_address,
-      author_pubkey,
-      price_usdc_micros::text,
-      currency_mint,
-      chain_context,
-      on_chain_protocol_version,
-      on_chain_program_id
-    FROM skills
-    WHERE id = ${id}::uuid
-    LIMIT 1
-  `;
-  const skill = rows[0];
+  const skill = id.startsWith(CHAIN_PREFIX)
+    ? await buildChainOnlySkillRow(id.slice(CHAIN_PREFIX.length))
+    : await fetchRepoSkillRow(id);
 
   if (!skill) {
     return NextResponse.json({ error: "Skill not found" }, { status: 404 });
   }
 
   try {
-    const verification = await verifyAndRecordDirectPurchase({
-      skill,
-      signature,
-      buyerPubkey: buyer,
-      listingAddress: listing,
-    });
+    const verification = id.startsWith(CHAIN_PREFIX)
+      ? await verifyDirectPurchase({
+          skill,
+          signature,
+          buyerPubkey: buyer,
+          listingAddress: listing,
+        })
+      : await verifyAndRecordDirectPurchase({
+          skill,
+          signature,
+          buyerPubkey: buyer,
+          listingAddress: listing,
+        });
 
     return NextResponse.json({
       ok: true,
@@ -114,4 +119,42 @@ export async function POST(
     const status = /already recorded/i.test(message) ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+async function fetchRepoSkillRow(
+  id: string
+): Promise<DirectPurchaseSkillRow | null> {
+  const rows = await sql()<DirectPurchaseSkillRow>`
+    SELECT
+      id,
+      on_chain_address,
+      author_pubkey,
+      price_usdc_micros::text,
+      currency_mint,
+      chain_context,
+      on_chain_protocol_version,
+      on_chain_program_id
+    FROM skills
+    WHERE id = ${id}::uuid
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+async function buildChainOnlySkillRow(
+  listingAddress: string
+): Promise<DirectPurchaseSkillRow | null> {
+  const listing = await fetchOnChainSkillListing(listingAddress);
+  if (!listing) return null;
+
+  return {
+    id: `${CHAIN_PREFIX}${listing.publicKey}`,
+    on_chain_address: listing.publicKey,
+    author_pubkey: String(listing.data.author),
+    price_usdc_micros: String(listing.data.priceUsdcMicros),
+    currency_mint: getConfiguredUsdcMint(),
+    chain_context: getAgentVouchChainContext(),
+    on_chain_protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
+    on_chain_program_id: getAgentVouchProgramId(),
+  };
 }

@@ -1,4 +1,4 @@
 import type { Address } from "@solana/kit";
 
 export const AGENTVOUCH_PROGRAM_ADDRESS =
-  "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz" as Address<"AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz">;
+  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">;

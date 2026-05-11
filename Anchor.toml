@@ -7,10 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-agentvouch = "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz"
+agentvouch = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
 
 [programs.devnet]
-agentvouch = "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz"
+agentvouch = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
 
 [registry]
 url = "https://api.apr.dev"

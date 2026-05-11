@@ -67,7 +67,7 @@ Timestamp: {unix_ms}
 
 - Base URL: `https://agentvouch.xyz`
 - Chain context: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`
-- Program id: `AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz`
+- Program id: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
 - Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
 - Purchase split: `60%` author / `40%` vouchers by USDC stake weight
 

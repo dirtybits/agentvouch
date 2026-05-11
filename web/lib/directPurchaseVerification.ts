@@ -61,6 +61,16 @@ export type DirectPurchaseVerificationResult = {
   protocolVersion: typeof AGENTVOUCH_PROTOCOL_VERSION;
   onChainProgramId: string;
   chainContext: string;
+  listingRevision: string;
+  settlementPda: string;
+  authorProceedsVault: string;
+};
+
+type VerifyDirectPurchaseInput = {
+  skill: DirectPurchaseSkillRow;
+  signature: string;
+  buyerPubkey?: string | null;
+  listingAddress?: string | null;
 };
 
 function getAccountKeyValue(key: RpcAccountKey): string {
@@ -162,12 +172,9 @@ async function derivePurchasePda(
   return purchasePda;
 }
 
-export async function verifyAndRecordDirectPurchase(input: {
-  skill: DirectPurchaseSkillRow;
-  signature: string;
-  buyerPubkey?: string | null;
-  listingAddress?: string | null;
-}): Promise<DirectPurchaseVerificationResult> {
+export async function verifyDirectPurchase(
+  input: VerifyDirectPurchaseInput
+): Promise<DirectPurchaseVerificationResult> {
   const signature = input.signature.trim();
   if (!signature) {
     throw new Error("Missing transaction signature");
@@ -283,31 +290,6 @@ export async function verifyAndRecordDirectPurchase(input: {
     throw new Error("Purchase USDC mint does not match this skill");
   }
 
-  await recordUsdcPurchaseReceipt({
-    skillDbId: input.skill.id,
-    buyerPubkey: inferredBuyer,
-    paymentTxSignature: signature,
-    recipientAta: listingAccount.data.currentAuthorProceedsVault.toString(),
-    currencyMint: input.skill.currency_mint,
-    amountMicros: purchaseAccount.data.pricePaidUsdcMicros.toString(),
-    paymentFlow: DIRECT_PURCHASE_PAYMENT_FLOW,
-    protocolVersion: AGENTVOUCH_PROTOCOL_VERSION,
-    onChainProgramId: expectedProgramId,
-    chainContext: expectedChainContext,
-    onChainAddress: listingAddress,
-    purchasePda: purchasePdaString,
-    listingRevision: purchaseAccount.data.listingRevision.toString(),
-    settlementPda: purchaseAccount.data.listingSettlement.toString(),
-    authorProceedsVault:
-      listingAccount.data.currentAuthorProceedsVault.toString(),
-    refundStatus: "none",
-    legacyRefundEligible: false,
-  });
-
-  console.info(
-    `[purchase-verify] recorded direct purchase entitlement: skill=${input.skill.id} listing=${listingAddress} buyer=${inferredBuyer} tx=${signature}`
-  );
-
   return {
     buyerPubkey: inferredBuyer,
     listingAddress,
@@ -319,5 +301,41 @@ export async function verifyAndRecordDirectPurchase(input: {
     protocolVersion: AGENTVOUCH_PROTOCOL_VERSION,
     onChainProgramId: expectedProgramId,
     chainContext: expectedChainContext,
+    listingRevision: purchaseAccount.data.listingRevision.toString(),
+    settlementPda: purchaseAccount.data.listingSettlement.toString(),
+    authorProceedsVault:
+      listingAccount.data.currentAuthorProceedsVault.toString(),
   };
+}
+
+export async function verifyAndRecordDirectPurchase(
+  input: VerifyDirectPurchaseInput
+): Promise<DirectPurchaseVerificationResult> {
+  const verification = await verifyDirectPurchase(input);
+
+  await recordUsdcPurchaseReceipt({
+    skillDbId: input.skill.id,
+    buyerPubkey: verification.buyerPubkey,
+    paymentTxSignature: verification.signature,
+    recipientAta: verification.authorProceedsVault,
+    currencyMint: verification.currencyMint,
+    amountMicros: verification.amountMicros,
+    paymentFlow: DIRECT_PURCHASE_PAYMENT_FLOW,
+    protocolVersion: AGENTVOUCH_PROTOCOL_VERSION,
+    onChainProgramId: verification.onChainProgramId,
+    chainContext: verification.chainContext,
+    onChainAddress: verification.listingAddress,
+    purchasePda: verification.purchasePda,
+    listingRevision: verification.listingRevision,
+    settlementPda: verification.settlementPda,
+    authorProceedsVault: verification.authorProceedsVault,
+    refundStatus: "none",
+    legacyRefundEligible: false,
+  });
+
+  console.info(
+    `[purchase-verify] recorded direct purchase entitlement: skill=${input.skill.id} listing=${verification.listingAddress} buyer=${verification.buyerPubkey} tx=${verification.signature}`
+  );
+
+  return verification;
 }

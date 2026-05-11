@@ -40,10 +40,10 @@ import {
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
 import {
-  findAuthorRewardVaultPda,
   findConfigPda,
   findRevokeVouchVouchPda,
   findVouchAuthorRewardVaultAuthorityPda,
+  findVouchAuthorRewardVaultPda,
   findVoucherProfilePda,
   findVouchVaultAuthorityPda,
   findVouchVaultPda,
@@ -337,7 +337,7 @@ export async function getVouchInstructionAsync<
       });
   }
   if (!accounts.authorRewardVault.value) {
-    accounts.authorRewardVault.value = await findAuthorRewardVaultPda({
+    accounts.authorRewardVault.value = await findVouchAuthorRewardVaultPda({
       voucheeProfile: getAddressFromResolvedInstructionAccount(
         "voucheeProfile",
         accounts.voucheeProfile.value,

@@ -51,7 +51,7 @@ pub struct ResolveAuthorDispute<'info> {
 }
 
 pub fn handler<'info>(
-    mut ctx: Context<'_, '_, 'info, 'info, ResolveAuthorDispute<'info>>,
+    ctx: Context<'_, '_, 'info, 'info, ResolveAuthorDispute<'info>>,
     dispute_id: u64,
     ruling: AuthorDisputeRuling,
 ) -> Result<()> {

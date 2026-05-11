@@ -40,6 +40,7 @@ import {
 import {
   findAuthorProceedsVaultAuthorityPda,
   findAuthorRewardVaultAuthorityPda,
+  findAuthorRewardVaultPda,
   findConfigPda,
 } from "../pdas";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
@@ -187,7 +188,7 @@ export type PurchaseSkillAsyncInput<
   authorProceedsVaultAuthority?: Address<TAccountAuthorProceedsVaultAuthority>;
   authorProceedsVault: Address<TAccountAuthorProceedsVault>;
   authorRewardVaultAuthority?: Address<TAccountAuthorRewardVaultAuthority>;
-  authorRewardVault: Address<TAccountAuthorRewardVault>;
+  authorRewardVault?: Address<TAccountAuthorRewardVault>;
   buyer: TransactionSigner<TAccountBuyer>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -314,6 +315,14 @@ export async function getPurchaseSkillInstructionAsync<
           accounts.authorProfile.value,
         ),
       });
+  }
+  if (!accounts.authorRewardVault.value) {
+    accounts.authorRewardVault.value = await findAuthorRewardVaultPda({
+      authorProfile: getAddressFromResolvedInstructionAccount(
+        "authorProfile",
+        accounts.authorProfile.value,
+      ),
+    });
   }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =

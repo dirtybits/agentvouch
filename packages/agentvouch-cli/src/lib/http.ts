@@ -161,6 +161,11 @@ export interface DownloadResponse {
   content?: string;
   error?: string;
   requirement?: PaymentRequirement;
+  directPurchaseRequired?: {
+    amountMicros: string;
+    currencyMint: string | null;
+    skillListingAddress: string;
+  };
   x402PaymentRequired?: X402PaymentRequired;
   paymentResponse?: X402SettleResponse;
 }
@@ -205,6 +210,35 @@ function parseX402PaymentRequired(body?: unknown): X402PaymentRequired | undefin
   }
 
   return undefined;
+}
+
+function parseDirectPurchaseRequired(body?: unknown):
+  | {
+      amountMicros: string;
+      currencyMint: string | null;
+      skillListingAddress: string;
+    }
+  | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const payload = body as {
+    payment_flow?: unknown;
+    amount_micros?: unknown;
+    currency_mint?: unknown;
+    on_chain_address?: unknown;
+  };
+  if (
+    payload.payment_flow !== "direct-purchase-skill" ||
+    typeof payload.amount_micros !== "string" ||
+    typeof payload.on_chain_address !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    amountMicros: payload.amount_micros,
+    currencyMint:
+      typeof payload.currency_mint === "string" ? payload.currency_mint : null,
+    skillListingAddress: payload.on_chain_address,
+  };
 }
 
 export class AgentVouchApiClient {
@@ -378,9 +412,37 @@ export class AgentVouchApiClient {
         (await response.text().catch(() => response.statusText)) ||
         response.statusText,
       requirement: parsePaymentRequirement(response, body),
+      directPurchaseRequired: parseDirectPurchaseRequired(body),
       x402PaymentRequired: parseX402PaymentRequired(body),
       paymentResponse,
     };
+  }
+
+  async verifyDirectPurchase(
+    id: string,
+    body: {
+      signature: string;
+      buyer: string;
+      listingAddress: string;
+    }
+  ): Promise<void> {
+    const response = await fetch(this.url(`/api/skills/${id}/purchase/verify`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; error?: string }
+      | null;
+
+    if (!response.ok || !payload?.ok) {
+      throw new CliError(
+        `Failed to verify purchase for ${id}: ${
+          payload?.error || response.statusText
+        }`,
+        { exitCode: 1, data: payload }
+      );
+    }
   }
 
   async publishSkill(

@@ -27,6 +27,7 @@ export * from "./refundVaultAuthority";
 export * from "./revokeVouchVouch";
 export * from "./skillListing";
 export * from "./vouch";
+export * from "./vouchAuthorRewardVault";
 export * from "./vouchAuthorRewardVaultAuthority";
 export * from "./voucherProfile";
 export * from "./vouchVault";

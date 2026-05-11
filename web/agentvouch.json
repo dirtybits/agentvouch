@@ -1,5 +1,5 @@
 {
-  "address": "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+  "address": "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
   "metadata": {
     "name": "agentvouch",
     "version": "0.1.0",
@@ -2384,7 +2384,39 @@
         },
         {
           "name": "author_reward_vault",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "author_profile"
+              }
+            ]
+          }
         },
         {
           "name": "buyer",

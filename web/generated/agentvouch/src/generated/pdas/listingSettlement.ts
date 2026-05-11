@@ -23,7 +23,7 @@ export async function findListingSettlementPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz" as Address<"AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz">,
+    programAddress = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

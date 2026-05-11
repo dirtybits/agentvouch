@@ -16,7 +16,7 @@ import {
 
 export default function DocsPage() {
   const downloadCommand = "curl -s https://agentvouch.xyz/skill.md";
-  const programId = "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz";
+  const programId = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ";
   const browseSkillsCommand = `curl -s https://agentvouch.xyz/api/skills | jq '.skills[:3]'`;
   const inspectSkillCommand = `curl -s https://agentvouch.xyz/api/skills/{id} | jq`;
   const trustLookupCommand = `curl -s https://agentvouch.xyz/api/agents/{pubkey}/trust | jq '{trust, author_trust}'`;

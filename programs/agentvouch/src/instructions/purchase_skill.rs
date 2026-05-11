@@ -4,8 +4,6 @@ use crate::state::{
     REWARD_INDEX_SCALE,
 };
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program_pack::Pack;
-use anchor_spl::token::spl_token::state::Account as SplTokenAccount;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
 #[derive(Accounts)]
@@ -37,7 +35,7 @@ pub struct PurchaseSkill<'info> {
     #[account(
         mut,
         seeds = [b"agent", skill_listing.author.as_ref()],
-        bump = author_profile.bump,
+        bump,
     )]
     pub author_profile: Box<Account<'info, AgentProfile>>,
 
@@ -97,9 +95,19 @@ pub struct PurchaseSkill<'info> {
     )]
     pub author_reward_vault_authority: UncheckedAccount<'info>,
 
-    /// CHECK: Validated after the author-wide backing gate so unbacked authors get a clear error.
-    #[account(mut)]
-    pub author_reward_vault: UncheckedAccount<'info>,
+    #[account(
+        init_if_needed,
+        payer = buyer,
+        token::mint = usdc_mint,
+        token::authority = author_reward_vault_authority,
+        token::token_program = token_program,
+        seeds = [
+            b"author_reward_vault",
+            author_profile.key().as_ref()
+        ],
+        bump
+    )]
+    pub author_reward_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub buyer: Signer<'info>,
@@ -122,23 +130,11 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         ctx.accounts.author_profile.total_vouch_stake_usdc_micros > 0,
         PurchaseError::NoActiveAuthorBacking
     );
-    require_keys_eq!(
-        ctx.accounts.author_profile.reward_vault,
-        ctx.accounts.author_reward_vault.key(),
-        PurchaseError::RewardVaultMismatch
-    );
-    {
-        let author_reward_vault_info = ctx.accounts.author_reward_vault.to_account_info();
-        let author_reward_vault_data = author_reward_vault_info.try_borrow_data()?;
-        let author_reward_vault_account = SplTokenAccount::unpack(&author_reward_vault_data)?;
-        require!(
-            author_reward_vault_account.mint == ctx.accounts.config.usdc_mint,
-            PurchaseError::InvalidTokenMint
-        );
-        require!(
-            author_reward_vault_account.owner == ctx.accounts.author_reward_vault_authority.key(),
-            PurchaseError::InvalidTokenOwner
-        );
+
+    if ctx.accounts.author_profile.reward_vault != ctx.accounts.author_reward_vault.key() {
+        ctx.accounts.author_profile.reward_vault = ctx.accounts.author_reward_vault.key();
+        ctx.accounts.author_profile.reward_vault_rent_payer = ctx.accounts.buyer.key();
+        ctx.accounts.author_profile.reward_vault_bump = ctx.bumps.author_reward_vault;
     }
 
     let author_share_usdc_micros = price_usdc_micros

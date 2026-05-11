@@ -80,7 +80,7 @@ pub struct OpenAuthorDispute<'info> {
 }
 
 pub fn handler<'info>(
-    mut ctx: Context<'_, '_, 'info, 'info, OpenAuthorDispute<'info>>,
+    ctx: Context<'_, '_, 'info, 'info, OpenAuthorDispute<'info>>,
     dispute_id: u64,
     reason: AuthorDisputeReason,
     evidence_uri: String,
