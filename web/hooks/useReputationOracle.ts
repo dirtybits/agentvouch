@@ -592,14 +592,16 @@ async function getPurchasePDA(
   ]);
 }
 
-async function getRewardVaultAuthorityPDA(
-  skillListing: Address
+async function getAuthorRewardVaultAuthorityPDA(
+  authorProfile: Address
 ): Promise<Address> {
-  return deriveAddress(["listing_reward_vault_authority", skillListing]);
+  return deriveAddress(["author_reward_vault_authority", authorProfile]);
 }
 
-async function getRewardVaultPDA(skillListing: Address): Promise<Address> {
-  return deriveAddress(["listing_reward_vault", skillListing]);
+async function getAuthorRewardVaultPDA(
+  authorProfile: Address
+): Promise<Address> {
+  return deriveAddress(["author_reward_vault", authorProfile]);
 }
 
 async function getListingSettlementPDA(
@@ -718,6 +720,11 @@ async function estimatePurchasePreflight(
   const listing = await fetchMaybeSkillListing(rpc, skillListing);
   if (!listing.exists) throw new Error("Skill listing not found on-chain");
   const usdcMint = await getProtocolUsdcMint();
+  const authorProfile = await getAgentPDA(author);
+  const maybeAuthorProfile = await fetchMaybeAgentProfile(
+    rpc,
+    authorProfile
+  ).catch(() => null);
   const context = await createPurchasePreflightContext({
     rpc,
     buyer,
@@ -728,6 +735,9 @@ async function estimatePurchasePreflight(
     context,
     priceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
     author,
+    authorBackingUsdcMicros: maybeAuthorProfile?.exists
+      ? BigInt(maybeAuthorProfile.data.totalVouchStakeUsdcMicros)
+      : 0n,
   });
 }
 
@@ -1307,12 +1317,19 @@ export function useReputationOracle() {
         voucheeProfile,
         requiredUsdcMicros: amountUsdcMicros,
       });
-      const [voucherUsdcAccount, vouchVaultAuthority, vouchVault] =
-        await Promise.all([
-          getAssociatedTokenAccount(voucherAddress, usdcMint),
-          getVouchVaultAuthorityPDA(voucherProfile, voucheeProfile),
-          getVouchVaultPDA(voucherProfile, voucheeProfile),
-        ]);
+      const [
+        voucherUsdcAccount,
+        vouchVaultAuthority,
+        vouchVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
+      ] = await Promise.all([
+        getAssociatedTokenAccount(voucherAddress, usdcMint),
+        getVouchVaultAuthorityPDA(voucherProfile, voucheeProfile),
+        getVouchVaultPDA(voucherProfile, voucheeProfile),
+        getAuthorRewardVaultAuthorityPDA(voucheeProfile),
+        getAuthorRewardVaultPDA(voucheeProfile),
+      ]);
       await assertUsdcAccountReady({
         rpc,
         owner: voucherAddress,
@@ -1327,6 +1344,8 @@ export function useReputationOracle() {
         voucherUsdcAccount,
         vouchVaultAuthority,
         vouchVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         voucher: signer,
         stakeUsdcMicros: amountUsdcMicros,
       });
@@ -2053,25 +2072,17 @@ export function useReputationOracle() {
       const { authorProfile, authorBond, config, skillListing } =
         await resolveSkillListingAccounts(authorAddress, skillId);
       const listingSettlement = await getListingSettlementPDA(skillListing);
-      const [
-        rewardVaultAuthority,
-        rewardVault,
-        authorProceedsVaultAuthority,
-        authorProceedsVault,
-      ] = await Promise.all([
-        getRewardVaultAuthorityPDA(skillListing),
-        getRewardVaultPDA(skillListing),
-        getAuthorProceedsVaultAuthorityPDA(listingSettlement),
-        getAuthorProceedsVaultPDA(listingSettlement),
-      ]);
+      const [authorProceedsVaultAuthority, authorProceedsVault] =
+        await Promise.all([
+          getAuthorProceedsVaultAuthorityPDA(listingSettlement),
+          getAuthorProceedsVaultPDA(listingSettlement),
+        ]);
       const ix = await getCreateSkillListingInstructionAsync({
         skillListing,
         authorProfile,
         config,
         authorBond: priceUsdcMicros === 0 ? authorBond : undefined,
         usdcMint,
-        rewardVaultAuthority,
-        rewardVault,
         listingSettlement,
         authorProceedsVaultAuthority,
         authorProceedsVault,
@@ -2240,7 +2251,9 @@ export function useReputationOracle() {
           );
         }
         if (
-          purchaseEstimate.purchasePreflightStatus === "authorPayoutRentBlocked"
+          purchaseEstimate.purchasePreflightStatus ===
+            "authorPayoutRentBlocked" ||
+          purchaseEstimate.purchasePreflightStatus === "authorMissingBacking"
         ) {
           throw new Error(
             purchaseEstimate.purchasePreflightMessage ??
@@ -2259,10 +2272,13 @@ export function useReputationOracle() {
       }
 
       const usdcMint = await getProtocolUsdcMint();
-      const [authorProfile, buyerUsdcAccount] = await Promise.all([
-        getAgentPDA(authorKey),
-        getAssociatedTokenAccount(walletAddress, usdcMint),
-      ]);
+      const authorProfile = await getAgentPDA(authorKey);
+      const [buyerUsdcAccount, authorRewardVaultAuthority, authorRewardVault] =
+        await Promise.all([
+          getAssociatedTokenAccount(walletAddress, usdcMint),
+          getAuthorRewardVaultAuthorityPDA(authorProfile),
+          getAuthorRewardVaultPDA(authorProfile),
+        ]);
       await assertUsdcAccountReady({
         rpc,
         owner: walletAddress,
@@ -2279,7 +2295,8 @@ export function useReputationOracle() {
         buyerUsdcAccount,
         listingSettlement: listing.data.currentSettlement,
         authorProceedsVault: listing.data.currentAuthorProceedsVault,
-        rewardVault: listing.data.rewardVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         buyer: signer,
       });
       const summary = {
@@ -2287,7 +2304,7 @@ export function useReputationOracle() {
         token: "USDC" as const,
         amountUsdcMicros: BigInt(listing.data.priceUsdcMicros),
         recipient: listing.data.currentAuthorProceedsVault,
-        vault: listing.data.rewardVault,
+        vault: authorRewardVault,
         feePayer: signer.address,
         cluster: getConfiguredNetworkDescription(),
       };
@@ -2325,7 +2342,8 @@ export function useReputationOracle() {
             }
             if (
               latestEstimate.purchasePreflightStatus ===
-              "authorPayoutRentBlocked"
+                "authorPayoutRentBlocked" ||
+              latestEstimate.purchasePreflightStatus === "authorMissingBacking"
             ) {
               throw new Error(
                 latestEstimate.purchasePreflightMessage ??
@@ -2417,23 +2435,24 @@ export function useReputationOracle() {
   );
 
   const claimVoucherRevenue = useCallback(
-    async (skillListingKey: Address, authorKey: Address) => {
+    async (_skillListingKey: Address, authorKey: Address) => {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
       const voucherAddress = getConnectedAuthorAddress(walletAddress, signer);
       const usdcMint = await getProtocolUsdcMint();
-      const [authorProfile, voucherProfile, listing] = await Promise.all([
+      const [authorProfile, voucherProfile] = await Promise.all([
         getAgentPDA(authorKey),
         getAgentPDA(voucherAddress),
-        fetchMaybeSkillListing(rpc, skillListingKey),
       ]);
-      if (!listing.exists) throw new Error("Skill listing not found");
       const vouch = await getVouchPDA(voucherProfile, authorProfile);
-      const [listingVouchPosition, rewardVaultAuthority, voucherUsdcAccount] =
-        await Promise.all([
-          getListingVouchPositionPDA(skillListingKey, vouch),
-          getRewardVaultAuthorityPDA(skillListingKey),
-          getAssociatedTokenAccount(voucherAddress, usdcMint),
-        ]);
+      const [
+        authorRewardVaultAuthority,
+        authorRewardVault,
+        voucherUsdcAccount,
+      ] = await Promise.all([
+        getAuthorRewardVaultAuthorityPDA(authorProfile),
+        getAuthorRewardVaultPDA(authorProfile),
+        getAssociatedTokenAccount(voucherAddress, usdcMint),
+      ]);
       const createVoucherAtaIx =
         getCreateAssociatedTokenAccountIdempotentInstruction({
           payer: signer,
@@ -2442,14 +2461,12 @@ export function useReputationOracle() {
           mint: usdcMint,
         });
       const ix = await getClaimVoucherRevenueInstructionAsync({
-        skillListing: skillListingKey,
-        listingVouchPosition,
-        vouch,
         authorProfile,
+        vouch,
         voucherProfile,
         usdcMint,
-        rewardVaultAuthority,
-        rewardVault: listing.data.rewardVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         voucherUsdcAccount,
         voucher: signer,
       });
@@ -2457,7 +2474,7 @@ export function useReputationOracle() {
         action: "Claim voucher revenue",
         token: "USDC" as const,
         recipient: voucherUsdcAccount,
-        vault: listing.data.rewardVault,
+        vault: authorRewardVault,
         feePayer: signer.address,
         cluster: getConfiguredNetworkDescription(),
       };

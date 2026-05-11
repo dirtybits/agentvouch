@@ -16,6 +16,7 @@ export * from "./initializeConfig";
 export * from "./initializeListingSettlement";
 export * from "./linkVouchToListing";
 export * from "./migrateConfigM13";
+export * from "./migrateSkillListingM13";
 export * from "./openAuthorDispute";
 export * from "./purchaseSkill";
 export * from "./registerAgent";

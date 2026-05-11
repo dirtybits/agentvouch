@@ -56,9 +56,11 @@ describe("useReputationOracle send helpers", () => {
     });
 
     const normalizedIx = normalizeInstructionForSend(ix);
-    const voucherAccount = normalizedIx.accounts[8];
+    const voucherAccount = normalizedIx.accounts.find(
+      (account) => account.address === VOUCHER_ADDRESS && "signer" in account
+    );
 
-    expect(voucherAccount.address).toBe(VOUCHER_ADDRESS);
+    expect(voucherAccount).toBeDefined();
     expect("signer" in voucherAccount && voucherAccount.signer).toBe(signer);
     expect(voucherAccount).not.toBe(ix.accounts[4]);
   });
@@ -118,10 +120,13 @@ describe("useReputationOracle send helpers", () => {
       priceUsdcMicros: 1_000_000n,
     });
     const normalizedIx = normalizeInstructionForSend(ix);
+    const authorSignerAccount = normalizedIx.accounts.find(
+      (account) => account.address === VOUCHER_ADDRESS && "signer" in account
+    );
 
     expect(normalizedIx.accounts[0].address).toBe(skillListing);
     expect(normalizedIx.accounts[1].address).toBe(authorProfile);
-    expect(normalizedIx.accounts[10].address).toBe(VOUCHER_ADDRESS);
+    expect(authorSignerAccount).toBeDefined();
   });
 
   it("rejects mismatched wallet and signer addresses before listing creation", () => {

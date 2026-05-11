@@ -284,7 +284,7 @@ Public cutover smoke checklist:
 - Deployed program ID, `declare_id!`, `Anchor.toml`, `web/agentvouch.json`, generated client, protocol package constants, `.well-known/agentvouch.json`, and `skill.md` metadata all agree.
 - Config is initialized with the expected USDC mint, token program, role authorities, treasury vault, settlement vault, floors, splits, pause state, and CAIP-2 chain context.
 - API/indexer can read v0.2.0 config, profiles, listings, vouches, purchases, voucher claims, disputes, and authority events.
-- Devnet smoke passes: register agent, deposit author bond, vouch, link vouch to listing, publish listing, direct USDC purchase, claim voucher revenue, open/resolve dispute, verify reputation delta, and download raw skill content with `X-AgentVouch-Auth`.
+- Devnet smoke passes: register agent, deposit author bond, author-wide vouch, publish listing, direct USDC purchase, claim voucher revenue, open/resolve dispute, verify reputation delta, and download raw skill content with `X-AgentVouch-Auth`.
 - Legacy v0.1 read surfaces remain readable during transition, while all new writes target v0.2.0 after hard cut.
 - Production preview confirms Phantom wallet connection, direct purchase checkout, send-only/embedded wallet fallback copy, and no protocol-listed x402 advertisement unless bridge support is live.
 - Public docs and `skill.md` have no stale SOL-denominated primary flow claims.
@@ -415,9 +415,9 @@ Locked floors and calibration:
 
 Locked voucher reward accounting:
 
-- Use first-class `ListingVouchPosition` accounts and a listing-level cumulative reward index. Late vouches start at the current index and cannot earn prior voucher-pool revenue.
-- Use `SCALE = 1_000_000_000_000`, `reward_index_usdc_micros_x1e12`, `entry_reward_index_x1e12`, and checked `u128` intermediate math. Overflow fails the instruction; reward accounting must not saturate.
-- Paid `purchase_skill` requires `active_reward_stake_usdc_micros > 0` and a non-zero reward index delta.
+- Use author-wide vouch rewards on `AgentProfile` with per-vouch entry indexes. Late vouches start at the current author reward index and cannot earn prior voucher-pool revenue.
+- Use `SCALE = 1_000_000_000_000`, `reward_index_usdc_micros_x1e12`, `entry_author_reward_index_x1e12`, and checked `u128` intermediate math. Overflow fails the instruction; reward accounting must not saturate.
+- Paid `purchase_skill` requires author-wide active vouch backing and a non-zero reward index delta.
 - Purchase-time reward update:
 
 ```text
@@ -437,14 +437,14 @@ entry_reward_index_x1e12 = listing.reward_index_usdc_micros_x1e12
 
 - A voucher keeps already-accrued claim rights after unlink, revoke, or partial slash. Forfeiture is only forward-looking after the vouch is inactive or stake is reduced.
 - Partial slashes accrue first, then reduce future reward weight in proportion to remaining active stake. Fully slashed positions keep already accrued pending rewards claimable unless a later explicit forfeiture rule is adopted.
-- Claims accrue first, pay the actual claimable amount from the listing reward vault to the voucher canonical ATA, decrement `unclaimed_voucher_revenue_usdc_micros` by the paid amount, and update position plus aggregate vouch revenue counters.
+- Claims accrue first, pay the actual claimable amount from the author reward vault to the voucher canonical ATA, decrement author-wide `unclaimed_voucher_revenue_usdc_micros` by the paid amount, and update aggregate vouch revenue counters.
 - Listing removal freezes new purchases and links, but does not block reward claims.
-- Listing closure cannot strand claimable rewards. It requires `unclaimed_voucher_revenue_usdc_micros == 0` and no claimable `ListingVouchPosition` rewards; a permissionless close/sweep path may move only residual unassigned dust or accidental direct-transfer USDC to the protocol treasury after all claim rights are resolved.
+- Listing closure no longer owns voucher reward funds; claimable rewards live at the author reward vault and remain claimable by voucher.
 
 Compute and account ceiling gate decision:
 
 - No Milestone 3 instruction may require an unbounded number of accounts. User-facing transactions must fit a `64` static-account planning ceiling without requiring Address Lookup Tables.
-- Paid-listing dispute exposure is listing-scoped. Dispute linking and voucher slashing operate on `ListingVouchPosition` accounts for the disputed listing, not every author-wide vouch.
+- Paid-listing purchase eligibility uses author-wide backing. Dispute liability keeps the author-bond-first path and can snapshot author-wide vouch exposure without requiring listing links.
 - `MAX_ACTIVE_REWARD_POSITIONS_PER_LISTING = 32` for `v0.2.0`.
 - `MAX_DISPUTE_POSITIONS_PER_TX = 8` for any instruction that links, verifies, slashes, or settles dispute-linked voucher positions.
 - Paid-listing upheld disputes use batched settlement when linked positions exceed the per-transaction limit: record ruling, settle author bond, process linked voucher positions in chunks, then finalize after all required positions are settled.

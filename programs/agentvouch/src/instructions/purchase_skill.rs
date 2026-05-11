@@ -4,6 +4,8 @@ use crate::state::{
     REWARD_INDEX_SCALE,
 };
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::program_pack::Pack;
+use anchor_spl::token::spl_token::state::Account as SplTokenAccount;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
 #[derive(Accounts)]
@@ -33,6 +35,7 @@ pub struct PurchaseSkill<'info> {
     pub author: UncheckedAccount<'info>,
 
     #[account(
+        mut,
         seeds = [b"agent", skill_listing.author.as_ref()],
         bump = author_profile.bump,
     )]
@@ -84,12 +87,19 @@ pub struct PurchaseSkill<'info> {
     )]
     pub author_proceeds_vault: Box<Account<'info, TokenAccount>>,
 
+    /// CHECK: PDA authority for the author-wide voucher reward vault.
     #[account(
-        mut,
-        address = skill_listing.reward_vault @ PurchaseError::RewardVaultMismatch,
-        constraint = reward_vault.mint == config.usdc_mint @ PurchaseError::InvalidTokenMint
+        seeds = [
+            b"author_reward_vault_authority",
+            author_profile.key().as_ref()
+        ],
+        bump
     )]
-    pub reward_vault: Box<Account<'info, TokenAccount>>,
+    pub author_reward_vault_authority: UncheckedAccount<'info>,
+
+    /// CHECK: Validated after the author-wide backing gate so unbacked authors get a clear error.
+    #[account(mut)]
+    pub author_reward_vault: UncheckedAccount<'info>,
 
     #[account(mut)]
     pub buyer: Signer<'info>,
@@ -109,9 +119,27 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
     let price_usdc_micros = ctx.accounts.skill_listing.price_usdc_micros;
     require!(price_usdc_micros > 0, PurchaseError::FreeSkillNotPurchased);
     require!(
-        ctx.accounts.skill_listing.active_reward_stake_usdc_micros > 0,
-        PurchaseError::NoActiveRewardStake
+        ctx.accounts.author_profile.total_vouch_stake_usdc_micros > 0,
+        PurchaseError::NoActiveAuthorBacking
     );
+    require_keys_eq!(
+        ctx.accounts.author_profile.reward_vault,
+        ctx.accounts.author_reward_vault.key(),
+        PurchaseError::RewardVaultMismatch
+    );
+    {
+        let author_reward_vault_info = ctx.accounts.author_reward_vault.to_account_info();
+        let author_reward_vault_data = author_reward_vault_info.try_borrow_data()?;
+        let author_reward_vault_account = SplTokenAccount::unpack(&author_reward_vault_data)?;
+        require!(
+            author_reward_vault_account.mint == ctx.accounts.config.usdc_mint,
+            PurchaseError::InvalidTokenMint
+        );
+        require!(
+            author_reward_vault_account.owner == ctx.accounts.author_reward_vault_authority.key(),
+            PurchaseError::InvalidTokenOwner
+        );
+    }
 
     let author_share_usdc_micros = price_usdc_micros
         .checked_mul(ctx.accounts.config.author_share_bps as u64)
@@ -148,7 +176,7 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
             TransferChecked {
                 from: ctx.accounts.buyer_usdc_account.to_account_info(),
                 mint: ctx.accounts.usdc_mint.to_account_info(),
-                to: ctx.accounts.reward_vault.to_account_info(),
+                to: ctx.accounts.author_reward_vault.to_account_info(),
                 authority: ctx.accounts.buyer.to_account_info(),
             },
         ),
@@ -160,7 +188,7 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
     let index_delta = (voucher_pool_usdc_micros as u128)
         .checked_mul(REWARD_INDEX_SCALE)
         .ok_or(PurchaseError::RewardIndexOverflow)?
-        .checked_div(skill_listing.active_reward_stake_usdc_micros as u128)
+        .checked_div(ctx.accounts.author_profile.total_vouch_stake_usdc_micros as u128)
         .ok_or(PurchaseError::RewardIndexOverflow)?;
     require!(index_delta > 0, PurchaseError::VoucherPoolTooSmall);
 
@@ -180,11 +208,12 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         .total_voucher_revenue_usdc_micros
         .checked_add(voucher_pool_usdc_micros)
         .ok_or(PurchaseError::PaymentOverflow)?;
-    skill_listing.reward_index_usdc_micros_x1e12 = skill_listing
+    let author_profile = &mut ctx.accounts.author_profile;
+    author_profile.reward_index_usdc_micros_x1e12 = author_profile
         .reward_index_usdc_micros_x1e12
         .checked_add(index_delta)
         .ok_or(PurchaseError::RewardIndexOverflow)?;
-    skill_listing.unclaimed_voucher_revenue_usdc_micros = skill_listing
+    author_profile.unclaimed_voucher_revenue_usdc_micros = author_profile
         .unclaimed_voucher_revenue_usdc_micros
         .checked_add(voucher_pool_usdc_micros)
         .ok_or(PurchaseError::PaymentOverflow)?;
@@ -231,7 +260,7 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         listing_revision: ctx.accounts.skill_listing.current_revision,
         listing_settlement: ctx.accounts.listing_settlement.key(),
         author_proceeds_vault: ctx.accounts.author_proceeds_vault.key(),
-        reward_vault: ctx.accounts.reward_vault.key(),
+        reward_vault: ctx.accounts.author_reward_vault.key(),
         timestamp: clock.unix_timestamp,
     });
 
@@ -248,8 +277,8 @@ pub enum PurchaseError {
     ProtocolPaused,
     #[msg("Free skills do not require purchase")]
     FreeSkillNotPurchased,
-    #[msg("Paid purchases require active linked vouch stake")]
-    NoActiveRewardStake,
+    #[msg("Paid purchases require active author backing")]
+    NoActiveAuthorBacking,
     #[msg("Payment calculation overflowed")]
     PaymentOverflow,
     #[msg("Voucher pool is too small")]
@@ -262,7 +291,7 @@ pub enum PurchaseError {
     InvalidTokenMint,
     #[msg("Token account owner is invalid")]
     InvalidTokenOwner,
-    #[msg("Reward vault does not match listing state")]
+    #[msg("Reward vault does not match author profile")]
     RewardVaultMismatch,
     #[msg("Listing settlement account does not match the active listing revision")]
     SettlementMismatch,

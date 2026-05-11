@@ -23,6 +23,8 @@ import {
   getI64Encoder,
   getStructDecoder,
   getStructEncoder,
+  getU128Decoder,
+  getU128Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
@@ -68,6 +70,8 @@ export type Vouch = {
   status: VouchStatus;
   cumulativeRevenueUsdcMicros: bigint;
   linkedListingCount: number;
+  entryAuthorRewardIndexX1e12: bigint;
+  pendingRewardsUsdcMicros: bigint;
   lastPayoutAt: bigint;
   bump: number;
   vaultBump: number;
@@ -83,6 +87,8 @@ export type VouchArgs = {
   status: VouchStatusArgs;
   cumulativeRevenueUsdcMicros: number | bigint;
   linkedListingCount: number;
+  entryAuthorRewardIndexX1e12: number | bigint;
+  pendingRewardsUsdcMicros: number | bigint;
   lastPayoutAt: number | bigint;
   bump: number;
   vaultBump: number;
@@ -102,6 +108,8 @@ export function getVouchEncoder(): FixedSizeEncoder<VouchArgs> {
       ["status", getVouchStatusEncoder()],
       ["cumulativeRevenueUsdcMicros", getU64Encoder()],
       ["linkedListingCount", getU32Encoder()],
+      ["entryAuthorRewardIndexX1e12", getU128Encoder()],
+      ["pendingRewardsUsdcMicros", getU64Encoder()],
       ["lastPayoutAt", getI64Encoder()],
       ["bump", getU8Encoder()],
       ["vaultBump", getU8Encoder()],
@@ -123,6 +131,8 @@ export function getVouchDecoder(): FixedSizeDecoder<Vouch> {
     ["status", getVouchStatusDecoder()],
     ["cumulativeRevenueUsdcMicros", getU64Decoder()],
     ["linkedListingCount", getU32Decoder()],
+    ["entryAuthorRewardIndexX1e12", getU128Decoder()],
+    ["pendingRewardsUsdcMicros", getU64Decoder()],
     ["lastPayoutAt", getI64Decoder()],
     ["bump", getU8Decoder()],
     ["vaultBump", getU8Decoder()],
@@ -188,5 +198,5 @@ export async function fetchAllMaybeVouch(
 }
 
 export function getVouchSize(): number {
-  return 175;
+  return 199;
 }

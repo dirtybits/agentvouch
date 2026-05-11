@@ -11,6 +11,8 @@ pub struct Vouch {
     pub status: VouchStatus,                 // Active, Revoked, Slashed
     pub cumulative_revenue_usdc_micros: u64, // Total marketplace revenue claimed
     pub linked_listing_count: u32,
+    pub entry_author_reward_index_x1e12: u128,
+    pub pending_rewards_usdc_micros: u64,
     pub last_payout_at: i64, // Last time voucher claimed revenue
     pub bump: u8,            // PDA bump
     pub vault_bump: u8,
@@ -34,6 +36,8 @@ impl Vouch {
         1 + // status (enum)
         8 + // cumulative_revenue_usdc_micros
         4 + // linked_listing_count
+        16 + // entry_author_reward_index_x1e12
+        8 + // pending_rewards_usdc_micros
         8 + // last_payout_at
         1 + // bump
         1; // vault_bump

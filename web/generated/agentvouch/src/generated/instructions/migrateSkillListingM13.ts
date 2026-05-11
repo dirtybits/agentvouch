@@ -27,6 +27,7 @@ import {
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
+  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
@@ -39,38 +40,33 @@ import {
 } from "@solana/program-client-core";
 import {
   findAuthorProceedsVaultAuthorityPda,
-  findAuthorRewardVaultAuthorityPda,
+  findAuthorProceedsVaultPda,
   findConfigPda,
+  findListingSettlementPda,
 } from "../pdas";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
-export const PURCHASE_SKILL_DISCRIMINATOR = new Uint8Array([
-  70, 41, 105, 156, 159, 169, 215, 188,
+export const MIGRATE_SKILL_LISTING_M13_DISCRIMINATOR = new Uint8Array([
+  39, 254, 23, 99, 65, 215, 46, 103,
 ]);
 
-export function getPurchaseSkillDiscriminatorBytes() {
+export function getMigrateSkillListingM13DiscriminatorBytes() {
   return fixEncoderSize(getBytesEncoder(), 8).encode(
-    PURCHASE_SKILL_DISCRIMINATOR,
+    MIGRATE_SKILL_LISTING_M13_DISCRIMINATOR,
   );
 }
 
-export type PurchaseSkillInstruction<
+export type MigrateSkillListingM13Instruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
   TAccountSkillListing extends string | AccountMeta<string> = string,
-  TAccountPurchase extends string | AccountMeta<string> = string,
-  TAccountAuthor extends string | AccountMeta<string> = string,
-  TAccountAuthorProfile extends string | AccountMeta<string> = string,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
-  TAccountBuyerUsdcAccount extends string | AccountMeta<string> = string,
   TAccountListingSettlement extends string | AccountMeta<string> = string,
   TAccountAuthorProceedsVaultAuthority extends string | AccountMeta<string> =
     string,
   TAccountAuthorProceedsVault extends string | AccountMeta<string> = string,
-  TAccountAuthorRewardVaultAuthority extends string | AccountMeta<string> =
-    string,
-  TAccountAuthorRewardVault extends string | AccountMeta<string> = string,
-  TAccountBuyer extends string | AccountMeta<string> = string,
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -83,24 +79,12 @@ export type PurchaseSkillInstruction<
       TAccountSkillListing extends string
         ? WritableAccount<TAccountSkillListing>
         : TAccountSkillListing,
-      TAccountPurchase extends string
-        ? WritableAccount<TAccountPurchase>
-        : TAccountPurchase,
-      TAccountAuthor extends string
-        ? ReadonlyAccount<TAccountAuthor>
-        : TAccountAuthor,
-      TAccountAuthorProfile extends string
-        ? WritableAccount<TAccountAuthorProfile>
-        : TAccountAuthorProfile,
       TAccountConfig extends string
         ? ReadonlyAccount<TAccountConfig>
         : TAccountConfig,
       TAccountUsdcMint extends string
         ? ReadonlyAccount<TAccountUsdcMint>
         : TAccountUsdcMint,
-      TAccountBuyerUsdcAccount extends string
-        ? WritableAccount<TAccountBuyerUsdcAccount>
-        : TAccountBuyerUsdcAccount,
       TAccountListingSettlement extends string
         ? WritableAccount<TAccountListingSettlement>
         : TAccountListingSettlement,
@@ -110,16 +94,14 @@ export type PurchaseSkillInstruction<
       TAccountAuthorProceedsVault extends string
         ? WritableAccount<TAccountAuthorProceedsVault>
         : TAccountAuthorProceedsVault,
-      TAccountAuthorRewardVaultAuthority extends string
-        ? ReadonlyAccount<TAccountAuthorRewardVaultAuthority>
-        : TAccountAuthorRewardVaultAuthority,
-      TAccountAuthorRewardVault extends string
-        ? WritableAccount<TAccountAuthorRewardVault>
-        : TAccountAuthorRewardVault,
-      TAccountBuyer extends string
-        ? WritableSignerAccount<TAccountBuyer> &
-            AccountSignerMeta<TAccountBuyer>
-        : TAccountBuyer,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountAuthority extends string
+        ? ReadonlySignerAccount<TAccountAuthority> &
+            AccountSignerMeta<TAccountAuthority>
+        : TAccountAuthority,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -130,121 +112,99 @@ export type PurchaseSkillInstruction<
     ]
   >;
 
-export type PurchaseSkillInstructionData = {
+export type MigrateSkillListingM13InstructionData = {
   discriminator: ReadonlyUint8Array;
 };
 
-export type PurchaseSkillInstructionDataArgs = {};
+export type MigrateSkillListingM13InstructionDataArgs = {};
 
-export function getPurchaseSkillInstructionDataEncoder(): FixedSizeEncoder<PurchaseSkillInstructionDataArgs> {
+export function getMigrateSkillListingM13InstructionDataEncoder(): FixedSizeEncoder<MigrateSkillListingM13InstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
-    (value) => ({ ...value, discriminator: PURCHASE_SKILL_DISCRIMINATOR }),
+    (value) => ({
+      ...value,
+      discriminator: MIGRATE_SKILL_LISTING_M13_DISCRIMINATOR,
+    }),
   );
 }
 
-export function getPurchaseSkillInstructionDataDecoder(): FixedSizeDecoder<PurchaseSkillInstructionData> {
+export function getMigrateSkillListingM13InstructionDataDecoder(): FixedSizeDecoder<MigrateSkillListingM13InstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
   ]);
 }
 
-export function getPurchaseSkillInstructionDataCodec(): FixedSizeCodec<
-  PurchaseSkillInstructionDataArgs,
-  PurchaseSkillInstructionData
+export function getMigrateSkillListingM13InstructionDataCodec(): FixedSizeCodec<
+  MigrateSkillListingM13InstructionDataArgs,
+  MigrateSkillListingM13InstructionData
 > {
   return combineCodec(
-    getPurchaseSkillInstructionDataEncoder(),
-    getPurchaseSkillInstructionDataDecoder(),
+    getMigrateSkillListingM13InstructionDataEncoder(),
+    getMigrateSkillListingM13InstructionDataDecoder(),
   );
 }
 
-export type PurchaseSkillAsyncInput<
+export type MigrateSkillListingM13AsyncInput<
   TAccountSkillListing extends string = string,
-  TAccountPurchase extends string = string,
-  TAccountAuthor extends string = string,
-  TAccountAuthorProfile extends string = string,
   TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountBuyerUsdcAccount extends string = string,
   TAccountListingSettlement extends string = string,
   TAccountAuthorProceedsVaultAuthority extends string = string,
   TAccountAuthorProceedsVault extends string = string,
-  TAccountAuthorRewardVaultAuthority extends string = string,
-  TAccountAuthorRewardVault extends string = string,
-  TAccountBuyer extends string = string,
+  TAccountPayer extends string = string,
+  TAccountAuthority extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   skillListing: Address<TAccountSkillListing>;
-  purchase: Address<TAccountPurchase>;
-  author: Address<TAccountAuthor>;
-  authorProfile: Address<TAccountAuthorProfile>;
   config?: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
-  buyerUsdcAccount: Address<TAccountBuyerUsdcAccount>;
-  listingSettlement: Address<TAccountListingSettlement>;
+  listingSettlement?: Address<TAccountListingSettlement>;
   authorProceedsVaultAuthority?: Address<TAccountAuthorProceedsVaultAuthority>;
-  authorProceedsVault: Address<TAccountAuthorProceedsVault>;
-  authorRewardVaultAuthority?: Address<TAccountAuthorRewardVaultAuthority>;
-  authorRewardVault: Address<TAccountAuthorRewardVault>;
-  buyer: TransactionSigner<TAccountBuyer>;
+  authorProceedsVault?: Address<TAccountAuthorProceedsVault>;
+  payer: TransactionSigner<TAccountPayer>;
+  authority: TransactionSigner<TAccountAuthority>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
 };
 
-export async function getPurchaseSkillInstructionAsync<
+export async function getMigrateSkillListingM13InstructionAsync<
   TAccountSkillListing extends string,
-  TAccountPurchase extends string,
-  TAccountAuthor extends string,
-  TAccountAuthorProfile extends string,
   TAccountConfig extends string,
   TAccountUsdcMint extends string,
-  TAccountBuyerUsdcAccount extends string,
   TAccountListingSettlement extends string,
   TAccountAuthorProceedsVaultAuthority extends string,
   TAccountAuthorProceedsVault extends string,
-  TAccountAuthorRewardVaultAuthority extends string,
-  TAccountAuthorRewardVault extends string,
-  TAccountBuyer extends string,
+  TAccountPayer extends string,
+  TAccountAuthority extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
-  input: PurchaseSkillAsyncInput<
+  input: MigrateSkillListingM13AsyncInput<
     TAccountSkillListing,
-    TAccountPurchase,
-    TAccountAuthor,
-    TAccountAuthorProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountBuyerUsdcAccount,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
-    TAccountAuthorRewardVaultAuthority,
-    TAccountAuthorRewardVault,
-    TAccountBuyer,
+    TAccountPayer,
+    TAccountAuthority,
     TAccountTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  PurchaseSkillInstruction<
+  MigrateSkillListingM13Instruction<
     TProgramAddress,
     TAccountSkillListing,
-    TAccountPurchase,
-    TAccountAuthor,
-    TAccountAuthorProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountBuyerUsdcAccount,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
-    TAccountAuthorRewardVaultAuthority,
-    TAccountAuthorRewardVault,
-    TAccountBuyer,
+    TAccountPayer,
+    TAccountAuthority,
     TAccountTokenProgram,
     TAccountSystemProgram
   >
@@ -255,15 +215,8 @@ export async function getPurchaseSkillInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     skillListing: { value: input.skillListing ?? null, isWritable: true },
-    purchase: { value: input.purchase ?? null, isWritable: true },
-    author: { value: input.author ?? null, isWritable: false },
-    authorProfile: { value: input.authorProfile ?? null, isWritable: true },
     config: { value: input.config ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    buyerUsdcAccount: {
-      value: input.buyerUsdcAccount ?? null,
-      isWritable: true,
-    },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
@@ -276,15 +229,8 @@ export async function getPurchaseSkillInstructionAsync<
       value: input.authorProceedsVault ?? null,
       isWritable: true,
     },
-    authorRewardVaultAuthority: {
-      value: input.authorRewardVaultAuthority ?? null,
-      isWritable: false,
-    },
-    authorRewardVault: {
-      value: input.authorRewardVault ?? null,
-      isWritable: true,
-    },
-    buyer: { value: input.buyer ?? null, isWritable: true },
+    payer: { value: input.payer ?? null, isWritable: true },
+    authority: { value: input.authority ?? null, isWritable: false },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
@@ -297,6 +243,14 @@ export async function getPurchaseSkillInstructionAsync<
   if (!accounts.config.value) {
     accounts.config.value = await findConfigPda();
   }
+  if (!accounts.listingSettlement.value) {
+    accounts.listingSettlement.value = await findListingSettlementPda({
+      skillListing: getAddressFromResolvedInstructionAccount(
+        "skillListing",
+        accounts.skillListing.value,
+      ),
+    });
+  }
   if (!accounts.authorProceedsVaultAuthority.value) {
     accounts.authorProceedsVaultAuthority.value =
       await findAuthorProceedsVaultAuthorityPda({
@@ -306,14 +260,13 @@ export async function getPurchaseSkillInstructionAsync<
         ),
       });
   }
-  if (!accounts.authorRewardVaultAuthority.value) {
-    accounts.authorRewardVaultAuthority.value =
-      await findAuthorRewardVaultAuthorityPda({
-        authorProfile: getAddressFromResolvedInstructionAccount(
-          "authorProfile",
-          accounts.authorProfile.value,
-        ),
-      });
+  if (!accounts.authorProceedsVault.value) {
+    accounts.authorProceedsVault.value = await findAuthorProceedsVaultPda({
+      listingSettlement: getAddressFromResolvedInstructionAccount(
+        "listingSettlement",
+        accounts.listingSettlement.value,
+      ),
+    });
   }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -328,134 +281,96 @@ export async function getPurchaseSkillInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("skillListing", accounts.skillListing),
-      getAccountMeta("purchase", accounts.purchase),
-      getAccountMeta("author", accounts.author),
-      getAccountMeta("authorProfile", accounts.authorProfile),
       getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("buyerUsdcAccount", accounts.buyerUsdcAccount),
       getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta(
         "authorProceedsVaultAuthority",
         accounts.authorProceedsVaultAuthority,
       ),
       getAccountMeta("authorProceedsVault", accounts.authorProceedsVault),
-      getAccountMeta(
-        "authorRewardVaultAuthority",
-        accounts.authorRewardVaultAuthority,
-      ),
-      getAccountMeta("authorRewardVault", accounts.authorRewardVault),
-      getAccountMeta("buyer", accounts.buyer),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("authority", accounts.authority),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
-    data: getPurchaseSkillInstructionDataEncoder().encode({}),
+    data: getMigrateSkillListingM13InstructionDataEncoder().encode({}),
     programAddress,
-  } as PurchaseSkillInstruction<
+  } as MigrateSkillListingM13Instruction<
     TProgramAddress,
     TAccountSkillListing,
-    TAccountPurchase,
-    TAccountAuthor,
-    TAccountAuthorProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountBuyerUsdcAccount,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
-    TAccountAuthorRewardVaultAuthority,
-    TAccountAuthorRewardVault,
-    TAccountBuyer,
+    TAccountPayer,
+    TAccountAuthority,
     TAccountTokenProgram,
     TAccountSystemProgram
   >);
 }
 
-export type PurchaseSkillInput<
+export type MigrateSkillListingM13Input<
   TAccountSkillListing extends string = string,
-  TAccountPurchase extends string = string,
-  TAccountAuthor extends string = string,
-  TAccountAuthorProfile extends string = string,
   TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountBuyerUsdcAccount extends string = string,
   TAccountListingSettlement extends string = string,
   TAccountAuthorProceedsVaultAuthority extends string = string,
   TAccountAuthorProceedsVault extends string = string,
-  TAccountAuthorRewardVaultAuthority extends string = string,
-  TAccountAuthorRewardVault extends string = string,
-  TAccountBuyer extends string = string,
+  TAccountPayer extends string = string,
+  TAccountAuthority extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   skillListing: Address<TAccountSkillListing>;
-  purchase: Address<TAccountPurchase>;
-  author: Address<TAccountAuthor>;
-  authorProfile: Address<TAccountAuthorProfile>;
   config: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
-  buyerUsdcAccount: Address<TAccountBuyerUsdcAccount>;
   listingSettlement: Address<TAccountListingSettlement>;
   authorProceedsVaultAuthority: Address<TAccountAuthorProceedsVaultAuthority>;
   authorProceedsVault: Address<TAccountAuthorProceedsVault>;
-  authorRewardVaultAuthority: Address<TAccountAuthorRewardVaultAuthority>;
-  authorRewardVault: Address<TAccountAuthorRewardVault>;
-  buyer: TransactionSigner<TAccountBuyer>;
+  payer: TransactionSigner<TAccountPayer>;
+  authority: TransactionSigner<TAccountAuthority>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
 };
 
-export function getPurchaseSkillInstruction<
+export function getMigrateSkillListingM13Instruction<
   TAccountSkillListing extends string,
-  TAccountPurchase extends string,
-  TAccountAuthor extends string,
-  TAccountAuthorProfile extends string,
   TAccountConfig extends string,
   TAccountUsdcMint extends string,
-  TAccountBuyerUsdcAccount extends string,
   TAccountListingSettlement extends string,
   TAccountAuthorProceedsVaultAuthority extends string,
   TAccountAuthorProceedsVault extends string,
-  TAccountAuthorRewardVaultAuthority extends string,
-  TAccountAuthorRewardVault extends string,
-  TAccountBuyer extends string,
+  TAccountPayer extends string,
+  TAccountAuthority extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
-  input: PurchaseSkillInput<
+  input: MigrateSkillListingM13Input<
     TAccountSkillListing,
-    TAccountPurchase,
-    TAccountAuthor,
-    TAccountAuthorProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountBuyerUsdcAccount,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
-    TAccountAuthorRewardVaultAuthority,
-    TAccountAuthorRewardVault,
-    TAccountBuyer,
+    TAccountPayer,
+    TAccountAuthority,
     TAccountTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): PurchaseSkillInstruction<
+): MigrateSkillListingM13Instruction<
   TProgramAddress,
   TAccountSkillListing,
-  TAccountPurchase,
-  TAccountAuthor,
-  TAccountAuthorProfile,
   TAccountConfig,
   TAccountUsdcMint,
-  TAccountBuyerUsdcAccount,
   TAccountListingSettlement,
   TAccountAuthorProceedsVaultAuthority,
   TAccountAuthorProceedsVault,
-  TAccountAuthorRewardVaultAuthority,
-  TAccountAuthorRewardVault,
-  TAccountBuyer,
+  TAccountPayer,
+  TAccountAuthority,
   TAccountTokenProgram,
   TAccountSystemProgram
 > {
@@ -465,15 +380,8 @@ export function getPurchaseSkillInstruction<
   // Original accounts.
   const originalAccounts = {
     skillListing: { value: input.skillListing ?? null, isWritable: true },
-    purchase: { value: input.purchase ?? null, isWritable: true },
-    author: { value: input.author ?? null, isWritable: false },
-    authorProfile: { value: input.authorProfile ?? null, isWritable: true },
     config: { value: input.config ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    buyerUsdcAccount: {
-      value: input.buyerUsdcAccount ?? null,
-      isWritable: true,
-    },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
@@ -486,15 +394,8 @@ export function getPurchaseSkillInstruction<
       value: input.authorProceedsVault ?? null,
       isWritable: true,
     },
-    authorRewardVaultAuthority: {
-      value: input.authorRewardVaultAuthority ?? null,
-      isWritable: false,
-    },
-    authorRewardVault: {
-      value: input.authorRewardVault ?? null,
-      isWritable: true,
-    },
-    buyer: { value: input.buyer ?? null, isWritable: true },
+    payer: { value: input.payer ?? null, isWritable: true },
+    authority: { value: input.authority ?? null, isWritable: false },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
@@ -517,88 +418,70 @@ export function getPurchaseSkillInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("skillListing", accounts.skillListing),
-      getAccountMeta("purchase", accounts.purchase),
-      getAccountMeta("author", accounts.author),
-      getAccountMeta("authorProfile", accounts.authorProfile),
       getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("buyerUsdcAccount", accounts.buyerUsdcAccount),
       getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta(
         "authorProceedsVaultAuthority",
         accounts.authorProceedsVaultAuthority,
       ),
       getAccountMeta("authorProceedsVault", accounts.authorProceedsVault),
-      getAccountMeta(
-        "authorRewardVaultAuthority",
-        accounts.authorRewardVaultAuthority,
-      ),
-      getAccountMeta("authorRewardVault", accounts.authorRewardVault),
-      getAccountMeta("buyer", accounts.buyer),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("authority", accounts.authority),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
-    data: getPurchaseSkillInstructionDataEncoder().encode({}),
+    data: getMigrateSkillListingM13InstructionDataEncoder().encode({}),
     programAddress,
-  } as PurchaseSkillInstruction<
+  } as MigrateSkillListingM13Instruction<
     TProgramAddress,
     TAccountSkillListing,
-    TAccountPurchase,
-    TAccountAuthor,
-    TAccountAuthorProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountBuyerUsdcAccount,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
-    TAccountAuthorRewardVaultAuthority,
-    TAccountAuthorRewardVault,
-    TAccountBuyer,
+    TAccountPayer,
+    TAccountAuthority,
     TAccountTokenProgram,
     TAccountSystemProgram
   >);
 }
 
-export type ParsedPurchaseSkillInstruction<
+export type ParsedMigrateSkillListingM13Instruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
     skillListing: TAccountMetas[0];
-    purchase: TAccountMetas[1];
-    author: TAccountMetas[2];
-    authorProfile: TAccountMetas[3];
-    config: TAccountMetas[4];
-    usdcMint: TAccountMetas[5];
-    buyerUsdcAccount: TAccountMetas[6];
-    listingSettlement: TAccountMetas[7];
-    authorProceedsVaultAuthority: TAccountMetas[8];
-    authorProceedsVault: TAccountMetas[9];
-    authorRewardVaultAuthority: TAccountMetas[10];
-    authorRewardVault: TAccountMetas[11];
-    buyer: TAccountMetas[12];
-    tokenProgram: TAccountMetas[13];
-    systemProgram: TAccountMetas[14];
+    config: TAccountMetas[1];
+    usdcMint: TAccountMetas[2];
+    listingSettlement: TAccountMetas[3];
+    authorProceedsVaultAuthority: TAccountMetas[4];
+    authorProceedsVault: TAccountMetas[5];
+    payer: TAccountMetas[6];
+    authority: TAccountMetas[7];
+    tokenProgram: TAccountMetas[8];
+    systemProgram: TAccountMetas[9];
   };
-  data: PurchaseSkillInstructionData;
+  data: MigrateSkillListingM13InstructionData;
 };
 
-export function parsePurchaseSkillInstruction<
+export function parseMigrateSkillListingM13Instruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedPurchaseSkillInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 15) {
+): ParsedMigrateSkillListingM13Instruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 15,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -612,21 +495,18 @@ export function parsePurchaseSkillInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       skillListing: getNextAccount(),
-      purchase: getNextAccount(),
-      author: getNextAccount(),
-      authorProfile: getNextAccount(),
       config: getNextAccount(),
       usdcMint: getNextAccount(),
-      buyerUsdcAccount: getNextAccount(),
       listingSettlement: getNextAccount(),
       authorProceedsVaultAuthority: getNextAccount(),
       authorProceedsVault: getNextAccount(),
-      authorRewardVaultAuthority: getNextAccount(),
-      authorRewardVault: getNextAccount(),
-      buyer: getNextAccount(),
+      payer: getNextAccount(),
+      authority: getNextAccount(),
       tokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
     },
-    data: getPurchaseSkillInstructionDataDecoder().decode(instruction.data),
+    data: getMigrateSkillListingM13InstructionDataDecoder().decode(
+      instruction.data,
+    ),
   };
 }

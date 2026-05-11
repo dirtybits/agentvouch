@@ -1,5 +1,5 @@
 use crate::events::VouchCreated;
-use crate::state::{AgentProfile, ReputationConfig, Vouch, VouchStatus};
+use crate::state::{AgentProfile, ReputationConfig, Vouch, VouchStatus, REWARD_INDEX_SCALE};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
@@ -71,6 +71,30 @@ pub struct CreateVouch<'info> {
     )]
     pub vouch_vault: Box<Account<'info, TokenAccount>>,
 
+    /// CHECK: PDA authority for the author-wide voucher reward vault.
+    #[account(
+        seeds = [
+            b"author_reward_vault_authority",
+            vouchee_profile.key().as_ref()
+        ],
+        bump
+    )]
+    pub author_reward_vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        init_if_needed,
+        payer = voucher,
+        token::mint = usdc_mint,
+        token::authority = author_reward_vault_authority,
+        token::token_program = token_program,
+        seeds = [
+            b"author_reward_vault",
+            vouchee_profile.key().as_ref()
+        ],
+        bump
+    )]
+    pub author_reward_vault: Box<Account<'info, TokenAccount>>,
+
     #[account(mut)]
     pub voucher: Signer<'info>,
 
@@ -112,6 +136,17 @@ pub fn handler(ctx: Context<CreateVouch>, stake_usdc_micros: u64) -> Result<()> 
         is_new_relationship || existing_vouchee == ctx.accounts.vouchee_profile.key(),
         ErrorCode::VouchAccountMismatch
     );
+    if ctx.accounts.vouchee_profile.reward_vault == Pubkey::default() {
+        ctx.accounts.vouchee_profile.reward_vault = ctx.accounts.author_reward_vault.key();
+        ctx.accounts.vouchee_profile.reward_vault_rent_payer = ctx.accounts.voucher.key();
+        ctx.accounts.vouchee_profile.reward_vault_bump = ctx.bumps.author_reward_vault;
+    } else {
+        require_keys_eq!(
+            ctx.accounts.vouchee_profile.reward_vault,
+            ctx.accounts.author_reward_vault.key(),
+            ErrorCode::AuthorRewardVaultMismatch
+        );
+    }
 
     token::transfer_checked(
         CpiContext::new(
@@ -128,6 +163,9 @@ pub fn handler(ctx: Context<CreateVouch>, stake_usdc_micros: u64) -> Result<()> 
     )?;
 
     let vouch = &mut ctx.accounts.vouch;
+    if !is_new_relationship && existing_status.is_live() {
+        accrue_author_rewards(&ctx.accounts.vouchee_profile, vouch)?;
+    }
     if is_new_relationship {
         vouch.voucher = ctx.accounts.voucher_profile.key();
         vouch.vouchee = ctx.accounts.vouchee_profile.key();
@@ -138,6 +176,9 @@ pub fn handler(ctx: Context<CreateVouch>, stake_usdc_micros: u64) -> Result<()> 
         vouch.status = VouchStatus::Active;
         vouch.cumulative_revenue_usdc_micros = 0;
         vouch.linked_listing_count = 0;
+        vouch.entry_author_reward_index_x1e12 =
+            ctx.accounts.vouchee_profile.reward_index_usdc_micros_x1e12;
+        vouch.pending_rewards_usdc_micros = 0;
         vouch.last_payout_at = clock.unix_timestamp;
         vouch.bump = ctx.bumps.vouch;
         vouch.vault_bump = ctx.bumps.vouch_vault;
@@ -145,6 +186,8 @@ pub fn handler(ctx: Context<CreateVouch>, stake_usdc_micros: u64) -> Result<()> 
         vouch.stake_usdc_micros = stake_usdc_micros;
         vouch.created_at = clock.unix_timestamp;
         vouch.status = VouchStatus::Active;
+        vouch.entry_author_reward_index_x1e12 =
+            ctx.accounts.vouchee_profile.reward_index_usdc_micros_x1e12;
         vouch.last_payout_at = clock.unix_timestamp;
     } else {
         vouch.stake_usdc_micros = vouch
@@ -183,6 +226,31 @@ pub fn handler(ctx: Context<CreateVouch>, stake_usdc_micros: u64) -> Result<()> 
     Ok(())
 }
 
+fn accrue_author_rewards(
+    author_profile: &Account<AgentProfile>,
+    vouch: &mut Account<Vouch>,
+) -> Result<()> {
+    let index_delta = author_profile
+        .reward_index_usdc_micros_x1e12
+        .checked_sub(vouch.entry_author_reward_index_x1e12)
+        .ok_or(ErrorCode::RewardIndexUnderflow)?;
+    if index_delta == 0 || vouch.stake_usdc_micros == 0 {
+        vouch.entry_author_reward_index_x1e12 = author_profile.reward_index_usdc_micros_x1e12;
+        return Ok(());
+    }
+    let accrued = (vouch.stake_usdc_micros as u128)
+        .checked_mul(index_delta)
+        .ok_or(ErrorCode::RewardOverflow)?
+        .checked_div(REWARD_INDEX_SCALE)
+        .ok_or(ErrorCode::RewardOverflow)? as u64;
+    vouch.pending_rewards_usdc_micros = vouch
+        .pending_rewards_usdc_micros
+        .checked_add(accrued)
+        .ok_or(ErrorCode::RewardOverflow)?;
+    vouch.entry_author_reward_index_x1e12 = author_profile.reward_index_usdc_micros_x1e12;
+    Ok(())
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Stake amount is below minimum")]
@@ -203,4 +271,10 @@ pub enum ErrorCode {
     InvalidTokenMint,
     #[msg("Token account owner is invalid")]
     InvalidTokenOwner,
+    #[msg("Author reward vault does not match author profile")]
+    AuthorRewardVaultMismatch,
+    #[msg("Reward index underflowed")]
+    RewardIndexUnderflow,
+    #[msg("Reward amount overflowed")]
+    RewardOverflow,
 }

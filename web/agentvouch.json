@@ -188,54 +188,31 @@
       ],
       "accounts": [
         {
-          "name": "skill_listing",
-          "writable": true
-        },
-        {
-          "name": "listing_vouch_position",
+          "name": "author_profile",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  108,
-                  105,
-                  115,
-                  116,
-                  105,
-                  110,
+                  97,
                   103,
-                  95,
-                  118,
-                  111,
-                  117,
-                  99,
-                  104,
-                  95,
-                  112,
-                  111,
-                  115,
-                  105,
-                  116,
-                  105,
-                  111,
-                  110
+                  101,
+                  110,
+                  116
                 ]
               },
               {
                 "kind": "account",
-                "path": "skill_listing"
-              },
-              {
-                "kind": "account",
-                "path": "vouch"
+                "path": "author_profile.authority",
+                "account": "AgentProfile"
               }
             ]
           }
         },
         {
           "name": "vouch",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -255,28 +232,6 @@
               {
                 "kind": "account",
                 "path": "author_profile"
-              }
-            ]
-          }
-        },
-        {
-          "name": "author_profile",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  103,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "skill_listing.author",
-                "account": "SkillListing"
               }
             ]
           }
@@ -324,19 +279,18 @@
           "name": "usdc_mint"
         },
         {
-          "name": "reward_vault_authority",
+          "name": "author_reward_vault_authority",
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  108,
-                  105,
-                  115,
+                  97,
+                  117,
                   116,
-                  105,
-                  110,
-                  103,
+                  104,
+                  111,
+                  114,
                   95,
                   114,
                   101,
@@ -364,13 +318,13 @@
               },
               {
                 "kind": "account",
-                "path": "skill_listing"
+                "path": "author_profile"
               }
             ]
           }
         },
         {
-          "name": "reward_vault",
+          "name": "author_reward_vault",
           "writable": true
         },
         {
@@ -802,89 +756,6 @@
         },
         {
           "name": "usdc_mint"
-        },
-        {
-          "name": "reward_vault_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  115,
-                  116,
-                  105,
-                  110,
-                  103,
-                  95,
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "skill_listing"
-              }
-            ]
-          }
-        },
-        {
-          "name": "reward_vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  115,
-                  116,
-                  105,
-                  110,
-                  103,
-                  95,
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "skill_listing"
-              }
-            ]
-          }
         },
         {
           "name": "listing_settlement",
@@ -1852,6 +1723,197 @@
       "args": []
     },
     {
+      "name": "migrate_skill_listing_m13",
+      "discriminator": [
+        39,
+        254,
+        23,
+        99,
+        65,
+        215,
+        46,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "skill_listing",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "open_author_dispute",
       "discriminator": [
         37,
@@ -2138,6 +2200,7 @@
         },
         {
           "name": "author_profile",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2275,7 +2338,52 @@
           "writable": true
         },
         {
-          "name": "reward_vault",
+          "name": "author_reward_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "author_profile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_reward_vault",
           "writable": true
         },
         {
@@ -3111,6 +3219,87 @@
           }
         },
         {
+          "name": "author_reward_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vouchee_profile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_reward_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vouchee_profile"
+              }
+            ]
+          }
+        },
+        {
           "name": "voucher",
           "writable": true,
           "signer": true
@@ -3816,98 +4005,68 @@
   "errors": [
     {
       "code": 6000,
-      "name": "AuthorDisputeNotOpen",
-      "msg": "Author dispute is not open"
+      "name": "ProtocolPaused",
+      "msg": "Protocol is paused"
     },
     {
       "code": 6001,
-      "name": "AuthorMismatch",
-      "msg": "Author profile does not match dispute"
+      "name": "NotAuthor",
+      "msg": "Only the listing author can withdraw proceeds"
     },
     {
       "code": 6002,
-      "name": "ConfigMismatch",
-      "msg": "Config PDA does not match expected address"
+      "name": "InvalidAmount",
+      "msg": "Withdrawal amount must be positive"
     },
     {
       "code": 6003,
-      "name": "AuthorDisputeMismatch",
-      "msg": "Author dispute PDA does not match expected address"
+      "name": "SettlementMismatch",
+      "msg": "Listing settlement account does not match the listing"
     },
     {
       "code": 6004,
-      "name": "UnauthorizedResolver",
-      "msg": "Only config authority can resolve disputes"
+      "name": "AuthorProceedsVaultMismatch",
+      "msg": "Author proceeds vault does not match settlement state"
     },
     {
       "code": 6005,
-      "name": "ChallengerMismatch",
-      "msg": "Stored challenger does not match provided challenger account"
+      "name": "ProceedsLocked",
+      "msg": "Author proceeds are still locked"
     },
     {
       "code": 6006,
-      "name": "OpenAuthorDisputeCountUnderflow",
-      "msg": "Open author dispute count underflowed"
+      "name": "SettlementLocked",
+      "msg": "Author proceeds are locked by an open dispute"
     },
     {
       "code": 6007,
-      "name": "AuthorBondAccountMismatch",
-      "msg": "Author bond account does not match expected PDA"
+      "name": "InsufficientWithdrawableProceeds",
+      "msg": "Insufficient withdrawable author proceeds"
     },
     {
       "code": 6008,
-      "name": "AuthorBondProfileMismatch",
-      "msg": "Author bond account does not match profile"
+      "name": "LockOverflow",
+      "msg": "Author proceeds lock calculation overflowed"
     },
     {
       "code": 6009,
-      "name": "AuthorBondVaultMismatch",
-      "msg": "Author bond vault does not match account state"
+      "name": "WithdrawalOverflow",
+      "msg": "Withdrawal accounting overflowed"
     },
     {
       "code": 6010,
-      "name": "AuthorBondUnderflow",
-      "msg": "Author bond amount underflowed"
-    },
-    {
-      "code": 6011,
-      "name": "MissingAuthorBondSettlementAccounts",
-      "msg": "Author bond settlement accounts are missing"
-    },
-    {
-      "code": 6012,
-      "name": "DisputeCountOverflow",
-      "msg": "Dispute count overflowed"
-    },
-    {
-      "code": 6013,
       "name": "InvalidUsdcMint",
       "msg": "USDC mint does not match config"
     },
     {
-      "code": 6014,
-      "name": "DisputeBondVaultMismatch",
-      "msg": "Dispute bond vault does not match dispute state"
-    },
-    {
-      "code": 6015,
-      "name": "TreasuryVaultMismatch",
-      "msg": "Treasury vault does not match config"
-    },
-    {
-      "code": 6016,
+      "code": 6011,
       "name": "InvalidTokenMint",
       "msg": "Token account mint does not match config"
     },
     {
-      "code": 6017,
+      "code": 6012,
       "name": "InvalidTokenOwner",
       "msg": "Token account owner is invalid"
-    },
-    {
-      "code": 6018,
-      "name": "ListingSettlementMismatch",
-      "msg": "Listing settlement does not match dispute lock"
     }
   ],
   "types": [
@@ -3961,11 +4120,31 @@
             "type": "u32"
           },
           {
+            "name": "reward_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_vault_rent_payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_index_usdc_micros_x1e12",
+            "type": "u128"
+          },
+          {
+            "name": "unclaimed_voucher_revenue_usdc_micros",
+            "type": "u64"
+          },
+          {
             "name": "registered_at",
             "type": "i64"
           },
           {
             "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "reward_vault_bump",
             "type": "u8"
           }
         ]
@@ -5046,11 +5225,11 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "skill_listing",
+            "name": "author_profile",
             "type": "pubkey"
           },
           {
-            "name": "listing_vouch_position",
+            "name": "author_reward_vault",
             "type": "pubkey"
           },
           {
@@ -5349,6 +5528,14 @@
           {
             "name": "linked_listing_count",
             "type": "u32"
+          },
+          {
+            "name": "entry_author_reward_index_x1e12",
+            "type": "u128"
+          },
+          {
+            "name": "pending_rewards_usdc_micros",
+            "type": "u64"
           },
           {
             "name": "last_payout_at",

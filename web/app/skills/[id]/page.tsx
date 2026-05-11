@@ -138,6 +138,7 @@ function isBlockingPurchaseStatus(
   return (
     status === "buyerInsufficientBalance" ||
     status === "buyerMissingUsdcAccount" ||
+    status === "authorMissingBacking" ||
     status === "authorPayoutRentBlocked"
   );
 }
@@ -1281,6 +1282,9 @@ export default function SkillDetailPage({
                             ? purchasePreflightStatus ===
                               "buyerMissingUsdcAccount"
                               ? "Set Up USDC Account"
+                              : purchasePreflightStatus ===
+                                "authorMissingBacking"
+                              ? "Needs Author Backing"
                               : "Need More USDC"
                             : "Pay with USDC"}
                         </>

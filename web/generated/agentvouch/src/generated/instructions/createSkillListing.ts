@@ -52,8 +52,6 @@ import {
   findAuthorProfilePda,
   findConfigPda,
   findListingSettlementPda,
-  findRewardVaultAuthorityPda,
-  findRewardVaultPda,
   findSkillListingPda,
 } from "../pdas";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
@@ -75,8 +73,6 @@ export type CreateSkillListingInstruction<
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountAuthorBond extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
-  TAccountRewardVaultAuthority extends string | AccountMeta<string> = string,
-  TAccountRewardVault extends string | AccountMeta<string> = string,
   TAccountListingSettlement extends string | AccountMeta<string> = string,
   TAccountAuthorProceedsVaultAuthority extends string | AccountMeta<string> =
     string,
@@ -106,12 +102,6 @@ export type CreateSkillListingInstruction<
       TAccountUsdcMint extends string
         ? ReadonlyAccount<TAccountUsdcMint>
         : TAccountUsdcMint,
-      TAccountRewardVaultAuthority extends string
-        ? ReadonlyAccount<TAccountRewardVaultAuthority>
-        : TAccountRewardVaultAuthority,
-      TAccountRewardVault extends string
-        ? WritableAccount<TAccountRewardVault>
-        : TAccountRewardVault,
       TAccountListingSettlement extends string
         ? WritableAccount<TAccountListingSettlement>
         : TAccountListingSettlement,
@@ -196,8 +186,6 @@ export type CreateSkillListingAsyncInput<
   TAccountConfig extends string = string,
   TAccountAuthorBond extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountRewardVaultAuthority extends string = string,
-  TAccountRewardVault extends string = string,
   TAccountListingSettlement extends string = string,
   TAccountAuthorProceedsVaultAuthority extends string = string,
   TAccountAuthorProceedsVault extends string = string,
@@ -210,8 +198,6 @@ export type CreateSkillListingAsyncInput<
   config?: Address<TAccountConfig>;
   authorBond?: Address<TAccountAuthorBond>;
   usdcMint: Address<TAccountUsdcMint>;
-  rewardVaultAuthority?: Address<TAccountRewardVaultAuthority>;
-  rewardVault?: Address<TAccountRewardVault>;
   listingSettlement?: Address<TAccountListingSettlement>;
   authorProceedsVaultAuthority?: Address<TAccountAuthorProceedsVaultAuthority>;
   authorProceedsVault?: Address<TAccountAuthorProceedsVault>;
@@ -231,8 +217,6 @@ export async function getCreateSkillListingInstructionAsync<
   TAccountConfig extends string,
   TAccountAuthorBond extends string,
   TAccountUsdcMint extends string,
-  TAccountRewardVaultAuthority extends string,
-  TAccountRewardVault extends string,
   TAccountListingSettlement extends string,
   TAccountAuthorProceedsVaultAuthority extends string,
   TAccountAuthorProceedsVault extends string,
@@ -247,8 +231,6 @@ export async function getCreateSkillListingInstructionAsync<
     TAccountConfig,
     TAccountAuthorBond,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
@@ -265,8 +247,6 @@ export async function getCreateSkillListingInstructionAsync<
     TAccountConfig,
     TAccountAuthorBond,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
@@ -285,11 +265,6 @@ export async function getCreateSkillListingInstructionAsync<
     config: { value: input.config ?? null, isWritable: false },
     authorBond: { value: input.authorBond ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    rewardVaultAuthority: {
-      value: input.rewardVaultAuthority ?? null,
-      isWritable: false,
-    },
-    rewardVault: { value: input.rewardVault ?? null, isWritable: true },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
@@ -335,22 +310,6 @@ export async function getCreateSkillListingInstructionAsync<
   if (!accounts.config.value) {
     accounts.config.value = await findConfigPda();
   }
-  if (!accounts.rewardVaultAuthority.value) {
-    accounts.rewardVaultAuthority.value = await findRewardVaultAuthorityPda({
-      skillListing: getAddressFromResolvedInstructionAccount(
-        "skillListing",
-        accounts.skillListing.value,
-      ),
-    });
-  }
-  if (!accounts.rewardVault.value) {
-    accounts.rewardVault.value = await findRewardVaultPda({
-      skillListing: getAddressFromResolvedInstructionAccount(
-        "skillListing",
-        accounts.skillListing.value,
-      ),
-    });
-  }
   if (!accounts.listingSettlement.value) {
     accounts.listingSettlement.value = await findListingSettlementPda({
       skillListing: getAddressFromResolvedInstructionAccount(
@@ -393,8 +352,6 @@ export async function getCreateSkillListingInstructionAsync<
       getAccountMeta("config", accounts.config),
       getAccountMeta("authorBond", accounts.authorBond),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("rewardVaultAuthority", accounts.rewardVaultAuthority),
-      getAccountMeta("rewardVault", accounts.rewardVault),
       getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta(
         "authorProceedsVaultAuthority",
@@ -416,8 +373,6 @@ export async function getCreateSkillListingInstructionAsync<
     TAccountConfig,
     TAccountAuthorBond,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
@@ -433,8 +388,6 @@ export type CreateSkillListingInput<
   TAccountConfig extends string = string,
   TAccountAuthorBond extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountRewardVaultAuthority extends string = string,
-  TAccountRewardVault extends string = string,
   TAccountListingSettlement extends string = string,
   TAccountAuthorProceedsVaultAuthority extends string = string,
   TAccountAuthorProceedsVault extends string = string,
@@ -447,8 +400,6 @@ export type CreateSkillListingInput<
   config: Address<TAccountConfig>;
   authorBond?: Address<TAccountAuthorBond>;
   usdcMint: Address<TAccountUsdcMint>;
-  rewardVaultAuthority: Address<TAccountRewardVaultAuthority>;
-  rewardVault: Address<TAccountRewardVault>;
   listingSettlement: Address<TAccountListingSettlement>;
   authorProceedsVaultAuthority: Address<TAccountAuthorProceedsVaultAuthority>;
   authorProceedsVault: Address<TAccountAuthorProceedsVault>;
@@ -468,8 +419,6 @@ export function getCreateSkillListingInstruction<
   TAccountConfig extends string,
   TAccountAuthorBond extends string,
   TAccountUsdcMint extends string,
-  TAccountRewardVaultAuthority extends string,
-  TAccountRewardVault extends string,
   TAccountListingSettlement extends string,
   TAccountAuthorProceedsVaultAuthority extends string,
   TAccountAuthorProceedsVault extends string,
@@ -484,8 +433,6 @@ export function getCreateSkillListingInstruction<
     TAccountConfig,
     TAccountAuthorBond,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
@@ -501,8 +448,6 @@ export function getCreateSkillListingInstruction<
   TAccountConfig,
   TAccountAuthorBond,
   TAccountUsdcMint,
-  TAccountRewardVaultAuthority,
-  TAccountRewardVault,
   TAccountListingSettlement,
   TAccountAuthorProceedsVaultAuthority,
   TAccountAuthorProceedsVault,
@@ -520,11 +465,6 @@ export function getCreateSkillListingInstruction<
     config: { value: input.config ?? null, isWritable: false },
     authorBond: { value: input.authorBond ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    rewardVaultAuthority: {
-      value: input.rewardVaultAuthority ?? null,
-      isWritable: false,
-    },
-    rewardVault: { value: input.rewardVault ?? null, isWritable: true },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
@@ -567,8 +507,6 @@ export function getCreateSkillListingInstruction<
       getAccountMeta("config", accounts.config),
       getAccountMeta("authorBond", accounts.authorBond),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("rewardVaultAuthority", accounts.rewardVaultAuthority),
-      getAccountMeta("rewardVault", accounts.rewardVault),
       getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta(
         "authorProceedsVaultAuthority",
@@ -590,8 +528,6 @@ export function getCreateSkillListingInstruction<
     TAccountConfig,
     TAccountAuthorBond,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
     TAccountListingSettlement,
     TAccountAuthorProceedsVaultAuthority,
     TAccountAuthorProceedsVault,
@@ -612,14 +548,12 @@ export type ParsedCreateSkillListingInstruction<
     config: TAccountMetas[2];
     authorBond?: TAccountMetas[3] | undefined;
     usdcMint: TAccountMetas[4];
-    rewardVaultAuthority: TAccountMetas[5];
-    rewardVault: TAccountMetas[6];
-    listingSettlement: TAccountMetas[7];
-    authorProceedsVaultAuthority: TAccountMetas[8];
-    authorProceedsVault: TAccountMetas[9];
-    author: TAccountMetas[10];
-    tokenProgram: TAccountMetas[11];
-    systemProgram: TAccountMetas[12];
+    listingSettlement: TAccountMetas[5];
+    authorProceedsVaultAuthority: TAccountMetas[6];
+    authorProceedsVault: TAccountMetas[7];
+    author: TAccountMetas[8];
+    tokenProgram: TAccountMetas[9];
+    systemProgram: TAccountMetas[10];
   };
   data: CreateSkillListingInstructionData;
 };
@@ -632,12 +566,12 @@ export function parseCreateSkillListingInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedCreateSkillListingInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 13) {
+  if (instruction.accounts.length < 11) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 13,
+        expectedAccountMetas: 11,
       },
     );
   }
@@ -661,8 +595,6 @@ export function parseCreateSkillListingInstruction<
       config: getNextAccount(),
       authorBond: getNextOptionalAccount(),
       usdcMint: getNextAccount(),
-      rewardVaultAuthority: getNextAccount(),
-      rewardVault: getNextAccount(),
       listingSettlement: getNextAccount(),
       authorProceedsVaultAuthority: getNextAccount(),
       authorProceedsVault: getNextAccount(),

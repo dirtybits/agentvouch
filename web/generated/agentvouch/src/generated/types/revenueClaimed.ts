@@ -23,8 +23,8 @@ import {
 } from "@solana/kit";
 
 export type RevenueClaimed = {
-  skillListing: Address;
-  listingVouchPosition: Address;
+  authorProfile: Address;
+  authorRewardVault: Address;
   vouch: Address;
   voucher: Address;
   amountUsdcMicros: bigint;
@@ -32,8 +32,8 @@ export type RevenueClaimed = {
 };
 
 export type RevenueClaimedArgs = {
-  skillListing: Address;
-  listingVouchPosition: Address;
+  authorProfile: Address;
+  authorRewardVault: Address;
   vouch: Address;
   voucher: Address;
   amountUsdcMicros: number | bigint;
@@ -42,8 +42,8 @@ export type RevenueClaimedArgs = {
 
 export function getRevenueClaimedEncoder(): FixedSizeEncoder<RevenueClaimedArgs> {
   return getStructEncoder([
-    ["skillListing", getAddressEncoder()],
-    ["listingVouchPosition", getAddressEncoder()],
+    ["authorProfile", getAddressEncoder()],
+    ["authorRewardVault", getAddressEncoder()],
     ["vouch", getAddressEncoder()],
     ["voucher", getAddressEncoder()],
     ["amountUsdcMicros", getU64Encoder()],
@@ -53,8 +53,8 @@ export function getRevenueClaimedEncoder(): FixedSizeEncoder<RevenueClaimedArgs>
 
 export function getRevenueClaimedDecoder(): FixedSizeDecoder<RevenueClaimed> {
   return getStructDecoder([
-    ["skillListing", getAddressDecoder()],
-    ["listingVouchPosition", getAddressDecoder()],
+    ["authorProfile", getAddressDecoder()],
+    ["authorRewardVault", getAddressDecoder()],
     ["vouch", getAddressDecoder()],
     ["voucher", getAddressDecoder()],
     ["amountUsdcMicros", getU64Decoder()],

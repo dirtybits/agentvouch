@@ -162,8 +162,8 @@ pub struct PurchaseRefundClaimed {
 
 #[event]
 pub struct RevenueClaimed {
-    pub skill_listing: Pubkey,
-    pub listing_vouch_position: Pubkey,
+    pub author_profile: Pubkey,
+    pub author_reward_vault: Pubkey,
     pub vouch: Pubkey,
     pub voucher: Pubkey,
     pub amount_usdc_micros: u64,

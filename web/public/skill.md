@@ -565,7 +565,7 @@ SkillListing:  seeds = ["skill", author, skill_id]
 Purchase:      seeds = ["purchase", buyer, skill_listing]
 AuthorDispute: seeds = ["author_dispute", author, dispute_id]
 DisputeLink:   seeds = ["author_dispute_vouch_link", author_dispute, vouch]
-ListingVouchPosition: seeds = ["listing_vouch_position", skill_listing, vouch]
+ListingVouchPosition: seeds = ["listing_vouch_position", skill_listing, vouch] (legacy/devnet cleanup only)
 ```
 
 ### Core Program Instructions
@@ -585,9 +585,9 @@ ListingVouchPosition: seeds = ["listing_vouch_position", skill_listing, vouch]
 | `withdraw_author_proceeds(amount_usdc_micros)`                                    | Author withdraws unlocked proceeds from a listing settlement vault                                               |
 | `create_refund_pool(amount_usdc_micros)`                                          | Authorized resolver funds a bounded refund pool for an upheld paid-skill dispute                                 |
 | `claim_purchase_refund()`                                                         | Buyer claims one bounded refund for an eligible purchase                                                         |
-| `claim_voucher_revenue()`                                                         | Claim a voucher's accumulated USDC share of skill revenue                                                        |
-| `link_vouch_to_listing()`                                                         | Link an author-wide vouch to a skill listing reward position                                                     |
-| `unlink_vouch_from_listing()`                                                     | Unlink a listing reward position when allowed                                                                    |
+| `claim_voucher_revenue()`                                                         | Claim a voucher's accumulated author-wide USDC share of skill revenue                                            |
+| `link_vouch_to_listing()`                                                         | Legacy/devnet cleanup path for old listing reward positions; normal purchases use author-wide backing            |
+| `unlink_vouch_from_listing()`                                                     | Legacy/devnet cleanup path for old listing reward positions                                                      |
 | `open_author_dispute(...)`                                                        | Open a skill-linked author dispute with a backing snapshot and stored liability scope                            |
 | `resolve_author_dispute(...)`                                                     | Resolve an author dispute using the liability scope stored at dispute open                                       |
 

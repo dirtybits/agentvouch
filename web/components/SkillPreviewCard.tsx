@@ -14,10 +14,7 @@ import {
 import { LiaCoinsSolid } from "react-icons/lia";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
-import {
-  navButtonFlexClass,
-  navButtonSizeClass,
-} from "@/lib/buttonStyles";
+import { navButtonFlexClass, navButtonSizeClass } from "@/lib/buttonStyles";
 import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 
@@ -31,14 +28,13 @@ interface SkillPreviewCardSkill {
   source?: "repo" | "chain";
   author_trust: TrustData | null;
   price_usdc_micros?: string | null;
-  payment_flow?:
-    | "free"
-    | "legacy-sol"
-    | "x402-usdc"
-    | "direct-purchase-skill";
+  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
   purchasePreflightMessage?: string | null;
   purchaseBlockError?: {
-    code: "buyerInsufficientBalance" | "authorPayoutRentBlocked";
+    code:
+      | "buyerInsufficientBalance"
+      | "authorMissingBacking"
+      | "authorPayoutRentBlocked";
     message: string;
   } | null;
 }
@@ -182,8 +178,8 @@ export default function SkillPreviewCard({
       ? `Primary price: ${primaryUsdcPrice} USDC via x402.`
       : "Primary price is settled in USDC via x402."
     : legacySolLamports > 0
-      ? "Legacy SOL pricing is no longer a primary purchase path."
-      : "No on-chain purchase required.";
+    ? "Legacy SOL pricing is no longer a primary purchase path."
+    : "No on-chain purchase required.";
 
   return (
     <div className="group flex flex-col rounded-sm border border-gray-200 bg-white p-4 transition hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700">

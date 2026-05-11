@@ -1,4 +1,5 @@
 use crate::events::VouchRevoked;
+use crate::instructions::claim_voucher_revenue::accrue_author_rewards;
 use crate::state::{AgentProfile, ReputationConfig, Vouch, VouchStatus};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
@@ -71,10 +72,7 @@ pub struct RevokeVouch<'info> {
 
 pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
     let vouch = &mut ctx.accounts.vouch;
-    require!(
-        vouch.linked_listing_count == 0,
-        ErrorCode::VouchStillLinkedToListings
-    );
+    accrue_author_rewards(&ctx.accounts.vouchee_profile, vouch)?;
     let stake_usdc_micros = vouch.stake_usdc_micros;
 
     // Mark as revoked
@@ -137,8 +135,6 @@ pub enum ErrorCode {
     UnauthorizedVouchRevocation,
     #[msg("Vouch is not currently revocable")]
     VouchNotRevocable,
-    #[msg("Vouch must be unlinked from all listings before revoke")]
-    VouchStillLinkedToListings,
     #[msg("USDC mint does not match config")]
     InvalidUsdcMint,
     #[msg("Vouch vault does not match account state")]

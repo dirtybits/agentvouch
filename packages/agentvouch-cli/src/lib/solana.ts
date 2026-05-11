@@ -46,9 +46,7 @@ function toMicrosBigInt(
     throw new Error(`${fieldName} must be a non-negative integer.`);
   }
   if (!Number.isSafeInteger(value)) {
-    throw new Error(
-      `${fieldName} exceeds JavaScript's safe integer range.`
-    );
+    throw new Error(`${fieldName} exceeds JavaScript's safe integer range.`);
   }
 
   return BigInt(value);
@@ -59,10 +57,7 @@ function toMicrosBn(value: number | bigint | string, fieldName: string) {
 }
 
 function assertSupportedListingPrice(priceUsdcMicros: bigint) {
-  if (
-    priceUsdcMicros !== 0n &&
-    priceUsdcMicros < MIN_SKILL_PRICE_USDC_MICROS
-  ) {
+  if (priceUsdcMicros !== 0n && priceUsdcMicros < MIN_SKILL_PRICE_USDC_MICROS) {
     throw new Error(
       `priceUsdcMicros must be 0 or at least ${MIN_SKILL_PRICE_USDC_MICROS.toString()} micro-USDC.`
     );
@@ -83,10 +78,7 @@ export class AgentVouchSolanaClient {
     this.provider = new AnchorProvider(this.connection, new Wallet(keypair), {
       commitment,
     });
-    this.program = new Program(
-      agentvouchIdl as anchor.Idl,
-      this.provider
-    );
+    this.program = new Program(agentvouchIdl as anchor.Idl, this.provider);
   }
 
   get authority(): PublicKey {
@@ -174,7 +166,9 @@ export class AgentVouchSolanaClient {
     )[0];
   }
 
-  getAuthorProceedsVaultAddress(listingSettlement: PublicKey | string): PublicKey {
+  getAuthorProceedsVaultAddress(
+    listingSettlement: PublicKey | string
+  ): PublicKey {
     return PublicKey.findProgramAddressSync(
       [
         Buffer.from("author_proceeds_vault"),
@@ -184,7 +178,10 @@ export class AgentVouchSolanaClient {
     )[0];
   }
 
-  getAssociatedTokenAddress(owner: PublicKey | string, mint: PublicKey | string) {
+  getAssociatedTokenAddress(
+    owner: PublicKey | string,
+    mint: PublicKey | string
+  ) {
     return PublicKey.findProgramAddressSync(
       [
         toPublicKey(owner).toBuffer(),
@@ -234,6 +231,28 @@ export class AgentVouchSolanaClient {
     )[0];
   }
 
+  getAuthorRewardVaultAuthorityAddress(
+    authorProfile: PublicKey | string
+  ): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("author_reward_vault_authority"),
+        toPublicKey(authorProfile).toBuffer(),
+      ],
+      new PublicKey(AGENTVOUCH_PROGRAM_ID)
+    )[0];
+  }
+
+  getAuthorRewardVaultAddress(authorProfile: PublicKey | string): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("author_reward_vault"),
+        toPublicKey(authorProfile).toBuffer(),
+      ],
+      new PublicKey(AGENTVOUCH_PROGRAM_ID)
+    )[0];
+  }
+
   getRewardVaultAuthorityAddress(skillListing: PublicKey | string): PublicKey {
     return PublicKey.findProgramAddressSync(
       [
@@ -246,7 +265,10 @@ export class AgentVouchSolanaClient {
 
   getRewardVaultAddress(skillListing: PublicKey | string): PublicKey {
     return PublicKey.findProgramAddressSync(
-      [Buffer.from("listing_reward_vault"), toPublicKey(skillListing).toBuffer()],
+      [
+        Buffer.from("listing_reward_vault"),
+        toPublicKey(skillListing).toBuffer(),
+      ],
       new PublicKey(AGENTVOUCH_PROGRAM_ID)
     )[0];
   }
@@ -308,6 +330,9 @@ export class AgentVouchSolanaClient {
     );
     const vouchVaultAuthority = this.getVouchVaultAuthorityAddress(vouchee);
     const vouchVault = this.getVouchVaultAddress(vouchee);
+    const authorRewardVaultAuthority =
+      this.getAuthorRewardVaultAuthorityAddress(voucheeProfile);
+    const authorRewardVault = this.getAuthorRewardVaultAddress(voucheeProfile);
 
     if (await this.accountExists(vouch)) {
       return {
@@ -332,6 +357,8 @@ export class AgentVouchSolanaClient {
         voucherUsdcAccount,
         vouchVaultAuthority,
         vouchVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         voucher: this.authority,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -349,7 +376,9 @@ export class AgentVouchSolanaClient {
 
   async purchaseSkill(skillListingAddress: string, authorAddress: string) {
     const skillListingKey = new PublicKey(skillListingAddress);
-    const listing = await this.program.account.skillListing.fetch(skillListingKey);
+    const listing = await this.program.account.skillListing.fetch(
+      skillListingKey
+    );
     const purchase = this.getPurchaseAddress(
       skillListingAddress,
       this.authority,
@@ -366,8 +395,13 @@ export class AgentVouchSolanaClient {
     const authorProfile = this.getAgentProfileAddress(authorAddress);
     const config = this.getConfigAddress();
     const usdcMint = DEVNET_USDC_MINT;
-    const buyerUsdcAccount = this.getAssociatedTokenAddress(this.authority, usdcMint);
-    const rewardVault = this.getRewardVaultAddress(skillListingAddress);
+    const buyerUsdcAccount = this.getAssociatedTokenAddress(
+      this.authority,
+      usdcMint
+    );
+    const authorRewardVaultAuthority =
+      this.getAuthorRewardVaultAuthorityAddress(authorProfile);
+    const authorRewardVault = this.getAuthorRewardVaultAddress(authorProfile);
     const listingSettlement = listing.currentSettlement;
     const authorProceedsVaultAuthority =
       this.getAuthorProceedsVaultAuthorityAddress(listingSettlement);
@@ -384,7 +418,8 @@ export class AgentVouchSolanaClient {
         listingSettlement,
         authorProceedsVaultAuthority,
         authorProceedsVault: listing.currentAuthorProceedsVault,
-        rewardVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         buyer: this.authority,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -399,19 +434,18 @@ export class AgentVouchSolanaClient {
     };
   }
 
-  async claimVoucherRevenue(skillListingAddress: string, authorAddress: string) {
+  async claimVoucherRevenue(
+    skillListingAddress: string,
+    authorAddress: string
+  ) {
     const voucherProfile = this.getAgentProfileAddress(this.authority);
     const authorProfile = this.getAgentProfileAddress(authorAddress);
     const vouch = this.getVouchAddress(authorAddress);
-    const listingVouchPosition = this.getListingVouchPositionAddress(
-      skillListingAddress,
-      vouch
-    );
     const config = this.getConfigAddress();
     const usdcMint = DEVNET_USDC_MINT;
-    const rewardVaultAuthority =
-      this.getRewardVaultAuthorityAddress(skillListingAddress);
-    const rewardVault = this.getRewardVaultAddress(skillListingAddress);
+    const authorRewardVaultAuthority =
+      this.getAuthorRewardVaultAuthorityAddress(authorProfile);
+    const authorRewardVault = this.getAuthorRewardVaultAddress(authorProfile);
     const voucherUsdcAccount = this.getAssociatedTokenAddress(
       this.authority,
       usdcMint
@@ -420,15 +454,13 @@ export class AgentVouchSolanaClient {
     const tx = await this.program.methods
       .claimVoucherRevenue()
       .accounts({
-        skillListing: new PublicKey(skillListingAddress),
-        listingVouchPosition,
-        vouch,
         authorProfile,
+        vouch,
         voucherProfile,
         config,
         usdcMint,
-        rewardVaultAuthority,
-        rewardVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         voucherUsdcAccount,
         voucher: this.authority,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -440,7 +472,6 @@ export class AgentVouchSolanaClient {
       tx,
       skillListing: skillListingAddress,
       vouch: vouch.toBase58(),
-      listingVouchPosition: listingVouchPosition.toBase58(),
       voucherProfile: voucherProfile.toBase58(),
       authorProfile: authorProfile.toBase58(),
     };
@@ -471,12 +502,7 @@ export class AgentVouchSolanaClient {
     const config = this.getConfigAddress();
     const usdcMint = DEVNET_USDC_MINT;
     const authorBond =
-      priceUsdcMicros === 0n
-        ? this.getAuthorBondAddress(this.authority)
-        : null;
-    const rewardVaultAuthority =
-      this.getRewardVaultAuthorityAddress(skillListing);
-    const rewardVault = this.getRewardVaultAddress(skillListing);
+      priceUsdcMicros === 0n ? this.getAuthorBondAddress(this.authority) : null;
     const listingSettlement = this.getListingSettlementAddress(skillListing);
     const authorProceedsVaultAuthority =
       this.getAuthorProceedsVaultAuthorityAddress(listingSettlement);
@@ -497,8 +523,6 @@ export class AgentVouchSolanaClient {
         config,
         authorBond,
         usdcMint,
-        rewardVaultAuthority,
-        rewardVault,
         listingSettlement,
         authorProceedsVaultAuthority,
         authorProceedsVault,

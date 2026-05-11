@@ -123,6 +123,26 @@ export function vouchVault(
   ]);
 }
 
+export function authorRewardVaultAuthority(
+  program: Program<Agentvouch>,
+  authorProfile: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("author_reward_vault_authority"),
+    authorProfile.toBuffer(),
+  ]);
+}
+
+export function authorRewardVault(
+  program: Program<Agentvouch>,
+  authorProfile: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("author_reward_vault"),
+    authorProfile.toBuffer(),
+  ]);
+}
+
 export function skillListingPda(
   program: Program<Agentvouch>,
   author: PublicKey,
@@ -339,7 +359,7 @@ export async function getTestContext(): Promise<TestContext> {
         50,
         u64(86_400)
       )
-      .accounts({
+      .accountsStrict({
         config,
         usdcMint,
         protocolTreasuryVaultAuthority,
@@ -481,7 +501,7 @@ export async function registerAgent(
 ) {
   await ctx.program.methods
     .registerAgent(metadataUri)
-    .accounts({
+    .accountsStrict({
       agentProfile: actor.profile,
       authority: actor.keypair.publicKey,
       systemProgram: SystemProgram.programId,
@@ -503,7 +523,7 @@ export async function depositAuthorBond(
   const vault = authorBondVault(ctx.program, author.keypair.publicKey);
   await ctx.program.methods
     .depositAuthorBond(u64(amountUsdcMicros))
-    .accounts({
+    .accountsStrict({
       authorBond,
       authorProfile: author.profile,
       config: ctx.config,
@@ -533,7 +553,7 @@ export async function withdrawAuthorBond(
   const vault = authorBondVault(ctx.program, author.keypair.publicKey);
   await ctx.program.methods
     .withdrawAuthorBond(u64(amountUsdcMicros))
-    .accounts({
+    .accountsStrict({
       authorBond,
       authorProfile: author.profile,
       config: ctx.config,
@@ -562,9 +582,14 @@ export async function createVouch(
     author.profile
   );
   const vault = vouchVault(ctx.program, voucher.profile, author.profile);
+  const authorRewardsAuthority = authorRewardVaultAuthority(
+    ctx.program,
+    author.profile
+  );
+  const authorRewardsVault = authorRewardVault(ctx.program, author.profile);
   await ctx.program.methods
     .vouch(u64(stakeUsdcMicros))
-    .accounts({
+    .accountsStrict({
       vouch,
       voucherProfile: voucher.profile,
       voucheeProfile: author.profile,
@@ -573,13 +598,21 @@ export async function createVouch(
       voucherUsdcAccount: voucher.usdc,
       vouchVaultAuthority: vaultAuthority,
       vouchVault: vault,
+      authorRewardVaultAuthority: authorRewardsAuthority,
+      authorRewardVault: authorRewardsVault,
       voucher: voucher.keypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
     .signers([voucher.keypair])
     .rpc();
-  return { vouch, vaultAuthority, vault };
+  return {
+    vouch,
+    vaultAuthority,
+    vault,
+    authorRewardsAuthority,
+    authorRewardsVault,
+  };
 }
 
 export async function revokeVouch(
@@ -596,7 +629,7 @@ export async function revokeVouch(
   const vault = vouchVault(ctx.program, voucher.profile, author.profile);
   await ctx.program.methods
     .revokeVouch()
-    .accounts({
+    .accountsStrict({
       vouch,
       voucherProfile: voucher.profile,
       voucheeProfile: author.profile,
@@ -625,8 +658,11 @@ export async function createSkillListing(
     author.keypair.publicKey,
     skillId
   );
-  const vaultAuthority = rewardVaultAuthority(ctx.program, skillListing);
-  const vault = rewardVault(ctx.program, skillListing);
+  const vaultAuthority = authorRewardVaultAuthority(
+    ctx.program,
+    author.profile
+  );
+  const vault = authorRewardVault(ctx.program, author.profile);
   const settlement = listingSettlementPda(ctx.program, skillListing);
   const proceedsVaultAuthority = authorProceedsVaultAuthority(
     ctx.program,
@@ -641,14 +677,12 @@ export async function createSkillListing(
       "USDC-native test skill",
       u64(priceUsdcMicros)
     )
-    .accounts({
+    .accountsStrict({
       skillListing,
       authorProfile: author.profile,
       config: ctx.config,
       authorBond: priceUsdcMicros === 0 ? authorBond : null,
       usdcMint: ctx.usdcMint,
-      rewardVaultAuthority: vaultAuthority,
-      rewardVault: vault,
       listingSettlement: settlement,
       authorProceedsVaultAuthority: proceedsVaultAuthority,
       authorProceedsVault: proceedsVault,
@@ -679,7 +713,7 @@ export async function linkVouchToListing(
   const position = listingVouchPosition(ctx.program, skillListing, vouch);
   const builder = ctx.program.methods
     .linkVouchToListing()
-    .accounts({
+    .accountsStrict({
       skillListing,
       listingVouchPosition: position,
       vouch,
@@ -705,7 +739,7 @@ export async function unlinkVouchFromListing(
 ) {
   await ctx.program.methods
     .unlinkVouchFromListing()
-    .accounts({
+    .accountsStrict({
       skillListing,
       listingVouchPosition: position,
       vouch,
@@ -740,7 +774,7 @@ export async function purchaseSkill(
   );
   const builder = ctx.program.methods
     .purchaseSkill()
-    .accounts({
+    .accountsStrict({
       skillListing,
       purchase,
       author: author.keypair.publicKey,
@@ -754,7 +788,11 @@ export async function purchaseSkill(
         settlement
       ),
       authorProceedsVault: proceedsVault,
-      rewardVault: rewardTokenVault,
+      authorRewardVaultAuthority: authorRewardVaultAuthority(
+        ctx.program,
+        author.profile
+      ),
+      authorRewardVault: authorRewardVault(ctx.program, author.profile),
       buyer: buyer.keypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
@@ -778,7 +816,7 @@ export async function withdrawAuthorProceeds(
   const proceedsVault = listingAccount.currentAuthorProceedsVault;
   await ctx.program.methods
     .withdrawAuthorProceeds(u64(amountUsdcMicros))
-    .accounts({
+    .accountsStrict({
       skillListing,
       listingSettlement: settlement,
       config: ctx.config,
@@ -800,24 +838,25 @@ export async function claimVoucherRevenue(
   ctx: TestContext,
   voucher: TestActor,
   author: TestActor,
-  skillListing: PublicKey,
-  position: PublicKey,
+  _skillListing: PublicKey,
+  _position: PublicKey,
   vouch: PublicKey,
-  rewardTokenVault: PublicKey,
+  _rewardTokenVault: PublicKey,
   label?: string
 ) {
   const builder = ctx.program.methods
     .claimVoucherRevenue()
-    .accounts({
-      skillListing,
-      listingVouchPosition: position,
-      vouch,
+    .accountsStrict({
       authorProfile: author.profile,
+      vouch,
       voucherProfile: voucher.profile,
       config: ctx.config,
       usdcMint: ctx.usdcMint,
-      rewardVaultAuthority: rewardVaultAuthority(ctx.program, skillListing),
-      rewardVault: rewardTokenVault,
+      authorRewardVaultAuthority: authorRewardVaultAuthority(
+        ctx.program,
+        author.profile
+      ),
+      authorRewardVault: authorRewardVault(ctx.program, author.profile),
       voucherUsdcAccount: voucher.usdc,
       voucher: voucher.keypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
@@ -864,7 +903,7 @@ export async function openAuthorDispute(
       { failedDelivery: {} },
       "https://example.com/evidence.json"
     )
-    .accounts({
+    .accountsStrict({
       authorDispute,
       authorProfile: author.profile,
       config: ctx.config,
@@ -958,7 +997,7 @@ export async function createRefundPool(
   const vault = refundVault(ctx.program, pool);
   await ctx.program.methods
     .createRefundPool(u64(requestedRefundPoolUsdcMicros))
-    .accounts({
+    .accountsStrict({
       authorDispute: dispute.authorDispute,
       skillListing: disputeAccount.skillListing,
       listingSettlement: settlement,
@@ -993,7 +1032,7 @@ export async function claimPurchaseRefund(
   const vault = refundVault(ctx.program, refundPool);
   await ctx.program.methods
     .claimPurchaseRefund()
-    .accounts({
+    .accountsStrict({
       refundPool,
       purchase,
       refundClaim: claim,
@@ -1029,10 +1068,8 @@ export async function setupPaidListingWithVouch(
     priceUsdcMicros,
     bond.authorBond
   );
-  const position = await linkVouchToListing(
-    ctx,
-    voucher,
-    author,
+  const position = listingVouchPosition(
+    ctx.program,
     listing.skillListing,
     vouch.vouch
   );

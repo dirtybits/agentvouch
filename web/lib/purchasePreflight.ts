@@ -25,6 +25,7 @@ export type PurchasePreflightStatus =
   | "ok"
   | "buyerInsufficientBalance"
   | "buyerMissingUsdcAccount"
+  | "authorMissingBacking"
   | "authorPayoutRentBlocked"
   | "estimateUnavailable";
 
@@ -32,6 +33,7 @@ export type BlockingPurchasePreflightStatus = Extract<
   PurchasePreflightStatus,
   | "buyerInsufficientBalance"
   | "buyerMissingUsdcAccount"
+  | "authorMissingBacking"
   | "authorPayoutRentBlocked"
 >;
 
@@ -207,10 +209,12 @@ export function assessPurchasePreflight({
   context,
   priceUsdcMicros,
   author,
+  authorBackingUsdcMicros = null,
 }: {
   context: PurchasePreflightContext;
   priceUsdcMicros: bigint;
   author: Address | null;
+  authorBackingUsdcMicros?: bigint | null;
 }): PurchasePreflightAssessment {
   const creatorPriceUsdcMicros = priceUsdcMicros;
   if (creatorPriceUsdcMicros <= 0n) {
@@ -226,6 +230,25 @@ export function assessPurchasePreflight({
     : null;
   const priceDisclosure =
     "Buying this skill transfers USDC and creates an on-chain purchase receipt, so your wallet still needs a small amount of SOL for rent and network fees.";
+
+  if (authorBackingUsdcMicros === 0n) {
+    return {
+      creatorPriceUsdcMicros,
+      estimatedPurchaseRentLamports,
+      feeBufferLamports: PURCHASE_FEE_BUFFER_LAMPORTS,
+      estimatedBuyerTotalLamports,
+      purchasePreflightStatus: "authorMissingBacking",
+      purchasePreflightMessage:
+        "This author needs active vouch backing before paid purchases are available.",
+      priceDisclosure,
+      buyerUsdcAccount: context.buyerUsdcAccount,
+      buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,
+      buyerBalanceLamports: context.buyerBalanceLamports,
+      authorBalanceLamports,
+      authorShareLamports,
+      systemAccountRentExemptLamports: context.systemAccountRentExemptLamports,
+    };
+  }
 
   if (context.buyerUsdcAccountExists === false) {
     return {
@@ -351,6 +374,7 @@ export function isPurchasePreflightBlocking(
   return (
     status === "buyerInsufficientBalance" ||
     status === "buyerMissingUsdcAccount" ||
+    status === "authorMissingBacking" ||
     status === "authorPayoutRentBlocked"
   );
 }

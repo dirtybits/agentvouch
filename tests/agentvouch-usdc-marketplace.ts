@@ -24,7 +24,6 @@ import {
   tokenAmount,
   u64,
   withdrawAuthorProceeds,
-  unlinkVouchFromListing,
   uniqueSkillId,
 } from "./helpers/agentvouchUsdc";
 
@@ -86,7 +85,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     await assertTokenDelta(ctx, author.usdc, authorBefore, 3 * ONE_USDC);
   });
 
-  it("accrues rewards on unlink and allows the voucher to claim later", async () => {
+  it("accrues author-wide rewards and allows the voucher to claim", async () => {
     const ctx = await getTestContext();
     const { author, voucher, buyer, vouch, listing, position } =
       await setupPaidListingWithVouch(ctx);
@@ -98,19 +97,9 @@ describe("agentvouch usdc marketplace rewards", () => {
       listing.skillListing,
       listing.vault
     );
-    await unlinkVouchFromListing(
-      ctx,
-      voucher,
-      author,
-      listing.skillListing,
-      position,
-      vouch.vouch
-    );
 
-    const positionAfterUnlink =
-      await ctx.program.account.listingVouchPosition.fetch(position);
-    assert.property(positionAfterUnlink.status, "unlinked");
-    assert.equal(Number(positionAfterUnlink.pendingRewardsUsdcMicros), 799_999);
+    const vouchBeforeClaim = await ctx.program.account.vouch.fetch(vouch.vouch);
+    assert.equal(Number(vouchBeforeClaim.pendingRewardsUsdcMicros), 0);
 
     const voucherBefore = await tokenAmount(ctx, voucher.usdc);
     await claimVoucherRevenue(
@@ -145,7 +134,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     );
     await expectFailure(
       purchaseSkill(ctx, buyer, author, listing.skillListing, listing.vault),
-      "Paid purchases require active linked vouch stake"
+      "Paid purchases require active author backing"
     );
   });
 
@@ -162,7 +151,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     await expectFailure(
       ctx.program.methods
         .purchaseSkill()
-        .accounts({
+        .accountsStrict({
           skillListing: listing.skillListing,
           purchase,
           author: author.keypair.publicKey,
@@ -173,7 +162,8 @@ describe("agentvouch usdc marketplace rewards", () => {
           listingSettlement: listing.settlement,
           authorProceedsVaultAuthority: listing.proceedsVaultAuthority,
           authorProceedsVault: buyer.usdc,
-          rewardVault: listing.vault,
+          authorRewardVaultAuthority: listing.vaultAuthority,
+          authorRewardVault: listing.vault,
           buyer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -186,7 +176,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     await expectFailure(
       ctx.program.methods
         .purchaseSkill()
-        .accounts({
+        .accountsStrict({
           skillListing: listing.skillListing,
           purchase,
           author: author.keypair.publicKey,
@@ -197,14 +187,15 @@ describe("agentvouch usdc marketplace rewards", () => {
           listingSettlement: listing.settlement,
           authorProceedsVaultAuthority: listing.proceedsVaultAuthority,
           authorProceedsVault: listing.proceedsVault,
-          rewardVault: ctx.protocolTreasuryVault,
+          authorRewardVaultAuthority: listing.vaultAuthority,
+          authorRewardVault: ctx.protocolTreasuryVault,
           buyer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .signers([buyer.keypair])
         .rpc(),
-      "Reward vault does not match listing state"
+      "Reward vault does not match author profile"
     );
 
     await expectFailure(

@@ -47,6 +47,7 @@ import {
   getPurchaseDecoder,
   PURCHASE_DISCRIMINATOR,
 } from "../generated/agentvouch/src/generated/accounts/purchase";
+import { fetchMaybeAgentProfile } from "../generated/agentvouch/src/generated";
 import {
   fetchAllMaybeSkillListing,
   fetchMaybeSkillListing,
@@ -133,6 +134,18 @@ async function getAgentPDA(agentKey: Address): Promise<Address> {
   return deriveAddress(["agent", agentKey]);
 }
 
+async function getAuthorRewardVaultAuthorityPDA(
+  authorProfile: Address
+): Promise<Address> {
+  return deriveAddress(["author_reward_vault_authority", authorProfile]);
+}
+
+async function getAuthorRewardVaultPDA(
+  authorProfile: Address
+): Promise<Address> {
+  return deriveAddress(["author_reward_vault", authorProfile]);
+}
+
 async function getPurchasePDA(
   buyer: Address,
   skillListing: Address,
@@ -157,6 +170,11 @@ async function estimatePurchasePreflight(
   const listing = await fetchMaybeSkillListing(rpc, skillListing);
   if (!listing.exists) throw new Error("Skill listing not found on-chain");
   const usdcMint = address(getConfiguredUsdcMint());
+  const authorProfile = await getAgentPDA(author);
+  const maybeAuthorProfile = await fetchMaybeAgentProfile(
+    rpc,
+    authorProfile
+  ).catch(() => null);
   const context = await createPurchasePreflightContext({
     rpc,
     buyer,
@@ -167,6 +185,9 @@ async function estimatePurchasePreflight(
     context,
     priceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
     author,
+    authorBackingUsdcMicros: maybeAuthorProfile?.exists
+      ? BigInt(maybeAuthorProfile.data.totalVouchStakeUsdcMicros)
+      : 0n,
   });
 }
 
@@ -482,7 +503,9 @@ export function useMarketplaceOracle() {
           );
         }
         if (
-          purchaseEstimate.purchasePreflightStatus === "authorPayoutRentBlocked"
+          purchaseEstimate.purchasePreflightStatus ===
+            "authorPayoutRentBlocked" ||
+          purchaseEstimate.purchasePreflightStatus === "authorMissingBacking"
         ) {
           throw new Error(
             purchaseEstimate.purchasePreflightMessage ??
@@ -502,10 +525,12 @@ export function useMarketplaceOracle() {
 
       const authorProfile = await getAgentPDA(authorKey);
       const usdcMint = address(getConfiguredUsdcMint());
-      const buyerUsdcAccount = await getAssociatedTokenAccount(
-        walletAddress,
-        usdcMint
-      );
+      const [buyerUsdcAccount, authorRewardVaultAuthority, authorRewardVault] =
+        await Promise.all([
+          getAssociatedTokenAccount(walletAddress, usdcMint),
+          getAuthorRewardVaultAuthorityPDA(authorProfile),
+          getAuthorRewardVaultPDA(authorProfile),
+        ]);
       await assertUsdcAccountReady({
         rpc,
         owner: walletAddress,
@@ -522,7 +547,8 @@ export function useMarketplaceOracle() {
         buyerUsdcAccount,
         listingSettlement: listing.data.currentSettlement,
         authorProceedsVault: listing.data.currentAuthorProceedsVault,
-        rewardVault: listing.data.rewardVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         buyer: signer,
       });
       const summary = {
@@ -530,7 +556,7 @@ export function useMarketplaceOracle() {
         token: "USDC" as const,
         amountUsdcMicros: BigInt(listing.data.priceUsdcMicros),
         recipient: listing.data.currentAuthorProceedsVault,
-        vault: listing.data.rewardVault,
+        vault: authorRewardVault,
         feePayer: signer.address,
         cluster: `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`,
       };
@@ -568,7 +594,8 @@ export function useMarketplaceOracle() {
             }
             if (
               latestEstimate.purchasePreflightStatus ===
-              "authorPayoutRentBlocked"
+                "authorPayoutRentBlocked" ||
+              latestEstimate.purchasePreflightStatus === "authorMissingBacking"
             ) {
               throw new Error(
                 latestEstimate.purchasePreflightMessage ??

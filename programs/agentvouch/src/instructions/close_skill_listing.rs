@@ -2,7 +2,7 @@ use crate::state::{AgentProfile, SkillListing, SkillStatus};
 use anchor_lang::prelude::*;
 
 /// Permanently closes a removed skill listing PDA and reclaims rent.
-/// Requires the listing is already Removed and has no pending voucher revenue.
+/// Requires the listing is already Removed.
 #[derive(Accounts)]
 #[instruction(skill_id: String)]
 pub struct CloseSkillListing<'info> {
@@ -12,8 +12,6 @@ pub struct CloseSkillListing<'info> {
         bump = skill_listing.bump,
         constraint = skill_listing.author == author.key() @ CloseSkillError::NotAuthor,
         constraint = skill_listing.status == SkillStatus::Removed @ CloseSkillError::NotRemoved,
-        constraint = skill_listing.unclaimed_voucher_revenue_usdc_micros == 0 @ CloseSkillError::UnclaimedRevenue,
-        constraint = skill_listing.active_reward_position_count == 0 @ CloseSkillError::ActiveRewardPositions,
         close = author,
     )]
     pub skill_listing: Account<'info, SkillListing>,
@@ -38,8 +36,4 @@ pub enum CloseSkillError {
     NotAuthor,
     #[msg("Listing must be removed before it can be closed")]
     NotRemoved,
-    #[msg("Listing has unclaimed voucher revenue; claim it before closing")]
-    UnclaimedRevenue,
-    #[msg("Listing still has active reward positions")]
-    ActiveRewardPositions,
 }

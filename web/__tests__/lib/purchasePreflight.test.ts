@@ -59,12 +59,37 @@ describe("purchase preflight", () => {
       }),
       priceUsdcMicros: 1_000_000n,
       author: AUTHOR,
+      authorBackingUsdcMicros: 5_000_000n,
     });
 
     expect(result.purchasePreflightStatus).toBe("ok");
     expect(result.estimatedBuyerTotalLamports).toBe(
       PURCHASE_RENT_LAMPORTS + PURCHASE_FEE_BUFFER_LAMPORTS
     );
+  });
+
+  it("blocks a paid protocol listing when the author has no active backing", () => {
+    const result = assessPurchasePreflight({
+      context: createContext({
+        buyerBalanceLamports: 50_000_000n,
+        buyerUsdcBalanceMicros: 2_000_000n,
+      }),
+      priceUsdcMicros: 1_000_000n,
+      author: AUTHOR,
+      authorBackingUsdcMicros: 0n,
+    });
+
+    expect(result.purchasePreflightStatus).toBe("authorMissingBacking");
+    expect(result.purchasePreflightMessage).toBe(
+      "This author needs active vouch backing before paid purchases are available."
+    );
+
+    const serialized = serializePurchasePreflight(result);
+    expect(serialized.purchaseBlocked).toBe(true);
+    expect(serialized.purchaseBlockError).toEqual({
+      code: "authorMissingBacking",
+      message: result.purchasePreflightMessage,
+    });
   });
 
   it("blocks a USDC listing when buyer has no USDC token account", () => {

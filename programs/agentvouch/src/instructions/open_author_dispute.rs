@@ -168,7 +168,7 @@ pub fn handler<'info>(
     author_dispute.skill_price_usdc_micros_snapshot = skill_price_usdc_micros_snapshot;
     author_dispute.purchase = purchase;
     author_dispute.backing_vouch_count_snapshot =
-        ctx.accounts.skill_listing.active_reward_position_count;
+        ctx.accounts.author_profile.total_vouches_received;
     author_dispute.linked_vouch_count = 0;
     author_dispute.processed_vouch_count = 0;
     author_dispute.author_bond_slashed_usdc_micros = 0;

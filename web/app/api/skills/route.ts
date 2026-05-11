@@ -337,7 +337,7 @@ export async function GET(request: NextRequest) {
       rpc,
       buyer: buyerAddress,
       usdcMint,
-      authors: [],
+      authors: paged.map((skill) => address(skill.author_pubkey)),
     });
     const pagedWithPricing = await Promise.all(
       paged.map(async (skill) => {
@@ -350,7 +350,11 @@ export async function GET(request: NextRequest) {
             priceUsdcMicros: creatorPriceUsdcMicros
               ? BigInt(creatorPriceUsdcMicros)
               : 0n,
-            author: null,
+            author: address(skill.author_pubkey),
+            authorBackingUsdcMicros:
+              skill.on_chain_address && creatorPriceUsdcMicros
+                ? BigInt(skill.author_trust?.totalStakedFor ?? 0)
+                : null,
           })
         );
         const buyerHasPurchased = buyerAddress
@@ -367,14 +371,14 @@ export async function GET(request: NextRequest) {
                 ).catch(() => false)
               : false
             : getSkillPaymentFlow({
-                  legacySolLamports: skill.price_lamports,
-                  allowLegacySol: true,
-                }) === "legacy-sol" && skill.on_chain_address
-              ? await hasOnChainPurchase(
-                  String(buyerAddress),
-                  String(skill.on_chain_address)
-                ).catch(() => false)
-              : false
+                legacySolLamports: skill.price_lamports,
+                allowLegacySol: true,
+              }) === "legacy-sol" && skill.on_chain_address
+            ? await hasOnChainPurchase(
+                String(buyerAddress),
+                String(skill.on_chain_address)
+              ).catch(() => false)
+            : false
           : false;
         return {
           ...skill,
@@ -427,19 +431,18 @@ export async function POST(request: NextRequest) {
       contact,
       price_usdc_micros,
       currency_mint,
-    } =
-      body as {
-        auth: AuthPayload;
-        skill_id: string;
-        name: string;
-        description?: string;
-        tags?: string[];
-        content: string;
-        contact?: string;
-        chain_context?: string;
-        price_usdc_micros?: string | number;
-        currency_mint?: string;
-      };
+    } = body as {
+      auth: AuthPayload;
+      skill_id: string;
+      name: string;
+      description?: string;
+      tags?: string[];
+      content: string;
+      contact?: string;
+      chain_context?: string;
+      price_usdc_micros?: string | number;
+      currency_mint?: string;
+    };
 
     if (!auth || !skill_id || !name || !content) {
       return NextResponse.json(

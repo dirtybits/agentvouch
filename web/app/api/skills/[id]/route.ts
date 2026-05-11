@@ -275,14 +275,18 @@ export async function GET(
       rpc,
       buyer: buyerAddress,
       usdcMint: address(getConfiguredUsdcMint()),
-      authors: [],
+      authors: [address(skill.author_pubkey)],
     });
     const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
     const preflight = serializePurchasePreflight(
       assessPurchasePreflight({
         context: preflightContext,
         priceUsdcMicros: priceUsdcMicros ? BigInt(priceUsdcMicros) : 0n,
-        author: null,
+        author: address(skill.author_pubkey),
+        authorBackingUsdcMicros:
+          skill.on_chain_address && priceUsdcMicros
+            ? BigInt(author_trust?.totalStakedFor ?? 0)
+            : null,
       })
     );
     const buyerHasPurchased = buyerAddress

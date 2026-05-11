@@ -36,21 +36,6 @@ pub struct CreateSkillListing<'info> {
     #[account(address = config.usdc_mint @ CreateSkillError::InvalidUsdcMint)]
     pub usdc_mint: Box<Account<'info, Mint>>,
 
-    /// CHECK: PDA authority for the listing reward vault.
-    #[account(seeds = [b"listing_reward_vault_authority", skill_listing.key().as_ref()], bump)]
-    pub reward_vault_authority: UncheckedAccount<'info>,
-
-    #[account(
-        init,
-        payer = author,
-        token::mint = usdc_mint,
-        token::authority = reward_vault_authority,
-        token::token_program = token_program,
-        seeds = [b"listing_reward_vault", skill_listing.key().as_ref()],
-        bump
-    )]
-    pub reward_vault: Box<Account<'info, TokenAccount>>,
-
     #[account(
         init,
         payer = author,
@@ -145,8 +130,8 @@ pub fn handler(
     skill_listing.name = name.clone();
     skill_listing.description = description;
     skill_listing.price_usdc_micros = price_usdc_micros;
-    skill_listing.reward_vault = ctx.accounts.reward_vault.key();
-    skill_listing.reward_vault_rent_payer = ctx.accounts.author.key();
+    skill_listing.reward_vault = Pubkey::default();
+    skill_listing.reward_vault_rent_payer = Pubkey::default();
     skill_listing.current_revision = 0;
     skill_listing.current_settlement = ctx.accounts.listing_settlement.key();
     skill_listing.current_author_proceeds_vault = ctx.accounts.author_proceeds_vault.key();
@@ -162,7 +147,7 @@ pub fn handler(
     skill_listing.updated_at = clock.unix_timestamp;
     skill_listing.status = SkillStatus::Active;
     skill_listing.bump = ctx.bumps.skill_listing;
-    skill_listing.reward_vault_bump = ctx.bumps.reward_vault;
+    skill_listing.reward_vault_bump = 0;
 
     let listing_settlement = &mut ctx.accounts.listing_settlement;
     listing_settlement.skill_listing = ctx.accounts.skill_listing.key();
@@ -195,7 +180,7 @@ pub fn handler(
         author: ctx.accounts.author.key(),
         name,
         price_usdc_micros,
-        reward_vault: ctx.accounts.reward_vault.key(),
+        reward_vault: Pubkey::default(),
         timestamp: clock.unix_timestamp,
     });
 

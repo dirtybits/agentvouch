@@ -40,8 +40,10 @@ import {
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
 import {
+  findAuthorRewardVaultPda,
   findConfigPda,
   findRevokeVouchVouchPda,
+  findVouchAuthorRewardVaultAuthorityPda,
   findVoucherProfilePda,
   findVouchVaultAuthorityPda,
   findVouchVaultPda,
@@ -66,6 +68,9 @@ export type VouchInstruction<
   TAccountVoucherUsdcAccount extends string | AccountMeta<string> = string,
   TAccountVouchVaultAuthority extends string | AccountMeta<string> = string,
   TAccountVouchVault extends string | AccountMeta<string> = string,
+  TAccountAuthorRewardVaultAuthority extends string | AccountMeta<string> =
+    string,
+  TAccountAuthorRewardVault extends string | AccountMeta<string> = string,
   TAccountVoucher extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -100,6 +105,12 @@ export type VouchInstruction<
       TAccountVouchVault extends string
         ? WritableAccount<TAccountVouchVault>
         : TAccountVouchVault,
+      TAccountAuthorRewardVaultAuthority extends string
+        ? ReadonlyAccount<TAccountAuthorRewardVaultAuthority>
+        : TAccountAuthorRewardVaultAuthority,
+      TAccountAuthorRewardVault extends string
+        ? WritableAccount<TAccountAuthorRewardVault>
+        : TAccountAuthorRewardVault,
       TAccountVoucher extends string
         ? WritableSignerAccount<TAccountVoucher> &
             AccountSignerMeta<TAccountVoucher>
@@ -157,6 +168,8 @@ export type VouchAsyncInput<
   TAccountVoucherUsdcAccount extends string = string,
   TAccountVouchVaultAuthority extends string = string,
   TAccountVouchVault extends string = string,
+  TAccountAuthorRewardVaultAuthority extends string = string,
+  TAccountAuthorRewardVault extends string = string,
   TAccountVoucher extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
@@ -169,6 +182,8 @@ export type VouchAsyncInput<
   voucherUsdcAccount: Address<TAccountVoucherUsdcAccount>;
   vouchVaultAuthority?: Address<TAccountVouchVaultAuthority>;
   vouchVault?: Address<TAccountVouchVault>;
+  authorRewardVaultAuthority?: Address<TAccountAuthorRewardVaultAuthority>;
+  authorRewardVault?: Address<TAccountAuthorRewardVault>;
   voucher: TransactionSigner<TAccountVoucher>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -184,6 +199,8 @@ export async function getVouchInstructionAsync<
   TAccountVoucherUsdcAccount extends string,
   TAccountVouchVaultAuthority extends string,
   TAccountVouchVault extends string,
+  TAccountAuthorRewardVaultAuthority extends string,
+  TAccountAuthorRewardVault extends string,
   TAccountVoucher extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
@@ -198,6 +215,8 @@ export async function getVouchInstructionAsync<
     TAccountVoucherUsdcAccount,
     TAccountVouchVaultAuthority,
     TAccountVouchVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucher,
     TAccountTokenProgram,
     TAccountSystemProgram
@@ -214,6 +233,8 @@ export async function getVouchInstructionAsync<
     TAccountVoucherUsdcAccount,
     TAccountVouchVaultAuthority,
     TAccountVouchVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucher,
     TAccountTokenProgram,
     TAccountSystemProgram
@@ -238,6 +259,14 @@ export async function getVouchInstructionAsync<
       isWritable: false,
     },
     vouchVault: { value: input.vouchVault ?? null, isWritable: true },
+    authorRewardVaultAuthority: {
+      value: input.authorRewardVaultAuthority ?? null,
+      isWritable: false,
+    },
+    authorRewardVault: {
+      value: input.authorRewardVault ?? null,
+      isWritable: true,
+    },
     voucher: { value: input.voucher ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
@@ -298,6 +327,23 @@ export async function getVouchInstructionAsync<
       ),
     });
   }
+  if (!accounts.authorRewardVaultAuthority.value) {
+    accounts.authorRewardVaultAuthority.value =
+      await findVouchAuthorRewardVaultAuthorityPda({
+        voucheeProfile: getAddressFromResolvedInstructionAccount(
+          "voucheeProfile",
+          accounts.voucheeProfile.value,
+        ),
+      });
+  }
+  if (!accounts.authorRewardVault.value) {
+    accounts.authorRewardVault.value = await findAuthorRewardVaultPda({
+      voucheeProfile: getAddressFromResolvedInstructionAccount(
+        "voucheeProfile",
+        accounts.voucheeProfile.value,
+      ),
+    });
+  }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
@@ -318,6 +364,11 @@ export async function getVouchInstructionAsync<
       getAccountMeta("voucherUsdcAccount", accounts.voucherUsdcAccount),
       getAccountMeta("vouchVaultAuthority", accounts.vouchVaultAuthority),
       getAccountMeta("vouchVault", accounts.vouchVault),
+      getAccountMeta(
+        "authorRewardVaultAuthority",
+        accounts.authorRewardVaultAuthority,
+      ),
+      getAccountMeta("authorRewardVault", accounts.authorRewardVault),
       getAccountMeta("voucher", accounts.voucher),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
@@ -336,6 +387,8 @@ export async function getVouchInstructionAsync<
     TAccountVoucherUsdcAccount,
     TAccountVouchVaultAuthority,
     TAccountVouchVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucher,
     TAccountTokenProgram,
     TAccountSystemProgram
@@ -351,6 +404,8 @@ export type VouchInput<
   TAccountVoucherUsdcAccount extends string = string,
   TAccountVouchVaultAuthority extends string = string,
   TAccountVouchVault extends string = string,
+  TAccountAuthorRewardVaultAuthority extends string = string,
+  TAccountAuthorRewardVault extends string = string,
   TAccountVoucher extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
@@ -363,6 +418,8 @@ export type VouchInput<
   voucherUsdcAccount: Address<TAccountVoucherUsdcAccount>;
   vouchVaultAuthority: Address<TAccountVouchVaultAuthority>;
   vouchVault: Address<TAccountVouchVault>;
+  authorRewardVaultAuthority: Address<TAccountAuthorRewardVaultAuthority>;
+  authorRewardVault: Address<TAccountAuthorRewardVault>;
   voucher: TransactionSigner<TAccountVoucher>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -378,6 +435,8 @@ export function getVouchInstruction<
   TAccountVoucherUsdcAccount extends string,
   TAccountVouchVaultAuthority extends string,
   TAccountVouchVault extends string,
+  TAccountAuthorRewardVaultAuthority extends string,
+  TAccountAuthorRewardVault extends string,
   TAccountVoucher extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
@@ -392,6 +451,8 @@ export function getVouchInstruction<
     TAccountVoucherUsdcAccount,
     TAccountVouchVaultAuthority,
     TAccountVouchVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucher,
     TAccountTokenProgram,
     TAccountSystemProgram
@@ -407,6 +468,8 @@ export function getVouchInstruction<
   TAccountVoucherUsdcAccount,
   TAccountVouchVaultAuthority,
   TAccountVouchVault,
+  TAccountAuthorRewardVaultAuthority,
+  TAccountAuthorRewardVault,
   TAccountVoucher,
   TAccountTokenProgram,
   TAccountSystemProgram
@@ -430,6 +493,14 @@ export function getVouchInstruction<
       isWritable: false,
     },
     vouchVault: { value: input.vouchVault ?? null, isWritable: true },
+    authorRewardVaultAuthority: {
+      value: input.authorRewardVaultAuthority ?? null,
+      isWritable: false,
+    },
+    authorRewardVault: {
+      value: input.authorRewardVault ?? null,
+      isWritable: true,
+    },
     voucher: { value: input.voucher ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
@@ -463,6 +534,11 @@ export function getVouchInstruction<
       getAccountMeta("voucherUsdcAccount", accounts.voucherUsdcAccount),
       getAccountMeta("vouchVaultAuthority", accounts.vouchVaultAuthority),
       getAccountMeta("vouchVault", accounts.vouchVault),
+      getAccountMeta(
+        "authorRewardVaultAuthority",
+        accounts.authorRewardVaultAuthority,
+      ),
+      getAccountMeta("authorRewardVault", accounts.authorRewardVault),
       getAccountMeta("voucher", accounts.voucher),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
@@ -481,6 +557,8 @@ export function getVouchInstruction<
     TAccountVoucherUsdcAccount,
     TAccountVouchVaultAuthority,
     TAccountVouchVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucher,
     TAccountTokenProgram,
     TAccountSystemProgram
@@ -501,9 +579,11 @@ export type ParsedVouchInstruction<
     voucherUsdcAccount: TAccountMetas[5];
     vouchVaultAuthority: TAccountMetas[6];
     vouchVault: TAccountMetas[7];
-    voucher: TAccountMetas[8];
-    tokenProgram: TAccountMetas[9];
-    systemProgram: TAccountMetas[10];
+    authorRewardVaultAuthority: TAccountMetas[8];
+    authorRewardVault: TAccountMetas[9];
+    voucher: TAccountMetas[10];
+    tokenProgram: TAccountMetas[11];
+    systemProgram: TAccountMetas[12];
   };
   data: VouchInstructionData;
 };
@@ -516,12 +596,12 @@ export function parseVouchInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedVouchInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 11) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 11,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -542,6 +622,8 @@ export function parseVouchInstruction<
       voucherUsdcAccount: getNextAccount(),
       vouchVaultAuthority: getNextAccount(),
       vouchVault: getNextAccount(),
+      authorRewardVaultAuthority: getNextAccount(),
+      authorRewardVault: getNextAccount(),
       voucher: getNextAccount(),
       tokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),

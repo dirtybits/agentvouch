@@ -25,6 +25,8 @@ import {
   getI64Encoder,
   getStructDecoder,
   getStructEncoder,
+  getU128Decoder,
+  getU128Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
@@ -70,8 +72,13 @@ export type AgentProfile = {
   openAuthorDisputes: number;
   upheldAuthorDisputes: number;
   dismissedAuthorDisputes: number;
+  rewardVault: Address;
+  rewardVaultRentPayer: Address;
+  rewardIndexUsdcMicrosX1e12: bigint;
+  unclaimedVoucherRevenueUsdcMicros: bigint;
   registeredAt: bigint;
   bump: number;
+  rewardVaultBump: number;
 };
 
 export type AgentProfileArgs = {
@@ -86,8 +93,13 @@ export type AgentProfileArgs = {
   openAuthorDisputes: number;
   upheldAuthorDisputes: number;
   dismissedAuthorDisputes: number;
+  rewardVault: Address;
+  rewardVaultRentPayer: Address;
+  rewardIndexUsdcMicrosX1e12: number | bigint;
+  unclaimedVoucherRevenueUsdcMicros: number | bigint;
   registeredAt: number | bigint;
   bump: number;
+  rewardVaultBump: number;
 };
 
 /** Gets the encoder for {@link AgentProfileArgs} account data. */
@@ -106,8 +118,13 @@ export function getAgentProfileEncoder(): Encoder<AgentProfileArgs> {
       ["openAuthorDisputes", getU32Encoder()],
       ["upheldAuthorDisputes", getU32Encoder()],
       ["dismissedAuthorDisputes", getU32Encoder()],
+      ["rewardVault", getAddressEncoder()],
+      ["rewardVaultRentPayer", getAddressEncoder()],
+      ["rewardIndexUsdcMicrosX1e12", getU128Encoder()],
+      ["unclaimedVoucherRevenueUsdcMicros", getU64Encoder()],
       ["registeredAt", getI64Encoder()],
       ["bump", getU8Encoder()],
+      ["rewardVaultBump", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: AGENT_PROFILE_DISCRIMINATOR }),
   );
@@ -128,8 +145,13 @@ export function getAgentProfileDecoder(): Decoder<AgentProfile> {
     ["openAuthorDisputes", getU32Decoder()],
     ["upheldAuthorDisputes", getU32Decoder()],
     ["dismissedAuthorDisputes", getU32Decoder()],
+    ["rewardVault", getAddressDecoder()],
+    ["rewardVaultRentPayer", getAddressDecoder()],
+    ["rewardIndexUsdcMicrosX1e12", getU128Decoder()],
+    ["unclaimedVoucherRevenueUsdcMicros", getU64Decoder()],
     ["registeredAt", getI64Decoder()],
     ["bump", getU8Decoder()],
+    ["rewardVaultBump", getU8Decoder()],
   ]);
 }
 

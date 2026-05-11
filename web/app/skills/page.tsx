@@ -67,11 +67,7 @@ interface SkillRow {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?:
-    | "free"
-    | "legacy-sol"
-    | "x402-usdc"
-    | "direct-purchase-skill";
+  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
   on_chain_address?: string;
   skill_uri?: string | null;
   source?: "repo" | "chain";
@@ -106,11 +102,7 @@ type ActivityRepoListing = {
   price_lamports: number | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
-  payment_flow:
-    | "free"
-    | "legacy-sol"
-    | "x402-usdc"
-    | "direct-purchase-skill";
+  payment_flow: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
 };
 type ActivityUsdcPurchase = {
   payment_tx_signature: string;
@@ -144,7 +136,9 @@ type FeedItem = {
 
 type SortOption = "newest" | "installs" | "trusted" | "name";
 
-function formatUsdc(micros: number | bigint | string | null | undefined): string {
+function formatUsdc(
+  micros: number | bigint | string | null | undefined
+): string {
   return formatUsdcMicros(micros) ?? "0";
 }
 
@@ -170,6 +164,7 @@ function isBlockingPurchaseStatus(
   return (
     status === "buyerInsufficientBalance" ||
     status === "buyerMissingUsdcAccount" ||
+    status === "authorMissingBacking" ||
     status === "authorPayoutRentBlocked"
   );
 }
@@ -276,7 +271,9 @@ export default function MarketplacePage() {
         const repoListingMap = new Map(
           activity.repoListings
             .filter(
-              (listing): listing is ActivityRepoListing & {
+              (
+                listing
+              ): listing is ActivityRepoListing & {
                 on_chain_address: string;
               } => Boolean(listing.on_chain_address)
             )
@@ -291,9 +288,12 @@ export default function MarketplacePage() {
             type: "purchase",
             actor: String(purchase.account.buyer),
             skillListing,
-            skillName: repoListing?.name ?? listing?.account.name ?? "Unknown Skill",
+            skillName:
+              repoListing?.name ?? listing?.account.name ?? "Unknown Skill",
             skillRepoId: repoListing?.id ?? null,
-            author: repoListing?.author_pubkey ?? String(listing?.account.author ?? ""),
+            author:
+              repoListing?.author_pubkey ??
+              String(listing?.account.author ?? ""),
             timestamp: Number(purchase.account.purchasedAt),
             legacySolLamports: null,
             priceUsdcMicros: String(purchase.account.pricePaidUsdcMicros),
@@ -309,7 +309,8 @@ export default function MarketplacePage() {
             skillListing,
             skillName: repoListing?.name ?? listing.account.name,
             skillRepoId: repoListing?.id ?? null,
-            author: repoListing?.author_pubkey ?? String(listing.account.author),
+            author:
+              repoListing?.author_pubkey ?? String(listing.account.author),
             timestamp: Number(listing.account.createdAt),
             legacySolLamports: null,
             priceUsdcMicros:
@@ -982,7 +983,8 @@ export default function MarketplacePage() {
                           Purchased{" "}
                           {formatDate(Number(purchase.account.purchasedAt))} ·{" "}
                           <span className="font-mono text-gray-900 dark:text-white">
-                            {formatUsdc(purchase.account.pricePaidUsdcMicros)} USDC
+                            {formatUsdc(purchase.account.pricePaidUsdcMicros)}{" "}
+                            USDC
                           </span>
                         </p>
                       </div>
@@ -1047,10 +1049,13 @@ export default function MarketplacePage() {
                   );
                   const detailId =
                     listingDetail?.id ?? `chain-${String(listing.publicKey)}`;
-                  const canPublishVersion = !!listingDetail && detailId.indexOf("chain-") !== 0;
+                  const canPublishVersion =
+                    !!listingDetail && detailId.indexOf("chain-") !== 0;
                   const price = Number(listing.account.priceUsdcMicros);
                   const downloads = Number(listing.account.totalDownloads);
-                  const revenue = Number(listing.account.totalRevenueUsdcMicros);
+                  const revenue = Number(
+                    listing.account.totalRevenueUsdcMicros
+                  );
                   const authorEarnings = Math.floor(revenue * 0.6);
 
                   return (
@@ -1095,7 +1100,10 @@ export default function MarketplacePage() {
                         </Link>
                         {canPublishVersion && (
                           <Link
-                            href={getAuthorActionHref(detailId, "publish-version")}
+                            href={getAuthorActionHref(
+                              detailId,
+                              "publish-version"
+                            )}
                             className={navButtonInlineClass}
                           >
                             <FiGitCommit className="w-3.5 h-3.5" />

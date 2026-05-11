@@ -41,9 +41,16 @@ pub fn handler(ctx: Context<RegisterAgent>, metadata_uri: String) -> Result<()> 
         agent_profile.open_author_disputes = 0;
         agent_profile.upheld_author_disputes = 0;
         agent_profile.dismissed_author_disputes = 0;
+        agent_profile.reward_vault = Pubkey::default();
+        agent_profile.reward_vault_rent_payer = Pubkey::default();
+        agent_profile.reward_index_usdc_micros_x1e12 = 0;
+        agent_profile.unclaimed_voucher_revenue_usdc_micros = 0;
         agent_profile.registered_at = clock.unix_timestamp;
     }
     agent_profile.bump = ctx.bumps.agent_profile;
+    if is_new {
+        agent_profile.reward_vault_bump = 0;
+    }
 
     Ok(())
 }

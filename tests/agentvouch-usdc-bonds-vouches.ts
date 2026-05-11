@@ -7,6 +7,8 @@ import {
   authorBondPda,
   authorBondVault,
   authorBondVaultAuthority,
+  authorRewardVault,
+  authorRewardVaultAuthority,
   createActor,
   createAtaForMint,
   createSkillListing,
@@ -40,7 +42,9 @@ describe("agentvouch usdc bonds and vouches", () => {
     await withdrawAuthorBond(ctx, author, ONE_USDC);
     await assertTokenDelta(ctx, author.usdc, authorBefore, -2 * ONE_USDC);
 
-    const authorBond = await ctx.program.account.authorBond.fetch(bond.authorBond);
+    const authorBond = await ctx.program.account.authorBond.fetch(
+      bond.authorBond
+    );
     assert.equal(Number(authorBond.amountUsdcMicros), 2 * ONE_USDC);
   });
 
@@ -54,7 +58,12 @@ describe("agentvouch usdc bonds and vouches", () => {
     await createVouch(ctx, voucher, author, 2 * ONE_USDC);
     const voucherBeforeRevoke = await tokenAmount(ctx, voucher.usdc);
     const vouch = await revokeVouch(ctx, voucher, author);
-    await assertTokenDelta(ctx, voucher.usdc, voucherBeforeRevoke, 2 * ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      voucher.usdc,
+      voucherBeforeRevoke,
+      2 * ONE_USDC
+    );
 
     const vouchAccount = await ctx.program.account.vouch.fetch(vouch.vouch);
     assert.equal(Number(vouchAccount.stakeUsdcMicros), 0);
@@ -116,7 +125,11 @@ describe("agentvouch usdc bonds and vouches", () => {
     );
 
     const wrongMint = await createWrongMint(ctx);
-    const wrongMintAta = await createAtaForMint(ctx, author.keypair.publicKey, wrongMint);
+    const wrongMintAta = await createAtaForMint(
+      ctx,
+      author.keypair.publicKey,
+      wrongMint
+    );
     await expectFailure(
       ctx.program.methods
         .depositAuthorBond(u64(ONE_USDC))
@@ -157,10 +170,11 @@ describe("agentvouch usdc bonds and vouches", () => {
       ["InvalidProgramId", "Program", "tokenProgram"]
     );
 
-    await expectFailure(
-      depositAuthorBond(ctx, emptyAuthor, ONE_USDC),
-      ["insufficient funds", "InsufficientFunds", "custom program error"]
-    );
+    await expectFailure(depositAuthorBond(ctx, emptyAuthor, ONE_USDC), [
+      "insufficient funds",
+      "InsufficientFunds",
+      "custom program error",
+    ]);
 
     await expectFailure(
       ctx.program.methods
@@ -200,7 +214,7 @@ describe("agentvouch usdc bonds and vouches", () => {
     await expectFailure(
       ctx.program.methods
         .vouch(u64(ONE_USDC))
-        .accounts({
+        .accountsStrict({
           vouch: selfVouch,
           voucherProfile: author.profile,
           voucheeProfile: author.profile,
@@ -209,6 +223,11 @@ describe("agentvouch usdc bonds and vouches", () => {
           voucherUsdcAccount: author.usdc,
           vouchVaultAuthority: selfVaultAuthority,
           vouchVault: selfVault,
+          authorRewardVaultAuthority: authorRewardVaultAuthority(
+            ctx.program,
+            author.profile
+          ),
+          authorRewardVault: authorRewardVault(ctx.program, author.profile),
           voucher: author.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -221,7 +240,7 @@ describe("agentvouch usdc bonds and vouches", () => {
     await expectFailure(
       ctx.program.methods
         .vouch(u64(ONE_USDC - 1))
-        .accounts({
+        .accountsStrict({
           vouch: vouchPda(ctx.program, voucher.profile, author.profile),
           voucherProfile: voucher.profile,
           voucheeProfile: author.profile,
@@ -234,6 +253,11 @@ describe("agentvouch usdc bonds and vouches", () => {
             author.profile
           ),
           vouchVault: vouchVault(ctx.program, voucher.profile, author.profile),
+          authorRewardVaultAuthority: authorRewardVaultAuthority(
+            ctx.program,
+            author.profile
+          ),
+          authorRewardVault: authorRewardVault(ctx.program, author.profile),
           voucher: voucher.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -263,12 +287,15 @@ describe("agentvouch usdc bonds and vouches", () => {
     );
 
     const { author, voucher, bond } = await setupPaidListingWithVouch(ctx);
-    await expectFailure(
-      revokeVouch(ctx, voucher, author),
-      "Vouch must be unlinked from all listings before revoke"
+    await revokeVouch(ctx, voucher, author);
+    const authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
     );
+    assert.equal(Number(authorProfile.totalVouchStakeUsdcMicros), 0);
 
-    const authorBond = await ctx.program.account.authorBond.fetch(bond.authorBond);
+    const authorBond = await ctx.program.account.authorBond.fetch(
+      bond.authorBond
+    );
     assert.equal(Number(authorBond.amountUsdcMicros), 4 * ONE_USDC);
   });
 });

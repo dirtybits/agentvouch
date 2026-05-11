@@ -38,9 +38,8 @@ import {
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
 import {
+  findAuthorRewardVaultAuthorityPda,
   findConfigPda,
-  findListingVouchPositionPda,
-  findRewardVaultAuthorityPda,
   findVoucherProfilePda,
   findVouchPda,
 } from "../pdas";
@@ -58,15 +57,14 @@ export function getClaimVoucherRevenueDiscriminatorBytes() {
 
 export type ClaimVoucherRevenueInstruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
-  TAccountSkillListing extends string | AccountMeta<string> = string,
-  TAccountListingVouchPosition extends string | AccountMeta<string> = string,
-  TAccountVouch extends string | AccountMeta<string> = string,
   TAccountAuthorProfile extends string | AccountMeta<string> = string,
+  TAccountVouch extends string | AccountMeta<string> = string,
   TAccountVoucherProfile extends string | AccountMeta<string> = string,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
-  TAccountRewardVaultAuthority extends string | AccountMeta<string> = string,
-  TAccountRewardVault extends string | AccountMeta<string> = string,
+  TAccountAuthorRewardVaultAuthority extends string | AccountMeta<string> =
+    string,
+  TAccountAuthorRewardVault extends string | AccountMeta<string> = string,
   TAccountVoucherUsdcAccount extends string | AccountMeta<string> = string,
   TAccountVoucher extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
@@ -76,18 +74,12 @@ export type ClaimVoucherRevenueInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountSkillListing extends string
-        ? WritableAccount<TAccountSkillListing>
-        : TAccountSkillListing,
-      TAccountListingVouchPosition extends string
-        ? WritableAccount<TAccountListingVouchPosition>
-        : TAccountListingVouchPosition,
-      TAccountVouch extends string
-        ? ReadonlyAccount<TAccountVouch>
-        : TAccountVouch,
       TAccountAuthorProfile extends string
-        ? ReadonlyAccount<TAccountAuthorProfile>
+        ? WritableAccount<TAccountAuthorProfile>
         : TAccountAuthorProfile,
+      TAccountVouch extends string
+        ? WritableAccount<TAccountVouch>
+        : TAccountVouch,
       TAccountVoucherProfile extends string
         ? ReadonlyAccount<TAccountVoucherProfile>
         : TAccountVoucherProfile,
@@ -97,12 +89,12 @@ export type ClaimVoucherRevenueInstruction<
       TAccountUsdcMint extends string
         ? ReadonlyAccount<TAccountUsdcMint>
         : TAccountUsdcMint,
-      TAccountRewardVaultAuthority extends string
-        ? ReadonlyAccount<TAccountRewardVaultAuthority>
-        : TAccountRewardVaultAuthority,
-      TAccountRewardVault extends string
-        ? WritableAccount<TAccountRewardVault>
-        : TAccountRewardVault,
+      TAccountAuthorRewardVaultAuthority extends string
+        ? ReadonlyAccount<TAccountAuthorRewardVaultAuthority>
+        : TAccountAuthorRewardVaultAuthority,
+      TAccountAuthorRewardVault extends string
+        ? WritableAccount<TAccountAuthorRewardVault>
+        : TAccountAuthorRewardVault,
       TAccountVoucherUsdcAccount extends string
         ? WritableAccount<TAccountVoucherUsdcAccount>
         : TAccountVoucherUsdcAccount,
@@ -150,58 +142,50 @@ export function getClaimVoucherRevenueInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type ClaimVoucherRevenueAsyncInput<
-  TAccountSkillListing extends string = string,
-  TAccountListingVouchPosition extends string = string,
-  TAccountVouch extends string = string,
   TAccountAuthorProfile extends string = string,
+  TAccountVouch extends string = string,
   TAccountVoucherProfile extends string = string,
   TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountRewardVaultAuthority extends string = string,
-  TAccountRewardVault extends string = string,
+  TAccountAuthorRewardVaultAuthority extends string = string,
+  TAccountAuthorRewardVault extends string = string,
   TAccountVoucherUsdcAccount extends string = string,
   TAccountVoucher extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
-  skillListing: Address<TAccountSkillListing>;
-  listingVouchPosition?: Address<TAccountListingVouchPosition>;
-  vouch?: Address<TAccountVouch>;
   authorProfile: Address<TAccountAuthorProfile>;
+  vouch?: Address<TAccountVouch>;
   voucherProfile?: Address<TAccountVoucherProfile>;
   config?: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
-  rewardVaultAuthority?: Address<TAccountRewardVaultAuthority>;
-  rewardVault: Address<TAccountRewardVault>;
+  authorRewardVaultAuthority?: Address<TAccountAuthorRewardVaultAuthority>;
+  authorRewardVault: Address<TAccountAuthorRewardVault>;
   voucherUsdcAccount: Address<TAccountVoucherUsdcAccount>;
   voucher: TransactionSigner<TAccountVoucher>;
   tokenProgram?: Address<TAccountTokenProgram>;
 };
 
 export async function getClaimVoucherRevenueInstructionAsync<
-  TAccountSkillListing extends string,
-  TAccountListingVouchPosition extends string,
-  TAccountVouch extends string,
   TAccountAuthorProfile extends string,
+  TAccountVouch extends string,
   TAccountVoucherProfile extends string,
   TAccountConfig extends string,
   TAccountUsdcMint extends string,
-  TAccountRewardVaultAuthority extends string,
-  TAccountRewardVault extends string,
+  TAccountAuthorRewardVaultAuthority extends string,
+  TAccountAuthorRewardVault extends string,
   TAccountVoucherUsdcAccount extends string,
   TAccountVoucher extends string,
   TAccountTokenProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
   input: ClaimVoucherRevenueAsyncInput<
-    TAccountSkillListing,
-    TAccountListingVouchPosition,
-    TAccountVouch,
     TAccountAuthorProfile,
+    TAccountVouch,
     TAccountVoucherProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucherUsdcAccount,
     TAccountVoucher,
     TAccountTokenProgram
@@ -210,15 +194,13 @@ export async function getClaimVoucherRevenueInstructionAsync<
 ): Promise<
   ClaimVoucherRevenueInstruction<
     TProgramAddress,
-    TAccountSkillListing,
-    TAccountListingVouchPosition,
-    TAccountVouch,
     TAccountAuthorProfile,
+    TAccountVouch,
     TAccountVoucherProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucherUsdcAccount,
     TAccountVoucher,
     TAccountTokenProgram
@@ -229,21 +211,19 @@ export async function getClaimVoucherRevenueInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    skillListing: { value: input.skillListing ?? null, isWritable: true },
-    listingVouchPosition: {
-      value: input.listingVouchPosition ?? null,
-      isWritable: true,
-    },
-    vouch: { value: input.vouch ?? null, isWritable: false },
-    authorProfile: { value: input.authorProfile ?? null, isWritable: false },
+    authorProfile: { value: input.authorProfile ?? null, isWritable: true },
+    vouch: { value: input.vouch ?? null, isWritable: true },
     voucherProfile: { value: input.voucherProfile ?? null, isWritable: false },
     config: { value: input.config ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    rewardVaultAuthority: {
-      value: input.rewardVaultAuthority ?? null,
+    authorRewardVaultAuthority: {
+      value: input.authorRewardVaultAuthority ?? null,
       isWritable: false,
     },
-    rewardVault: { value: input.rewardVault ?? null, isWritable: true },
+    authorRewardVault: {
+      value: input.authorRewardVault ?? null,
+      isWritable: true,
+    },
     voucherUsdcAccount: {
       value: input.voucherUsdcAccount ?? null,
       isWritable: true,
@@ -277,28 +257,17 @@ export async function getClaimVoucherRevenueInstructionAsync<
       ),
     });
   }
-  if (!accounts.listingVouchPosition.value) {
-    accounts.listingVouchPosition.value = await findListingVouchPositionPda({
-      skillListing: getAddressFromResolvedInstructionAccount(
-        "skillListing",
-        accounts.skillListing.value,
-      ),
-      vouch: getAddressFromResolvedInstructionAccount(
-        "vouch",
-        accounts.vouch.value,
-      ),
-    });
-  }
   if (!accounts.config.value) {
     accounts.config.value = await findConfigPda();
   }
-  if (!accounts.rewardVaultAuthority.value) {
-    accounts.rewardVaultAuthority.value = await findRewardVaultAuthorityPda({
-      skillListing: getAddressFromResolvedInstructionAccount(
-        "skillListing",
-        accounts.skillListing.value,
-      ),
-    });
+  if (!accounts.authorRewardVaultAuthority.value) {
+    accounts.authorRewardVaultAuthority.value =
+      await findAuthorRewardVaultAuthorityPda({
+        authorProfile: getAddressFromResolvedInstructionAccount(
+          "authorProfile",
+          accounts.authorProfile.value,
+        ),
+      });
   }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -308,15 +277,16 @@ export async function getClaimVoucherRevenueInstructionAsync<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta("skillListing", accounts.skillListing),
-      getAccountMeta("listingVouchPosition", accounts.listingVouchPosition),
-      getAccountMeta("vouch", accounts.vouch),
       getAccountMeta("authorProfile", accounts.authorProfile),
+      getAccountMeta("vouch", accounts.vouch),
       getAccountMeta("voucherProfile", accounts.voucherProfile),
       getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("rewardVaultAuthority", accounts.rewardVaultAuthority),
-      getAccountMeta("rewardVault", accounts.rewardVault),
+      getAccountMeta(
+        "authorRewardVaultAuthority",
+        accounts.authorRewardVaultAuthority,
+      ),
+      getAccountMeta("authorRewardVault", accounts.authorRewardVault),
       getAccountMeta("voucherUsdcAccount", accounts.voucherUsdcAccount),
       getAccountMeta("voucher", accounts.voucher),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -325,15 +295,13 @@ export async function getClaimVoucherRevenueInstructionAsync<
     programAddress,
   } as ClaimVoucherRevenueInstruction<
     TProgramAddress,
-    TAccountSkillListing,
-    TAccountListingVouchPosition,
-    TAccountVouch,
     TAccountAuthorProfile,
+    TAccountVouch,
     TAccountVoucherProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucherUsdcAccount,
     TAccountVoucher,
     TAccountTokenProgram
@@ -341,58 +309,50 @@ export async function getClaimVoucherRevenueInstructionAsync<
 }
 
 export type ClaimVoucherRevenueInput<
-  TAccountSkillListing extends string = string,
-  TAccountListingVouchPosition extends string = string,
-  TAccountVouch extends string = string,
   TAccountAuthorProfile extends string = string,
+  TAccountVouch extends string = string,
   TAccountVoucherProfile extends string = string,
   TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountRewardVaultAuthority extends string = string,
-  TAccountRewardVault extends string = string,
+  TAccountAuthorRewardVaultAuthority extends string = string,
+  TAccountAuthorRewardVault extends string = string,
   TAccountVoucherUsdcAccount extends string = string,
   TAccountVoucher extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
-  skillListing: Address<TAccountSkillListing>;
-  listingVouchPosition: Address<TAccountListingVouchPosition>;
-  vouch: Address<TAccountVouch>;
   authorProfile: Address<TAccountAuthorProfile>;
+  vouch: Address<TAccountVouch>;
   voucherProfile: Address<TAccountVoucherProfile>;
   config: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
-  rewardVaultAuthority: Address<TAccountRewardVaultAuthority>;
-  rewardVault: Address<TAccountRewardVault>;
+  authorRewardVaultAuthority: Address<TAccountAuthorRewardVaultAuthority>;
+  authorRewardVault: Address<TAccountAuthorRewardVault>;
   voucherUsdcAccount: Address<TAccountVoucherUsdcAccount>;
   voucher: TransactionSigner<TAccountVoucher>;
   tokenProgram?: Address<TAccountTokenProgram>;
 };
 
 export function getClaimVoucherRevenueInstruction<
-  TAccountSkillListing extends string,
-  TAccountListingVouchPosition extends string,
-  TAccountVouch extends string,
   TAccountAuthorProfile extends string,
+  TAccountVouch extends string,
   TAccountVoucherProfile extends string,
   TAccountConfig extends string,
   TAccountUsdcMint extends string,
-  TAccountRewardVaultAuthority extends string,
-  TAccountRewardVault extends string,
+  TAccountAuthorRewardVaultAuthority extends string,
+  TAccountAuthorRewardVault extends string,
   TAccountVoucherUsdcAccount extends string,
   TAccountVoucher extends string,
   TAccountTokenProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
   input: ClaimVoucherRevenueInput<
-    TAccountSkillListing,
-    TAccountListingVouchPosition,
-    TAccountVouch,
     TAccountAuthorProfile,
+    TAccountVouch,
     TAccountVoucherProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucherUsdcAccount,
     TAccountVoucher,
     TAccountTokenProgram
@@ -400,15 +360,13 @@ export function getClaimVoucherRevenueInstruction<
   config?: { programAddress?: TProgramAddress },
 ): ClaimVoucherRevenueInstruction<
   TProgramAddress,
-  TAccountSkillListing,
-  TAccountListingVouchPosition,
-  TAccountVouch,
   TAccountAuthorProfile,
+  TAccountVouch,
   TAccountVoucherProfile,
   TAccountConfig,
   TAccountUsdcMint,
-  TAccountRewardVaultAuthority,
-  TAccountRewardVault,
+  TAccountAuthorRewardVaultAuthority,
+  TAccountAuthorRewardVault,
   TAccountVoucherUsdcAccount,
   TAccountVoucher,
   TAccountTokenProgram
@@ -418,21 +376,19 @@ export function getClaimVoucherRevenueInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    skillListing: { value: input.skillListing ?? null, isWritable: true },
-    listingVouchPosition: {
-      value: input.listingVouchPosition ?? null,
-      isWritable: true,
-    },
-    vouch: { value: input.vouch ?? null, isWritable: false },
-    authorProfile: { value: input.authorProfile ?? null, isWritable: false },
+    authorProfile: { value: input.authorProfile ?? null, isWritable: true },
+    vouch: { value: input.vouch ?? null, isWritable: true },
     voucherProfile: { value: input.voucherProfile ?? null, isWritable: false },
     config: { value: input.config ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    rewardVaultAuthority: {
-      value: input.rewardVaultAuthority ?? null,
+    authorRewardVaultAuthority: {
+      value: input.authorRewardVaultAuthority ?? null,
       isWritable: false,
     },
-    rewardVault: { value: input.rewardVault ?? null, isWritable: true },
+    authorRewardVault: {
+      value: input.authorRewardVault ?? null,
+      isWritable: true,
+    },
     voucherUsdcAccount: {
       value: input.voucherUsdcAccount ?? null,
       isWritable: true,
@@ -454,15 +410,16 @@ export function getClaimVoucherRevenueInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta("skillListing", accounts.skillListing),
-      getAccountMeta("listingVouchPosition", accounts.listingVouchPosition),
-      getAccountMeta("vouch", accounts.vouch),
       getAccountMeta("authorProfile", accounts.authorProfile),
+      getAccountMeta("vouch", accounts.vouch),
       getAccountMeta("voucherProfile", accounts.voucherProfile),
       getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("rewardVaultAuthority", accounts.rewardVaultAuthority),
-      getAccountMeta("rewardVault", accounts.rewardVault),
+      getAccountMeta(
+        "authorRewardVaultAuthority",
+        accounts.authorRewardVaultAuthority,
+      ),
+      getAccountMeta("authorRewardVault", accounts.authorRewardVault),
       getAccountMeta("voucherUsdcAccount", accounts.voucherUsdcAccount),
       getAccountMeta("voucher", accounts.voucher),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -471,15 +428,13 @@ export function getClaimVoucherRevenueInstruction<
     programAddress,
   } as ClaimVoucherRevenueInstruction<
     TProgramAddress,
-    TAccountSkillListing,
-    TAccountListingVouchPosition,
-    TAccountVouch,
     TAccountAuthorProfile,
+    TAccountVouch,
     TAccountVoucherProfile,
     TAccountConfig,
     TAccountUsdcMint,
-    TAccountRewardVaultAuthority,
-    TAccountRewardVault,
+    TAccountAuthorRewardVaultAuthority,
+    TAccountAuthorRewardVault,
     TAccountVoucherUsdcAccount,
     TAccountVoucher,
     TAccountTokenProgram
@@ -492,18 +447,16 @@ export type ParsedClaimVoucherRevenueInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    skillListing: TAccountMetas[0];
-    listingVouchPosition: TAccountMetas[1];
-    vouch: TAccountMetas[2];
-    authorProfile: TAccountMetas[3];
-    voucherProfile: TAccountMetas[4];
-    config: TAccountMetas[5];
-    usdcMint: TAccountMetas[6];
-    rewardVaultAuthority: TAccountMetas[7];
-    rewardVault: TAccountMetas[8];
-    voucherUsdcAccount: TAccountMetas[9];
-    voucher: TAccountMetas[10];
-    tokenProgram: TAccountMetas[11];
+    authorProfile: TAccountMetas[0];
+    vouch: TAccountMetas[1];
+    voucherProfile: TAccountMetas[2];
+    config: TAccountMetas[3];
+    usdcMint: TAccountMetas[4];
+    authorRewardVaultAuthority: TAccountMetas[5];
+    authorRewardVault: TAccountMetas[6];
+    voucherUsdcAccount: TAccountMetas[7];
+    voucher: TAccountMetas[8];
+    tokenProgram: TAccountMetas[9];
   };
   data: ClaimVoucherRevenueInstructionData;
 };
@@ -516,12 +469,12 @@ export function parseClaimVoucherRevenueInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedClaimVoucherRevenueInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -534,15 +487,13 @@ export function parseClaimVoucherRevenueInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      skillListing: getNextAccount(),
-      listingVouchPosition: getNextAccount(),
-      vouch: getNextAccount(),
       authorProfile: getNextAccount(),
+      vouch: getNextAccount(),
       voucherProfile: getNextAccount(),
       config: getNextAccount(),
       usdcMint: getNextAccount(),
-      rewardVaultAuthority: getNextAccount(),
-      rewardVault: getNextAccount(),
+      authorRewardVaultAuthority: getNextAccount(),
+      authorRewardVault: getNextAccount(),
       voucherUsdcAccount: getNextAccount(),
       voucher: getNextAccount(),
       tokenProgram: getNextAccount(),

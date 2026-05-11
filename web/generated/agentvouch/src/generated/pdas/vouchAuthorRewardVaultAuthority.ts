@@ -14,12 +14,12 @@ import {
   type ProgramDerivedAddress,
 } from "@solana/kit";
 
-export type RewardVaultSeeds = {
-  skillListing: Address;
+export type VouchAuthorRewardVaultAuthoritySeeds = {
+  voucheeProfile: Address;
 };
 
-export async function findRewardVaultPda(
-  seeds: RewardVaultSeeds,
+export async function findVouchAuthorRewardVaultAuthorityPda(
+  seeds: VouchAuthorRewardVaultAuthoritySeeds,
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
@@ -30,11 +30,11 @@ export async function findRewardVaultPda(
     seeds: [
       getBytesEncoder().encode(
         new Uint8Array([
-          108, 105, 115, 116, 105, 110, 103, 95, 114, 101, 119, 97, 114, 100,
-          95, 118, 97, 117, 108, 116,
+          97, 117, 116, 104, 111, 114, 95, 114, 101, 119, 97, 114, 100, 95, 118,
+          97, 117, 108, 116, 95, 97, 117, 116, 104, 111, 114, 105, 116, 121,
         ]),
       ),
-      getAddressEncoder().encode(seeds.skillListing),
+      getAddressEncoder().encode(seeds.voucheeProfile),
     ],
   });
 }

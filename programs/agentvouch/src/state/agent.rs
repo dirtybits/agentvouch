@@ -13,8 +13,13 @@ pub struct AgentProfile {
     pub open_author_disputes: u32,          // Open author disputes that freeze reachable funds
     pub upheld_author_disputes: u32,
     pub dismissed_author_disputes: u32,
+    pub reward_vault: Pubkey,
+    pub reward_vault_rent_payer: Pubkey,
+    pub reward_index_usdc_micros_x1e12: u128,
+    pub unclaimed_voucher_revenue_usdc_micros: u64,
     pub registered_at: i64, // Timestamp
     pub bump: u8,           // PDA bump
+    pub reward_vault_bump: u8,
 }
 
 impl AgentProfile {
@@ -32,8 +37,13 @@ impl AgentProfile {
         4 + // open_author_disputes
         4 + // upheld_author_disputes
         4 + // dismissed_author_disputes
+        32 + // reward_vault
+        32 + // reward_vault_rent_payer
+        16 + // reward_index_usdc_micros_x1e12
+        8 + // unclaimed_voucher_revenue_usdc_micros
         8 + // registered_at
-        1; // bump
+        1 + // bump
+        1; // reward_vault_bump
 
     pub fn compute_reputation(&self, config: &super::ReputationConfig) -> u64 {
         let risk_usdc_micros = self
