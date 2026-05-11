@@ -21,6 +21,7 @@
     "lint": "npm run format && npm run lint --workspaces --if-present",
     "lint:check": "npm run format:check && npm run lint --workspaces --if-present",
     "migrate:config": "ts-node scripts/migrate-config.ts",
+    "migrate:skill-listings": "ts-node scripts/migrate-skill-listings-m13.ts",
     "migrate:agents": "ts-node scripts/migrate-agent-profiles.ts",
     "postinstall": "npm run build:cli",
     "repair:registered-at": "ts-node scripts/repair-agent-registered-at.ts",

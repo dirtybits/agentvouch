@@ -39,6 +39,10 @@ pub mod agentvouch {
         instructions::migrate_config_m13::handler(ctx)
     }
 
+    pub fn migrate_skill_listing_m13(ctx: Context<MigrateSkillListingM13>) -> Result<()> {
+        instructions::migrate_skill_listing_m13::handler(ctx)
+    }
+
     pub fn register_agent(ctx: Context<RegisterAgent>, metadata_uri: String) -> Result<()> {
         instructions::register_agent::handler(ctx, metadata_uri)
     }
