@@ -10,6 +10,9 @@ vi.mock("@solana/kit", () => ({
     encode: (value: string) => new TextEncoder().encode(value),
   }),
   getProgramDerivedAddress: async () => ["PurchasePDA", 255],
+  getUtf8Encoder: () => ({
+    encode: (value: string) => new TextEncoder().encode(value),
+  }),
 }));
 
 const mockFetchMaybePurchase = vi.fn();
@@ -21,8 +24,11 @@ vi.mock("../../generated/agentvouch/src/generated", () => ({
 }));
 
 vi.mock("../../generated/agentvouch/src/generated/programs", () => ({
-  AGENTVOUCH_PROGRAM_ADDRESS:
-    "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+  AGENTVOUCH_PROGRAM_ADDRESS: "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+}));
+
+vi.mock("../../generated/agentvouch/src/generated/pdas", () => ({
+  findPurchasePda: vi.fn().mockResolvedValue(["PurchasePDA", 255]),
 }));
 
 const mockRecordReceipt = vi.fn();
@@ -85,6 +91,8 @@ describe("verifyAndRecordDirectPurchase", () => {
         author: "Author",
         priceUsdcMicros: 1000000n,
         rewardVault: "RewardVault",
+        currentRevision: 0n,
+        currentAuthorProceedsVault: "AuthorProceedsVault",
       },
     });
     mockFetchMaybePurchase.mockResolvedValue({
@@ -92,6 +100,8 @@ describe("verifyAndRecordDirectPurchase", () => {
       data: {
         buyer: "Buyer",
         skillListing: "Listing",
+        listingRevision: 0n,
+        listingSettlement: "SettlementPDA",
         pricePaidUsdcMicros: 1000000n,
         usdcMint: "Mint",
       },
@@ -113,13 +123,18 @@ describe("verifyAndRecordDirectPurchase", () => {
         skillDbId: SKILL.id,
         buyerPubkey: "Buyer",
         paymentTxSignature: "txsig",
-        recipientAta: "RewardVault",
+        recipientAta: "AuthorProceedsVault",
         currencyMint: "Mint",
         amountMicros: "1000000",
         paymentFlow: "direct-purchase-skill",
         protocolVersion: "v0.2.0",
         onChainAddress: "Listing",
         purchasePda: "PurchasePDA",
+        listingRevision: "0",
+        settlementPda: "SettlementPDA",
+        authorProceedsVault: "AuthorProceedsVault",
+        refundStatus: "none",
+        legacyRefundEligible: false,
       })
     );
   });

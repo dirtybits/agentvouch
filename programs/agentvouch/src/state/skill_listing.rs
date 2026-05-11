@@ -13,14 +13,17 @@ pub enum SkillStatus {
 
 #[account]
 pub struct SkillListing {
-    pub author: Pubkey,           // Agent who published the skill
-    pub skill_uri: String,        // IPFS hash or Arweave URL
-    pub name: String,             // Skill name
-    pub description: String,      // Short description
-    pub price_usdc_micros: u64,   // Price in micro-USDC
+    pub author: Pubkey,         // Agent who published the skill
+    pub skill_uri: String,      // IPFS hash or Arweave URL
+    pub name: String,           // Skill name
+    pub description: String,    // Short description
+    pub price_usdc_micros: u64, // Price in micro-USDC
     pub reward_vault: Pubkey,
     pub reward_vault_rent_payer: Pubkey,
-    pub total_downloads: u64,     // Number of purchases
+    pub current_revision: u64,
+    pub current_settlement: Pubkey,
+    pub current_author_proceeds_vault: Pubkey,
+    pub total_downloads: u64, // Number of purchases
     pub total_revenue_usdc_micros: u64,
     pub total_author_revenue_usdc_micros: u64,
     pub total_voucher_revenue_usdc_micros: u64,
@@ -28,10 +31,10 @@ pub struct SkillListing {
     pub active_reward_position_count: u32,
     pub reward_index_usdc_micros_x1e12: u128,
     pub unclaimed_voucher_revenue_usdc_micros: u64,
-    pub created_at: i64,          // Unix timestamp
-    pub updated_at: i64,          // Last update timestamp
-    pub status: SkillStatus,      // Active, Suspended, or Removed
-    pub bump: u8,                 // PDA bump seed
+    pub created_at: i64,     // Unix timestamp
+    pub updated_at: i64,     // Last update timestamp
+    pub status: SkillStatus, // Active, Suspended, or Removed
+    pub bump: u8,            // PDA bump seed
     pub reward_vault_bump: u8,
 }
 
@@ -39,7 +42,7 @@ impl SkillListing {
     pub const MAX_NAME_LEN: usize = 64;
     pub const MAX_DESCRIPTION_LEN: usize = 256;
     pub const MAX_URI_LEN: usize = 256;
-    
+
     pub const SPACE: usize = 8 + // discriminator
         32 + // author
         (4 + Self::MAX_URI_LEN) + // skill_uri
@@ -48,6 +51,9 @@ impl SkillListing {
         8 + // price_usdc_micros
         32 + // reward_vault
         32 + // reward_vault_rent_payer
+        8 + // current_revision
+        32 + // current_settlement
+        32 + // current_author_proceeds_vault
         8 + // total_downloads
         8 + // total_revenue_usdc_micros
         8 + // total_author_revenue_usdc_micros
@@ -66,7 +72,10 @@ impl SkillListing {
         price_usdc_micros == 0
     }
 
-    pub fn is_supported_price(price_usdc_micros: u64, min_paid_listing_price_usdc_micros: u64) -> bool {
+    pub fn is_supported_price(
+        price_usdc_micros: u64,
+        min_paid_listing_price_usdc_micros: u64,
+    ) -> bool {
         Self::is_free_price(price_usdc_micros)
             || price_usdc_micros >= min_paid_listing_price_usdc_micros
     }

@@ -159,9 +159,19 @@ async function main() {
   const repoSkill =
     list.skills.find((skill) => skill.source !== "chain") ?? list.skills[0];
   assert(repoSkill?.id, "Could not find a skill id for smoke checks.");
-  const installSkill = list.skills.find(
-    (skill) => skill.source !== "chain" && isFreeSkill(skill)
-  );
+  let installSkill = null;
+  for (const candidate of list.skills.filter(
+    (skill) => skill.source !== "chain"
+  )) {
+    const candidateDetail = await fetchJson(
+      `${baseUrl}/api/skills/${candidate.id}`,
+      `install candidate ${candidate.id}`
+    );
+    if (isFreeSkill(candidateDetail) && !candidateDetail.on_chain_address) {
+      installSkill = candidateDetail;
+      break;
+    }
+  }
   assert(
     installSkill?.id,
     "Could not find a free repo skill for install dry-run."

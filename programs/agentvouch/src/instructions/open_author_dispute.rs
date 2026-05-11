@@ -4,7 +4,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 use crate::events::AuthorDisputeOpened as AuthorDisputeOpenedEvent;
 use crate::state::{
     AgentProfile, AuthorDispute, AuthorDisputeLiabilityScope, AuthorDisputeReason,
-    AuthorDisputeStatus, Purchase, ReputationConfig, SkillListing,
+    AuthorDisputeStatus, ListingSettlement, Purchase, ReputationConfig, SkillListing,
 };
 
 #[derive(Accounts)]
@@ -32,6 +32,9 @@ pub struct OpenAuthorDispute<'info> {
     pub skill_listing: Box<Account<'info, SkillListing>>,
 
     pub purchase: Option<Box<Account<'info, Purchase>>>,
+
+    #[account(mut)]
+    pub listing_settlement: Option<Box<Account<'info, ListingSettlement>>>,
 
     #[account(address = config.usdc_mint @ ErrorCode::InvalidUsdcMint)]
     pub usdc_mint: Box<Account<'info, Mint>>,
@@ -77,7 +80,7 @@ pub struct OpenAuthorDispute<'info> {
 }
 
 pub fn handler<'info>(
-    ctx: Context<'_, '_, 'info, 'info, OpenAuthorDispute<'info>>,
+    mut ctx: Context<'_, '_, 'info, 'info, OpenAuthorDispute<'info>>,
     dispute_id: u64,
     reason: AuthorDisputeReason,
     evidence_uri: String,
@@ -98,6 +101,10 @@ pub fn handler<'info>(
         require!(
             purchase.skill_listing == ctx.accounts.skill_listing.key(),
             ErrorCode::PurchaseSkillMismatch
+        );
+        require!(
+            purchase.listing_revision == ctx.accounts.skill_listing.current_revision,
+            ErrorCode::PurchaseRevisionMismatch
         );
     }
 
@@ -123,6 +130,27 @@ pub fn handler<'info>(
     } else {
         AuthorDisputeLiabilityScope::AuthorBondThenVouchers
     };
+    if liability_scope == AuthorDisputeLiabilityScope::AuthorBondThenVouchers {
+        let settlement = ctx
+            .accounts
+            .listing_settlement
+            .as_deref_mut()
+            .ok_or(ErrorCode::MissingListingSettlement)?;
+        require!(
+            settlement.skill_listing == skill_listing,
+            ErrorCode::ListingSettlementMismatch
+        );
+        require!(
+            settlement.revision == ctx.accounts.skill_listing.current_revision,
+            ErrorCode::ListingSettlementMismatch
+        );
+        require!(
+            settlement.locked_by_dispute.is_none(),
+            ErrorCode::ListingSettlementAlreadyLocked
+        );
+        settlement.locked_by_dispute = Some(ctx.accounts.author_dispute.key());
+        settlement.updated_at = clock.unix_timestamp;
+    }
     let purchase = ctx.accounts.purchase.as_ref().map(|account| account.key());
 
     let author_dispute = &mut ctx.accounts.author_dispute;
@@ -202,6 +230,14 @@ pub enum ErrorCode {
     SkillListingAuthorMismatch,
     #[msg("Provided purchase does not match the disputed skill listing")]
     PurchaseSkillMismatch,
+    #[msg("Provided purchase does not match the disputed listing revision")]
+    PurchaseRevisionMismatch,
+    #[msg("Paid disputes require the listing settlement account")]
+    MissingListingSettlement,
+    #[msg("Listing settlement does not match the disputed listing")]
+    ListingSettlementMismatch,
+    #[msg("Listing settlement is already locked by a dispute")]
+    ListingSettlementAlreadyLocked,
     #[msg("Open author dispute count overflowed")]
     OpenAuthorDisputeCountOverflow,
     #[msg("USDC mint does not match config")]

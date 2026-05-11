@@ -12,13 +12,15 @@ vi.mock("@solana/kit", () => ({
 }));
 
 const mockFetchMaybePurchase = vi.fn();
+const mockFetchMaybeSkillListing = vi.fn();
 vi.mock("../../generated/agentvouch/src/generated", () => ({
   fetchMaybePurchase: (...args: unknown[]) => mockFetchMaybePurchase(...args),
+  fetchMaybeSkillListing: (...args: unknown[]) =>
+    mockFetchMaybeSkillListing(...args),
 }));
 
 vi.mock("../../generated/agentvouch/src/generated/programs", () => ({
-  AGENTVOUCH_PROGRAM_ADDRESS:
-    "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
+  AGENTVOUCH_PROGRAM_ADDRESS: "AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz",
 }));
 
 import {
@@ -170,6 +172,10 @@ describe("paymentRefFromProof", () => {
 describe("verifyPaymentProof", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetchMaybeSkillListing.mockResolvedValue({
+      exists: true,
+      data: { currentRevision: 0n },
+    });
   });
 
   it("rejects unsupported scheme", async () => {

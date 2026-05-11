@@ -2,17 +2,17 @@ use anchor_lang::prelude::*;
 
 #[account]
 pub struct Vouch {
-    pub voucher: Pubkey,         // Who is vouching
-    pub vouchee: Pubkey,         // Who is being vouched for
-    pub stake_usdc_micros: u64,  // USDC stake backing the vouchee
+    pub voucher: Pubkey,        // Who is vouching
+    pub vouchee: Pubkey,        // Who is being vouched for
+    pub stake_usdc_micros: u64, // USDC stake backing the vouchee
     pub vault: Pubkey,
     pub rent_payer: Pubkey,
-    pub created_at: i64,         // Timestamp
-    pub status: VouchStatus,     // Active, Revoked, Slashed
+    pub created_at: i64,                     // Timestamp
+    pub status: VouchStatus,                 // Active, Revoked, Slashed
     pub cumulative_revenue_usdc_micros: u64, // Total marketplace revenue claimed
     pub linked_listing_count: u32,
-    pub last_payout_at: i64,     // Last time voucher claimed revenue
-    pub bump: u8,                // PDA bump
+    pub last_payout_at: i64, // Last time voucher claimed revenue
+    pub bump: u8,            // PDA bump
     pub vault_bump: u8,
 }
 

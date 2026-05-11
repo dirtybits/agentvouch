@@ -67,7 +67,11 @@ pub fn handler(ctx: Context<WithdrawAuthorBond>, amount_usdc_micros: u64) -> Res
 
     if ctx.accounts.author_profile.active_free_skill_listings > 0 {
         require!(
-            remaining_bond >= ctx.accounts.config.min_author_bond_for_free_listing_usdc_micros,
+            remaining_bond
+                >= ctx
+                    .accounts
+                    .config
+                    .min_author_bond_for_free_listing_usdc_micros,
             ErrorCode::FreeListingsRequireBondFloor
         );
     }

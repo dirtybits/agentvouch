@@ -4,7 +4,10 @@ import { resolveAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
-import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import {
+  getUsdcPurchaseEntitlementSummary,
+  hasUsdcPurchaseEntitlement,
+} from "@/lib/usdcPurchases";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import {
   getConfiguredSolanaChainContext,
@@ -183,6 +186,7 @@ export async function GET(
           author_trust_summary,
           author_identity,
           buyerHasPurchased,
+          buyerPurchaseSummary: null,
           content_verification: null,
           ...preflight,
         },
@@ -210,7 +214,10 @@ export async function GET(
     const skill = rows[0];
     skill.chain_context = normalizePersistedChainContext(skill.chain_context);
 
-    if (skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)) {
+    if (
+      skill.on_chain_address &&
+      !normalizeUsdcMicros(skill.price_usdc_micros)
+    ) {
       const listing = await getOnChainUsdcPrice(skill.on_chain_address);
       if (listing) {
         skill.price_usdc_micros = listing.priceUsdcMicros;
@@ -289,15 +296,22 @@ export async function GET(
               () => false
             )
         : getSkillPaymentFlow({
-              legacySolLamports: skill.price_lamports,
-              allowLegacySol: true,
-            }) === "legacy-sol" && skill.on_chain_address
+            legacySolLamports: skill.price_lamports,
+            allowLegacySol: true,
+          }) === "legacy-sol" && skill.on_chain_address
         ? await hasOnChainPurchase(
             String(buyerAddress),
             String(skill.on_chain_address)
           ).catch(() => false)
         : false
       : false;
+    const buyerPurchaseSummary =
+      buyerAddress && buyerHasPurchased
+        ? await getUsdcPurchaseEntitlementSummary(
+            id,
+            String(buyerAddress)
+          ).catch(() => null)
+        : null;
     const author_trust_summary = author_trust
       ? buildAgentTrustSummary({
           walletPubkey: skill.author_pubkey,
@@ -322,6 +336,7 @@ export async function GET(
         author_trust_summary,
         author_identity,
         buyerHasPurchased,
+        buyerPurchaseSummary,
         content_verification,
         ...preflight,
       },

@@ -74,6 +74,9 @@ export type SkillListing = {
   priceUsdcMicros: bigint;
   rewardVault: Address;
   rewardVaultRentPayer: Address;
+  currentRevision: bigint;
+  currentSettlement: Address;
+  currentAuthorProceedsVault: Address;
   totalDownloads: bigint;
   totalRevenueUsdcMicros: bigint;
   totalAuthorRevenueUsdcMicros: bigint;
@@ -97,6 +100,9 @@ export type SkillListingArgs = {
   priceUsdcMicros: number | bigint;
   rewardVault: Address;
   rewardVaultRentPayer: Address;
+  currentRevision: number | bigint;
+  currentSettlement: Address;
+  currentAuthorProceedsVault: Address;
   totalDownloads: number | bigint;
   totalRevenueUsdcMicros: number | bigint;
   totalAuthorRevenueUsdcMicros: number | bigint;
@@ -124,6 +130,9 @@ export function getSkillListingEncoder(): Encoder<SkillListingArgs> {
       ["priceUsdcMicros", getU64Encoder()],
       ["rewardVault", getAddressEncoder()],
       ["rewardVaultRentPayer", getAddressEncoder()],
+      ["currentRevision", getU64Encoder()],
+      ["currentSettlement", getAddressEncoder()],
+      ["currentAuthorProceedsVault", getAddressEncoder()],
       ["totalDownloads", getU64Encoder()],
       ["totalRevenueUsdcMicros", getU64Encoder()],
       ["totalAuthorRevenueUsdcMicros", getU64Encoder()],
@@ -153,6 +162,9 @@ export function getSkillListingDecoder(): Decoder<SkillListing> {
     ["priceUsdcMicros", getU64Decoder()],
     ["rewardVault", getAddressDecoder()],
     ["rewardVaultRentPayer", getAddressDecoder()],
+    ["currentRevision", getU64Decoder()],
+    ["currentSettlement", getAddressDecoder()],
+    ["currentAuthorProceedsVault", getAddressDecoder()],
     ["totalDownloads", getU64Decoder()],
     ["totalRevenueUsdcMicros", getU64Decoder()],
     ["totalAuthorRevenueUsdcMicros", getU64Decoder()],

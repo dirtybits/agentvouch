@@ -3,8 +3,11 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { assert } from "chai";
 import {
   ONE_USDC,
+  authorBondPda,
   assertTokenDelta,
+  claimPurchaseRefund,
   claimVoucherRevenue,
+  createRefundPool,
   createActor,
   createSkillListing,
   createVouch,
@@ -12,12 +15,15 @@ import {
   expectFailure,
   getTestContext,
   linkVouchToListing,
+  openAuthorDispute,
   purchasePda,
   purchaseSkill,
   registerAgent,
+  resolveAuthorDispute,
   setupPaidListingWithVouch,
   tokenAmount,
   u64,
+  withdrawAuthorProceeds,
   unlinkVouchFromListing,
   uniqueSkillId,
 } from "./helpers/agentvouchUsdc";
@@ -31,6 +37,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     );
 
     const authorBefore = await tokenAmount(ctx, author.usdc);
+    const proceedsBefore = await tokenAmount(ctx, listing.proceedsVault);
     const rewardVaultBefore = await tokenAmount(ctx, listing.vault);
     const purchase = await purchaseSkill(
       ctx,
@@ -41,7 +48,13 @@ describe("agentvouch usdc marketplace rewards", () => {
       "purchase_skill split accounting"
     );
 
-    await assertTokenDelta(ctx, author.usdc, authorBefore, 3 * ONE_USDC);
+    await assertTokenDelta(ctx, author.usdc, authorBefore, 0);
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      3 * ONE_USDC
+    );
     await assertTokenDelta(ctx, listing.vault, rewardVaultBefore, 2 * ONE_USDC);
 
     const listingAccount = await ctx.program.account.skillListing.fetch(
@@ -49,9 +62,28 @@ describe("agentvouch usdc marketplace rewards", () => {
     );
     const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
     assert.equal(Number(listingAccount.totalRevenueUsdcMicros), 5 * ONE_USDC);
-    assert.equal(Number(listingAccount.totalAuthorRevenueUsdcMicros), 3 * ONE_USDC);
-    assert.equal(Number(listingAccount.totalVoucherRevenueUsdcMicros), 2 * ONE_USDC);
+    assert.equal(
+      Number(listingAccount.totalAuthorRevenueUsdcMicros),
+      3 * ONE_USDC
+    );
+    assert.equal(
+      Number(listingAccount.totalVoucherRevenueUsdcMicros),
+      2 * ONE_USDC
+    );
     assert.equal(Number(purchaseAccount.pricePaidUsdcMicros), 5 * ONE_USDC);
+    assert.equal(Number(purchaseAccount.listingRevision), 0);
+    assert.equal(
+      purchaseAccount.listingSettlement.toBase58(),
+      listing.settlement.toBase58()
+    );
+
+    await withdrawAuthorProceeds(
+      ctx,
+      author,
+      listing.skillListing,
+      3 * ONE_USDC
+    );
+    await assertTokenDelta(ctx, author.usdc, authorBefore, 3 * ONE_USDC);
   });
 
   it("accrues rewards on unlink and allows the voucher to claim later", async () => {
@@ -59,7 +91,13 @@ describe("agentvouch usdc marketplace rewards", () => {
     const { author, voucher, buyer, vouch, listing, position } =
       await setupPaidListingWithVouch(ctx);
 
-    await purchaseSkill(ctx, buyer, author, listing.skillListing, listing.vault);
+    await purchaseSkill(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      listing.vault
+    );
     await unlinkVouchFromListing(
       ctx,
       voucher,
@@ -95,12 +133,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     await depositAuthorBond(ctx, author, ONE_USDC);
 
     await expectFailure(
-      createSkillListing(
-        ctx,
-        author,
-        uniqueSkillId("floor"),
-        1
-      ),
+      createSkillListing(ctx, author, uniqueSkillId("floor"), 1),
       "Price must be zero or at least the minimum paid listing price"
     );
 
@@ -120,7 +153,11 @@ describe("agentvouch usdc marketplace rewards", () => {
     const ctx = await getTestContext();
     const { author, voucher, buyer, vouch, listing, position } =
       await setupPaidListingWithVouch(ctx);
-    const purchase = purchasePda(ctx.program, buyer.keypair.publicKey, listing.skillListing);
+    const purchase = purchasePda(
+      ctx.program,
+      buyer.keypair.publicKey,
+      listing.skillListing
+    );
 
     await expectFailure(
       ctx.program.methods
@@ -133,7 +170,9 @@ describe("agentvouch usdc marketplace rewards", () => {
           config: ctx.config,
           usdcMint: ctx.usdcMint,
           buyerUsdcAccount: buyer.usdc,
-          authorUsdcAccount: buyer.usdc,
+          listingSettlement: listing.settlement,
+          authorProceedsVaultAuthority: listing.proceedsVaultAuthority,
+          authorProceedsVault: buyer.usdc,
           rewardVault: listing.vault,
           buyer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
@@ -155,7 +194,9 @@ describe("agentvouch usdc marketplace rewards", () => {
           config: ctx.config,
           usdcMint: ctx.usdcMint,
           buyerUsdcAccount: buyer.usdc,
-          authorUsdcAccount: author.usdc,
+          listingSettlement: listing.settlement,
+          authorProceedsVaultAuthority: listing.proceedsVaultAuthority,
+          authorProceedsVault: listing.proceedsVault,
           rewardVault: ctx.protocolTreasuryVault,
           buyer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
@@ -178,6 +219,72 @@ describe("agentvouch usdc marketplace rewards", () => {
       ),
       "No unclaimed revenue available"
     );
+  });
+
+  it("locks settlement during paid disputes and supports bounded buyer refund claims", async () => {
+    const ctx = await getTestContext();
+    const { author, buyer, challenger, listing, bond } = {
+      ...(await setupPaidListingWithVouch(ctx, 5 * ONE_USDC)),
+      challenger: await createActor(ctx),
+    };
+    const purchase = await purchaseSkill(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      listing.vault
+    );
+    const disputeId = u64(Date.now() % 1_000_000);
+    const dispute = await openAuthorDispute(
+      ctx,
+      challenger,
+      author,
+      listing.skillListing,
+      purchase,
+      disputeId
+    );
+
+    await expectFailure(
+      withdrawAuthorProceeds(ctx, author, listing.skillListing, ONE_USDC),
+      "Author proceeds are locked by an open dispute"
+    );
+
+    await resolveAuthorDispute(
+      ctx,
+      author,
+      challenger,
+      disputeId,
+      dispute,
+      { upheld: {} },
+      [
+        {
+          pubkey: authorBondPda(ctx.program, author.keypair.publicKey),
+          isWritable: true,
+          isSigner: false,
+        },
+        {
+          pubkey: bond.vault,
+          isWritable: true,
+          isSigner: false,
+        },
+      ]
+    );
+
+    const buyerBefore = await tokenAmount(ctx, buyer.usdc);
+    const { refundPool } = await createRefundPool(
+      ctx,
+      author,
+      challenger,
+      dispute,
+      2 * ONE_USDC
+    );
+    await claimPurchaseRefund(ctx, buyer, refundPool, purchase);
+    await assertTokenDelta(ctx, buyer.usdc, buyerBefore, 2 * ONE_USDC);
+
+    await expectFailure(claimPurchaseRefund(ctx, buyer, refundPool, purchase), [
+      "already in use",
+      "already exists",
+    ]);
   });
 
   it("enforces the max active reward position cap", async () => {

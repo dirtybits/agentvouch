@@ -93,11 +93,7 @@ interface SkillDetail {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?:
-    | "free"
-    | "legacy-sol"
-    | "x402-usdc"
-    | "direct-purchase-skill";
+  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
   contact: string | null;
   created_at: string;
   updated_at: string;
@@ -115,6 +111,13 @@ interface SkillDetail {
   purchasePreflightMessage?: string | null;
   priceDisclosure?: string | null;
   buyerHasPurchased?: boolean;
+  buyerPurchaseSummary?: {
+    purchasePda: string | null;
+    listingRevision: string | null;
+    settlementPda: string | null;
+    refundStatus: string;
+    legacyRefundEligible: boolean;
+  } | null;
 }
 
 function shortAddr(addr: string): string {
@@ -259,6 +262,18 @@ export default function SkillDetailPage({
   const [editUri, setEditUri] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateResult, setUpdateResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [settlementSummary, setSettlementSummary] = useState<{
+    pda: string;
+    withdrawableUsdcMicros: bigint;
+    withdrawnUsdcMicros: bigint;
+    refundedUsdcMicros: bigint;
+    locked: boolean;
+  } | null>(null);
+  const [withdrawingProceeds, setWithdrawingProceeds] = useState(false);
+  const [withdrawResult, setWithdrawResult] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
@@ -470,9 +485,9 @@ export default function SkillDetailPage({
             }),
           });
           if (!verifyRes.ok) {
-            const verifyBody = (await verifyRes.json().catch(() => null)) as
-              | { error?: string }
-              | null;
+            const verifyBody = (await verifyRes.json().catch(() => null)) as {
+              error?: string;
+            } | null;
             throw new Error(
               verifyBody?.error ||
                 "Purchase confirmed, but entitlement verification failed"
@@ -495,9 +510,10 @@ export default function SkillDetailPage({
           },
         });
         if (!rawRes.ok) {
-          const rawBody = (await rawRes.json().catch(() => null)) as
-            | { error?: string; message?: string }
-            | null;
+          const rawBody = (await rawRes.json().catch(() => null)) as {
+            error?: string;
+            message?: string;
+          } | null;
           throw new Error(
             rawBody?.error ||
               rawBody?.message ||
@@ -709,7 +725,9 @@ export default function SkillDetailPage({
     try {
       const timestamp = Date.now();
       const message = buildSignMessage("publish-skill", timestamp);
-      const signatureBytes = await signMessage(new TextEncoder().encode(message));
+      const signatureBytes = await signMessage(
+        new TextEncoder().encode(message)
+      );
       const signature = encodeBase64(signatureBytes);
       const response = await fetch(`/api/skills/${skill.id}/versions`, {
         method: "POST",
@@ -778,10 +796,58 @@ export default function SkillDetailPage({
   ]);
 
   const isChainOnly = skill?.source === "chain";
-  const isAuthor = !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
+  const isAuthor =
+    !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
   const CANONICAL_ORIGIN =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://agentvouch.xyz";
   const paidSkillDocsHref = "/docs#paid-skill-download";
+
+  const refreshSettlementSummary = useCallback(async () => {
+    if (!skill?.on_chain_address || !isAuthor) {
+      setSettlementSummary(null);
+      return;
+    }
+    const settlement = await oracle
+      .getListingSettlement(address(skill.on_chain_address))
+      .catch(() => null);
+    if (!settlement) {
+      setSettlementSummary(null);
+      return;
+    }
+    setSettlementSummary({
+      pda: String(settlement.publicKey),
+      withdrawableUsdcMicros:
+        settlement.account.withdrawableAuthorProceedsUsdcMicros,
+      withdrawnUsdcMicros: settlement.account.withdrawnAuthorProceedsUsdcMicros,
+      refundedUsdcMicros: settlement.account.refundedAuthorProceedsUsdcMicros,
+      locked: !!settlement.account.lockedByDispute,
+    });
+  }, [isAuthor, oracle, skill?.on_chain_address]);
+
+  useEffect(() => {
+    void refreshSettlementSummary();
+  }, [refreshSettlementSummary]);
+
+  const handleWithdrawAuthorProceeds = useCallback(async () => {
+    if (!skill?.on_chain_address) return;
+    setWithdrawingProceeds(true);
+    setWithdrawResult(null);
+    try {
+      await oracle.withdrawAuthorProceeds(address(skill.on_chain_address));
+      await refreshSettlementSummary();
+      setWithdrawResult({
+        success: true,
+        message: "Author proceeds withdrawn.",
+      });
+    } catch (error: unknown) {
+      setWithdrawResult({
+        success: false,
+        message: getErrorMessage(error, "Failed to withdraw author proceeds"),
+      });
+    } finally {
+      setWithdrawingProceeds(false);
+    }
+  }, [oracle, refreshSettlementSummary, skill?.on_chain_address]);
 
   if (loading) {
     return (
@@ -836,8 +902,10 @@ export default function SkillDetailPage({
   const isPaidSkill = hasUsdcPrimary;
   const browserCanUseUsdc =
     hasUsdcPrimary &&
-    (paymentFlow === "direct-purchase-skill" || walletSupportsBrowserX402(wallet));
-  const signedRedownloadAvailable = hasUsdcPrimary || Boolean(skill.on_chain_address);
+    (paymentFlow === "direct-purchase-skill" ||
+      walletSupportsBrowserX402(wallet));
+  const signedRedownloadAvailable =
+    hasUsdcPrimary || Boolean(skill.on_chain_address);
   const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
@@ -944,8 +1012,8 @@ export default function SkillDetailPage({
             Author Trust Signals
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Reputation, USDC backing, and author-wide dispute history
-            help show how much accountability sits behind this author.
+            Reputation, USDC backing, and author-wide dispute history help show
+            how much accountability sits behind this author.
           </p>
           <div className="flex items-center gap-3 mb-4">
             <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -1260,6 +1328,28 @@ export default function SkillDetailPage({
                 )}
               </div>
             )}
+            {buyerHasPurchased && skill.buyerPurchaseSummary && !isAuthor && (
+              <div className="mt-3 rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Refund status
+                </div>
+                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                  {skill.buyerPurchaseSummary.refundStatus === "refunded"
+                    ? "Refund claimed for this purchase."
+                    : skill.buyerPurchaseSummary.legacyRefundEligible
+                    ? "Legacy purchase metadata is present; refund eligibility depends on a mapped refund pool."
+                    : "No active refund claim is recorded for this purchase."}
+                </p>
+                {skill.buyerPurchaseSummary.purchasePda && (
+                  <p className="mt-1 font-mono text-[11px] text-gray-400">
+                    Purchase {shortAddr(skill.buyerPurchaseSummary.purchasePda)}
+                    {skill.buyerPurchaseSummary.listingRevision
+                      ? ` · revision ${skill.buyerPurchaseSummary.listingRevision}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+            )}
             {skill.priceDisclosure && hasLegacySolPrice && !hasUsdcPrimary && (
               <p className="text-xs mt-3 text-gray-500 dark:text-gray-400">
                 {skill.priceDisclosure}
@@ -1267,8 +1357,9 @@ export default function SkillDetailPage({
             )}
             {primaryUsdcPrice && (
               <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
-                USDC is the default app-layer price. The button above settles the
-                x402 flow directly and signed re-downloads stay wallet-bound.
+                USDC is the default app-layer price. The button above settles
+                the x402 flow directly and signed re-downloads stay
+                wallet-bound.
               </p>
             )}
             {skill.purchasePreflightMessage && hasUsdcPrimary && (
@@ -1410,7 +1501,9 @@ export default function SkillDetailPage({
               ) : (
                 <>
                   This is a paid skill. Requests return{" "}
-                  <code className="text-amber-600 dark:text-amber-400">402</code>{" "}
+                  <code className="text-amber-600 dark:text-amber-400">
+                    402
+                  </code>{" "}
                   until you purchase on-chain and provide a signed{" "}
                   <code className="text-amber-600 dark:text-amber-400">
                     X-AgentVouch-Auth
@@ -1671,6 +1764,71 @@ export default function SkillDetailPage({
                 {removeResult.message}
               </p>
             )}
+            {isAuthor && settlementSummary && (
+              <div className="mt-4 rounded-sm border border-green-200 dark:border-green-800/50 bg-white/70 dark:bg-gray-950/40 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                      Author proceeds escrow
+                    </p>
+                    <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                      Withdrawable{" "}
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {formatUsdcMicros(
+                          settlementSummary.withdrawableUsdcMicros.toString()
+                        ) ?? "0"}{" "}
+                        USDC
+                      </span>
+                      {settlementSummary.locked ? (
+                        <span className="ml-2 text-amber-600 dark:text-amber-400">
+                          Locked by dispute
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Withdrawn{" "}
+                      {formatUsdcMicros(
+                        settlementSummary.withdrawnUsdcMicros.toString()
+                      ) ?? "0"}{" "}
+                      USDC · Refunded{" "}
+                      {formatUsdcMicros(
+                        settlementSummary.refundedUsdcMicros.toString()
+                      ) ?? "0"}{" "}
+                      USDC
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleWithdrawAuthorProceeds}
+                    disabled={
+                      withdrawingProceeds ||
+                      settlementSummary.locked ||
+                      settlementSummary.withdrawableUsdcMicros <= 0n
+                    }
+                    className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium disabled:opacity-50`}
+                  >
+                    {withdrawingProceeds ? (
+                      <>
+                        <FiLoader className="w-3.5 h-3.5 animate-spin" />
+                        Withdrawing…
+                      </>
+                    ) : (
+                      "Withdraw Proceeds"
+                    )}
+                  </button>
+                </div>
+                {withdrawResult && (
+                  <p
+                    className={`text-xs mt-2 ${
+                      withdrawResult.success
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {withdrawResult.message}
+                  </p>
+                )}
+              </div>
+            )}
             {editing && (
               <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-800/50 space-y-3">
                 <div>
@@ -1853,8 +2011,8 @@ export default function SkillDetailPage({
                   Author Actions
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Publish a new repo version without changing the on-chain listing
-                  metadata.
+                  Publish a new repo version without changing the on-chain
+                  listing metadata.
                 </p>
               </div>
               <button

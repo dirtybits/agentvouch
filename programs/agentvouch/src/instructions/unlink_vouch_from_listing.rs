@@ -2,8 +2,8 @@ use anchor_lang::prelude::*;
 
 use crate::events::ListingVouchPositionUnlinked;
 use crate::state::{
-    AgentProfile, ListingVouchPosition, ListingVouchPositionStatus, ReputationConfig,
-    SkillListing, Vouch,
+    AgentProfile, ListingVouchPosition, ListingVouchPositionStatus, ReputationConfig, SkillListing,
+    Vouch,
 };
 
 #[derive(Accounts)]
@@ -88,7 +88,10 @@ pub fn handler(ctx: Context<UnlinkVouchFromListing>) -> Result<()> {
         skill_listing: listing.key(),
         vouch: ctx.accounts.vouch.key(),
         voucher: ctx.accounts.voucher_profile.key(),
-        pending_rewards_usdc_micros: ctx.accounts.listing_vouch_position.pending_rewards_usdc_micros,
+        pending_rewards_usdc_micros: ctx
+            .accounts
+            .listing_vouch_position
+            .pending_rewards_usdc_micros,
         timestamp: ctx.accounts.listing_vouch_position.updated_at,
     });
 

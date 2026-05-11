@@ -1,9 +1,15 @@
-import { createSolanaRpc, isAddress, type Address } from "@solana/kit";
+import {
+  createSolanaRpc,
+  getAddressEncoder,
+  getProgramDerivedAddress,
+  getUtf8Encoder,
+  isAddress,
+  type Address,
+} from "@solana/kit";
 import {
   fetchMaybePurchase,
   fetchMaybeSkillListing,
 } from "../generated/agentvouch/src/generated";
-import { findPurchasePda } from "../generated/agentvouch/src/generated/pdas/purchase";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -58,7 +64,7 @@ export type DirectPurchaseVerificationResult = {
 };
 
 function getAccountKeyValue(key: RpcAccountKey): string {
-  return typeof key === "string" ? key : (key.pubkey ?? "");
+  return typeof key === "string" ? key : key.pubkey ?? "";
 }
 
 function extractAccountKeys(transaction: RpcParsedTransaction): string[] {
@@ -135,6 +141,27 @@ function requireAddress(value: string, label: string): Address {
   return value as Address;
 }
 
+async function derivePurchasePda(
+  buyer: Address,
+  skillListing: Address,
+  revision: bigint
+): Promise<Address> {
+  const addressEncoder = getAddressEncoder();
+  const utf8Encoder = getUtf8Encoder();
+  const revisionBytes = new Uint8Array(8);
+  new DataView(revisionBytes.buffer).setBigUint64(0, revision, true);
+  const [purchasePda] = await getProgramDerivedAddress({
+    programAddress: getAgentVouchProgramId() as Address,
+    seeds: [
+      utf8Encoder.encode("purchase"),
+      addressEncoder.encode(buyer),
+      addressEncoder.encode(skillListing),
+      revisionBytes,
+    ],
+  });
+  return purchasePda;
+}
+
 export async function verifyAndRecordDirectPurchase(input: {
   skill: DirectPurchaseSkillRow;
   signature: string;
@@ -209,24 +236,23 @@ export async function verifyAndRecordDirectPurchase(input: {
   }
 
   const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
-  const [purchasePda] = await findPurchasePda({
-    buyer: buyerKey,
-    skillListing: listingKey,
-  });
+  const listingAccount = await fetchMaybeSkillListing(rpc, listingKey);
+  if (!listingAccount.exists) {
+    throw new Error("Skill listing account was not found on-chain");
+  }
+  const purchasePda = await derivePurchasePda(
+    buyerKey,
+    listingKey,
+    listingAccount.data.currentRevision
+  );
   const purchasePdaString = purchasePda.toString();
 
   if (!accountKeys.includes(purchasePdaString)) {
     throw new Error("Transaction does not reference the expected purchase PDA");
   }
 
-  const [listingAccount, purchaseAccount] = await Promise.all([
-    fetchMaybeSkillListing(rpc, listingKey),
-    fetchMaybePurchase(rpc, purchasePda),
-  ]);
+  const purchaseAccount = await fetchMaybePurchase(rpc, purchasePda);
 
-  if (!listingAccount.exists) {
-    throw new Error("Skill listing account was not found on-chain");
-  }
   if (!purchaseAccount.exists) {
     throw new Error("Purchase account was not found on-chain");
   }
@@ -243,10 +269,17 @@ export async function verifyAndRecordDirectPurchase(input: {
   if (purchaseAccount.data.skillListing !== listingKey) {
     throw new Error("Purchase listing does not match this skill");
   }
+  if (
+    purchaseAccount.data.listingRevision !== listingAccount.data.currentRevision
+  ) {
+    throw new Error("Purchase listing revision does not match this skill");
+  }
   if (purchaseAccount.data.pricePaidUsdcMicros !== expectedPrice) {
     throw new Error("Purchase price does not match this skill");
   }
-  if (purchaseAccount.data.usdcMint !== (input.skill.currency_mint as Address)) {
+  if (
+    purchaseAccount.data.usdcMint !== (input.skill.currency_mint as Address)
+  ) {
     throw new Error("Purchase USDC mint does not match this skill");
   }
 
@@ -254,7 +287,7 @@ export async function verifyAndRecordDirectPurchase(input: {
     skillDbId: input.skill.id,
     buyerPubkey: inferredBuyer,
     paymentTxSignature: signature,
-    recipientAta: listingAccount.data.rewardVault.toString(),
+    recipientAta: listingAccount.data.currentAuthorProceedsVault.toString(),
     currencyMint: input.skill.currency_mint,
     amountMicros: purchaseAccount.data.pricePaidUsdcMicros.toString(),
     paymentFlow: DIRECT_PURCHASE_PAYMENT_FLOW,
@@ -263,6 +296,12 @@ export async function verifyAndRecordDirectPurchase(input: {
     chainContext: expectedChainContext,
     onChainAddress: listingAddress,
     purchasePda: purchasePdaString,
+    listingRevision: purchaseAccount.data.listingRevision.toString(),
+    settlementPda: purchaseAccount.data.listingSettlement.toString(),
+    authorProceedsVault:
+      listingAccount.data.currentAuthorProceedsVault.toString(),
+    refundStatus: "none",
+    legacyRefundEligible: false,
   });
 
   console.info(

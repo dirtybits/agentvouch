@@ -1,7 +1,7 @@
+use crate::events::VouchRevoked;
+use crate::state::{AgentProfile, ReputationConfig, Vouch, VouchStatus};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
-use crate::state::{AgentProfile, Vouch, VouchStatus, ReputationConfig};
-use crate::events::VouchRevoked;
 
 #[derive(Accounts)]
 pub struct RevokeVouch<'info> {
@@ -13,21 +13,21 @@ pub struct RevokeVouch<'info> {
         constraint = vouch.status.is_live() @ ErrorCode::VouchNotRevocable
     )]
     pub vouch: Box<Account<'info, Vouch>>,
-    
+
     #[account(
         mut,
         seeds = [b"agent", voucher.key().as_ref()],
         bump = voucher_profile.bump
     )]
     pub voucher_profile: Box<Account<'info, AgentProfile>>,
-    
+
     #[account(
         mut,
         seeds = [b"agent", vouchee_profile.authority.as_ref()],
         bump = vouchee_profile.bump
     )]
     pub vouchee_profile: Box<Account<'info, AgentProfile>>,
-    
+
     #[account(
         seeds = [b"config"],
         bump = config.bump
@@ -62,7 +62,7 @@ pub struct RevokeVouch<'info> {
         constraint = voucher_usdc_account.owner == voucher.key() @ ErrorCode::InvalidTokenOwner
     )]
     pub voucher_usdc_account: Box<Account<'info, TokenAccount>>,
-    
+
     #[account(mut)]
     pub voucher: Signer<'info>,
 
@@ -76,11 +76,11 @@ pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
         ErrorCode::VouchStillLinkedToListings
     );
     let stake_usdc_micros = vouch.stake_usdc_micros;
-    
+
     // Mark as revoked
     vouch.status = VouchStatus::Revoked;
     vouch.stake_usdc_micros = 0;
-    
+
     let voucher_profile_key = ctx.accounts.voucher_profile.key();
     let vouchee_profile_key = ctx.accounts.vouchee_profile.key();
     let signer_bump = [ctx.bumps.vouch_vault_authority];
@@ -104,17 +104,18 @@ pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
         stake_usdc_micros,
         ctx.accounts.usdc_mint.decimals,
     )?;
-    
+
     // Update profiles
     let voucher_profile = &mut ctx.accounts.voucher_profile;
     voucher_profile.total_vouches_given = voucher_profile.total_vouches_given.saturating_sub(1);
-    
+
     let vouchee_profile = &mut ctx.accounts.vouchee_profile;
-    vouchee_profile.total_vouches_received = vouchee_profile.total_vouches_received.saturating_sub(1);
+    vouchee_profile.total_vouches_received =
+        vouchee_profile.total_vouches_received.saturating_sub(1);
     vouchee_profile.total_vouch_stake_usdc_micros = vouchee_profile
         .total_vouch_stake_usdc_micros
         .saturating_sub(stake_usdc_micros);
-    
+
     // Recompute reputation
     let config = &ctx.accounts.config;
     vouchee_profile.reputation_score = vouchee_profile.compute_reputation(config);
@@ -126,7 +127,7 @@ pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
         stake_returned_usdc_micros: stake_usdc_micros,
         timestamp: Clock::get()?.unix_timestamp,
     });
-    
+
     Ok(())
 }
 

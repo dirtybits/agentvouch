@@ -2,14 +2,15 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
 use crate::state::{
-    ReputationConfig, DEFAULT_AUTHOR_SHARE_BPS, DEFAULT_DISPUTE_BOND_USDC_MICROS,
-    DEFAULT_LONGEVITY_BONUS_PER_DAY, DEFAULT_LONGEVITY_COMPONENT_CAP,
-    DEFAULT_MIN_AUTHOR_BOND_FOR_FREE_LISTING_USDC_MICROS,
+    ReputationConfig, DEFAULT_AUTHOR_PROCEEDS_LOCK_SECONDS, DEFAULT_AUTHOR_SHARE_BPS,
+    DEFAULT_CHALLENGER_REWARD_BPS, DEFAULT_CHALLENGER_REWARD_CAP_USDC_MICROS,
+    DEFAULT_DISPUTE_BOND_USDC_MICROS, DEFAULT_LONGEVITY_BONUS_PER_DAY,
+    DEFAULT_LONGEVITY_COMPONENT_CAP, DEFAULT_MIN_AUTHOR_BOND_FOR_FREE_LISTING_USDC_MICROS,
     DEFAULT_MIN_PAID_LISTING_PRICE_USDC_MICROS, DEFAULT_MIN_VOUCH_STAKE_USDC_MICROS,
-    DEFAULT_PROTOCOL_FEE_BPS, DEFAULT_REPUTATION_SCORE_CAP, DEFAULT_RISK_COMPONENT_CAP,
-    DEFAULT_SLASH_PERCENTAGE, DEFAULT_STAKE_WEIGHT_PER_USDC,
-    DEFAULT_UPHELD_DISPUTE_PENALTY, DEFAULT_VOUCH_COMPONENT_CAP, DEFAULT_VOUCH_WEIGHT,
-    DEFAULT_VOUCHER_SHARE_BPS, MAX_CHAIN_CONTEXT_LEN,
+    DEFAULT_PROTOCOL_FEE_BPS, DEFAULT_REFUND_CLAIM_WINDOW_SECONDS, DEFAULT_REPUTATION_SCORE_CAP,
+    DEFAULT_RISK_COMPONENT_CAP, DEFAULT_SLASH_PERCENTAGE, DEFAULT_STAKE_WEIGHT_PER_USDC,
+    DEFAULT_UPHELD_DISPUTE_PENALTY, DEFAULT_VOUCHER_SHARE_BPS, DEFAULT_VOUCH_COMPONENT_CAP,
+    DEFAULT_VOUCH_WEIGHT, MAX_CHAIN_CONTEXT_LEN,
 };
 
 #[derive(Accounts)]
@@ -54,7 +55,7 @@ pub struct InitializeConfig<'info> {
         bump
     )]
     pub x402_settlement_vault: Box<Account<'info, TokenAccount>>,
-    
+
     /// CHECK: Stored as the legacy root authority for deploy/runbook continuity.
     pub authority: UncheckedAccount<'info>,
 
@@ -82,7 +83,7 @@ pub fn handler(
     require!(slash_percentage <= 100, ErrorCode::InvalidSlashPercentage);
 
     let config = &mut ctx.accounts.config;
-    
+
     config.authority = ctx.accounts.authority.key();
     config.config_authority = config_authority;
     config.treasury_authority = treasury_authority;
@@ -115,9 +116,13 @@ pub fn handler(
     config.longevity_component_cap = DEFAULT_LONGEVITY_COMPONENT_CAP;
     config.upheld_dispute_penalty = DEFAULT_UPHELD_DISPUTE_PENALTY;
     config.reputation_score_cap = DEFAULT_REPUTATION_SCORE_CAP;
+    config.author_proceeds_lock_seconds = DEFAULT_AUTHOR_PROCEEDS_LOCK_SECONDS;
+    config.refund_claim_window_seconds = DEFAULT_REFUND_CLAIM_WINDOW_SECONDS;
+    config.challenger_reward_bps = DEFAULT_CHALLENGER_REWARD_BPS;
+    config.challenger_reward_cap_usdc_micros = DEFAULT_CHALLENGER_REWARD_CAP_USDC_MICROS;
     config.paused = false;
     config.bump = ctx.bumps.config;
-    
+
     Ok(())
 }
 

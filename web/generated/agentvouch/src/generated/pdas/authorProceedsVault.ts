@@ -14,13 +14,12 @@ import {
   type ProgramDerivedAddress,
 } from "@solana/kit";
 
-export type PurchaseSeeds = {
-  buyer: Address;
-  skillListing: Address;
+export type AuthorProceedsVaultSeeds = {
+  listingSettlement: Address;
 };
 
-export async function findPurchasePda(
-  seeds: PurchaseSeeds,
+export async function findAuthorProceedsVaultPda(
+  seeds: AuthorProceedsVaultSeeds,
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
@@ -30,10 +29,12 @@ export async function findPurchasePda(
     programAddress,
     seeds: [
       getBytesEncoder().encode(
-        new Uint8Array([112, 117, 114, 99, 104, 97, 115, 101]),
+        new Uint8Array([
+          97, 117, 116, 104, 111, 114, 95, 112, 114, 111, 99, 101, 101, 100,
+          115, 95, 118, 97, 117, 108, 116,
+        ]),
       ),
-      getAddressEncoder().encode(seeds.buyer),
-      getAddressEncoder().encode(seeds.skillListing),
+      getAddressEncoder().encode(seeds.listingSettlement),
     ],
   });
 }

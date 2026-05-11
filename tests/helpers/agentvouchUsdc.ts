@@ -50,12 +50,15 @@ export function u64(value: number | bigint) {
 }
 
 export function uniqueSkillId(prefix = "skill") {
-  return `${prefix.slice(0, 8)}-${Date.now().toString(36).slice(-6)}-${Math.random()
-    .toString(16)
-    .slice(2, 8)}`.slice(0, 32);
+  return `${prefix.slice(0, 8)}-${Date.now()
+    .toString(36)
+    .slice(-6)}-${Math.random().toString(16).slice(2, 8)}`.slice(0, 32);
 }
 
-export function pda(program: Program<Agentvouch>, seeds: (Buffer | Uint8Array)[]) {
+export function pda(
+  program: Program<Agentvouch>,
+  seeds: (Buffer | Uint8Array)[]
+) {
   return PublicKey.findProgramAddressSync(seeds, program.programId)[0];
 }
 
@@ -77,7 +80,10 @@ export function authorBondVaultAuthority(
   ]);
 }
 
-export function authorBondVault(program: Program<Agentvouch>, author: PublicKey) {
+export function authorBondVault(
+  program: Program<Agentvouch>,
+  author: PublicKey
+) {
   return pda(program, [Buffer.from("author_bond_vault"), author.toBuffer()]);
 }
 
@@ -139,10 +145,46 @@ export function rewardVaultAuthority(
   ]);
 }
 
-export function rewardVault(program: Program<Agentvouch>, skillListing: PublicKey) {
+export function rewardVault(
+  program: Program<Agentvouch>,
+  skillListing: PublicKey
+) {
   return pda(program, [
     Buffer.from("listing_reward_vault"),
     skillListing.toBuffer(),
+  ]);
+}
+
+export function listingSettlementPda(
+  program: Program<Agentvouch>,
+  skillListing: PublicKey,
+  revision = 0
+) {
+  const revisionBytes = new anchor.BN(revision).toArrayLike(Buffer, "le", 8);
+  return pda(program, [
+    Buffer.from("listing_settlement"),
+    skillListing.toBuffer(),
+    revisionBytes,
+  ]);
+}
+
+export function authorProceedsVaultAuthority(
+  program: Program<Agentvouch>,
+  listingSettlement: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("author_proceeds_vault_authority"),
+    listingSettlement.toBuffer(),
+  ]);
+}
+
+export function authorProceedsVault(
+  program: Program<Agentvouch>,
+  listingSettlement: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("author_proceeds_vault"),
+    listingSettlement.toBuffer(),
   ]);
 }
 
@@ -161,12 +203,51 @@ export function listingVouchPosition(
 export function purchasePda(
   program: Program<Agentvouch>,
   buyer: PublicKey,
-  skillListing: PublicKey
+  skillListing: PublicKey,
+  revision = 0
 ) {
+  const revisionBytes = new anchor.BN(revision).toArrayLike(Buffer, "le", 8);
   return pda(program, [
     Buffer.from("purchase"),
     buyer.toBuffer(),
     skillListing.toBuffer(),
+    revisionBytes,
+  ]);
+}
+
+export function refundPoolPda(
+  program: Program<Agentvouch>,
+  authorDispute: PublicKey
+) {
+  return pda(program, [Buffer.from("refund_pool"), authorDispute.toBuffer()]);
+}
+
+export function refundVaultAuthority(
+  program: Program<Agentvouch>,
+  refundPool: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("refund_vault_authority"),
+    refundPool.toBuffer(),
+  ]);
+}
+
+export function refundVault(
+  program: Program<Agentvouch>,
+  refundPool: PublicKey
+) {
+  return pda(program, [Buffer.from("refund_vault"), refundPool.toBuffer()]);
+}
+
+export function refundClaimPda(
+  program: Program<Agentvouch>,
+  refundPool: PublicKey,
+  purchase: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("refund_claim"),
+    refundPool.toBuffer(),
+    purchase.toBuffer(),
   ]);
 }
 
@@ -384,7 +465,9 @@ export async function expectFailure(
     const expectations = Array.isArray(expected) ? expected : [expected];
     assert.isTrue(
       expectations.some((needle) => message.includes(needle)),
-      `Expected error to include one of ${expectations.join(", ")}, got: ${message}`
+      `Expected error to include one of ${expectations.join(
+        ", "
+      )}, got: ${message}`
     );
     return;
   }
@@ -537,9 +620,19 @@ export async function createSkillListing(
   priceUsdcMicros: number,
   authorBond?: PublicKey
 ) {
-  const skillListing = skillListingPda(ctx.program, author.keypair.publicKey, skillId);
+  const skillListing = skillListingPda(
+    ctx.program,
+    author.keypair.publicKey,
+    skillId
+  );
   const vaultAuthority = rewardVaultAuthority(ctx.program, skillListing);
   const vault = rewardVault(ctx.program, skillListing);
+  const settlement = listingSettlementPda(ctx.program, skillListing);
+  const proceedsVaultAuthority = authorProceedsVaultAuthority(
+    ctx.program,
+    settlement
+  );
+  const proceedsVault = authorProceedsVault(ctx.program, settlement);
   await ctx.program.methods
     .createSkillListing(
       skillId,
@@ -556,13 +649,23 @@ export async function createSkillListing(
       usdcMint: ctx.usdcMint,
       rewardVaultAuthority: vaultAuthority,
       rewardVault: vault,
+      listingSettlement: settlement,
+      authorProceedsVaultAuthority: proceedsVaultAuthority,
+      authorProceedsVault: proceedsVault,
       author: author.keypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
     .signers([author.keypair])
     .rpc();
-  return { skillListing, vaultAuthority, vault };
+  return {
+    skillListing,
+    vaultAuthority,
+    vault,
+    settlement,
+    proceedsVaultAuthority,
+    proceedsVault,
+  };
 }
 
 export async function linkVouchToListing(
@@ -623,7 +726,18 @@ export async function purchaseSkill(
   rewardTokenVault: PublicKey,
   label?: string
 ) {
-  const purchase = purchasePda(ctx.program, buyer.keypair.publicKey, skillListing);
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    skillListing
+  );
+  const revision = Number(listingAccount.currentRevision);
+  const settlement = listingAccount.currentSettlement;
+  const proceedsVault = listingAccount.currentAuthorProceedsVault;
+  const purchase = purchasePda(
+    ctx.program,
+    buyer.keypair.publicKey,
+    skillListing,
+    revision
+  );
   const builder = ctx.program.methods
     .purchaseSkill()
     .accounts({
@@ -634,7 +748,12 @@ export async function purchaseSkill(
       config: ctx.config,
       usdcMint: ctx.usdcMint,
       buyerUsdcAccount: buyer.usdc,
-      authorUsdcAccount: author.usdc,
+      listingSettlement: settlement,
+      authorProceedsVaultAuthority: authorProceedsVaultAuthority(
+        ctx.program,
+        settlement
+      ),
+      authorProceedsVault: proceedsVault,
       rewardVault: rewardTokenVault,
       buyer: buyer.keypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
@@ -644,6 +763,37 @@ export async function purchaseSkill(
   if (label) await sendWithMetrics(ctx, label, builder);
   else await builder.rpc();
   return purchase;
+}
+
+export async function withdrawAuthorProceeds(
+  ctx: TestContext,
+  author: TestActor,
+  skillListing: PublicKey,
+  amountUsdcMicros: number
+) {
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    skillListing
+  );
+  const settlement = listingAccount.currentSettlement;
+  const proceedsVault = listingAccount.currentAuthorProceedsVault;
+  await ctx.program.methods
+    .withdrawAuthorProceeds(u64(amountUsdcMicros))
+    .accounts({
+      skillListing,
+      listingSettlement: settlement,
+      config: ctx.config,
+      usdcMint: ctx.usdcMint,
+      authorProceedsVaultAuthority: authorProceedsVaultAuthority(
+        ctx.program,
+        settlement
+      ),
+      authorProceedsVault: proceedsVault,
+      authorUsdcAccount: author.usdc,
+      author: author.keypair.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .signers([author.keypair])
+    .rpc();
 }
 
 export async function claimVoucherRevenue(
@@ -701,14 +851,26 @@ export async function openAuthorDispute(
     author.keypair.publicKey,
     disputeId
   );
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    skillListing
+  );
+  const settlement =
+    Number(listingAccount.priceUsdcMicros) > 0
+      ? listingAccount.currentSettlement
+      : null;
   const builder = ctx.program.methods
-    .openAuthorDispute(disputeId, { failedDelivery: {} }, "https://example.com/evidence.json")
+    .openAuthorDispute(
+      disputeId,
+      { failedDelivery: {} },
+      "https://example.com/evidence.json"
+    )
     .accounts({
       authorDispute,
       authorProfile: author.profile,
       config: ctx.config,
       skillListing,
       purchase,
+      listingSettlement: settlement,
       usdcMint: ctx.usdcMint,
       challengerUsdcAccount: challenger.usdc,
       disputeBondVaultAuthority: disputeVaultAuthority,
@@ -734,9 +896,24 @@ export async function resolveAuthorDispute(
     disputeVault: PublicKey;
   },
   ruling: { dismissed: {} } | { upheld: {} },
-  remainingAccounts: { pubkey: PublicKey; isWritable: boolean; isSigner: boolean }[] = [],
+  remainingAccounts: {
+    pubkey: PublicKey;
+    isWritable: boolean;
+    isSigner: boolean;
+  }[] = [],
   label?: string
 ) {
+  const disputeAccount = await ctx.program.account.authorDispute.fetch(
+    dispute.authorDispute
+  );
+  const settlement =
+    Number(disputeAccount.skillPriceUsdcMicrosSnapshot) > 0
+      ? (
+          await ctx.program.account.skillListing.fetch(
+            disputeAccount.skillListing
+          )
+        ).currentSettlement
+      : null;
   const builder = ctx.program.methods
     .resolveAuthorDispute(disputeId, ruling)
     .accountsStrict({
@@ -748,6 +925,7 @@ export async function resolveAuthorDispute(
       disputeBondVaultAuthority: dispute.disputeVaultAuthority,
       disputeBondVault: dispute.disputeVault,
       protocolTreasuryVault: ctx.protocolTreasuryVault,
+      listingSettlement: settlement,
       authorBondVaultAuthority: authorBondVaultAuthority(
         ctx.program,
         author.keypair.publicKey
@@ -760,6 +938,77 @@ export async function resolveAuthorDispute(
     .signers([ctx.configAdmin]);
   if (label) await sendWithMetrics(ctx, label, builder);
   else await builder.rpc();
+}
+
+export async function createRefundPool(
+  ctx: TestContext,
+  author: TestActor,
+  challenger: TestActor,
+  dispute: { authorDispute: PublicKey },
+  requestedRefundPoolUsdcMicros: number
+) {
+  const disputeAccount = await ctx.program.account.authorDispute.fetch(
+    dispute.authorDispute
+  );
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    disputeAccount.skillListing
+  );
+  const settlement = listingAccount.currentSettlement;
+  const pool = refundPoolPda(ctx.program, dispute.authorDispute);
+  const vault = refundVault(ctx.program, pool);
+  await ctx.program.methods
+    .createRefundPool(u64(requestedRefundPoolUsdcMicros))
+    .accounts({
+      authorDispute: dispute.authorDispute,
+      skillListing: disputeAccount.skillListing,
+      listingSettlement: settlement,
+      config: ctx.config,
+      authority: ctx.configAdmin.publicKey,
+      usdcMint: ctx.usdcMint,
+      authorProceedsVaultAuthority: authorProceedsVaultAuthority(
+        ctx.program,
+        settlement
+      ),
+      authorProceedsVault: listingAccount.currentAuthorProceedsVault,
+      refundPool: pool,
+      refundVaultAuthority: refundVaultAuthority(ctx.program, pool),
+      refundVault: vault,
+      challengerUsdcAccount: challenger.usdc,
+      payer: ctx.payer.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([ctx.configAdmin])
+    .rpc();
+  return { refundPool: pool, refundVault: vault };
+}
+
+export async function claimPurchaseRefund(
+  ctx: TestContext,
+  buyer: TestActor,
+  refundPool: PublicKey,
+  purchase: PublicKey
+) {
+  const claim = refundClaimPda(ctx.program, refundPool, purchase);
+  const vault = refundVault(ctx.program, refundPool);
+  await ctx.program.methods
+    .claimPurchaseRefund()
+    .accounts({
+      refundPool,
+      purchase,
+      refundClaim: claim,
+      config: ctx.config,
+      usdcMint: ctx.usdcMint,
+      refundVaultAuthority: refundVaultAuthority(ctx.program, refundPool),
+      refundVault: vault,
+      buyerUsdcAccount: buyer.usdc,
+      buyer: buyer.keypair.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([buyer.keypair])
+    .rpc();
+  return claim;
 }
 
 export async function setupPaidListingWithVouch(
@@ -815,7 +1064,9 @@ export async function sendWithMetrics(
     parseComputeUnits(tx?.meta?.logMessages ?? []) ??
     simulatedComputeUnits;
   const accountCount = ix.keys.length + 1;
-  console.log(`[metrics] ${label}: accounts=${accountCount} compute=${computeUnits}`);
+  console.log(
+    `[metrics] ${label}: accounts=${accountCount} compute=${computeUnits}`
+  );
   return sig;
 }
 

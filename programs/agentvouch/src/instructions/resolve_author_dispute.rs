@@ -4,15 +4,13 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 use crate::events::AuthorDisputeResolved as AuthorDisputeResolvedEvent;
 use crate::state::{
     AgentProfile, AuthorBond, AuthorDispute, AuthorDisputeLiabilityScope, AuthorDisputeRuling,
-    AuthorDisputeStatus, ReputationConfig, AUTHOR_BOND_SEED,
+    AuthorDisputeStatus, ListingSettlement, ReputationConfig, AUTHOR_BOND_SEED,
 };
 
 #[derive(Accounts)]
 #[instruction(dispute_id: u64)]
 pub struct ResolveAuthorDispute<'info> {
-    #[account(
-        mut
-    )]
+    #[account(mut)]
     pub author_dispute: Box<Account<'info, AuthorDispute>>,
 
     #[account(mut)]
@@ -36,6 +34,9 @@ pub struct ResolveAuthorDispute<'info> {
     #[account(mut)]
     pub protocol_treasury_vault: Box<Account<'info, TokenAccount>>,
 
+    #[account(mut)]
+    pub listing_settlement: Option<Box<Account<'info, ListingSettlement>>>,
+
     /// CHECK: PDA authority for the author bond vault.
     #[account()]
     pub author_bond_vault_authority: UncheckedAccount<'info>,
@@ -50,7 +51,7 @@ pub struct ResolveAuthorDispute<'info> {
 }
 
 pub fn handler<'info>(
-    ctx: Context<'_, '_, 'info, 'info, ResolveAuthorDispute<'info>>,
+    mut ctx: Context<'_, '_, 'info, 'info, ResolveAuthorDispute<'info>>,
     dispute_id: u64,
     ruling: AuthorDisputeRuling,
 ) -> Result<()> {
@@ -65,7 +66,11 @@ pub fn handler<'info>(
         ErrorCode::AuthorMismatch
     );
     let (expected_config, _) = Pubkey::find_program_address(&[b"config"], ctx.program_id);
-    require_keys_eq!(ctx.accounts.config.key(), expected_config, ErrorCode::ConfigMismatch);
+    require_keys_eq!(
+        ctx.accounts.config.key(),
+        expected_config,
+        ErrorCode::ConfigMismatch
+    );
     require_keys_eq!(
         ctx.accounts.config.config_authority,
         ctx.accounts.authority.key(),
@@ -92,13 +97,13 @@ pub fn handler<'info>(
     );
     let (expected_dispute_bond_vault_authority, dispute_bond_vault_authority_bump) =
         Pubkey::find_program_address(
-        &[
-            b"dispute_bond_vault_authority",
-            ctx.accounts.author_profile.authority.as_ref(),
-            &dispute_id_bytes,
-        ],
-        ctx.program_id,
-    );
+            &[
+                b"dispute_bond_vault_authority",
+                ctx.accounts.author_profile.authority.as_ref(),
+                &dispute_id_bytes,
+            ],
+            ctx.program_id,
+        );
     require_keys_eq!(
         ctx.accounts.dispute_bond_vault_authority.key(),
         expected_dispute_bond_vault_authority,
@@ -220,14 +225,31 @@ pub fn handler<'info>(
                 .ok_or(ErrorCode::DisputeCountOverflow)?;
         }
     }
-    ctx.accounts.author_profile.reputation_score =
-        ctx.accounts.author_profile.compute_reputation(&ctx.accounts.config);
+    ctx.accounts.author_profile.reputation_score = ctx
+        .accounts
+        .author_profile
+        .compute_reputation(&ctx.accounts.config);
 
     let author_dispute = &mut ctx.accounts.author_dispute;
     author_dispute.status = AuthorDisputeStatus::Resolved;
     author_dispute.ruling = Some(ruling);
     author_dispute.resolved_at = Some(clock.unix_timestamp);
     author_dispute.author_bond_slashed_usdc_micros = author_bond_slashed_usdc_micros;
+
+    if let Some(settlement) = ctx.accounts.listing_settlement.as_deref_mut() {
+        require!(
+            settlement.skill_listing == author_dispute.skill_listing,
+            ErrorCode::ListingSettlementMismatch
+        );
+        require!(
+            settlement.locked_by_dispute == Some(author_dispute.key()),
+            ErrorCode::ListingSettlementMismatch
+        );
+        if ruling == AuthorDisputeRuling::Dismissed {
+            settlement.locked_by_dispute = None;
+            settlement.updated_at = clock.unix_timestamp;
+        }
+    }
 
     emit!(AuthorDisputeResolvedEvent {
         author_dispute: author_dispute.key(),
@@ -408,4 +430,6 @@ pub enum ErrorCode {
     InvalidTokenMint,
     #[msg("Token account owner is invalid")]
     InvalidTokenOwner,
+    #[msg("Listing settlement does not match dispute lock")]
+    ListingSettlementMismatch,
 }

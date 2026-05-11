@@ -2,8 +2,8 @@ use anchor_lang::prelude::*;
 
 use crate::events::ListingVouchPositionLinked;
 use crate::state::{
-    AgentProfile, ListingVouchPosition, ListingVouchPositionStatus, ReputationConfig,
-    SkillListing, SkillStatus, Vouch, VouchStatus, MAX_ACTIVE_REWARD_POSITIONS_PER_LISTING,
+    AgentProfile, ListingVouchPosition, ListingVouchPositionStatus, ReputationConfig, SkillListing,
+    SkillStatus, Vouch, VouchStatus, MAX_ACTIVE_REWARD_POSITIONS_PER_LISTING,
 };
 
 #[derive(Accounts)]

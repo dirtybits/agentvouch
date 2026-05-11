@@ -67,6 +67,7 @@ export type ResolveAuthorDisputeInstruction<
     string,
   TAccountDisputeBondVault extends string | AccountMeta<string> = string,
   TAccountProtocolTreasuryVault extends string | AccountMeta<string> = string,
+  TAccountListingSettlement extends string | AccountMeta<string> = string,
   TAccountAuthorBondVaultAuthority extends string | AccountMeta<string> =
     string,
   TAccountChallenger extends string | AccountMeta<string> = string,
@@ -103,6 +104,9 @@ export type ResolveAuthorDisputeInstruction<
       TAccountProtocolTreasuryVault extends string
         ? WritableAccount<TAccountProtocolTreasuryVault>
         : TAccountProtocolTreasuryVault,
+      TAccountListingSettlement extends string
+        ? WritableAccount<TAccountListingSettlement>
+        : TAccountListingSettlement,
       TAccountAuthorBondVaultAuthority extends string
         ? ReadonlyAccount<TAccountAuthorBondVaultAuthority>
         : TAccountAuthorBondVaultAuthority,
@@ -171,6 +175,7 @@ export type ResolveAuthorDisputeInput<
   TAccountDisputeBondVaultAuthority extends string = string,
   TAccountDisputeBondVault extends string = string,
   TAccountProtocolTreasuryVault extends string = string,
+  TAccountListingSettlement extends string = string,
   TAccountAuthorBondVaultAuthority extends string = string,
   TAccountChallenger extends string = string,
   TAccountChallengerUsdcAccount extends string = string,
@@ -184,6 +189,7 @@ export type ResolveAuthorDisputeInput<
   disputeBondVaultAuthority: Address<TAccountDisputeBondVaultAuthority>;
   disputeBondVault: Address<TAccountDisputeBondVault>;
   protocolTreasuryVault: Address<TAccountProtocolTreasuryVault>;
+  listingSettlement?: Address<TAccountListingSettlement>;
   authorBondVaultAuthority: Address<TAccountAuthorBondVaultAuthority>;
   challenger: Address<TAccountChallenger>;
   challengerUsdcAccount: Address<TAccountChallengerUsdcAccount>;
@@ -201,6 +207,7 @@ export function getResolveAuthorDisputeInstruction<
   TAccountDisputeBondVaultAuthority extends string,
   TAccountDisputeBondVault extends string,
   TAccountProtocolTreasuryVault extends string,
+  TAccountListingSettlement extends string,
   TAccountAuthorBondVaultAuthority extends string,
   TAccountChallenger extends string,
   TAccountChallengerUsdcAccount extends string,
@@ -216,6 +223,7 @@ export function getResolveAuthorDisputeInstruction<
     TAccountDisputeBondVaultAuthority,
     TAccountDisputeBondVault,
     TAccountProtocolTreasuryVault,
+    TAccountListingSettlement,
     TAccountAuthorBondVaultAuthority,
     TAccountChallenger,
     TAccountChallengerUsdcAccount,
@@ -232,6 +240,7 @@ export function getResolveAuthorDisputeInstruction<
   TAccountDisputeBondVaultAuthority,
   TAccountDisputeBondVault,
   TAccountProtocolTreasuryVault,
+  TAccountListingSettlement,
   TAccountAuthorBondVaultAuthority,
   TAccountChallenger,
   TAccountChallengerUsdcAccount,
@@ -257,6 +266,10 @@ export function getResolveAuthorDisputeInstruction<
     },
     protocolTreasuryVault: {
       value: input.protocolTreasuryVault ?? null,
+      isWritable: true,
+    },
+    listingSettlement: {
+      value: input.listingSettlement ?? null,
       isWritable: true,
     },
     authorBondVaultAuthority: {
@@ -298,6 +311,7 @@ export function getResolveAuthorDisputeInstruction<
       ),
       getAccountMeta("disputeBondVault", accounts.disputeBondVault),
       getAccountMeta("protocolTreasuryVault", accounts.protocolTreasuryVault),
+      getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta(
         "authorBondVaultAuthority",
         accounts.authorBondVaultAuthority,
@@ -320,6 +334,7 @@ export function getResolveAuthorDisputeInstruction<
     TAccountDisputeBondVaultAuthority,
     TAccountDisputeBondVault,
     TAccountProtocolTreasuryVault,
+    TAccountListingSettlement,
     TAccountAuthorBondVaultAuthority,
     TAccountChallenger,
     TAccountChallengerUsdcAccount,
@@ -341,10 +356,11 @@ export type ParsedResolveAuthorDisputeInstruction<
     disputeBondVaultAuthority: TAccountMetas[5];
     disputeBondVault: TAccountMetas[6];
     protocolTreasuryVault: TAccountMetas[7];
-    authorBondVaultAuthority: TAccountMetas[8];
-    challenger: TAccountMetas[9];
-    challengerUsdcAccount: TAccountMetas[10];
-    tokenProgram: TAccountMetas[11];
+    listingSettlement?: TAccountMetas[8] | undefined;
+    authorBondVaultAuthority: TAccountMetas[9];
+    challenger: TAccountMetas[10];
+    challengerUsdcAccount: TAccountMetas[11];
+    tokenProgram: TAccountMetas[12];
   };
   data: ResolveAuthorDisputeInstructionData;
 };
@@ -357,12 +373,12 @@ export function parseResolveAuthorDisputeInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedResolveAuthorDisputeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -371,6 +387,12 @@ export function parseResolveAuthorDisputeInstruction<
     const accountMeta = (instruction.accounts as TAccountMetas)[accountIndex]!;
     accountIndex += 1;
     return accountMeta;
+  };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === AGENTVOUCH_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
   };
   return {
     programAddress: instruction.programAddress,
@@ -383,6 +405,7 @@ export function parseResolveAuthorDisputeInstruction<
       disputeBondVaultAuthority: getNextAccount(),
       disputeBondVault: getNextAccount(),
       protocolTreasuryVault: getNextAccount(),
+      listingSettlement: getNextOptionalAccount(),
       authorBondVaultAuthority: getNextAccount(),
       challenger: getNextAccount(),
       challengerUsdcAccount: getNextAccount(),

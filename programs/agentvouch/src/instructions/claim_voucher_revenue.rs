@@ -3,9 +3,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
 use crate::events::RevenueClaimed;
 use crate::instructions::unlink_vouch_from_listing::accrue_position_rewards;
-use crate::state::{
-    AgentProfile, ListingVouchPosition, ReputationConfig, SkillListing, Vouch,
-};
+use crate::state::{AgentProfile, ListingVouchPosition, ReputationConfig, SkillListing, Vouch};
 
 #[derive(Accounts)]
 pub struct ClaimVoucherRevenue<'info> {
@@ -84,7 +82,10 @@ pub fn handler(ctx: Context<ClaimVoucherRevenue>) -> Result<()> {
         &ctx.accounts.skill_listing,
         &mut ctx.accounts.listing_vouch_position,
     )?;
-    let claimable = ctx.accounts.listing_vouch_position.pending_rewards_usdc_micros;
+    let claimable = ctx
+        .accounts
+        .listing_vouch_position
+        .pending_rewards_usdc_micros;
     require!(claimable > 0, ClaimError::NothingToClaim);
 
     let listing_key = ctx.accounts.skill_listing.key();

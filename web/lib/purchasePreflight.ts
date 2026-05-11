@@ -7,7 +7,18 @@ import { DEFAULT_SOLANA_RPC_URL } from "./solanaRpc";
 
 const DEFAULT_RPC_URL = DEFAULT_SOLANA_RPC_URL;
 
-export const PURCHASE_ACCOUNT_SPACE = 8 + 32 + 32 + 8 + 8 + 1;
+export const PURCHASE_ACCOUNT_SPACE =
+  8 + // discriminator
+  32 + // buyer
+  32 + // skill listing
+  8 + // purchased at
+  8 + // listing revision
+  32 + // listing settlement
+  8 + // price paid
+  8 + // author share
+  8 + // voucher pool
+  32 + // USDC mint
+  1; // bump
 export const PURCHASE_FEE_BUFFER_LAMPORTS = 50_000n;
 
 export type PurchasePreflightStatus =
@@ -19,7 +30,9 @@ export type PurchasePreflightStatus =
 
 export type BlockingPurchasePreflightStatus = Extract<
   PurchasePreflightStatus,
-  "buyerInsufficientBalance" | "buyerMissingUsdcAccount" | "authorPayoutRentBlocked"
+  | "buyerInsufficientBalance"
+  | "buyerMissingUsdcAccount"
+  | "authorPayoutRentBlocked"
 >;
 
 export type SerializedPurchaseBlockError = {

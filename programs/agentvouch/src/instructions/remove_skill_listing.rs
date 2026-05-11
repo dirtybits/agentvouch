@@ -1,5 +1,5 @@
+use crate::state::{AgentProfile, SkillListing, SkillStatus};
 use anchor_lang::prelude::*;
-use crate::state::{SkillListing, SkillStatus, AgentProfile};
 
 #[derive(Accounts)]
 #[instruction(skill_id: String)]

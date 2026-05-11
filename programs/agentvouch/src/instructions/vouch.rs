@@ -1,7 +1,7 @@
+use crate::events::VouchCreated;
+use crate::state::{AgentProfile, ReputationConfig, Vouch, VouchStatus};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
-use crate::state::{AgentProfile, Vouch, VouchStatus, ReputationConfig};
-use crate::events::VouchCreated;
 
 #[derive(Accounts)]
 #[instruction(stake_usdc_micros: u64)]
@@ -14,21 +14,21 @@ pub struct CreateVouch<'info> {
         bump
     )]
     pub vouch: Box<Account<'info, Vouch>>,
-    
+
     #[account(
         mut,
         seeds = [b"agent", voucher.key().as_ref()],
         bump = voucher_profile.bump
     )]
     pub voucher_profile: Box<Account<'info, AgentProfile>>,
-    
+
     #[account(
         mut,
         seeds = [b"agent", vouchee_profile.authority.as_ref()],
         bump = vouchee_profile.bump
     )]
     pub vouchee_profile: Box<Account<'info, AgentProfile>>,
-    
+
     #[account(
         seeds = [b"config"],
         bump = config.bump
@@ -70,7 +70,7 @@ pub struct CreateVouch<'info> {
         bump
     )]
     pub vouch_vault: Box<Account<'info, TokenAccount>>,
-    
+
     #[account(mut)]
     pub voucher: Signer<'info>,
 
@@ -78,10 +78,7 @@ pub struct CreateVouch<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
-    ctx: Context<CreateVouch>,
-    stake_usdc_micros: u64,
-) -> Result<()> {
+pub fn handler(ctx: Context<CreateVouch>, stake_usdc_micros: u64) -> Result<()> {
     let config = &ctx.accounts.config;
     require!(!config.paused, ErrorCode::ProtocolPaused);
 
@@ -103,20 +100,16 @@ pub fn handler(
     let is_reactivation = !is_new_relationship && existing_status == VouchStatus::Revoked;
 
     require!(
-        is_new_relationship
-            || is_reactivation
-            || existing_status.is_live(),
+        is_new_relationship || is_reactivation || existing_status.is_live(),
         ErrorCode::VouchNotReusable
     );
 
     require!(
-        is_new_relationship
-            || existing_voucher == ctx.accounts.voucher_profile.key(),
+        is_new_relationship || existing_voucher == ctx.accounts.voucher_profile.key(),
         ErrorCode::VouchAccountMismatch
     );
     require!(
-        is_new_relationship
-            || existing_vouchee == ctx.accounts.vouchee_profile.key(),
+        is_new_relationship || existing_vouchee == ctx.accounts.vouchee_profile.key(),
         ErrorCode::VouchAccountMismatch
     );
 
@@ -168,7 +161,8 @@ pub fn handler(
 
     let vouchee_profile = &mut ctx.accounts.vouchee_profile;
     if is_new_relationship || is_reactivation {
-        vouchee_profile.total_vouches_received = vouchee_profile.total_vouches_received.saturating_add(1);
+        vouchee_profile.total_vouches_received =
+            vouchee_profile.total_vouches_received.saturating_add(1);
     }
     vouchee_profile.total_vouch_stake_usdc_micros = vouchee_profile
         .total_vouch_stake_usdc_micros
@@ -185,7 +179,7 @@ pub fn handler(
         vault: ctx.accounts.vouch_vault.key(),
         timestamp: Clock::get()?.unix_timestamp,
     });
-    
+
     Ok(())
 }
 

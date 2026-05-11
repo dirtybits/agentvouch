@@ -14,48 +14,88 @@ import {
 } from "@solana/kit";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
-/** AmountMustBePositive: Amount must be greater than zero */
-export const AGENTVOUCH_ERROR__AMOUNT_MUST_BE_POSITIVE = 0x1770; // 6000
-/** AuthorBondAuthorityMismatch: Author bond authority mismatch */
-export const AGENTVOUCH_ERROR__AUTHOR_BOND_AUTHORITY_MISMATCH = 0x1771; // 6001
-/** InsufficientBondAmount: Author bond amount is insufficient for this withdrawal */
-export const AGENTVOUCH_ERROR__INSUFFICIENT_BOND_AMOUNT = 0x1772; // 6002
-/** FreeListingsRequireBondFloor: Active free listings require the configured minimum author bond */
-export const AGENTVOUCH_ERROR__FREE_LISTINGS_REQUIRE_BOND_FLOOR = 0x1773; // 6003
-/** AuthorBondLockedWhileDisputesOpen: Author bond cannot be withdrawn while author disputes are open */
-export const AGENTVOUCH_ERROR__AUTHOR_BOND_LOCKED_WHILE_DISPUTES_OPEN = 0x1774; // 6004
-/** InvalidUsdcMint: USDC mint does not match config */
-export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x1775; // 6005
+/** AuthorDisputeNotOpen: Author dispute is not open */
+export const AGENTVOUCH_ERROR__AUTHOR_DISPUTE_NOT_OPEN = 0x1770; // 6000
+/** AuthorMismatch: Author profile does not match dispute */
+export const AGENTVOUCH_ERROR__AUTHOR_MISMATCH = 0x1771; // 6001
+/** ConfigMismatch: Config PDA does not match expected address */
+export const AGENTVOUCH_ERROR__CONFIG_MISMATCH = 0x1772; // 6002
+/** AuthorDisputeMismatch: Author dispute PDA does not match expected address */
+export const AGENTVOUCH_ERROR__AUTHOR_DISPUTE_MISMATCH = 0x1773; // 6003
+/** UnauthorizedResolver: Only config authority can resolve disputes */
+export const AGENTVOUCH_ERROR__UNAUTHORIZED_RESOLVER = 0x1774; // 6004
+/** ChallengerMismatch: Stored challenger does not match provided challenger account */
+export const AGENTVOUCH_ERROR__CHALLENGER_MISMATCH = 0x1775; // 6005
+/** OpenAuthorDisputeCountUnderflow: Open author dispute count underflowed */
+export const AGENTVOUCH_ERROR__OPEN_AUTHOR_DISPUTE_COUNT_UNDERFLOW = 0x1776; // 6006
+/** AuthorBondAccountMismatch: Author bond account does not match expected PDA */
+export const AGENTVOUCH_ERROR__AUTHOR_BOND_ACCOUNT_MISMATCH = 0x1777; // 6007
+/** AuthorBondProfileMismatch: Author bond account does not match profile */
+export const AGENTVOUCH_ERROR__AUTHOR_BOND_PROFILE_MISMATCH = 0x1778; // 6008
 /** AuthorBondVaultMismatch: Author bond vault does not match account state */
-export const AGENTVOUCH_ERROR__AUTHOR_BOND_VAULT_MISMATCH = 0x1776; // 6006
+export const AGENTVOUCH_ERROR__AUTHOR_BOND_VAULT_MISMATCH = 0x1779; // 6009
+/** AuthorBondUnderflow: Author bond amount underflowed */
+export const AGENTVOUCH_ERROR__AUTHOR_BOND_UNDERFLOW = 0x177a; // 6010
+/** MissingAuthorBondSettlementAccounts: Author bond settlement accounts are missing */
+export const AGENTVOUCH_ERROR__MISSING_AUTHOR_BOND_SETTLEMENT_ACCOUNTS = 0x177b; // 6011
+/** DisputeCountOverflow: Dispute count overflowed */
+export const AGENTVOUCH_ERROR__DISPUTE_COUNT_OVERFLOW = 0x177c; // 6012
+/** InvalidUsdcMint: USDC mint does not match config */
+export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x177d; // 6013
+/** DisputeBondVaultMismatch: Dispute bond vault does not match dispute state */
+export const AGENTVOUCH_ERROR__DISPUTE_BOND_VAULT_MISMATCH = 0x177e; // 6014
+/** TreasuryVaultMismatch: Treasury vault does not match config */
+export const AGENTVOUCH_ERROR__TREASURY_VAULT_MISMATCH = 0x177f; // 6015
 /** InvalidTokenMint: Token account mint does not match config */
-export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x1777; // 6007
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x1780; // 6016
 /** InvalidTokenOwner: Token account owner is invalid */
-export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x1778; // 6008
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x1781; // 6017
+/** ListingSettlementMismatch: Listing settlement does not match dispute lock */
+export const AGENTVOUCH_ERROR__LISTING_SETTLEMENT_MISMATCH = 0x1782; // 6018
 
 export type AgentvouchError =
-  | typeof AGENTVOUCH_ERROR__AMOUNT_MUST_BE_POSITIVE
-  | typeof AGENTVOUCH_ERROR__AUTHOR_BOND_AUTHORITY_MISMATCH
-  | typeof AGENTVOUCH_ERROR__AUTHOR_BOND_LOCKED_WHILE_DISPUTES_OPEN
+  | typeof AGENTVOUCH_ERROR__AUTHOR_BOND_ACCOUNT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__AUTHOR_BOND_PROFILE_MISMATCH
+  | typeof AGENTVOUCH_ERROR__AUTHOR_BOND_UNDERFLOW
   | typeof AGENTVOUCH_ERROR__AUTHOR_BOND_VAULT_MISMATCH
-  | typeof AGENTVOUCH_ERROR__FREE_LISTINGS_REQUIRE_BOND_FLOOR
-  | typeof AGENTVOUCH_ERROR__INSUFFICIENT_BOND_AMOUNT
+  | typeof AGENTVOUCH_ERROR__AUTHOR_DISPUTE_MISMATCH
+  | typeof AGENTVOUCH_ERROR__AUTHOR_DISPUTE_NOT_OPEN
+  | typeof AGENTVOUCH_ERROR__AUTHOR_MISMATCH
+  | typeof AGENTVOUCH_ERROR__CHALLENGER_MISMATCH
+  | typeof AGENTVOUCH_ERROR__CONFIG_MISMATCH
+  | typeof AGENTVOUCH_ERROR__DISPUTE_BOND_VAULT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__DISPUTE_COUNT_OVERFLOW
   | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_MINT
   | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER
-  | typeof AGENTVOUCH_ERROR__INVALID_USDC_MINT;
+  | typeof AGENTVOUCH_ERROR__INVALID_USDC_MINT
+  | typeof AGENTVOUCH_ERROR__LISTING_SETTLEMENT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__MISSING_AUTHOR_BOND_SETTLEMENT_ACCOUNTS
+  | typeof AGENTVOUCH_ERROR__OPEN_AUTHOR_DISPUTE_COUNT_UNDERFLOW
+  | typeof AGENTVOUCH_ERROR__TREASURY_VAULT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__UNAUTHORIZED_RESOLVER;
 
 let agentvouchErrorMessages: Record<AgentvouchError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
   agentvouchErrorMessages = {
-    [AGENTVOUCH_ERROR__AMOUNT_MUST_BE_POSITIVE]: `Amount must be greater than zero`,
-    [AGENTVOUCH_ERROR__AUTHOR_BOND_AUTHORITY_MISMATCH]: `Author bond authority mismatch`,
-    [AGENTVOUCH_ERROR__AUTHOR_BOND_LOCKED_WHILE_DISPUTES_OPEN]: `Author bond cannot be withdrawn while author disputes are open`,
+    [AGENTVOUCH_ERROR__AUTHOR_BOND_ACCOUNT_MISMATCH]: `Author bond account does not match expected PDA`,
+    [AGENTVOUCH_ERROR__AUTHOR_BOND_PROFILE_MISMATCH]: `Author bond account does not match profile`,
+    [AGENTVOUCH_ERROR__AUTHOR_BOND_UNDERFLOW]: `Author bond amount underflowed`,
     [AGENTVOUCH_ERROR__AUTHOR_BOND_VAULT_MISMATCH]: `Author bond vault does not match account state`,
-    [AGENTVOUCH_ERROR__FREE_LISTINGS_REQUIRE_BOND_FLOOR]: `Active free listings require the configured minimum author bond`,
-    [AGENTVOUCH_ERROR__INSUFFICIENT_BOND_AMOUNT]: `Author bond amount is insufficient for this withdrawal`,
+    [AGENTVOUCH_ERROR__AUTHOR_DISPUTE_MISMATCH]: `Author dispute PDA does not match expected address`,
+    [AGENTVOUCH_ERROR__AUTHOR_DISPUTE_NOT_OPEN]: `Author dispute is not open`,
+    [AGENTVOUCH_ERROR__AUTHOR_MISMATCH]: `Author profile does not match dispute`,
+    [AGENTVOUCH_ERROR__CHALLENGER_MISMATCH]: `Stored challenger does not match provided challenger account`,
+    [AGENTVOUCH_ERROR__CONFIG_MISMATCH]: `Config PDA does not match expected address`,
+    [AGENTVOUCH_ERROR__DISPUTE_BOND_VAULT_MISMATCH]: `Dispute bond vault does not match dispute state`,
+    [AGENTVOUCH_ERROR__DISPUTE_COUNT_OVERFLOW]: `Dispute count overflowed`,
     [AGENTVOUCH_ERROR__INVALID_TOKEN_MINT]: `Token account mint does not match config`,
     [AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER]: `Token account owner is invalid`,
     [AGENTVOUCH_ERROR__INVALID_USDC_MINT]: `USDC mint does not match config`,
+    [AGENTVOUCH_ERROR__LISTING_SETTLEMENT_MISMATCH]: `Listing settlement does not match dispute lock`,
+    [AGENTVOUCH_ERROR__MISSING_AUTHOR_BOND_SETTLEMENT_ACCOUNTS]: `Author bond settlement accounts are missing`,
+    [AGENTVOUCH_ERROR__OPEN_AUTHOR_DISPUTE_COUNT_UNDERFLOW]: `Open author dispute count underflowed`,
+    [AGENTVOUCH_ERROR__TREASURY_VAULT_MISMATCH]: `Treasury vault does not match config`,
+    [AGENTVOUCH_ERROR__UNAUTHORIZED_RESOLVER]: `Only config authority can resolve disputes`,
   };
 }
 

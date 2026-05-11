@@ -70,6 +70,7 @@ export type OpenAuthorDisputeInstruction<
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountSkillListing extends string | AccountMeta<string> = string,
   TAccountPurchase extends string | AccountMeta<string> = string,
+  TAccountListingSettlement extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
   TAccountChallengerUsdcAccount extends string | AccountMeta<string> = string,
   TAccountDisputeBondVaultAuthority extends string | AccountMeta<string> =
@@ -100,6 +101,9 @@ export type OpenAuthorDisputeInstruction<
       TAccountPurchase extends string
         ? ReadonlyAccount<TAccountPurchase>
         : TAccountPurchase,
+      TAccountListingSettlement extends string
+        ? WritableAccount<TAccountListingSettlement>
+        : TAccountListingSettlement,
       TAccountUsdcMint extends string
         ? ReadonlyAccount<TAccountUsdcMint>
         : TAccountUsdcMint,
@@ -176,6 +180,7 @@ export type OpenAuthorDisputeAsyncInput<
   TAccountConfig extends string = string,
   TAccountSkillListing extends string = string,
   TAccountPurchase extends string = string,
+  TAccountListingSettlement extends string = string,
   TAccountUsdcMint extends string = string,
   TAccountChallengerUsdcAccount extends string = string,
   TAccountDisputeBondVaultAuthority extends string = string,
@@ -189,6 +194,7 @@ export type OpenAuthorDisputeAsyncInput<
   config?: Address<TAccountConfig>;
   skillListing: Address<TAccountSkillListing>;
   purchase?: Address<TAccountPurchase>;
+  listingSettlement?: Address<TAccountListingSettlement>;
   usdcMint: Address<TAccountUsdcMint>;
   challengerUsdcAccount: Address<TAccountChallengerUsdcAccount>;
   disputeBondVaultAuthority: Address<TAccountDisputeBondVaultAuthority>;
@@ -207,6 +213,7 @@ export async function getOpenAuthorDisputeInstructionAsync<
   TAccountConfig extends string,
   TAccountSkillListing extends string,
   TAccountPurchase extends string,
+  TAccountListingSettlement extends string,
   TAccountUsdcMint extends string,
   TAccountChallengerUsdcAccount extends string,
   TAccountDisputeBondVaultAuthority extends string,
@@ -222,6 +229,7 @@ export async function getOpenAuthorDisputeInstructionAsync<
     TAccountConfig,
     TAccountSkillListing,
     TAccountPurchase,
+    TAccountListingSettlement,
     TAccountUsdcMint,
     TAccountChallengerUsdcAccount,
     TAccountDisputeBondVaultAuthority,
@@ -239,6 +247,7 @@ export async function getOpenAuthorDisputeInstructionAsync<
     TAccountConfig,
     TAccountSkillListing,
     TAccountPurchase,
+    TAccountListingSettlement,
     TAccountUsdcMint,
     TAccountChallengerUsdcAccount,
     TAccountDisputeBondVaultAuthority,
@@ -258,6 +267,10 @@ export async function getOpenAuthorDisputeInstructionAsync<
     config: { value: input.config ?? null, isWritable: false },
     skillListing: { value: input.skillListing ?? null, isWritable: false },
     purchase: { value: input.purchase ?? null, isWritable: false },
+    listingSettlement: {
+      value: input.listingSettlement ?? null,
+      isWritable: true,
+    },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
     challengerUsdcAccount: {
       value: input.challengerUsdcAccount ?? null,
@@ -304,6 +317,7 @@ export async function getOpenAuthorDisputeInstructionAsync<
       getAccountMeta("config", accounts.config),
       getAccountMeta("skillListing", accounts.skillListing),
       getAccountMeta("purchase", accounts.purchase),
+      getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta("usdcMint", accounts.usdcMint),
       getAccountMeta("challengerUsdcAccount", accounts.challengerUsdcAccount),
       getAccountMeta(
@@ -326,6 +340,7 @@ export async function getOpenAuthorDisputeInstructionAsync<
     TAccountConfig,
     TAccountSkillListing,
     TAccountPurchase,
+    TAccountListingSettlement,
     TAccountUsdcMint,
     TAccountChallengerUsdcAccount,
     TAccountDisputeBondVaultAuthority,
@@ -342,6 +357,7 @@ export type OpenAuthorDisputeInput<
   TAccountConfig extends string = string,
   TAccountSkillListing extends string = string,
   TAccountPurchase extends string = string,
+  TAccountListingSettlement extends string = string,
   TAccountUsdcMint extends string = string,
   TAccountChallengerUsdcAccount extends string = string,
   TAccountDisputeBondVaultAuthority extends string = string,
@@ -355,6 +371,7 @@ export type OpenAuthorDisputeInput<
   config: Address<TAccountConfig>;
   skillListing: Address<TAccountSkillListing>;
   purchase?: Address<TAccountPurchase>;
+  listingSettlement?: Address<TAccountListingSettlement>;
   usdcMint: Address<TAccountUsdcMint>;
   challengerUsdcAccount: Address<TAccountChallengerUsdcAccount>;
   disputeBondVaultAuthority: Address<TAccountDisputeBondVaultAuthority>;
@@ -373,6 +390,7 @@ export function getOpenAuthorDisputeInstruction<
   TAccountConfig extends string,
   TAccountSkillListing extends string,
   TAccountPurchase extends string,
+  TAccountListingSettlement extends string,
   TAccountUsdcMint extends string,
   TAccountChallengerUsdcAccount extends string,
   TAccountDisputeBondVaultAuthority extends string,
@@ -388,6 +406,7 @@ export function getOpenAuthorDisputeInstruction<
     TAccountConfig,
     TAccountSkillListing,
     TAccountPurchase,
+    TAccountListingSettlement,
     TAccountUsdcMint,
     TAccountChallengerUsdcAccount,
     TAccountDisputeBondVaultAuthority,
@@ -404,6 +423,7 @@ export function getOpenAuthorDisputeInstruction<
   TAccountConfig,
   TAccountSkillListing,
   TAccountPurchase,
+  TAccountListingSettlement,
   TAccountUsdcMint,
   TAccountChallengerUsdcAccount,
   TAccountDisputeBondVaultAuthority,
@@ -422,6 +442,10 @@ export function getOpenAuthorDisputeInstruction<
     config: { value: input.config ?? null, isWritable: false },
     skillListing: { value: input.skillListing ?? null, isWritable: false },
     purchase: { value: input.purchase ?? null, isWritable: false },
+    listingSettlement: {
+      value: input.listingSettlement ?? null,
+      isWritable: true,
+    },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
     challengerUsdcAccount: {
       value: input.challengerUsdcAccount ?? null,
@@ -465,6 +489,7 @@ export function getOpenAuthorDisputeInstruction<
       getAccountMeta("config", accounts.config),
       getAccountMeta("skillListing", accounts.skillListing),
       getAccountMeta("purchase", accounts.purchase),
+      getAccountMeta("listingSettlement", accounts.listingSettlement),
       getAccountMeta("usdcMint", accounts.usdcMint),
       getAccountMeta("challengerUsdcAccount", accounts.challengerUsdcAccount),
       getAccountMeta(
@@ -487,6 +512,7 @@ export function getOpenAuthorDisputeInstruction<
     TAccountConfig,
     TAccountSkillListing,
     TAccountPurchase,
+    TAccountListingSettlement,
     TAccountUsdcMint,
     TAccountChallengerUsdcAccount,
     TAccountDisputeBondVaultAuthority,
@@ -508,13 +534,14 @@ export type ParsedOpenAuthorDisputeInstruction<
     config: TAccountMetas[2];
     skillListing: TAccountMetas[3];
     purchase?: TAccountMetas[4] | undefined;
-    usdcMint: TAccountMetas[5];
-    challengerUsdcAccount: TAccountMetas[6];
-    disputeBondVaultAuthority: TAccountMetas[7];
-    disputeBondVault: TAccountMetas[8];
-    challenger: TAccountMetas[9];
-    tokenProgram: TAccountMetas[10];
-    systemProgram: TAccountMetas[11];
+    listingSettlement?: TAccountMetas[5] | undefined;
+    usdcMint: TAccountMetas[6];
+    challengerUsdcAccount: TAccountMetas[7];
+    disputeBondVaultAuthority: TAccountMetas[8];
+    disputeBondVault: TAccountMetas[9];
+    challenger: TAccountMetas[10];
+    tokenProgram: TAccountMetas[11];
+    systemProgram: TAccountMetas[12];
   };
   data: OpenAuthorDisputeInstructionData;
 };
@@ -527,12 +554,12 @@ export function parseOpenAuthorDisputeInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedOpenAuthorDisputeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -556,6 +583,7 @@ export function parseOpenAuthorDisputeInstruction<
       config: getNextAccount(),
       skillListing: getNextAccount(),
       purchase: getNextOptionalAccount(),
+      listingSettlement: getNextOptionalAccount(),
       usdcMint: getNextAccount(),
       challengerUsdcAccount: getNextAccount(),
       disputeBondVaultAuthority: getNextAccount(),

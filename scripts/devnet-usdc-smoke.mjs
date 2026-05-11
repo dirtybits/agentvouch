@@ -34,6 +34,7 @@ const DEFAULT_AUTHOR_BOND_USDC_MICROS = 1_000_000n;
 const DEFAULT_VOUCH_USDC_MICROS = 1_000_000n;
 const DEFAULT_PRICE_USDC_MICROS = 1_000_000n;
 const AUTHOR_SOL_FLOOR_LAMPORTS = BigInt(Math.round(0.1 * LAMPORTS_PER_SOL));
+const M13_REPUTATION_CONFIG_MIN_LEN = 491;
 const STATE_DIR = path.resolve(".agent-keys/m11-devnet-smoke");
 
 function parseArgs(argv) {
@@ -212,6 +213,21 @@ async function main() {
     skillListing.toBuffer()
   );
   const rewardVault = pda("listing_reward_vault", skillListing.toBuffer());
+  let listingRevision = 0n;
+  let listingRevisionSeed = u64Le(listingRevision);
+  let listingSettlement = pda(
+    "listing_settlement",
+    skillListing.toBuffer(),
+    listingRevisionSeed
+  );
+  let authorProceedsVaultAuthority = pda(
+    "author_proceeds_vault_authority",
+    listingSettlement.toBuffer()
+  );
+  let authorProceedsVault = pda(
+    "author_proceeds_vault",
+    listingSettlement.toBuffer()
+  );
   const vouch = pda(
     "vouch",
     funderProfile.toBuffer(),
@@ -232,13 +248,31 @@ async function main() {
     skillListing.toBuffer(),
     vouch.toBuffer()
   );
-  const purchase = pda(
+  let purchase = pda(
     "purchase",
     funder.publicKey.toBuffer(),
-    skillListing.toBuffer()
+    skillListing.toBuffer(),
+    listingRevisionSeed
   );
   const funderUsdcAccount = tokenAccountAddress(funder.publicKey);
   const authorUsdcAccount = tokenAccountAddress(author.publicKey);
+
+  const configAccountInfo = await connection.getAccountInfo(config, "confirmed");
+  if (!configAccountInfo) {
+    throw new Error(
+      `Config PDA ${config.toBase58()} does not exist on devnet. Run initialize_config first.`
+    );
+  }
+  if (!configAccountInfo.owner.equals(PROGRAM_ID)) {
+    throw new Error(
+      `Config PDA ${config.toBase58()} is owned by ${configAccountInfo.owner.toBase58()}, expected ${PROGRAM_ID.toBase58()}.`
+    );
+  }
+  if (configAccountInfo.data.length < M13_REPUTATION_CONFIG_MIN_LEN) {
+    throw new Error(
+      `Config PDA ${config.toBase58()} is ${configAccountInfo.data.length} bytes, expected at least ${M13_REPUTATION_CONFIG_MIN_LEN} for M13. Run npm run migrate:config -- --apply with the config authority, then rerun this smoke.`
+    );
+  }
 
   const configAccount = await program.account.reputationConfig.fetch(config);
   if (configAccount.usdcMint.toBase58() !== DEVNET_USDC_MINT.toBase58()) {
@@ -266,6 +300,29 @@ async function main() {
     program.account.skillListing,
     skillListing
   );
+  if (existingSkillListing?.currentRevision !== undefined) {
+    listingRevision = BigInt(existingSkillListing.currentRevision.toString());
+    listingRevisionSeed = u64Le(listingRevision);
+    listingSettlement = pda(
+      "listing_settlement",
+      skillListing.toBuffer(),
+      listingRevisionSeed
+    );
+    authorProceedsVaultAuthority = pda(
+      "author_proceeds_vault_authority",
+      listingSettlement.toBuffer()
+    );
+    authorProceedsVault = pda(
+      "author_proceeds_vault",
+      listingSettlement.toBuffer()
+    );
+    purchase = pda(
+      "purchase",
+      funder.publicKey.toBuffer(),
+      skillListing.toBuffer(),
+      listingRevisionSeed
+    );
+  }
   const existingVouch = await fetchNullable(program.account.vouch, vouch);
   const existingPosition = await fetchNullable(
     program.account.listingVouchPosition,
@@ -500,12 +557,33 @@ async function main() {
         usdcMint: DEVNET_USDC_MINT,
         rewardVaultAuthority,
         rewardVault,
+        listingSettlement,
+        authorProceedsVaultAuthority,
+        authorProceedsVault,
         author: author.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .transaction();
     await send("create-skill-listing", tx, [author]);
+  }
+
+  if (!(await accountExists(connection, listingSettlement))) {
+    const tx = await program.methods
+      .initializeListingSettlement()
+      .accounts({
+        skillListing,
+        config,
+        usdcMint: DEVNET_USDC_MINT,
+        listingSettlement,
+        authorProceedsVaultAuthority,
+        authorProceedsVault,
+        author: author.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .transaction();
+    await send("initialize-listing-settlement", tx, [author]);
   }
 
   if (!(await accountExists(connection, vouch))) {
@@ -556,7 +634,9 @@ async function main() {
         config,
         usdcMint: DEVNET_USDC_MINT,
         buyerUsdcAccount: funderUsdcAccount,
-        authorUsdcAccount,
+        listingSettlement,
+        authorProceedsVaultAuthority,
+        authorProceedsVault,
         rewardVault,
         buyer: funder.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -602,6 +682,10 @@ async function main() {
   const finalFunderUsdc = await tokenBalance(connection, funderUsdcAccount);
   const finalAuthorUsdc = await tokenBalance(connection, authorUsdcAccount);
   const finalRewardVault = await tokenBalance(connection, rewardVault);
+  const finalAuthorProceedsVault = await tokenBalance(
+    connection,
+    authorProceedsVault
+  );
   const finalVouchVault = await tokenBalance(connection, vouchVault);
 
   console.log(
@@ -623,6 +707,8 @@ async function main() {
             finalPurchase.pricePaidUsdcMicros.toString(),
           funderUsdcMicros: finalFunderUsdc?.toString() ?? "missing",
           authorUsdcMicros: finalAuthorUsdc?.toString() ?? "missing",
+          authorProceedsVaultUsdcMicros:
+            finalAuthorProceedsVault?.toString() ?? "missing",
           rewardVaultUsdcMicros: finalRewardVault?.toString() ?? "missing",
           vouchVaultUsdcMicros: finalVouchVault?.toString() ?? "missing",
         },

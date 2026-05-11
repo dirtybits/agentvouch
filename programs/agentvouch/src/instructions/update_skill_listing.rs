@@ -1,8 +1,8 @@
-use anchor_lang::prelude::*;
+use crate::events::SkillListingUpdated;
 use crate::state::{
     find_author_bond_pda, AgentProfile, AuthorBond, ReputationConfig, SkillListing, SkillStatus,
 };
-use crate::events::SkillListingUpdated;
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 #[instruction(skill_id: String)]
@@ -42,7 +42,10 @@ pub fn handler(
     description: String,
     price_usdc_micros: u64,
 ) -> Result<()> {
-    require!(!ctx.accounts.config.paused, UpdateSkillError::ProtocolPaused);
+    require!(
+        !ctx.accounts.config.paused,
+        UpdateSkillError::ProtocolPaused
+    );
     require!(
         skill_uri.len() <= SkillListing::MAX_URI_LEN,
         UpdateSkillError::UriTooLong
@@ -78,10 +81,21 @@ pub fn handler(
     let was_free = SkillListing::is_free_price(skill_listing.price_usdc_micros);
     let will_be_free = SkillListing::is_free_price(price_usdc_micros);
 
+    let revision_changed = skill_listing.skill_uri != skill_uri
+        || skill_listing.price_usdc_micros != price_usdc_micros;
+
     skill_listing.skill_uri = skill_uri;
     skill_listing.name = name.clone();
     skill_listing.description = description;
     skill_listing.price_usdc_micros = price_usdc_micros;
+    if revision_changed {
+        skill_listing.current_revision = skill_listing
+            .current_revision
+            .checked_add(1)
+            .ok_or(UpdateSkillError::RevisionOverflow)?;
+        skill_listing.current_settlement = Pubkey::default();
+        skill_listing.current_author_proceeds_vault = Pubkey::default();
+    }
     skill_listing.updated_at = clock.unix_timestamp;
 
     if !was_free && will_be_free {
@@ -173,4 +187,6 @@ pub enum UpdateSkillError {
     FreeListingCountUnderflow,
     #[msg("Protocol is paused")]
     ProtocolPaused,
+    #[msg("Listing revision overflowed")]
+    RevisionOverflow,
 }

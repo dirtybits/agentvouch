@@ -8,6 +8,173 @@
   },
   "instructions": [
     {
+      "name": "claim_purchase_refund",
+      "discriminator": [
+        123,
+        72,
+        208,
+        183,
+        74,
+        125,
+        80,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "refund_pool",
+          "writable": true
+        },
+        {
+          "name": "purchase",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  117,
+                  114,
+                  99,
+                  104,
+                  97,
+                  115,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "purchase.skill_listing",
+                "account": "Purchase"
+              },
+              {
+                "kind": "account",
+                "path": "purchase.listing_revision",
+                "account": "Purchase"
+              }
+            ]
+          }
+        },
+        {
+          "name": "refund_claim",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  102,
+                  117,
+                  110,
+                  100,
+                  95,
+                  99,
+                  108,
+                  97,
+                  105,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "refund_pool"
+              },
+              {
+                "kind": "account",
+                "path": "purchase"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "refund_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  102,
+                  117,
+                  110,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "refund_pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "refund_vault",
+          "writable": true
+        },
+        {
+          "name": "buyer_usdc_account",
+          "writable": true
+        },
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_voucher_revenue",
       "discriminator": [
         197,
@@ -296,6 +463,261 @@
       ]
     },
     {
+      "name": "create_refund_pool",
+      "discriminator": [
+        135,
+        46,
+        198,
+        133,
+        221,
+        230,
+        60,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "author_dispute"
+        },
+        {
+          "name": "skill_listing"
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement.revision",
+                "account": "ListingSettlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true
+        },
+        {
+          "name": "refund_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  102,
+                  117,
+                  110,
+                  100,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "author_dispute"
+              }
+            ]
+          }
+        },
+        {
+          "name": "refund_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  102,
+                  117,
+                  110,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "refund_pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "refund_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  102,
+                  117,
+                  110,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "refund_pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "challenger_usdc_account",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "requested_refund_pool_usdc_micros",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "create_skill_listing",
       "discriminator": [
         101,
@@ -460,6 +882,139 @@
               {
                 "kind": "account",
                 "path": "skill_listing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
               }
             ]
           }
@@ -911,6 +1466,185 @@
       ]
     },
     {
+      "name": "initialize_listing_settlement",
+      "discriminator": [
+        161,
+        155,
+        208,
+        205,
+        43,
+        43,
+        23,
+        110
+      ],
+      "accounts": [
+        {
+          "name": "skill_listing",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing.current_revision",
+                "account": "SkillListing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "link_vouch_to_listing",
       "discriminator": [
         202,
@@ -1070,6 +1804,54 @@
       "args": []
     },
     {
+      "name": "migrate_config_m13",
+      "discriminator": [
+        239,
+        110,
+        59,
+        208,
+        142,
+        49,
+        55,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "open_author_dispute",
       "discriminator": [
         37,
@@ -1164,6 +1946,11 @@
         },
         {
           "name": "purchase",
+          "optional": true
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
           "optional": true
         },
         {
@@ -1337,6 +2124,11 @@
               {
                 "kind": "account",
                 "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing.current_revision",
+                "account": "SkillListing"
               }
             ]
           }
@@ -1392,7 +2184,94 @@
           "writable": true
         },
         {
-          "name": "author_usdc_account",
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing.current_revision",
+                "account": "SkillListing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
           "writable": true
         },
         {
@@ -1582,6 +2461,11 @@
         {
           "name": "protocol_treasury_vault",
           "writable": true
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "optional": true
         },
         {
           "name": "author_bond_vault_authority"
@@ -2398,6 +3282,154 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "withdraw_author_proceeds",
+      "discriminator": [
+        245,
+        136,
+        52,
+        151,
+        131,
+        85,
+        131,
+        55
+      ],
+      "accounts": [
+        {
+          "name": "skill_listing"
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement.revision",
+                "account": "ListingSettlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true
+        },
+        {
+          "name": "author_usdc_account",
+          "writable": true
+        },
+        {
+          "name": "author",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_usdc_micros",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -2441,6 +3473,19 @@
       ]
     },
     {
+      "name": "ListingSettlement",
+      "discriminator": [
+        199,
+        137,
+        206,
+        148,
+        6,
+        93,
+        158,
+        75
+      ]
+    },
+    {
       "name": "ListingVouchPosition",
       "discriminator": [
         2,
@@ -2464,6 +3509,32 @@
         228,
         8,
         67
+      ]
+    },
+    {
+      "name": "RefundClaim",
+      "discriminator": [
+        141,
+        131,
+        251,
+        43,
+        14,
+        187,
+        12,
+        52
+      ]
+    },
+    {
+      "name": "RefundPool",
+      "discriminator": [
+        101,
+        196,
+        163,
+        169,
+        186,
+        73,
+        206,
+        171
       ]
     },
     {
@@ -2586,6 +3657,32 @@
       ]
     },
     {
+      "name": "AuthorProceedsWithdrawn",
+      "discriminator": [
+        183,
+        18,
+        26,
+        22,
+        216,
+        248,
+        206,
+        72
+      ]
+    },
+    {
+      "name": "ListingSettlementInitialized",
+      "discriminator": [
+        197,
+        59,
+        247,
+        88,
+        164,
+        73,
+        99,
+        210
+      ]
+    },
+    {
       "name": "ListingVouchPositionLinked",
       "discriminator": [
         26,
@@ -2609,6 +3706,32 @@
         195,
         103,
         149
+      ]
+    },
+    {
+      "name": "PurchaseRefundClaimed",
+      "discriminator": [
+        41,
+        62,
+        155,
+        251,
+        206,
+        237,
+        18,
+        81
+      ]
+    },
+    {
+      "name": "RefundPoolCreated",
+      "discriminator": [
+        173,
+        232,
+        62,
+        89,
+        146,
+        98,
+        84,
+        220
       ]
     },
     {
@@ -2693,48 +3816,98 @@
   "errors": [
     {
       "code": 6000,
-      "name": "AmountMustBePositive",
-      "msg": "Amount must be greater than zero"
+      "name": "AuthorDisputeNotOpen",
+      "msg": "Author dispute is not open"
     },
     {
       "code": 6001,
-      "name": "AuthorBondAuthorityMismatch",
-      "msg": "Author bond authority mismatch"
+      "name": "AuthorMismatch",
+      "msg": "Author profile does not match dispute"
     },
     {
       "code": 6002,
-      "name": "InsufficientBondAmount",
-      "msg": "Author bond amount is insufficient for this withdrawal"
+      "name": "ConfigMismatch",
+      "msg": "Config PDA does not match expected address"
     },
     {
       "code": 6003,
-      "name": "FreeListingsRequireBondFloor",
-      "msg": "Active free listings require the configured minimum author bond"
+      "name": "AuthorDisputeMismatch",
+      "msg": "Author dispute PDA does not match expected address"
     },
     {
       "code": 6004,
-      "name": "AuthorBondLockedWhileDisputesOpen",
-      "msg": "Author bond cannot be withdrawn while author disputes are open"
+      "name": "UnauthorizedResolver",
+      "msg": "Only config authority can resolve disputes"
     },
     {
       "code": 6005,
-      "name": "InvalidUsdcMint",
-      "msg": "USDC mint does not match config"
+      "name": "ChallengerMismatch",
+      "msg": "Stored challenger does not match provided challenger account"
     },
     {
       "code": 6006,
+      "name": "OpenAuthorDisputeCountUnderflow",
+      "msg": "Open author dispute count underflowed"
+    },
+    {
+      "code": 6007,
+      "name": "AuthorBondAccountMismatch",
+      "msg": "Author bond account does not match expected PDA"
+    },
+    {
+      "code": 6008,
+      "name": "AuthorBondProfileMismatch",
+      "msg": "Author bond account does not match profile"
+    },
+    {
+      "code": 6009,
       "name": "AuthorBondVaultMismatch",
       "msg": "Author bond vault does not match account state"
     },
     {
-      "code": 6007,
+      "code": 6010,
+      "name": "AuthorBondUnderflow",
+      "msg": "Author bond amount underflowed"
+    },
+    {
+      "code": 6011,
+      "name": "MissingAuthorBondSettlementAccounts",
+      "msg": "Author bond settlement accounts are missing"
+    },
+    {
+      "code": 6012,
+      "name": "DisputeCountOverflow",
+      "msg": "Dispute count overflowed"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidUsdcMint",
+      "msg": "USDC mint does not match config"
+    },
+    {
+      "code": 6014,
+      "name": "DisputeBondVaultMismatch",
+      "msg": "Dispute bond vault does not match dispute state"
+    },
+    {
+      "code": 6015,
+      "name": "TreasuryVaultMismatch",
+      "msg": "Treasury vault does not match config"
+    },
+    {
+      "code": 6016,
       "name": "InvalidTokenMint",
       "msg": "Token account mint does not match config"
     },
     {
-      "code": 6008,
+      "code": 6017,
       "name": "InvalidTokenOwner",
       "msg": "Token account owner is invalid"
+    },
+    {
+      "code": 6018,
+      "name": "ListingSettlementMismatch",
+      "msg": "Listing settlement does not match dispute lock"
     }
   ],
   "types": [
@@ -3233,6 +4406,140 @@
       }
     },
     {
+      "name": "AuthorProceedsWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "author",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "remaining_withdrawable_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ListingSettlement",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "author",
+            "type": "pubkey"
+          },
+          {
+            "name": "revision",
+            "type": "u64"
+          },
+          {
+            "name": "author_proceeds_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_purchases",
+            "type": "u64"
+          },
+          {
+            "name": "total_purchase_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "total_author_proceeds_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawable_author_proceeds_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn_author_proceeds_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "refunded_author_proceeds_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "locked_by_dispute",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "author_proceeds_vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ListingSettlementInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "author",
+            "type": "pubkey"
+          },
+          {
+            "name": "revision",
+            "type": "u64"
+          },
+          {
+            "name": "author_proceeds_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "ListingVouchPosition",
       "type": {
         "kind": "struct",
@@ -3387,6 +4694,14 @@
             "type": "i64"
           },
           {
+            "name": "listing_revision",
+            "type": "u64"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
             "name": "price_paid_usdc_micros",
             "type": "u64"
           },
@@ -3405,6 +4720,182 @@
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PurchaseRefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "refund_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "refund_claim",
+            "type": "pubkey"
+          },
+          {
+            "name": "purchase",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundClaim",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "refund_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "purchase",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "author_dispute",
+            "type": "pubkey"
+          },
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "revision",
+            "type": "u64"
+          },
+          {
+            "name": "refund_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_pool_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "remaining_pool_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "max_refund_per_purchase_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "challenger_reward_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "claim_deadline",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "refund_vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundPoolCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "refund_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "author_dispute",
+            "type": "pubkey"
+          },
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "revision",
+            "type": "u64"
+          },
+          {
+            "name": "total_pool_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "challenger_reward_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "claim_deadline",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }
@@ -3523,6 +5014,22 @@
             "type": "u64"
           },
           {
+            "name": "author_proceeds_lock_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "refund_claim_window_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "challenger_reward_bps",
+            "type": "u16"
+          },
+          {
+            "name": "challenger_reward_cap_usdc_micros",
+            "type": "u64"
+          },
+          {
             "name": "paused",
             "type": "bool"
           },
@@ -3596,6 +5103,18 @@
           },
           {
             "name": "reward_vault_rent_payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "current_revision",
+            "type": "u64"
+          },
+          {
+            "name": "current_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "current_author_proceeds_vault",
             "type": "pubkey"
           },
           {
@@ -3747,7 +5266,15 @@
             "type": "u64"
           },
           {
-            "name": "author_usdc_account",
+            "name": "listing_revision",
+            "type": "u64"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "author_proceeds_vault",
             "type": "pubkey"
           },
           {

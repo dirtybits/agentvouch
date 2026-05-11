@@ -121,7 +121,7 @@ describe("useReputationOracle send helpers", () => {
 
     expect(normalizedIx.accounts[0].address).toBe(skillListing);
     expect(normalizedIx.accounts[1].address).toBe(authorProfile);
-    expect(normalizedIx.accounts[7].address).toBe(VOUCHER_ADDRESS);
+    expect(normalizedIx.accounts[10].address).toBe(VOUCHER_ADDRESS);
   });
 
   it("rejects mismatched wallet and signer addresses before listing creation", () => {

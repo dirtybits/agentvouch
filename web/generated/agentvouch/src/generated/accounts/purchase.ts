@@ -54,6 +54,8 @@ export type Purchase = {
   buyer: Address;
   skillListing: Address;
   purchasedAt: bigint;
+  listingRevision: bigint;
+  listingSettlement: Address;
   pricePaidUsdcMicros: bigint;
   authorShareUsdcMicros: bigint;
   voucherPoolUsdcMicros: bigint;
@@ -65,6 +67,8 @@ export type PurchaseArgs = {
   buyer: Address;
   skillListing: Address;
   purchasedAt: number | bigint;
+  listingRevision: number | bigint;
+  listingSettlement: Address;
   pricePaidUsdcMicros: number | bigint;
   authorShareUsdcMicros: number | bigint;
   voucherPoolUsdcMicros: number | bigint;
@@ -80,6 +84,8 @@ export function getPurchaseEncoder(): FixedSizeEncoder<PurchaseArgs> {
       ["buyer", getAddressEncoder()],
       ["skillListing", getAddressEncoder()],
       ["purchasedAt", getI64Encoder()],
+      ["listingRevision", getU64Encoder()],
+      ["listingSettlement", getAddressEncoder()],
       ["pricePaidUsdcMicros", getU64Encoder()],
       ["authorShareUsdcMicros", getU64Encoder()],
       ["voucherPoolUsdcMicros", getU64Encoder()],
@@ -97,6 +103,8 @@ export function getPurchaseDecoder(): FixedSizeDecoder<Purchase> {
     ["buyer", getAddressDecoder()],
     ["skillListing", getAddressDecoder()],
     ["purchasedAt", getI64Decoder()],
+    ["listingRevision", getU64Decoder()],
+    ["listingSettlement", getAddressDecoder()],
     ["pricePaidUsdcMicros", getU64Decoder()],
     ["authorShareUsdcMicros", getU64Decoder()],
     ["voucherPoolUsdcMicros", getU64Decoder()],
@@ -164,5 +172,5 @@ export async function fetchAllMaybePurchase(
 }
 
 export function getPurchaseSize(): number {
-  return 137;
+  return 177;
 }

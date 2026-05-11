@@ -38,7 +38,6 @@ import {
   assertUsdcAccountReady,
   formatUsdcMicrosValue,
   getAssociatedTokenAccount,
-  getCreateAssociatedTokenAccountIdempotentInstruction,
   logTransactionSummary,
   type AgentVouchTransactionSummary,
 } from "@/lib/agentvouchUsdc";
@@ -49,6 +48,7 @@ import {
   PURCHASE_DISCRIMINATOR,
 } from "../generated/agentvouch/src/generated/accounts/purchase";
 import {
+  fetchAllMaybeSkillListing,
   fetchMaybeSkillListing,
   getSkillListingDecoder,
   SKILL_LISTING_DISCRIMINATOR,
@@ -105,12 +105,22 @@ function buildTransactionSendRequest(
   };
 }
 
+function u64Seed(value: bigint | number): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, BigInt(value), true);
+  return bytes;
+}
+
 async function deriveAddress(
-  seeds: (string | Address)[],
+  seeds: (string | Address | Uint8Array)[],
   programId: Address = AGENTVOUCH_PROGRAM_ADDRESS
 ): Promise<Address> {
   const encodedSeeds = seeds.map((seed) =>
-    isAddress(seed) ? addressEncoder.encode(seed) : textEncoder.encode(seed)
+    seed instanceof Uint8Array
+      ? seed
+      : isAddress(seed)
+      ? addressEncoder.encode(seed)
+      : textEncoder.encode(seed)
   );
   const [derived] = await getProgramDerivedAddress({
     programAddress: programId,
@@ -125,9 +135,10 @@ async function getAgentPDA(agentKey: Address): Promise<Address> {
 
 async function getPurchasePDA(
   buyer: Address,
-  skillListing: Address
+  skillListing: Address,
+  revision: bigint | number = 0n
 ): Promise<Address> {
-  return deriveAddress(["purchase", buyer, skillListing]);
+  return deriveAddress(["purchase", buyer, skillListing, u64Seed(revision)]);
 }
 
 function sleep(ms: number) {
@@ -402,9 +413,16 @@ export function useMarketplaceOracle() {
     async (buyer: Address, skillListings: Address[]) => {
       if (skillListings.length === 0) return new Set<string>();
       try {
+        const listings = await fetchAllMaybeSkillListing(rpc, skillListings);
         const purchaseAddresses = await Promise.all(
-          skillListings.map((skillListing) =>
-            getPurchasePDA(buyer, skillListing)
+          skillListings.map((skillListing, index) =>
+            getPurchasePDA(
+              buyer,
+              skillListing,
+              listings[index]?.exists
+                ? listings[index].data.currentRevision
+                : 0n
+            )
           )
         );
         const maybePurchases = await fetchAllMaybePurchase(
@@ -431,7 +449,13 @@ export function useMarketplaceOracle() {
   const purchaseSkill = useCallback(
     async (skillListingKey: Address, authorKey: Address) => {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
-      const purchasePda = await getPurchasePDA(walletAddress, skillListingKey);
+      const listing = await fetchMaybeSkillListing(rpc, skillListingKey);
+      if (!listing.exists) throw new Error("Skill listing not found");
+      const purchasePda = await getPurchasePDA(
+        walletAddress,
+        skillListingKey,
+        listing.data.currentRevision
+      );
       const existingPurchase = await fetchMaybePurchase(rpc, purchasePda).catch(
         () => null
       );
@@ -476,14 +500,12 @@ export function useMarketplaceOracle() {
         console.warn("Purchase preflight skipped:", error);
       }
 
-      const listing = await fetchMaybeSkillListing(rpc, skillListingKey);
-      if (!listing.exists) throw new Error("Skill listing not found");
       const authorProfile = await getAgentPDA(authorKey);
       const usdcMint = address(getConfiguredUsdcMint());
-      const [buyerUsdcAccount, authorUsdcAccount] = await Promise.all([
-        getAssociatedTokenAccount(walletAddress, usdcMint),
-        getAssociatedTokenAccount(authorKey, usdcMint),
-      ]);
+      const buyerUsdcAccount = await getAssociatedTokenAccount(
+        walletAddress,
+        usdcMint
+      );
       await assertUsdcAccountReady({
         rpc,
         owner: walletAddress,
@@ -491,19 +513,15 @@ export function useMarketplaceOracle() {
         purpose: "Skill purchase",
         minimumBalanceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
       });
-      const createAuthorAtaIx = getCreateAssociatedTokenAccountIdempotentInstruction({
-        payer: signer,
-        associatedTokenAccount: authorUsdcAccount,
-        owner: authorKey,
-        mint: usdcMint,
-      });
       const ix = await getPurchaseSkillInstructionAsync({
         skillListing: skillListingKey,
+        purchase: purchasePda,
         author: authorKey,
         authorProfile,
         usdcMint,
         buyerUsdcAccount,
-        authorUsdcAccount,
+        listingSettlement: listing.data.currentSettlement,
+        authorProceedsVault: listing.data.currentAuthorProceedsVault,
         rewardVault: listing.data.rewardVault,
         buyer: signer,
       });
@@ -511,13 +529,13 @@ export function useMarketplaceOracle() {
         action: "Purchase skill",
         token: "USDC" as const,
         amountUsdcMicros: BigInt(listing.data.priceUsdcMicros),
-        recipient: authorUsdcAccount,
+        recipient: listing.data.currentAuthorProceedsVault,
         vault: listing.data.rewardVault,
         feePayer: signer.address,
         cluster: `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`,
       };
       try {
-        return { tx: await sendIx([createAuthorAtaIx, ix], summary), summary };
+        return { tx: await sendIx(ix, summary), summary };
       } catch (error: unknown) {
         const existingPurchaseAfterFailure = await fetchMaybePurchase(
           rpc,

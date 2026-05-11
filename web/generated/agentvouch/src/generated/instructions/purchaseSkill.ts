@@ -37,7 +37,7 @@ import {
   getAddressFromResolvedInstructionAccount,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { findConfigPda, findPurchasePda } from "../pdas";
+import { findAuthorProceedsVaultAuthorityPda, findConfigPda } from "../pdas";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
 export const PURCHASE_SKILL_DISCRIMINATOR = new Uint8Array([
@@ -59,7 +59,10 @@ export type PurchaseSkillInstruction<
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
   TAccountBuyerUsdcAccount extends string | AccountMeta<string> = string,
-  TAccountAuthorUsdcAccount extends string | AccountMeta<string> = string,
+  TAccountListingSettlement extends string | AccountMeta<string> = string,
+  TAccountAuthorProceedsVaultAuthority extends string | AccountMeta<string> =
+    string,
+  TAccountAuthorProceedsVault extends string | AccountMeta<string> = string,
   TAccountRewardVault extends string | AccountMeta<string> = string,
   TAccountBuyer extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
@@ -92,9 +95,15 @@ export type PurchaseSkillInstruction<
       TAccountBuyerUsdcAccount extends string
         ? WritableAccount<TAccountBuyerUsdcAccount>
         : TAccountBuyerUsdcAccount,
-      TAccountAuthorUsdcAccount extends string
-        ? WritableAccount<TAccountAuthorUsdcAccount>
-        : TAccountAuthorUsdcAccount,
+      TAccountListingSettlement extends string
+        ? WritableAccount<TAccountListingSettlement>
+        : TAccountListingSettlement,
+      TAccountAuthorProceedsVaultAuthority extends string
+        ? ReadonlyAccount<TAccountAuthorProceedsVaultAuthority>
+        : TAccountAuthorProceedsVaultAuthority,
+      TAccountAuthorProceedsVault extends string
+        ? WritableAccount<TAccountAuthorProceedsVault>
+        : TAccountAuthorProceedsVault,
       TAccountRewardVault extends string
         ? WritableAccount<TAccountRewardVault>
         : TAccountRewardVault,
@@ -149,20 +158,24 @@ export type PurchaseSkillAsyncInput<
   TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
   TAccountBuyerUsdcAccount extends string = string,
-  TAccountAuthorUsdcAccount extends string = string,
+  TAccountListingSettlement extends string = string,
+  TAccountAuthorProceedsVaultAuthority extends string = string,
+  TAccountAuthorProceedsVault extends string = string,
   TAccountRewardVault extends string = string,
   TAccountBuyer extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   skillListing: Address<TAccountSkillListing>;
-  purchase?: Address<TAccountPurchase>;
+  purchase: Address<TAccountPurchase>;
   author: Address<TAccountAuthor>;
   authorProfile: Address<TAccountAuthorProfile>;
   config?: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
   buyerUsdcAccount: Address<TAccountBuyerUsdcAccount>;
-  authorUsdcAccount: Address<TAccountAuthorUsdcAccount>;
+  listingSettlement: Address<TAccountListingSettlement>;
+  authorProceedsVaultAuthority?: Address<TAccountAuthorProceedsVaultAuthority>;
+  authorProceedsVault: Address<TAccountAuthorProceedsVault>;
   rewardVault: Address<TAccountRewardVault>;
   buyer: TransactionSigner<TAccountBuyer>;
   tokenProgram?: Address<TAccountTokenProgram>;
@@ -177,7 +190,9 @@ export async function getPurchaseSkillInstructionAsync<
   TAccountConfig extends string,
   TAccountUsdcMint extends string,
   TAccountBuyerUsdcAccount extends string,
-  TAccountAuthorUsdcAccount extends string,
+  TAccountListingSettlement extends string,
+  TAccountAuthorProceedsVaultAuthority extends string,
+  TAccountAuthorProceedsVault extends string,
   TAccountRewardVault extends string,
   TAccountBuyer extends string,
   TAccountTokenProgram extends string,
@@ -192,7 +207,9 @@ export async function getPurchaseSkillInstructionAsync<
     TAccountConfig,
     TAccountUsdcMint,
     TAccountBuyerUsdcAccount,
-    TAccountAuthorUsdcAccount,
+    TAccountListingSettlement,
+    TAccountAuthorProceedsVaultAuthority,
+    TAccountAuthorProceedsVault,
     TAccountRewardVault,
     TAccountBuyer,
     TAccountTokenProgram,
@@ -209,7 +226,9 @@ export async function getPurchaseSkillInstructionAsync<
     TAccountConfig,
     TAccountUsdcMint,
     TAccountBuyerUsdcAccount,
-    TAccountAuthorUsdcAccount,
+    TAccountListingSettlement,
+    TAccountAuthorProceedsVaultAuthority,
+    TAccountAuthorProceedsVault,
     TAccountRewardVault,
     TAccountBuyer,
     TAccountTokenProgram,
@@ -231,8 +250,16 @@ export async function getPurchaseSkillInstructionAsync<
       value: input.buyerUsdcAccount ?? null,
       isWritable: true,
     },
-    authorUsdcAccount: {
-      value: input.authorUsdcAccount ?? null,
+    listingSettlement: {
+      value: input.listingSettlement ?? null,
+      isWritable: true,
+    },
+    authorProceedsVaultAuthority: {
+      value: input.authorProceedsVaultAuthority ?? null,
+      isWritable: false,
+    },
+    authorProceedsVault: {
+      value: input.authorProceedsVault ?? null,
       isWritable: true,
     },
     rewardVault: { value: input.rewardVault ?? null, isWritable: true },
@@ -246,20 +273,17 @@ export async function getPurchaseSkillInstructionAsync<
   >;
 
   // Resolve default values.
-  if (!accounts.purchase.value) {
-    accounts.purchase.value = await findPurchasePda({
-      buyer: getAddressFromResolvedInstructionAccount(
-        "buyer",
-        accounts.buyer.value,
-      ),
-      skillListing: getAddressFromResolvedInstructionAccount(
-        "skillListing",
-        accounts.skillListing.value,
-      ),
-    });
-  }
   if (!accounts.config.value) {
     accounts.config.value = await findConfigPda();
+  }
+  if (!accounts.authorProceedsVaultAuthority.value) {
+    accounts.authorProceedsVaultAuthority.value =
+      await findAuthorProceedsVaultAuthorityPda({
+        listingSettlement: getAddressFromResolvedInstructionAccount(
+          "listingSettlement",
+          accounts.listingSettlement.value,
+        ),
+      });
   }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -280,7 +304,12 @@ export async function getPurchaseSkillInstructionAsync<
       getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
       getAccountMeta("buyerUsdcAccount", accounts.buyerUsdcAccount),
-      getAccountMeta("authorUsdcAccount", accounts.authorUsdcAccount),
+      getAccountMeta("listingSettlement", accounts.listingSettlement),
+      getAccountMeta(
+        "authorProceedsVaultAuthority",
+        accounts.authorProceedsVaultAuthority,
+      ),
+      getAccountMeta("authorProceedsVault", accounts.authorProceedsVault),
       getAccountMeta("rewardVault", accounts.rewardVault),
       getAccountMeta("buyer", accounts.buyer),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -297,7 +326,9 @@ export async function getPurchaseSkillInstructionAsync<
     TAccountConfig,
     TAccountUsdcMint,
     TAccountBuyerUsdcAccount,
-    TAccountAuthorUsdcAccount,
+    TAccountListingSettlement,
+    TAccountAuthorProceedsVaultAuthority,
+    TAccountAuthorProceedsVault,
     TAccountRewardVault,
     TAccountBuyer,
     TAccountTokenProgram,
@@ -313,7 +344,9 @@ export type PurchaseSkillInput<
   TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
   TAccountBuyerUsdcAccount extends string = string,
-  TAccountAuthorUsdcAccount extends string = string,
+  TAccountListingSettlement extends string = string,
+  TAccountAuthorProceedsVaultAuthority extends string = string,
+  TAccountAuthorProceedsVault extends string = string,
   TAccountRewardVault extends string = string,
   TAccountBuyer extends string = string,
   TAccountTokenProgram extends string = string,
@@ -326,7 +359,9 @@ export type PurchaseSkillInput<
   config: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
   buyerUsdcAccount: Address<TAccountBuyerUsdcAccount>;
-  authorUsdcAccount: Address<TAccountAuthorUsdcAccount>;
+  listingSettlement: Address<TAccountListingSettlement>;
+  authorProceedsVaultAuthority: Address<TAccountAuthorProceedsVaultAuthority>;
+  authorProceedsVault: Address<TAccountAuthorProceedsVault>;
   rewardVault: Address<TAccountRewardVault>;
   buyer: TransactionSigner<TAccountBuyer>;
   tokenProgram?: Address<TAccountTokenProgram>;
@@ -341,7 +376,9 @@ export function getPurchaseSkillInstruction<
   TAccountConfig extends string,
   TAccountUsdcMint extends string,
   TAccountBuyerUsdcAccount extends string,
-  TAccountAuthorUsdcAccount extends string,
+  TAccountListingSettlement extends string,
+  TAccountAuthorProceedsVaultAuthority extends string,
+  TAccountAuthorProceedsVault extends string,
   TAccountRewardVault extends string,
   TAccountBuyer extends string,
   TAccountTokenProgram extends string,
@@ -356,7 +393,9 @@ export function getPurchaseSkillInstruction<
     TAccountConfig,
     TAccountUsdcMint,
     TAccountBuyerUsdcAccount,
-    TAccountAuthorUsdcAccount,
+    TAccountListingSettlement,
+    TAccountAuthorProceedsVaultAuthority,
+    TAccountAuthorProceedsVault,
     TAccountRewardVault,
     TAccountBuyer,
     TAccountTokenProgram,
@@ -372,7 +411,9 @@ export function getPurchaseSkillInstruction<
   TAccountConfig,
   TAccountUsdcMint,
   TAccountBuyerUsdcAccount,
-  TAccountAuthorUsdcAccount,
+  TAccountListingSettlement,
+  TAccountAuthorProceedsVaultAuthority,
+  TAccountAuthorProceedsVault,
   TAccountRewardVault,
   TAccountBuyer,
   TAccountTokenProgram,
@@ -393,8 +434,16 @@ export function getPurchaseSkillInstruction<
       value: input.buyerUsdcAccount ?? null,
       isWritable: true,
     },
-    authorUsdcAccount: {
-      value: input.authorUsdcAccount ?? null,
+    listingSettlement: {
+      value: input.listingSettlement ?? null,
+      isWritable: true,
+    },
+    authorProceedsVaultAuthority: {
+      value: input.authorProceedsVaultAuthority ?? null,
+      isWritable: false,
+    },
+    authorProceedsVault: {
+      value: input.authorProceedsVault ?? null,
       isWritable: true,
     },
     rewardVault: { value: input.rewardVault ?? null, isWritable: true },
@@ -427,7 +476,12 @@ export function getPurchaseSkillInstruction<
       getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
       getAccountMeta("buyerUsdcAccount", accounts.buyerUsdcAccount),
-      getAccountMeta("authorUsdcAccount", accounts.authorUsdcAccount),
+      getAccountMeta("listingSettlement", accounts.listingSettlement),
+      getAccountMeta(
+        "authorProceedsVaultAuthority",
+        accounts.authorProceedsVaultAuthority,
+      ),
+      getAccountMeta("authorProceedsVault", accounts.authorProceedsVault),
       getAccountMeta("rewardVault", accounts.rewardVault),
       getAccountMeta("buyer", accounts.buyer),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -444,7 +498,9 @@ export function getPurchaseSkillInstruction<
     TAccountConfig,
     TAccountUsdcMint,
     TAccountBuyerUsdcAccount,
-    TAccountAuthorUsdcAccount,
+    TAccountListingSettlement,
+    TAccountAuthorProceedsVaultAuthority,
+    TAccountAuthorProceedsVault,
     TAccountRewardVault,
     TAccountBuyer,
     TAccountTokenProgram,
@@ -465,11 +521,13 @@ export type ParsedPurchaseSkillInstruction<
     config: TAccountMetas[4];
     usdcMint: TAccountMetas[5];
     buyerUsdcAccount: TAccountMetas[6];
-    authorUsdcAccount: TAccountMetas[7];
-    rewardVault: TAccountMetas[8];
-    buyer: TAccountMetas[9];
-    tokenProgram: TAccountMetas[10];
-    systemProgram: TAccountMetas[11];
+    listingSettlement: TAccountMetas[7];
+    authorProceedsVaultAuthority: TAccountMetas[8];
+    authorProceedsVault: TAccountMetas[9];
+    rewardVault: TAccountMetas[10];
+    buyer: TAccountMetas[11];
+    tokenProgram: TAccountMetas[12];
+    systemProgram: TAccountMetas[13];
   };
   data: PurchaseSkillInstructionData;
 };
@@ -482,12 +540,12 @@ export function parsePurchaseSkillInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedPurchaseSkillInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 14) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 14,
       },
     );
   }
@@ -507,7 +565,9 @@ export function parsePurchaseSkillInstruction<
       config: getNextAccount(),
       usdcMint: getNextAccount(),
       buyerUsdcAccount: getNextAccount(),
-      authorUsdcAccount: getNextAccount(),
+      listingSettlement: getNextAccount(),
+      authorProceedsVaultAuthority: getNextAccount(),
+      authorProceedsVault: getNextAccount(),
       rewardVault: getNextAccount(),
       buyer: getNextAccount(),
       tokenProgram: getNextAccount(),

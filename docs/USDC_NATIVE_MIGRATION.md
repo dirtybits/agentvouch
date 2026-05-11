@@ -152,8 +152,8 @@ The v0.2.0 program uses one explicit custody pattern per primitive:
 
 ATA and rent rules:
 
-- The program never auto-creates a recipient ATA. Clients must ensure ATAs exist before submitting; the web hook layer handles `createAssociatedTokenAccountIdempotentInstruction` in the same transaction.
-- Listing and purchase clients must create the author's canonical USDC ATA idempotently when needed. v0.2.0 does not support arbitrary author payout wallets.
+- The program never auto-creates a user ATA. Clients must ensure buyer, author-withdraw, and voucher-claim ATAs exist before submitting; the web hook layer handles `createAssociatedTokenAccountIdempotentInstruction` where needed.
+- `purchase_skill` no longer pays the author ATA directly. It pays the author share into the revision-scoped author proceeds vault; authors withdraw with `withdraw_author_proceeds`.
 - SOL is required only for transaction fees and PDA/ATA rent. The party that creates a PDA-owned vault pays its rent (author for author-bond and listing-reward vaults, voucher for vouch-stake vaults, challenger for dispute-bond vaults, config initializer for treasury and settlement vaults). Rent is refunded to the original primitive rent payer on the matching close instruction. Slashing never confiscates SOL rent; it only moves USDC.
 
 Vault lifecycle rules:
@@ -612,8 +612,8 @@ Tasks:
 - Add tests for agent registration.
 - Add tests for author bond deposit/withdraw.
 - Add tests for vouch/revoke (including rent refund on revoke).
-- Add tests for paid listing purchase and reward pool accounting.
-- Add tests that author proceeds are paid directly to the canonical author USDC ATA.
+- Add tests for paid listing purchase, escrowed author proceeds, and reward pool accounting.
+- Add tests that author proceeds are paid into the listing settlement vault and withdrawn separately.
 - Add tests for voucher revenue claim.
 - Add tests for dispute open/resolve and slashing (slash routed to challenger ATA).
 - Add bridge POC tests before implementing `settle_x402_purchase`: x402 exact payment to protocol settlement vault, memo binding, payer extraction, duplicate payment ref rejection, and retry/refund behavior.
@@ -839,7 +839,7 @@ Tasks:
 - Document the first-time author cost shift: USDC author bond plus SOL for rent/fees/ATA creation, even though protocol accounting is USDC-native.
 - Document that x402 bridge memos must contain only protocol references (version, listing, skill id, nonce) and no PII or free-form buyer text.
 - Update `AGENTS.md` learned-facts to reflect USDC-native protocol, new program ID, vault model, and CAIP-2 conventions.
-- Defer pitch deck co-versioning to Milestone 15, including `pitch/AgentVouch_walkthrough.pptx`, its paper sibling, account/instruction counts, vault-per-primitive diagrams, and USDC-native architecture slides.
+- Defer pitch deck co-versioning to Milestone 16, including `pitch/AgentVouch_walkthrough.pptx`, its paper sibling, account/instruction counts, vault-per-primitive diagrams, and USDC-native architecture slides.
 - After every `anchor build`, copy `target/idl/agentvouch.json` to `web/agentvouch.json` and rerun `npm run generate:client` so the web client stays deploy-safe.
 
 Acceptance criteria:
@@ -1028,14 +1028,67 @@ npm run smoke:devnet-usdc
 npm run smoke:devnet-usdc -- --apply
 ```
 
-### Milestone 14: SEO And LLM-Facing Docs
+### Milestone 14: Devnet Cutover Cleanup
+
+Goal: clean up the M13 devnet cutover so the repo, deployed program, generated artifacts, smoke fixtures, and operational docs all describe one current state.
+
+Scope decision:
+
+- Treat this as a post-upgrade hygiene milestone, not a new protocol design milestone.
+- Preserve useful migration guardrails in scripts, but remove or archive stale pre-M13 assumptions that can make smoke tests reuse invalid devnet fixtures.
+- Record enough deployment evidence that future operators can distinguish a code bug from stale devnet program/config state.
+
+Tasks:
+
+- Confirm deployed devnet state:
+  - program binary hash matches the rebuilt `target/deploy/agentvouch.so`
+  - devnet IDL contains the M13 instruction set
+  - config account has been migrated to the M13 layout
+  - `web/agentvouch.json` and generated client artifacts match the active local IDL
+- Archive or reset stale smoke fixtures:
+  - retire pre-M13 persisted skill IDs that lack `ListingSettlement`
+  - keep the default smoke fixture pointed at a clean M13 listing
+  - document when a fresh `--skill-id` should be used instead of reusing state
+- Keep cutover scripts operator-safe:
+  - `scripts/migrate-config.ts` should compile and fail clearly when the signer is not the config authority
+  - `scripts/devnet-usdc-smoke.mjs` should detect pre-M13 config layout before decoding
+  - existing-listing smoke paths should initialize missing M13 settlement accounts or explain why a fresh fixture is required
+- Update runbooks and migration notes with:
+  - devnet deploy transaction
+  - config migration transaction
+  - smoke skill ID and purchase transaction
+  - current config authority and upgrade authority
+  - known stale fixture hazards and recovery steps
+- Review temporary code/docs added during cutover and remove anything that is only useful for a one-off local debugging session.
+
+Acceptance criteria:
+
+- A fresh checkout can run the documented build/client generation flow and see the same M13 instruction set in local artifacts.
+- `npm run smoke:devnet-usdc -- --apply` passes against the default smoke state or fails with an actionable stale-fixture message.
+- Operators can verify devnet program, IDL, config layout, and smoke fixture state without reverse-engineering previous chat logs.
+- Docs no longer describe M13 escrow/refund as merely future work for the active devnet `v0.2.0` deployment.
+
+Verification:
+
+```bash
+anchor idl fetch AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz --provider.cluster devnet
+solana program dump AgNtCcWfeMYUzHxvGdZP5BJszQhx6NJGB4pQ7AN6XVWz /tmp/agentvouch-devnet.so --url https://api.devnet.solana.com
+shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch-devnet.so
+npm run migrate:config
+npm run generate:client
+npm run build --workspace @agentvouch/web
+# After explicit approval for live devnet writes:
+npm run smoke:devnet-usdc -- --apply
+```
+
+### Milestone 15: SEO And LLM-Facing Docs
 
 Goal: make the public web surface, agent-facing docs, and LLM-ingested documentation reflect the stabilized USDC-native protocol before updating pitch materials.
 
 Scope decision:
 
 - Treat `web/public/skill.md`, public docs pages, metadata, sitemaps, OpenGraph/Twitter text, and `.well-known` agent discovery files as production surfaces.
-- Keep claims aligned to shipped behavior. Do not imply mainnet readiness, escrowed refunds, governance, or Milestone 13 settlement behavior unless it has shipped.
+- Keep claims aligned to shipped behavior. Do not imply mainnet readiness, governance, or refund behavior beyond the deployed M13 semantics.
 - Optimize for direct, factual phrasing around on-chain trust, USDC-backed vouches, author bonds, disputes, marketplace payments, and agent install flows.
 
 Tasks:
@@ -1069,8 +1122,8 @@ Acceptance criteria:
 - Search snippets and metadata lead with AgentVouch as an on-chain trust and reputation layer for agents.
 - LLM-ingested docs clearly describe USDC-native `v0.2.0`, canonical skill routes, paid download authorization, and current limitations.
 - Public discovery files expose consistent program ID, chain context, payment flow, and USDC price fields.
-- No SEO or LLM-facing page implies mainnet, escrowed refunds, or governance behavior that has not shipped.
-- Deck updates remain deferred to Milestone 15.
+- No SEO or LLM-facing page implies mainnet, governance behavior, or refund guarantees beyond the shipped M13 semantics.
+- Deck updates remain deferred to Milestone 16.
 
 Verification:
 
@@ -1081,9 +1134,9 @@ npm run build --workspace @agentvouch/web
 npm run smoke:flow-surface
 ```
 
-### Milestone 15: Pitch Deck And Public Narrative Alignment
+### Milestone 16: Pitch Deck And Public Narrative Alignment
 
-Goal: co-version the public deck and narrative materials with the stabilized USDC-native protocol, Milestone 13 settlement changes, and Milestone 14 SEO/LLM-facing docs.
+Goal: co-version the public deck and narrative materials with the stabilized USDC-native protocol, Milestone 13 settlement changes, and Milestone 15 SEO/LLM-facing docs.
 
 Tasks:
 
@@ -1102,7 +1155,7 @@ Acceptance criteria:
 Verification:
 
 ```bash
-rg "SOL|lamports|0\.001 SOL|ELmVnLSN|pitch deck.*Milestone 14|Milestone 14.*pitch deck" pitch README.md docs/ARCHITECTURE.md docs/VISION.md docs/SEO_MEASUREMENT.md
+rg "SOL|lamports|0\.001 SOL|ELmVnLSN|pitch deck.*Milestone 15|Milestone 15.*pitch deck" pitch README.md docs/ARCHITECTURE.md docs/VISION.md docs/SEO_MEASUREMENT.md
 ```
 
 ## Security Checklist
@@ -1153,7 +1206,7 @@ Track decisions that remain outside the locked Pre-Milestone 3 core rewrite gate
 - Whether the x402 settlement vault can safely use a PDA owner with the current facilitator implementation.
 - Whether `settle.payer` from the x402 facilitator is reliable enough to derive the on-chain `Purchase` PDA buyer.
 - Retry and refund policy when x402 settles but `settle_x402_purchase` fails.
-- Whether escrowed author proceeds and purchaser refund claims should ship before mainnet, or remain a post-`v0.2.0` protocol upgrade.
+- Mainnet values for author proceeds lock, refund claim window, challenger reward bps, and challenger reward cap.
 - Exact ERC-8004 / Solana Agent Registry binding shape: which fields the protocol stores on-chain (`agent_registry`, `agent_id`, `agent_uri`, or opaque `registry_ref`) and which it derives off-chain at the indexer layer.
 
 ## v1.0.0 Mainnet Readiness
@@ -1167,7 +1220,7 @@ The `v0.2.0` devnet migration is not mainnet-ready until these are complete:
 - Incident response runbook for stuck settlement vault funds, bad config, compromised authority, failed indexer, and erroneous dispute resolution.
 - Monitoring for program events, vault balances, indexing lag, x402 settlement failures, authority rotations, and unexpected treasury movement.
 - Mainnet launch checklist that confirms `web/public/skill.md`, docs, CLI, generated client, IDL, pitch deck, and Vercel env all reference the same program/config.
-- Decision on whether direct author payout is acceptable for mainnet or whether paid-skill proceeds must first move through escrowed author withdrawal and purchaser refund claims.
+- Decision on unclaimed refund reserve and sweep governance before mainnet.
 - Decision on whether upgrade authority remains active, is time-locked, or is eventually frozen after sufficient production hardening.
 
 ## Non-Goals
@@ -1197,6 +1250,5 @@ The migration is complete when:
 - Direct on-chain purchases are indexed into download entitlements through verified API submission plus reconciliation.
 - Active-dispute freeze invariants, vault close/refund rules, reward-index math, and listing-removal behavior are covered by tests.
 - Governance, treasury, authority rotation, pause, and mainnet readiness policies are documented even if `v0.2.0` remains devnet-only.
-- `web/public/skill.md`, `docs/ARCHITECTURE.md`, and `AGENTS.md` describe the live USDC-native protocol; SEO and LLM-facing docs are handled in Milestone 14, and pitch deck alignment is handled in Milestone 15.
+- `web/public/skill.md`, `docs/ARCHITECTURE.md`, and `AGENTS.md` describe the live USDC-native protocol; SEO and LLM-facing docs are handled in Milestone 15, and pitch deck alignment is handled in Milestone 16.
 - `NO_DNA=1 anchor build`, program tests, and `npm run build --workspace @agentvouch/web` pass.
-

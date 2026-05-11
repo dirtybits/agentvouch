@@ -30,7 +30,10 @@ describe("agentvouch usdc-native protocol", () => {
       "purchase_skill happy path"
     );
     const authorBalanceBeforeClaim = await tokenAmount(ctx, author.usdc);
-    assert.equal(Number(authorBalanceBeforeClaim), 20 * ONE_USDC - 4 * ONE_USDC + 1.2 * ONE_USDC);
+    assert.equal(
+      Number(authorBalanceBeforeClaim),
+      20 * ONE_USDC - 4 * ONE_USDC
+    );
 
     const voucherBalanceBefore = await tokenAmount(ctx, voucher.usdc);
     await claimVoucherRevenue(
@@ -69,9 +72,16 @@ describe("agentvouch usdc-native protocol", () => {
       [],
       "resolve_author_dispute dismissed path"
     );
-    await assertTokenDelta(ctx, ctx.protocolTreasuryVault, treasuryBefore, 0.5 * ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      ctx.protocolTreasuryVault,
+      treasuryBefore,
+      0.5 * ONE_USDC
+    );
 
-    const authorBond = await ctx.program.account.authorBond.fetch(bond.authorBond);
+    const authorBond = await ctx.program.account.authorBond.fetch(
+      bond.authorBond
+    );
     assert.equal(Number(authorBond.amountUsdcMicros), 4 * ONE_USDC);
   });
 

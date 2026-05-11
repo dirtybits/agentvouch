@@ -1,5 +1,5 @@
+use crate::state::{AgentProfile, SkillListing, SkillStatus};
 use anchor_lang::prelude::*;
-use crate::state::{SkillListing, SkillStatus, AgentProfile};
 
 /// Permanently closes a removed skill listing PDA and reclaims rent.
 /// Requires the listing is already Removed and has no pending voucher revenue.

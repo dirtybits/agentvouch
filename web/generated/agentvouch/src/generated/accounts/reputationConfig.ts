@@ -90,6 +90,10 @@ export type ReputationConfig = {
   longevityComponentCap: bigint;
   upheldDisputePenalty: bigint;
   reputationScoreCap: bigint;
+  authorProceedsLockSeconds: bigint;
+  refundClaimWindowSeconds: bigint;
+  challengerRewardBps: number;
+  challengerRewardCapUsdcMicros: bigint;
   paused: boolean;
   bump: number;
 };
@@ -122,6 +126,10 @@ export type ReputationConfigArgs = {
   longevityComponentCap: number | bigint;
   upheldDisputePenalty: number | bigint;
   reputationScoreCap: number | bigint;
+  authorProceedsLockSeconds: number | bigint;
+  refundClaimWindowSeconds: number | bigint;
+  challengerRewardBps: number;
+  challengerRewardCapUsdcMicros: number | bigint;
   paused: boolean;
   bump: number;
 };
@@ -158,6 +166,10 @@ export function getReputationConfigEncoder(): Encoder<ReputationConfigArgs> {
       ["longevityComponentCap", getU64Encoder()],
       ["upheldDisputePenalty", getU64Encoder()],
       ["reputationScoreCap", getU64Encoder()],
+      ["authorProceedsLockSeconds", getI64Encoder()],
+      ["refundClaimWindowSeconds", getI64Encoder()],
+      ["challengerRewardBps", getU16Encoder()],
+      ["challengerRewardCapUsdcMicros", getU64Encoder()],
       ["paused", getBooleanEncoder()],
       ["bump", getU8Encoder()],
     ]),
@@ -196,6 +208,10 @@ export function getReputationConfigDecoder(): Decoder<ReputationConfig> {
     ["longevityComponentCap", getU64Decoder()],
     ["upheldDisputePenalty", getU64Decoder()],
     ["reputationScoreCap", getU64Decoder()],
+    ["authorProceedsLockSeconds", getI64Decoder()],
+    ["refundClaimWindowSeconds", getI64Decoder()],
+    ["challengerRewardBps", getU16Decoder()],
+    ["challengerRewardCapUsdcMicros", getU64Decoder()],
     ["paused", getBooleanDecoder()],
     ["bump", getU8Decoder()],
   ]);

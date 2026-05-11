@@ -1,7 +1,10 @@
+use crate::events::SkillPurchased;
+use crate::state::{
+    AgentProfile, ListingSettlement, Purchase, ReputationConfig, SkillListing, SkillStatus,
+    REWARD_INDEX_SCALE,
+};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
-use crate::state::{AgentProfile, Purchase, ReputationConfig, SkillListing, SkillStatus, REWARD_INDEX_SCALE};
-use crate::events::SkillPurchased;
 
 #[derive(Accounts)]
 pub struct PurchaseSkill<'info> {
@@ -10,20 +13,25 @@ pub struct PurchaseSkill<'info> {
         constraint = skill_listing.status == SkillStatus::Active @ PurchaseError::SkillNotActive,
     )]
     pub skill_listing: Box<Account<'info, SkillListing>>,
-    
+
     #[account(
         init,
         payer = buyer,
         space = Purchase::SPACE,
-        seeds = [b"purchase", buyer.key().as_ref(), skill_listing.key().as_ref()],
+        seeds = [
+            b"purchase",
+            buyer.key().as_ref(),
+            skill_listing.key().as_ref(),
+            &skill_listing.current_revision.to_le_bytes()
+        ],
         bump
     )]
     pub purchase: Box<Account<'info, Purchase>>,
 
-    /// CHECK: Author wallet receives direct USDC payout.
+    /// CHECK: Author wallet is validated against the listing author.
     #[account(constraint = author.key() == skill_listing.author @ PurchaseError::InvalidAuthor)]
     pub author: UncheckedAccount<'info>,
-    
+
     #[account(
         seeds = [b"agent", skill_listing.author.as_ref()],
         bump = author_profile.bump,
@@ -45,10 +53,36 @@ pub struct PurchaseSkill<'info> {
 
     #[account(
         mut,
-        constraint = author_usdc_account.mint == config.usdc_mint @ PurchaseError::InvalidTokenMint,
-        constraint = author_usdc_account.owner == author.key() @ PurchaseError::InvalidTokenOwner
+        seeds = [
+            b"listing_settlement",
+            skill_listing.key().as_ref(),
+            &skill_listing.current_revision.to_le_bytes()
+        ],
+        bump = listing_settlement.bump,
+        constraint = listing_settlement.skill_listing == skill_listing.key() @ PurchaseError::SettlementMismatch,
+        constraint = listing_settlement.author == skill_listing.author @ PurchaseError::SettlementMismatch,
+        constraint = listing_settlement.revision == skill_listing.current_revision @ PurchaseError::SettlementMismatch,
+        constraint = skill_listing.current_settlement == listing_settlement.key() @ PurchaseError::SettlementMismatch,
     )]
-    pub author_usdc_account: Box<Account<'info, TokenAccount>>,
+    pub listing_settlement: Box<Account<'info, ListingSettlement>>,
+
+    /// CHECK: PDA authority for the author proceeds vault.
+    #[account(
+        seeds = [
+            b"author_proceeds_vault_authority",
+            listing_settlement.key().as_ref()
+        ],
+        bump
+    )]
+    pub author_proceeds_vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        address = listing_settlement.author_proceeds_vault @ PurchaseError::AuthorProceedsVaultMismatch,
+        constraint = author_proceeds_vault.mint == config.usdc_mint @ PurchaseError::InvalidTokenMint,
+        constraint = author_proceeds_vault.owner == author_proceeds_vault_authority.key() @ PurchaseError::InvalidTokenOwner
+    )]
+    pub author_proceeds_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -66,6 +100,11 @@ pub struct PurchaseSkill<'info> {
 
 pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
     require!(!ctx.accounts.config.paused, PurchaseError::ProtocolPaused);
+    require!(
+        !ctx.accounts.listing_settlement.is_locked(),
+        PurchaseError::SettlementLocked
+    );
+    let clock = Clock::get()?;
     let skill_listing_key = ctx.accounts.skill_listing.key();
     let price_usdc_micros = ctx.accounts.skill_listing.price_usdc_micros;
     require!(price_usdc_micros > 0, PurchaseError::FreeSkillNotPurchased);
@@ -84,7 +123,10 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         .ok_or(PurchaseError::PaymentOverflow)?
         .checked_div(10_000)
         .ok_or(PurchaseError::PaymentOverflow)?;
-    require!(voucher_pool_usdc_micros > 0, PurchaseError::VoucherPoolTooSmall);
+    require!(
+        voucher_pool_usdc_micros > 0,
+        PurchaseError::VoucherPoolTooSmall
+    );
 
     token::transfer_checked(
         CpiContext::new(
@@ -92,7 +134,7 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
             TransferChecked {
                 from: ctx.accounts.buyer_usdc_account.to_account_info(),
                 mint: ctx.accounts.usdc_mint.to_account_info(),
-                to: ctx.accounts.author_usdc_account.to_account_info(),
+                to: ctx.accounts.author_proceeds_vault.to_account_info(),
                 authority: ctx.accounts.buyer.to_account_info(),
             },
         ),
@@ -113,7 +155,7 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         voucher_pool_usdc_micros,
         ctx.accounts.usdc_mint.decimals,
     )?;
-    
+
     let skill_listing = &mut ctx.accounts.skill_listing;
     let index_delta = (voucher_pool_usdc_micros as u128)
         .checked_mul(REWARD_INDEX_SCALE)
@@ -146,19 +188,39 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         .unclaimed_voucher_revenue_usdc_micros
         .checked_add(voucher_pool_usdc_micros)
         .ok_or(PurchaseError::PaymentOverflow)?;
-    
+
+    let listing_settlement = &mut ctx.accounts.listing_settlement;
+    listing_settlement.total_purchases = listing_settlement
+        .total_purchases
+        .checked_add(1)
+        .ok_or(PurchaseError::PaymentOverflow)?;
+    listing_settlement.total_purchase_usdc_micros = listing_settlement
+        .total_purchase_usdc_micros
+        .checked_add(price_usdc_micros)
+        .ok_or(PurchaseError::PaymentOverflow)?;
+    listing_settlement.total_author_proceeds_usdc_micros = listing_settlement
+        .total_author_proceeds_usdc_micros
+        .checked_add(author_share_usdc_micros)
+        .ok_or(PurchaseError::PaymentOverflow)?;
+    listing_settlement.withdrawable_author_proceeds_usdc_micros = listing_settlement
+        .withdrawable_author_proceeds_usdc_micros
+        .checked_add(author_share_usdc_micros)
+        .ok_or(PurchaseError::PaymentOverflow)?;
+    listing_settlement.updated_at = clock.unix_timestamp;
+
     // Create purchase record
     let purchase = &mut ctx.accounts.purchase;
-    let clock = Clock::get()?;
     purchase.buyer = ctx.accounts.buyer.key();
     purchase.skill_listing = skill_listing_key;
     purchase.purchased_at = clock.unix_timestamp;
+    purchase.listing_revision = ctx.accounts.skill_listing.current_revision;
+    purchase.listing_settlement = ctx.accounts.listing_settlement.key();
     purchase.price_paid_usdc_micros = price_usdc_micros;
     purchase.author_share_usdc_micros = author_share_usdc_micros;
     purchase.voucher_pool_usdc_micros = voucher_pool_usdc_micros;
     purchase.usdc_mint = ctx.accounts.usdc_mint.key();
     purchase.bump = ctx.bumps.purchase;
-    
+
     emit!(SkillPurchased {
         purchase: ctx.accounts.purchase.key(),
         skill_listing: skill_listing_key,
@@ -166,11 +228,13 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         price_usdc_micros,
         author_share_usdc_micros,
         voucher_pool_usdc_micros,
-        author_usdc_account: ctx.accounts.author_usdc_account.key(),
+        listing_revision: ctx.accounts.skill_listing.current_revision,
+        listing_settlement: ctx.accounts.listing_settlement.key(),
+        author_proceeds_vault: ctx.accounts.author_proceeds_vault.key(),
         reward_vault: ctx.accounts.reward_vault.key(),
         timestamp: clock.unix_timestamp,
     });
-    
+
     Ok(())
 }
 
@@ -200,4 +264,10 @@ pub enum PurchaseError {
     InvalidTokenOwner,
     #[msg("Reward vault does not match listing state")]
     RewardVaultMismatch,
+    #[msg("Listing settlement account does not match the active listing revision")]
+    SettlementMismatch,
+    #[msg("Author proceeds vault does not match settlement state")]
+    AuthorProceedsVaultMismatch,
+    #[msg("Author proceeds settlement is locked by an open dispute")]
+    SettlementLocked,
 }

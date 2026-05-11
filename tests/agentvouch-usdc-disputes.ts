@@ -22,7 +22,9 @@ import {
 describe("agentvouch usdc disputes", () => {
   it("returns dispute bond to challenger and slashes author bond when upheld", async () => {
     const ctx = await getTestContext();
-    const { author, buyer, bond, listing } = await setupPaidListingWithVouch(ctx);
+    const { author, buyer, bond, listing } = await setupPaidListingWithVouch(
+      ctx
+    );
     const challenger = await createActor(ctx);
     await registerAgent(ctx, challenger);
     const purchase = await purchaseSkill(
@@ -65,9 +67,18 @@ describe("agentvouch usdc disputes", () => {
       "resolve_author_dispute upheld slash path"
     );
 
-    await assertTokenDelta(ctx, challenger.usdc, challengerBefore, 2.5 * ONE_USDC);
-    const authorBond = await ctx.program.account.authorBond.fetch(bond.authorBond);
-    const authorProfile = await ctx.program.account.agentProfile.fetch(author.profile);
+    await assertTokenDelta(
+      ctx,
+      challenger.usdc,
+      challengerBefore,
+      2.5 * ONE_USDC
+    );
+    const authorBond = await ctx.program.account.authorBond.fetch(
+      bond.authorBond
+    );
+    const authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
+    );
     assert.equal(Number(authorBond.amountUsdcMicros), 2 * ONE_USDC);
     assert.equal(Number(authorProfile.authorBondUsdcMicros), 2 * ONE_USDC);
     assert.equal(Number(authorProfile.upheldAuthorDisputes), 1);
@@ -108,6 +119,7 @@ describe("agentvouch usdc disputes", () => {
           disputeBondVaultAuthority: dispute.disputeVaultAuthority,
           disputeBondVault: dispute.disputeVault,
           protocolTreasuryVault: ctx.protocolTreasuryVault,
+          listingSettlement: listing.settlement,
           authorBondVaultAuthority: authorBondVaultAuthority(
             ctx.program,
             author.keypair.publicKey
@@ -168,6 +180,7 @@ describe("agentvouch usdc disputes", () => {
           disputeBondVaultAuthority: dispute.disputeVaultAuthority,
           disputeBondVault: dispute.disputeVault,
           protocolTreasuryVault: ctx.protocolTreasuryVault,
+          listingSettlement: listing.settlement,
           authorBondVaultAuthority: authorBondVaultAuthority(
             ctx.program,
             author.keypair.publicKey

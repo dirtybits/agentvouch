@@ -1,5 +1,5 @@
-use anchor_lang::prelude::*;
 use crate::state::AgentProfile;
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct RegisterAgent<'info> {
@@ -11,25 +11,22 @@ pub struct RegisterAgent<'info> {
         bump
     )]
     pub agent_profile: Account<'info, AgentProfile>,
-    
+
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
-    ctx: Context<RegisterAgent>,
-    metadata_uri: String,
-) -> Result<()> {
+pub fn handler(ctx: Context<RegisterAgent>, metadata_uri: String) -> Result<()> {
     require!(
         metadata_uri.len() <= AgentProfile::MAX_URI_LENGTH,
         ErrorCode::MetadataUriTooLong
     );
-    
+
     let agent_profile = &mut ctx.accounts.agent_profile;
     let clock = Clock::get()?;
-    
+
     // Preserve existing on-chain stats when re-registering (only update mutable fields)
     let is_new = agent_profile.registered_at == 0;
     agent_profile.authority = ctx.accounts.authority.key();
@@ -47,7 +44,7 @@ pub fn handler(
         agent_profile.registered_at = clock.unix_timestamp;
     }
     agent_profile.bump = ctx.bumps.agent_profile;
-    
+
     Ok(())
 }
 

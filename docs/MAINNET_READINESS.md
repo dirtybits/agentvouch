@@ -4,7 +4,7 @@
 
 ## Required Decisions
 
-- Whether direct author payout is acceptable for mainnet, or whether Milestone 13 escrowed proceeds and purchaser refund claims must ship first.
+- Final mainnet values for `author_proceeds_lock_seconds`, `refund_claim_window_seconds`, `challenger_reward_bps`, and `challenger_reward_cap_usdc_micros`.
 - Whether upgrade authority remains active, moves behind a timelock, or is frozen after hardening.
 - Which multisig or governance mechanism controls upgrade, config, treasury, and settlement authorities.
 - Which monitoring and incident channels are authoritative.
@@ -36,7 +36,7 @@ Document:
 - approval threshold
 - accounting cadence
 - public reporting expectations
-- reserve and sweep rules after Milestone 13, if refund pools ship
+- reserve and sweep rules for unclaimed refund funds
 
 Treasury movement should be explainable from on-chain events and operator notes.
 
@@ -100,4 +100,4 @@ Before mainnet, complete an external or senior internal review of:
 - IDL and generated clients are synced.
 - `web/public/skill.md`, docs, CLI, Vercel env, and public app all reference the same program/config.
 - Production runbook has current authority pubkeys, env matrix, smoke checks, and rollback steps.
-- SEO and LLM-facing docs are handled in Milestone 14; pitch deck alignment is handled in Milestone 15 after Milestone 13 settlement decisions are reflected.
+- SEO and LLM-facing docs are handled in Milestone 14; pitch deck alignment is handled in Milestone 15 after settlement behavior is reflected.

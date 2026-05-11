@@ -12,6 +12,10 @@ pub const DEFAULT_AUTHOR_SHARE_BPS: u16 = 6_000;
 pub const DEFAULT_VOUCHER_SHARE_BPS: u16 = 4_000;
 pub const DEFAULT_PROTOCOL_FEE_BPS: u16 = 0;
 pub const DEFAULT_SLASH_PERCENTAGE: u8 = 50;
+pub const DEFAULT_AUTHOR_PROCEEDS_LOCK_SECONDS: i64 = 0;
+pub const DEFAULT_REFUND_CLAIM_WINDOW_SECONDS: i64 = 0;
+pub const DEFAULT_CHALLENGER_REWARD_BPS: u16 = 1_000;
+pub const DEFAULT_CHALLENGER_REWARD_CAP_USDC_MICROS: u64 = 1_000_000;
 pub const DEFAULT_STAKE_WEIGHT_PER_USDC: u32 = 10;
 pub const DEFAULT_RISK_COMPONENT_CAP: u64 = 10_000_000;
 pub const DEFAULT_VOUCH_WEIGHT: u32 = 10;
@@ -50,6 +54,10 @@ pub struct ReputationConfig {
     pub longevity_component_cap: u64,
     pub upheld_dispute_penalty: u64,
     pub reputation_score_cap: u64,
+    pub author_proceeds_lock_seconds: i64,
+    pub refund_claim_window_seconds: i64,
+    pub challenger_reward_bps: u16,
+    pub challenger_reward_cap_usdc_micros: u64,
     pub paused: bool,
     pub bump: u8,
 }
@@ -83,13 +91,15 @@ impl ReputationConfig {
         8 + // longevity_component_cap
         8 + // upheld_dispute_penalty
         8 + // reputation_score_cap
+        8 + // author_proceeds_lock_seconds
+        8 + // refund_claim_window_seconds
+        2 + // challenger_reward_bps
+        8 + // challenger_reward_cap_usdc_micros
         1 + // paused
         1; // bump
 
     pub fn validate_splits(&self) -> bool {
-        self.author_share_bps as u32
-            + self.voucher_share_bps as u32
-            + self.protocol_fee_bps as u32
+        self.author_share_bps as u32 + self.voucher_share_bps as u32 + self.protocol_fee_bps as u32
             == 10_000
     }
 }

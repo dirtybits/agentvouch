@@ -145,7 +145,7 @@ Not yet built:
 - Transitive trust chains
 - Formal trust threshold for "trusted" or "verified"
 - Code signing / stronger content integrity guarantees
-- Marketplace payout escrow redesign
+- Mainnet refund reserve and sweep governance after escrowed proceeds
 - Multi-chain settlement and multi-asset staking
 
 ## Historical Note
