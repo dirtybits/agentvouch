@@ -594,7 +594,7 @@ export default function AuthorProfilePage() {
           reputationScore: Number(profile.reputationScore ?? 0),
           totalVouchesReceived: Number(profile.totalVouchesReceived ?? 0),
           totalStakedFor: Number(profile.totalVouchStakeUsdcMicros ?? 0),
-          authorBondLamports: Number(profile.authorBondUsdcMicros ?? 0),
+          authorBondUsdcMicros: Number(profile.authorBondUsdcMicros ?? 0),
           totalStakeAtRisk:
             Number(profile.totalVouchStakeUsdcMicros ?? 0) +
             Number(profile.authorBondUsdcMicros ?? 0),

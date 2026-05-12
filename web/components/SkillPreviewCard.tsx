@@ -251,7 +251,7 @@ export default function SkillPreviewCard({
             />
             <MetricCell
               label="Self stake"
-              value={formatUsdc(trust.authorBondLamports)}
+              value={formatUsdc(trust.authorBondUsdcMicros)}
               title="Self stake is the author's own first-loss capital."
               icon={FiUser}
             />

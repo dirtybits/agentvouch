@@ -14,7 +14,7 @@ export interface SkillAuthorTrust {
   disputesAgainstAuthor?: number;
   disputesUpheldAgainstAuthor?: number;
   activeDisputesAgainstAuthor?: number;
-  authorBondLamports?: number;
+  authorBondUsdcMicros?: number;
   totalStakeAtRisk?: number;
   registeredAt?: number;
 }

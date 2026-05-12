@@ -30,7 +30,7 @@ type SkillIndexRow = {
     reputationScore: number;
     totalVouchesReceived: number;
     totalStakedFor: number;
-    authorBondLamports: number;
+    authorBondUsdcMicros: number;
     totalStakeAtRisk: number;
     disputesAgainstAuthor: number;
     disputesUpheldAgainstAuthor: number;

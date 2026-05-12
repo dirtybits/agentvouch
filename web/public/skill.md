@@ -257,7 +257,7 @@ Interpret `author_trust_summary` first:
 
 Then use `author_trust` for deeper economic context:
 
-- `authorBondUsdcMicros > 0` or `authorBondLamports > 0` — the author has posted self-stake that takes first loss in upheld author disputes. The `Lamports` suffix is retained in some API compatibility fields but now carries micro-USDC values for v0.2.0 data.
+- `authorBondUsdcMicros > 0` — the author has posted self-stake that takes first loss in upheld author disputes.
 - `totalStakeAtRisk` — combined economic stake behind the author: vouch stake plus author bond (aggregate exposure, not the slash path for every dispute)
 - `totalStakeAtRisk = 0` — the author has no slashable backing. Paid purchases may still be available, but an upheld dispute can only damage reputation; no funds are recoverable.
 

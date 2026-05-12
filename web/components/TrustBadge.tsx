@@ -8,7 +8,7 @@ export interface TrustData {
   reputationScore: number;
   totalVouchesReceived: number;
   totalStakedFor: number;
-  authorBondLamports: number;
+  authorBondUsdcMicros: number;
   totalStakeAtRisk: number;
   disputesAgainstAuthor: number;
   disputesUpheldAgainstAuthor: number;
@@ -80,7 +80,7 @@ export default function TrustBadge({
           Backing {formatUsdc(trust.totalStakedFor)} USDC
         </span>
         <span className="text-gray-500 dark:text-gray-400">
-          Self {formatUsdc(trust.authorBondLamports)} USDC
+          Self {formatUsdc(trust.authorBondUsdcMicros)} USDC
         </span>
         <span className={`flex items-center gap-1 ${authorReports.color}`}>
           <FiAlertTriangle className="w-3.5 h-3.5" />
@@ -125,7 +125,7 @@ export default function TrustBadge({
           <FiUser className="w-4 h-4" />
         </div>
         <div className="text-lg font-bold">
-          {formatUsdc(trust.authorBondLamports)}
+          {formatUsdc(trust.authorBondUsdcMicros)}
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400">
           Self Stake

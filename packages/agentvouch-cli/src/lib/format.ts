@@ -158,7 +158,7 @@ export function formatAgentTrust(trust: AgentTrustResponse): string[] {
     `chain_context: ${trust.trust.chain_context}`,
     `total_vouches_received: ${trust.trust.totalVouchesReceived}`,
     `total_staked_for: ${trust.trust.totalStakedFor}`,
-    `author_bond_usdc_micros: ${rawTrust?.authorBondLamports ?? 0}`,
+    `author_bond_usdc_micros: ${rawTrust?.authorBondUsdcMicros ?? 0}`,
     `total_stake_at_risk: ${rawTrust?.totalStakeAtRisk ?? 0}`,
     `active_author_disputes: ${trust.trust.activeDisputesAgainstAuthor}`,
     `upheld_author_disputes: ${trust.trust.disputesUpheldAgainstAuthor}`,
