@@ -186,7 +186,8 @@ async function estimatePurchasePreflight(
     priceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
     author,
     authorBackingUsdcMicros: maybeAuthorProfile?.exists
-      ? BigInt(maybeAuthorProfile.data.totalVouchStakeUsdcMicros)
+      ? BigInt(maybeAuthorProfile.data.totalVouchStakeUsdcMicros) +
+        BigInt(maybeAuthorProfile.data.authorBondUsdcMicros)
       : 0n,
   });
 }

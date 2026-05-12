@@ -239,7 +239,7 @@ export function assessPurchasePreflight({
       estimatedBuyerTotalLamports,
       purchasePreflightStatus: "authorMissingBacking",
       purchasePreflightMessage:
-        "This author needs active vouch backing before paid purchases are available.",
+        "This author needs active vouch backing or author self-stake before paid purchases are available.",
       priceDisclosure,
       buyerUsdcAccount: context.buyerUsdcAccount,
       buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,

@@ -68,6 +68,20 @@ describe("purchase preflight", () => {
     );
   });
 
+  it("accepts a paid listing when author self-stake is the only backing", () => {
+    const result = assessPurchasePreflight({
+      context: createContext({
+        buyerBalanceLamports: 5_000_000n,
+        buyerUsdcBalanceMicros: 2_000_000n,
+      }),
+      priceUsdcMicros: 1_000_000n,
+      author: AUTHOR,
+      authorBackingUsdcMicros: 1_000_000n,
+    });
+
+    expect(result.purchasePreflightStatus).toBe("ok");
+  });
+
   it("blocks a paid protocol listing when the author has no active backing", () => {
     const result = assessPurchasePreflight({
       context: createContext({
@@ -81,7 +95,7 @@ describe("purchase preflight", () => {
 
     expect(result.purchasePreflightStatus).toBe("authorMissingBacking");
     expect(result.purchasePreflightMessage).toBe(
-      "This author needs active vouch backing before paid purchases are available."
+      "This author needs active vouch backing or author self-stake before paid purchases are available."
     );
 
     const serialized = serializePurchasePreflight(result);

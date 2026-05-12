@@ -169,8 +169,9 @@ Vault lifecycle rules:
 
 Purchase settlement principle:
 
-- Protocol-visible paid purchases must preserve the `60%` author / `40%` voucher split.
-- Direct app purchases call `purchase_skill` and split USDC inside the Anchor program.
+- Protocol-visible paid purchases require slashable author backing from external vouches or author self-stake.
+- When external vouch stake is active, direct app purchases call `purchase_skill` and split USDC inside the Anchor program with the configured `60%` author / `40%` voucher split.
+- When author self-stake is the only active backing, purchases are still allowed and the full payment goes to author proceeds; no voucher reward pool is created because there are no voucher positions that can claim it.
 - x402 purchases for protocol-listed paid skills must not bypass voucher rewards. The intended v0.2.0 path is a POC-gated settlement bridge: x402 pays a protocol settlement vault, the backend verifies the settled transaction and memo, then a configured `settlement_authority` calls `settle_x402_purchase` to create the on-chain purchase and split funds.
 - If the bridge POC fails, x402 remains limited to repo-only/off-chain entitlement flows until a trustless custom x402 scheme or facilitator extension can call the protocol directly.
 

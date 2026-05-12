@@ -126,8 +126,10 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
     let skill_listing_key = ctx.accounts.skill_listing.key();
     let price_usdc_micros = ctx.accounts.skill_listing.price_usdc_micros;
     require!(price_usdc_micros > 0, PurchaseError::FreeSkillNotPurchased);
+    let active_vouch_stake_usdc_micros = ctx.accounts.author_profile.total_vouch_stake_usdc_micros;
     require!(
-        ctx.accounts.author_profile.total_vouch_stake_usdc_micros > 0,
+        active_vouch_stake_usdc_micros > 0
+            || ctx.accounts.author_profile.author_bond_usdc_micros > 0,
         PurchaseError::NoActiveAuthorBacking
     );
 
@@ -137,20 +139,26 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         ctx.accounts.author_profile.reward_vault_bump = ctx.bumps.author_reward_vault;
     }
 
-    let author_share_usdc_micros = price_usdc_micros
-        .checked_mul(ctx.accounts.config.author_share_bps as u64)
-        .ok_or(PurchaseError::PaymentOverflow)?
-        .checked_div(10_000)
-        .ok_or(PurchaseError::PaymentOverflow)?;
-    let voucher_pool_usdc_micros = price_usdc_micros
-        .checked_mul(ctx.accounts.config.voucher_share_bps as u64)
-        .ok_or(PurchaseError::PaymentOverflow)?
-        .checked_div(10_000)
-        .ok_or(PurchaseError::PaymentOverflow)?;
-    require!(
-        voucher_pool_usdc_micros > 0,
-        PurchaseError::VoucherPoolTooSmall
-    );
+    let has_external_vouch_backing = active_vouch_stake_usdc_micros > 0;
+    let (author_share_usdc_micros, voucher_pool_usdc_micros) = if has_external_vouch_backing {
+        let author_share_usdc_micros = price_usdc_micros
+            .checked_mul(ctx.accounts.config.author_share_bps as u64)
+            .ok_or(PurchaseError::PaymentOverflow)?
+            .checked_div(10_000)
+            .ok_or(PurchaseError::PaymentOverflow)?;
+        let voucher_pool_usdc_micros = price_usdc_micros
+            .checked_mul(ctx.accounts.config.voucher_share_bps as u64)
+            .ok_or(PurchaseError::PaymentOverflow)?
+            .checked_div(10_000)
+            .ok_or(PurchaseError::PaymentOverflow)?;
+        require!(
+            voucher_pool_usdc_micros > 0,
+            PurchaseError::VoucherPoolTooSmall
+        );
+        (author_share_usdc_micros, voucher_pool_usdc_micros)
+    } else {
+        (price_usdc_micros, 0)
+    };
 
     token::transfer_checked(
         CpiContext::new(
@@ -166,27 +174,34 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         ctx.accounts.usdc_mint.decimals,
     )?;
 
-    token::transfer_checked(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            TransferChecked {
-                from: ctx.accounts.buyer_usdc_account.to_account_info(),
-                mint: ctx.accounts.usdc_mint.to_account_info(),
-                to: ctx.accounts.author_reward_vault.to_account_info(),
-                authority: ctx.accounts.buyer.to_account_info(),
-            },
-        ),
-        voucher_pool_usdc_micros,
-        ctx.accounts.usdc_mint.decimals,
-    )?;
+    if voucher_pool_usdc_micros > 0 {
+        token::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.buyer_usdc_account.to_account_info(),
+                    mint: ctx.accounts.usdc_mint.to_account_info(),
+                    to: ctx.accounts.author_reward_vault.to_account_info(),
+                    authority: ctx.accounts.buyer.to_account_info(),
+                },
+            ),
+            voucher_pool_usdc_micros,
+            ctx.accounts.usdc_mint.decimals,
+        )?;
+    }
 
     let skill_listing = &mut ctx.accounts.skill_listing;
-    let index_delta = (voucher_pool_usdc_micros as u128)
-        .checked_mul(REWARD_INDEX_SCALE)
-        .ok_or(PurchaseError::RewardIndexOverflow)?
-        .checked_div(ctx.accounts.author_profile.total_vouch_stake_usdc_micros as u128)
-        .ok_or(PurchaseError::RewardIndexOverflow)?;
-    require!(index_delta > 0, PurchaseError::VoucherPoolTooSmall);
+    let index_delta = if voucher_pool_usdc_micros > 0 {
+        let index_delta = (voucher_pool_usdc_micros as u128)
+            .checked_mul(REWARD_INDEX_SCALE)
+            .ok_or(PurchaseError::RewardIndexOverflow)?
+            .checked_div(active_vouch_stake_usdc_micros as u128)
+            .ok_or(PurchaseError::RewardIndexOverflow)?;
+        require!(index_delta > 0, PurchaseError::VoucherPoolTooSmall);
+        index_delta
+    } else {
+        0
+    };
 
     skill_listing.total_downloads = skill_listing
         .total_downloads
@@ -205,14 +220,16 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
         .checked_add(voucher_pool_usdc_micros)
         .ok_or(PurchaseError::PaymentOverflow)?;
     let author_profile = &mut ctx.accounts.author_profile;
-    author_profile.reward_index_usdc_micros_x1e12 = author_profile
-        .reward_index_usdc_micros_x1e12
-        .checked_add(index_delta)
-        .ok_or(PurchaseError::RewardIndexOverflow)?;
-    author_profile.unclaimed_voucher_revenue_usdc_micros = author_profile
-        .unclaimed_voucher_revenue_usdc_micros
-        .checked_add(voucher_pool_usdc_micros)
-        .ok_or(PurchaseError::PaymentOverflow)?;
+    if voucher_pool_usdc_micros > 0 {
+        author_profile.reward_index_usdc_micros_x1e12 = author_profile
+            .reward_index_usdc_micros_x1e12
+            .checked_add(index_delta)
+            .ok_or(PurchaseError::RewardIndexOverflow)?;
+        author_profile.unclaimed_voucher_revenue_usdc_micros = author_profile
+            .unclaimed_voucher_revenue_usdc_micros
+            .checked_add(voucher_pool_usdc_micros)
+            .ok_or(PurchaseError::PaymentOverflow)?;
+    }
 
     let listing_settlement = &mut ctx.accounts.listing_settlement;
     listing_settlement.total_purchases = listing_settlement
