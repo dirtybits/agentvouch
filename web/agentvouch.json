@@ -4037,43 +4037,68 @@
   "errors": [
     {
       "code": 6000,
-      "name": "AuthorMismatch",
-      "msg": "Skill listing author does not match author profile"
+      "name": "ProtocolPaused",
+      "msg": "Protocol is paused"
     },
     {
       "code": 6001,
-      "name": "PositionMismatch",
-      "msg": "Listing vouch position does not match expected accounts"
+      "name": "NotAuthor",
+      "msg": "Only the listing author can withdraw proceeds"
     },
     {
       "code": 6002,
-      "name": "PositionNotActive",
-      "msg": "Listing vouch position is not active"
+      "name": "InvalidAmount",
+      "msg": "Withdrawal amount must be positive"
     },
     {
       "code": 6003,
-      "name": "VouchMismatch",
-      "msg": "Vouch does not match expected accounts"
+      "name": "SettlementMismatch",
+      "msg": "Listing settlement account does not match the listing"
     },
     {
       "code": 6004,
-      "name": "RewardIndexUnderflow",
-      "msg": "Reward index underflowed"
+      "name": "AuthorProceedsVaultMismatch",
+      "msg": "Author proceeds vault does not match settlement state"
     },
     {
       "code": 6005,
-      "name": "RewardOverflow",
-      "msg": "Reward amount overflowed"
+      "name": "ProceedsLocked",
+      "msg": "Author proceeds are still locked"
     },
     {
       "code": 6006,
-      "name": "RewardStakeUnderflow",
-      "msg": "Reward stake underflowed"
+      "name": "SettlementLocked",
+      "msg": "Author proceeds are locked by an open dispute"
     },
     {
       "code": 6007,
-      "name": "RewardPositionCountUnderflow",
-      "msg": "Reward position count underflowed"
+      "name": "InsufficientWithdrawableProceeds",
+      "msg": "Insufficient withdrawable author proceeds"
+    },
+    {
+      "code": 6008,
+      "name": "LockOverflow",
+      "msg": "Author proceeds lock calculation overflowed"
+    },
+    {
+      "code": 6009,
+      "name": "WithdrawalOverflow",
+      "msg": "Withdrawal accounting overflowed"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidUsdcMint",
+      "msg": "USDC mint does not match config"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidTokenMint",
+      "msg": "Token account mint does not match config"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidTokenOwner",
+      "msg": "Token account owner is invalid"
     }
   ],
   "types": [

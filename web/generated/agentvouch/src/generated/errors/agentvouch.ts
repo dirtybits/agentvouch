@@ -14,44 +14,64 @@ import {
 } from "@solana/kit";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
-/** AuthorMismatch: Skill listing author does not match author profile */
-export const AGENTVOUCH_ERROR__AUTHOR_MISMATCH = 0x1770; // 6000
-/** PositionMismatch: Listing vouch position does not match expected accounts */
-export const AGENTVOUCH_ERROR__POSITION_MISMATCH = 0x1771; // 6001
-/** PositionNotActive: Listing vouch position is not active */
-export const AGENTVOUCH_ERROR__POSITION_NOT_ACTIVE = 0x1772; // 6002
-/** VouchMismatch: Vouch does not match expected accounts */
-export const AGENTVOUCH_ERROR__VOUCH_MISMATCH = 0x1773; // 6003
-/** RewardIndexUnderflow: Reward index underflowed */
-export const AGENTVOUCH_ERROR__REWARD_INDEX_UNDERFLOW = 0x1774; // 6004
-/** RewardOverflow: Reward amount overflowed */
-export const AGENTVOUCH_ERROR__REWARD_OVERFLOW = 0x1775; // 6005
-/** RewardStakeUnderflow: Reward stake underflowed */
-export const AGENTVOUCH_ERROR__REWARD_STAKE_UNDERFLOW = 0x1776; // 6006
-/** RewardPositionCountUnderflow: Reward position count underflowed */
-export const AGENTVOUCH_ERROR__REWARD_POSITION_COUNT_UNDERFLOW = 0x1777; // 6007
+/** ProtocolPaused: Protocol is paused */
+export const AGENTVOUCH_ERROR__PROTOCOL_PAUSED = 0x1770; // 6000
+/** NotAuthor: Only the listing author can withdraw proceeds */
+export const AGENTVOUCH_ERROR__NOT_AUTHOR = 0x1771; // 6001
+/** InvalidAmount: Withdrawal amount must be positive */
+export const AGENTVOUCH_ERROR__INVALID_AMOUNT = 0x1772; // 6002
+/** SettlementMismatch: Listing settlement account does not match the listing */
+export const AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH = 0x1773; // 6003
+/** AuthorProceedsVaultMismatch: Author proceeds vault does not match settlement state */
+export const AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH = 0x1774; // 6004
+/** ProceedsLocked: Author proceeds are still locked */
+export const AGENTVOUCH_ERROR__PROCEEDS_LOCKED = 0x1775; // 6005
+/** SettlementLocked: Author proceeds are locked by an open dispute */
+export const AGENTVOUCH_ERROR__SETTLEMENT_LOCKED = 0x1776; // 6006
+/** InsufficientWithdrawableProceeds: Insufficient withdrawable author proceeds */
+export const AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS = 0x1777; // 6007
+/** LockOverflow: Author proceeds lock calculation overflowed */
+export const AGENTVOUCH_ERROR__LOCK_OVERFLOW = 0x1778; // 6008
+/** WithdrawalOverflow: Withdrawal accounting overflowed */
+export const AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW = 0x1779; // 6009
+/** InvalidUsdcMint: USDC mint does not match config */
+export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x177a; // 6010
+/** InvalidTokenMint: Token account mint does not match config */
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x177b; // 6011
+/** InvalidTokenOwner: Token account owner is invalid */
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x177c; // 6012
 
 export type AgentvouchError =
-  | typeof AGENTVOUCH_ERROR__AUTHOR_MISMATCH
-  | typeof AGENTVOUCH_ERROR__POSITION_MISMATCH
-  | typeof AGENTVOUCH_ERROR__POSITION_NOT_ACTIVE
-  | typeof AGENTVOUCH_ERROR__REWARD_INDEX_UNDERFLOW
-  | typeof AGENTVOUCH_ERROR__REWARD_OVERFLOW
-  | typeof AGENTVOUCH_ERROR__REWARD_POSITION_COUNT_UNDERFLOW
-  | typeof AGENTVOUCH_ERROR__REWARD_STAKE_UNDERFLOW
-  | typeof AGENTVOUCH_ERROR__VOUCH_MISMATCH;
+  | typeof AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS
+  | typeof AGENTVOUCH_ERROR__INVALID_AMOUNT
+  | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_MINT
+  | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER
+  | typeof AGENTVOUCH_ERROR__INVALID_USDC_MINT
+  | typeof AGENTVOUCH_ERROR__LOCK_OVERFLOW
+  | typeof AGENTVOUCH_ERROR__NOT_AUTHOR
+  | typeof AGENTVOUCH_ERROR__PROCEEDS_LOCKED
+  | typeof AGENTVOUCH_ERROR__PROTOCOL_PAUSED
+  | typeof AGENTVOUCH_ERROR__SETTLEMENT_LOCKED
+  | typeof AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW;
 
 let agentvouchErrorMessages: Record<AgentvouchError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
   agentvouchErrorMessages = {
-    [AGENTVOUCH_ERROR__AUTHOR_MISMATCH]: `Skill listing author does not match author profile`,
-    [AGENTVOUCH_ERROR__POSITION_MISMATCH]: `Listing vouch position does not match expected accounts`,
-    [AGENTVOUCH_ERROR__POSITION_NOT_ACTIVE]: `Listing vouch position is not active`,
-    [AGENTVOUCH_ERROR__REWARD_INDEX_UNDERFLOW]: `Reward index underflowed`,
-    [AGENTVOUCH_ERROR__REWARD_OVERFLOW]: `Reward amount overflowed`,
-    [AGENTVOUCH_ERROR__REWARD_POSITION_COUNT_UNDERFLOW]: `Reward position count underflowed`,
-    [AGENTVOUCH_ERROR__REWARD_STAKE_UNDERFLOW]: `Reward stake underflowed`,
-    [AGENTVOUCH_ERROR__VOUCH_MISMATCH]: `Vouch does not match expected accounts`,
+    [AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH]: `Author proceeds vault does not match settlement state`,
+    [AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS]: `Insufficient withdrawable author proceeds`,
+    [AGENTVOUCH_ERROR__INVALID_AMOUNT]: `Withdrawal amount must be positive`,
+    [AGENTVOUCH_ERROR__INVALID_TOKEN_MINT]: `Token account mint does not match config`,
+    [AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER]: `Token account owner is invalid`,
+    [AGENTVOUCH_ERROR__INVALID_USDC_MINT]: `USDC mint does not match config`,
+    [AGENTVOUCH_ERROR__LOCK_OVERFLOW]: `Author proceeds lock calculation overflowed`,
+    [AGENTVOUCH_ERROR__NOT_AUTHOR]: `Only the listing author can withdraw proceeds`,
+    [AGENTVOUCH_ERROR__PROCEEDS_LOCKED]: `Author proceeds are still locked`,
+    [AGENTVOUCH_ERROR__PROTOCOL_PAUSED]: `Protocol is paused`,
+    [AGENTVOUCH_ERROR__SETTLEMENT_LOCKED]: `Author proceeds are locked by an open dispute`,
+    [AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH]: `Listing settlement account does not match the listing`,
+    [AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW]: `Withdrawal accounting overflowed`,
   };
 }
 
