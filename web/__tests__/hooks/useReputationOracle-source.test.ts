@@ -33,7 +33,6 @@ describe("useReputationOracle source", () => {
 
     expect(source).toContain("estimatePurchasePreflight");
     expect(source).toContain('"authorPayoutRentBlocked"');
-    expect(source).toContain('"authorMissingBacking"');
     expect(source).toContain("buildPurchaseBalanceError");
   });
 

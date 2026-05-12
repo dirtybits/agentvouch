@@ -46,6 +46,7 @@ import {
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
 import {
+  FiAlertTriangle,
   FiArrowLeft,
   FiCheckCircle,
   FiDownload,
@@ -108,6 +109,7 @@ interface SkillDetail {
   estimatedBuyerTotalLamports?: number;
   purchasePreflightStatus?: PurchasePreflightStatus;
   purchasePreflightMessage?: string | null;
+  purchaseRiskWarning?: string | null;
   priceDisclosure?: string | null;
   buyerHasPurchased?: boolean;
   buyerPurchaseSummary?: {
@@ -137,7 +139,6 @@ function isBlockingPurchaseStatus(
   return (
     status === "buyerInsufficientBalance" ||
     status === "buyerMissingUsdcAccount" ||
-    status === "authorMissingBacking" ||
     status === "authorPayoutRentBlocked"
   );
 }
@@ -1277,9 +1278,6 @@ export default function SkillDetailPage({
                             ? purchasePreflightStatus ===
                               "buyerMissingUsdcAccount"
                               ? "Set Up USDC Account"
-                              : purchasePreflightStatus ===
-                                "authorMissingBacking"
-                              ? "Needs Author Backing"
                               : "Need More USDC"
                             : "Pay with USDC"}
                         </>
@@ -1361,6 +1359,18 @@ export default function SkillDetailPage({
                 wallet-bound.
               </p>
             )}
+            {skill.purchaseRiskWarning &&
+              hasUsdcPrimary &&
+              !buyerHasPurchased &&
+              !isAuthor && (
+                <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                  <div className="mb-1 flex items-center gap-2 font-semibold">
+                    <FiAlertTriangle className="h-3.5 w-3.5" />
+                    No Slashable Backing
+                  </div>
+                  <p>{skill.purchaseRiskWarning}</p>
+                </div>
+              )}
             {skill.purchasePreflightMessage && hasUsdcPrimary && (
               <p
                 className={`text-xs mt-2 ${

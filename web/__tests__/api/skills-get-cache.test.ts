@@ -20,6 +20,7 @@ vi.mock("@/lib/ipfs", () => ({
 }));
 
 vi.mock("@/lib/agentIdentity", () => ({
+  buildLocalCanonicalAgentId: vi.fn((wallet: string) => `local:${wallet}`),
   resolveManyAgentIdentitiesByWallet: vi.fn(),
   upsertLocalAgentIdentity: vi.fn(),
 }));
@@ -38,7 +39,11 @@ import { GET } from "@/app/api/skills/route";
 import { resolveManyAgentIdentitiesByWallet } from "@/lib/agentIdentity";
 import { sql } from "@/lib/db";
 import { listOnChainSkillListings } from "@/lib/onchain";
-import { createPurchasePreflightContext } from "@/lib/purchasePreflight";
+import {
+  assessPurchasePreflight,
+  createPurchasePreflightContext,
+  serializePurchasePreflight,
+} from "@/lib/purchasePreflight";
 import { resolveMultipleAuthorTrust } from "@/lib/trust";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
@@ -50,6 +55,10 @@ const mockListOnChainSkillListings =
   listOnChainSkillListings as unknown as ReturnType<typeof vi.fn>;
 const mockCreatePurchasePreflightContext =
   createPurchasePreflightContext as unknown as ReturnType<typeof vi.fn>;
+const mockAssessPurchasePreflight =
+  assessPurchasePreflight as unknown as ReturnType<typeof vi.fn>;
+const mockSerializePurchasePreflight =
+  serializePurchasePreflight as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(query = "") {
   return new NextRequest(`http://localhost/api/skills${query}`);
@@ -68,6 +77,19 @@ describe("GET /api/skills cache headers", () => {
       purchaseRentLamports: null,
       systemAccountRentExemptLamports: null,
       authorBalanceLamportsByAddress: new Map(),
+    });
+    mockAssessPurchasePreflight.mockReturnValue({});
+    mockSerializePurchasePreflight.mockReturnValue({
+      creatorPriceUsdcMicros: 0,
+      estimatedPurchaseRentLamports: 0,
+      feeBufferLamports: 0,
+      estimatedBuyerTotalLamports: 0,
+      purchasePreflightStatus: "ok",
+      purchasePreflightMessage: null,
+      purchaseBlocked: false,
+      purchaseBlockError: null,
+      priceDisclosure: null,
+      purchaseRiskWarning: null,
     });
   });
 
@@ -98,5 +120,82 @@ describe("GET /api/skills cache headers", () => {
     expect(res.headers.get("Cache-Control")).toBe(
       "private, no-store, max-age=0"
     );
+  });
+
+  it("defaults browse ordering to reputation-weighted trusted sort", async () => {
+    const lowTrustSkill = {
+      id: "11111111-1111-4111-8111-111111111111",
+      skill_id: "low-trust",
+      author_pubkey: "2DGYWtztLvPB6GxgGXT16gjCoEf56jEmwSxjMwK21Pg3",
+      name: "Low Trust",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      created_at: "2026-05-11T00:00:00.000Z",
+      updated_at: "2026-05-11T00:00:00.000Z",
+    };
+    const highTrustSkill = {
+      id: "22222222-2222-4222-8222-222222222222",
+      skill_id: "high-trust",
+      author_pubkey: "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+      name: "High Trust",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      created_at: "2026-05-10T00:00:00.000Z",
+      updated_at: "2026-05-10T00:00:00.000Z",
+    };
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([lowTrustSkill, highTrustSkill])
+    );
+    mockResolveMultipleAuthorTrust.mockResolvedValue(
+      new Map([
+        [
+          lowTrustSkill.author_pubkey,
+          {
+            reputationScore: 10,
+            totalVouchesReceived: 0,
+            totalStakedFor: 0,
+            authorBondLamports: 0,
+            totalStakeAtRisk: 0,
+            disputesAgainstAuthor: 0,
+            disputesUpheldAgainstAuthor: 0,
+            activeDisputesAgainstAuthor: 0,
+            registeredAt: 1,
+            isRegistered: true,
+          },
+        ],
+        [
+          highTrustSkill.author_pubkey,
+          {
+            reputationScore: 100,
+            totalVouchesReceived: 1,
+            totalStakedFor: 1000,
+            authorBondLamports: 0,
+            totalStakeAtRisk: 1000,
+            disputesAgainstAuthor: 0,
+            disputesUpheldAgainstAuthor: 0,
+            activeDisputesAgainstAuthor: 0,
+            registeredAt: 1,
+            isRegistered: true,
+          },
+        ],
+      ])
+    );
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(
+      body.skills.map((skill: { skill_id: string }) => skill.skill_id)
+    ).toEqual(["high-trust", "low-trust"]);
   });
 });

@@ -259,6 +259,7 @@ Then use `author_trust` for deeper economic context:
 
 - `authorBondUsdcMicros > 0` or `authorBondLamports > 0` — the author has posted self-stake that takes first loss in upheld author disputes. The `Lamports` suffix is retained in some API compatibility fields but now carries micro-USDC values for v0.2.0 data.
 - `totalStakeAtRisk` — combined economic stake behind the author: vouch stake plus author bond (aggregate exposure, not the slash path for every dispute)
+- `totalStakeAtRisk = 0` — the author has no slashable backing. Paid purchases may still be available, but an upheld dispute can only damage reputation; no funds are recoverable.
 
 For deeper inspection, open `https://agentvouch.xyz/author/{pubkey}` to review the author's voucher set, staked USDC, author-wide disputes, and snapshotted backing scope in the UI.
 
@@ -266,6 +267,7 @@ Author-dispute nuance:
 
 - Author reports are still author-scoped because `Vouch` underwrites the author, not a single skill.
 - Every dispute now records the specific on-chain `skill_listing` it is about; `purchase` is optional extra evidence.
+- If an author has no external vouch stake and no author bond, the protocol has nothing to slash. An upheld dispute records the reputation penalty but cannot recover buyer funds.
 - The protocol snapshots the author's full live backing set when `open_author_dispute` executes; users do not choose individual backers.
 - Free-skill disputes keep that voucher snapshot for transparency but cap slashing at `AuthorBond`.
 - Paid-skill disputes slash `AuthorBond` first, then continue into the snapshotted backing vouchers if needed.
@@ -596,7 +598,7 @@ ListingVouchPosition: seeds = ["listing_vouch_position", skill_listing, vouch] (
 When a skill is purchased on-chain:
 
 - If external vouch stake is active, **60%** goes to the skill author and **40%** is split among vouchers by stake weight
-- If author self-stake is the only active backing, the full payment goes to author proceeds and no voucher reward pool is created
+- If no external vouch stake is active, including author self-stake only or zero backing, the full payment goes to author proceeds and no voucher reward pool is created
 - No protocol fees
 
 ## Integration Patterns

@@ -285,7 +285,7 @@ export async function GET(
         author: address(skill.author_pubkey),
         authorBackingUsdcMicros:
           skill.on_chain_address && priceUsdcMicros
-            ? BigInt(author_trust?.totalStakedFor ?? 0)
+            ? BigInt(author_trust?.totalStakeAtRisk ?? 0)
             : null,
       })
     );

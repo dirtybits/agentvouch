@@ -78,6 +78,7 @@ interface SkillRow {
   estimatedBuyerTotalLamports?: number;
   purchasePreflightStatus?: PurchasePreflightStatus;
   purchasePreflightMessage?: string | null;
+  purchaseRiskWarning?: string | null;
   priceDisclosure?: string | null;
   buyerHasPurchased?: boolean;
 }
@@ -164,7 +165,6 @@ function isBlockingPurchaseStatus(
   return (
     status === "buyerInsufficientBalance" ||
     status === "buyerMissingUsdcAccount" ||
-    status === "authorMissingBacking" ||
     status === "authorPayoutRentBlocked"
   );
 }
@@ -193,7 +193,7 @@ export default function MarketplacePage() {
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortOption>("newest");
+  const [sort, setSort] = useState<SortOption>("trusted");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -427,14 +427,14 @@ export default function MarketplacePage() {
     icon: React.ReactNode;
   }[] = [
     {
-      value: "newest",
-      label: "Newest",
-      icon: <FiClock className="w-3.5 h-3.5" />,
-    },
-    {
       value: "trusted",
       label: "Most Trusted",
       icon: <FiShield className="w-3.5 h-3.5" />,
+    },
+    {
+      value: "newest",
+      label: "Newest",
+      icon: <FiClock className="w-3.5 h-3.5" />,
     },
     {
       value: "installs",

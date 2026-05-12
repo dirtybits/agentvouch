@@ -49,6 +49,7 @@ describe("purchase preflight", () => {
     expect(result.purchasePreflightStatus).toBe("ok");
     expect(result.estimatedBuyerTotalLamports).toBe(0n);
     expect(result.purchasePreflightMessage).toBeNull();
+    expect(result.purchaseRiskWarning).toBeNull();
   });
 
   it("accepts a USDC listing when buyer has enough USDC and SOL for receipt rent", () => {
@@ -66,6 +67,7 @@ describe("purchase preflight", () => {
     expect(result.estimatedBuyerTotalLamports).toBe(
       PURCHASE_RENT_LAMPORTS + PURCHASE_FEE_BUFFER_LAMPORTS
     );
+    expect(result.purchaseRiskWarning).toBeNull();
   });
 
   it("accepts a paid listing when author self-stake is the only backing", () => {
@@ -80,9 +82,10 @@ describe("purchase preflight", () => {
     });
 
     expect(result.purchasePreflightStatus).toBe("ok");
+    expect(result.purchaseRiskWarning).toBeNull();
   });
 
-  it("blocks a paid protocol listing when the author has no active backing", () => {
+  it("warns but does not block when the author has no slashable backing", () => {
     const result = assessPurchasePreflight({
       context: createContext({
         buyerBalanceLamports: 50_000_000n,
@@ -93,17 +96,16 @@ describe("purchase preflight", () => {
       authorBackingUsdcMicros: 0n,
     });
 
-    expect(result.purchasePreflightStatus).toBe("authorMissingBacking");
-    expect(result.purchasePreflightMessage).toBe(
-      "This author needs active vouch backing or author self-stake before paid purchases are available."
+    expect(result.purchasePreflightStatus).toBe("ok");
+    expect(result.purchasePreflightMessage).toBeNull();
+    expect(result.purchaseRiskWarning).toBe(
+      "This author has no slashable backing. If a dispute is upheld, no funds are recoverable; the protocol can only record the reputation hit."
     );
 
     const serialized = serializePurchasePreflight(result);
-    expect(serialized.purchaseBlocked).toBe(true);
-    expect(serialized.purchaseBlockError).toEqual({
-      code: "authorMissingBacking",
-      message: result.purchasePreflightMessage,
-    });
+    expect(serialized.purchaseBlocked).toBe(false);
+    expect(serialized.purchaseBlockError).toBeNull();
+    expect(serialized.purchaseRiskWarning).toBe(result.purchaseRiskWarning);
   });
 
   it("blocks a USDC listing when buyer has no USDC token account", () => {
@@ -121,6 +123,7 @@ describe("purchase preflight", () => {
     expect(result.purchasePreflightMessage).toContain(
       "does not have a USDC associated token account"
     );
+    expect(result.purchaseRiskWarning).toBeNull();
 
     const serialized = serializePurchasePreflight(result);
     expect(serialized.purchaseBlocked).toBe(true);
@@ -142,5 +145,6 @@ describe("purchase preflight", () => {
 
     expect(result.purchasePreflightStatus).toBe("buyerInsufficientBalance");
     expect(result.purchasePreflightMessage).toContain("USDC available");
+    expect(result.purchaseRiskWarning).toBeNull();
   });
 });

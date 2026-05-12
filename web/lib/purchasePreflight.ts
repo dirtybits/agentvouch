@@ -25,7 +25,6 @@ export type PurchasePreflightStatus =
   | "ok"
   | "buyerInsufficientBalance"
   | "buyerMissingUsdcAccount"
-  | "authorMissingBacking"
   | "authorPayoutRentBlocked"
   | "estimateUnavailable";
 
@@ -33,7 +32,6 @@ export type BlockingPurchasePreflightStatus = Extract<
   PurchasePreflightStatus,
   | "buyerInsufficientBalance"
   | "buyerMissingUsdcAccount"
-  | "authorMissingBacking"
   | "authorPayoutRentBlocked"
 >;
 
@@ -52,6 +50,7 @@ export type SerializedPurchasePreflight = {
   purchaseBlocked: boolean;
   purchaseBlockError: SerializedPurchaseBlockError | null;
   priceDisclosure: string | null;
+  purchaseRiskWarning: string | null;
 };
 
 export type PurchasePreflightAssessment = {
@@ -62,6 +61,7 @@ export type PurchasePreflightAssessment = {
   purchasePreflightStatus: PurchasePreflightStatus;
   purchasePreflightMessage: string | null;
   priceDisclosure: string | null;
+  purchaseRiskWarning: string | null;
   buyerUsdcAccount: Address | null;
   buyerUsdcBalanceMicros: bigint | null;
   buyerBalanceLamports: bigint | null;
@@ -116,6 +116,10 @@ function buildBuyerInsufficientMessage(
   )} USDC.`;
 }
 
+function buildZeroBackingPurchaseRiskWarning(): string {
+  return "This author has no slashable backing. If a dispute is upheld, no funds are recoverable; the protocol can only record the reputation hit.";
+}
+
 export function createFreePurchasePreflight(): PurchasePreflightAssessment {
   return {
     creatorPriceUsdcMicros: 0n,
@@ -125,6 +129,7 @@ export function createFreePurchasePreflight(): PurchasePreflightAssessment {
     purchasePreflightStatus: "ok",
     purchasePreflightMessage: null,
     priceDisclosure: null,
+    purchaseRiskWarning: null,
     buyerUsdcAccount: null,
     buyerUsdcBalanceMicros: null,
     buyerBalanceLamports: null,
@@ -230,25 +235,10 @@ export function assessPurchasePreflight({
     : null;
   const priceDisclosure =
     "Buying this skill transfers USDC and creates an on-chain purchase receipt, so your wallet still needs a small amount of SOL for rent and network fees.";
-
-  if (authorBackingUsdcMicros === 0n) {
-    return {
-      creatorPriceUsdcMicros,
-      estimatedPurchaseRentLamports,
-      feeBufferLamports: PURCHASE_FEE_BUFFER_LAMPORTS,
-      estimatedBuyerTotalLamports,
-      purchasePreflightStatus: "authorMissingBacking",
-      purchasePreflightMessage:
-        "This author needs active vouch backing or author self-stake before paid purchases are available.",
-      priceDisclosure,
-      buyerUsdcAccount: context.buyerUsdcAccount,
-      buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,
-      buyerBalanceLamports: context.buyerBalanceLamports,
-      authorBalanceLamports,
-      authorShareLamports,
-      systemAccountRentExemptLamports: context.systemAccountRentExemptLamports,
-    };
-  }
+  const purchaseRiskWarning =
+    authorBackingUsdcMicros === 0n
+      ? buildZeroBackingPurchaseRiskWarning()
+      : null;
 
   if (context.buyerUsdcAccountExists === false) {
     return {
@@ -260,6 +250,7 @@ export function assessPurchasePreflight({
       purchasePreflightMessage:
         "Connected wallet does not have a USDC associated token account for the configured mint. Create or fund that token account and retry.",
       priceDisclosure,
+      purchaseRiskWarning,
       buyerUsdcAccount: context.buyerUsdcAccount,
       buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,
       buyerBalanceLamports: context.buyerBalanceLamports,
@@ -283,6 +274,7 @@ export function assessPurchasePreflight({
       purchasePreflightMessage:
         "Purchase availability could not be fully checked right now. Confirm the wallet has enough USDC plus a small amount of SOL for rent and network fees.",
       priceDisclosure,
+      purchaseRiskWarning,
       buyerUsdcAccount: context.buyerUsdcAccount,
       buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,
       buyerBalanceLamports: context.buyerBalanceLamports,
@@ -307,6 +299,7 @@ export function assessPurchasePreflight({
         creatorPriceUsdcMicros
       ),
       priceDisclosure,
+      purchaseRiskWarning,
       buyerUsdcAccount: context.buyerUsdcAccount,
       buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,
       buyerBalanceLamports: context.buyerBalanceLamports,
@@ -324,6 +317,7 @@ export function assessPurchasePreflight({
     purchasePreflightStatus: "ok",
     purchasePreflightMessage: null,
     priceDisclosure,
+    purchaseRiskWarning,
     buyerUsdcAccount: context.buyerUsdcAccount,
     buyerUsdcBalanceMicros: context.buyerUsdcBalanceMicros,
     buyerBalanceLamports: context.buyerBalanceLamports,
@@ -365,6 +359,7 @@ export function serializePurchasePreflight(
     purchaseBlocked,
     purchaseBlockError,
     priceDisclosure: assessment.priceDisclosure,
+    purchaseRiskWarning: assessment.purchaseRiskWarning,
   };
 }
 
@@ -374,7 +369,6 @@ export function isPurchasePreflightBlocking(
   return (
     status === "buyerInsufficientBalance" ||
     status === "buyerMissingUsdcAccount" ||
-    status === "authorMissingBacking" ||
     status === "authorPayoutRentBlocked"
   );
 }

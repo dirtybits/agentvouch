@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
     const q = searchParams.get("q");
-    const sort = searchParams.get("sort") || "newest";
+    const sort = searchParams.get("sort") || "trusted";
     const author = searchParams.get("author");
     const buyer = searchParams.get("buyer");
     const includeBuyerStatus =
@@ -360,7 +360,7 @@ export async function GET(request: NextRequest) {
             author: address(skill.author_pubkey),
             authorBackingUsdcMicros:
               skill.on_chain_address && creatorPriceUsdcMicros
-                ? BigInt(skill.author_trust?.totalStakedFor ?? 0)
+                ? BigInt(skill.author_trust?.totalStakeAtRisk ?? 0)
                 : null,
           })
         );

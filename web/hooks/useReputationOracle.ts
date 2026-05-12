@@ -2252,9 +2252,7 @@ export function useReputationOracle() {
           );
         }
         if (
-          purchaseEstimate.purchasePreflightStatus ===
-            "authorPayoutRentBlocked" ||
-          purchaseEstimate.purchasePreflightStatus === "authorMissingBacking"
+          purchaseEstimate.purchasePreflightStatus === "authorPayoutRentBlocked"
         ) {
           throw new Error(
             purchaseEstimate.purchasePreflightMessage ??
@@ -2343,8 +2341,7 @@ export function useReputationOracle() {
             }
             if (
               latestEstimate.purchasePreflightStatus ===
-                "authorPayoutRentBlocked" ||
-              latestEstimate.purchasePreflightStatus === "authorMissingBacking"
+              "authorPayoutRentBlocked"
             ) {
               throw new Error(
                 latestEstimate.purchasePreflightMessage ??

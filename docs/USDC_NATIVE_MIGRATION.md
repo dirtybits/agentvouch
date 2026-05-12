@@ -26,7 +26,7 @@ Governance decision:
 - Mainnet `v1.0.0` must not launch with a single hot-wallet upgrade authority.
 - Mainnet upgrade authority, config authority, treasury authority, and settlement authority rotation must be controlled by a multisig or stronger governance setup before real user funds are accepted.
 - Governance-sensitive changes include `usdc_mint`, `token_program`, `protocol_treasury_vault`, `x402_settlement_authority`, `x402_settlement_vault`, economic floors, slash percentages, and any future protocol fee.
-- `v0.2.0` charges no protocol fee. The split remains `60%` author / `40%` voucher pool, but account layouts should leave room for an explicitly configured future protocol fee without changing historical accounting.
+- `v0.2.0` charges no protocol fee. When external voucher stake exists, purchases split `60%` author / `40%` voucher pool; when no voucher stake exists, `100%` goes to author proceeds. Account layouts should leave room for an explicitly configured future protocol fee without changing historical accounting.
 
 Authority and treasury gate decision:
 
@@ -169,9 +169,10 @@ Vault lifecycle rules:
 
 Purchase settlement principle:
 
-- Protocol-visible paid purchases require slashable author backing from external vouches or author self-stake.
+- Protocol-visible paid purchases are permissionless. A fresh registered author can sell a paid listing with no external vouches and no author self-stake.
 - When external vouch stake is active, direct app purchases call `purchase_skill` and split USDC inside the Anchor program with the configured `60%` author / `40%` voucher split.
-- When author self-stake is the only active backing, purchases are still allowed and the full payment goes to author proceeds; no voucher reward pool is created because there are no voucher positions that can claim it.
+- When no external vouch stake is active, including zero-backing and author-self-stake-only listings, the full payment goes to author proceeds; no voucher reward pool is created because there are no voucher positions that can claim it.
+- With zero backing, an upheld dispute produces a reputation hit only. The protocol has no funds to slash, so no buyer funds are recoverable in that dispute path.
 - x402 purchases for protocol-listed paid skills must not bypass voucher rewards. The intended v0.2.0 path is a POC-gated settlement bridge: x402 pays a protocol settlement vault, the backend verifies the settled transaction and memo, then a configured `settlement_authority` calls `settle_x402_purchase` to create the on-chain purchase and split funds.
 - If the bridge POC fails, x402 remains limited to repo-only/off-chain entitlement flows until a trustless custom x402 scheme or facilitator extension can call the protocol directly.
 
@@ -195,7 +196,7 @@ Settlement authority constraints:
 
 Economics and reputation gate decision:
 
-- Milestone 3 locks the v0.2.0 devnet defaults at: `0.01 USDC` minimum paid listing price, `1 USDC` minimum vouch stake, `1 USDC` minimum author bond for free listings, `0.5 USDC` dispute bond, `60%` author share, `40%` voucher reward share, and `0%` protocol fee.
+- Milestone 3 locks the v0.2.0 devnet defaults at: `0.01 USDC` minimum paid listing price, `1 USDC` minimum vouch stake, `1 USDC` minimum author bond for free listings, `0.5 USDC` dispute bond, `60%` author share when voucher stake exists, `40%` voucher reward share when voucher stake exists, and `0%` protocol fee.
 - Author bonds and voucher stake use the same USD-at-risk reputation curve because both represent slashable trust capital.
 - Profile age stays in the on-chain score through the capped `longevity_component`, using `AgentProfile.registered_at`. Wallet/account age and external profile age are off-chain/indexed trust context in `v0.2.0`.
 - Reputation uses integer math only:
@@ -360,7 +361,7 @@ Tasks:
 - Define USDC vault ownership for vouches, author bonds, listing reward pools, and dispute bonds.
 - Define canonical USDC ATA validation for direct author payouts.
 - Define x402 settlement vault ownership and the `settlement_authority` role for the bridge POC.
-- Define exact reward split, currently expected to remain `60%` author / `40%` voucher pool unless changed.
+- Define exact reward split: `60%` author / `40%` voucher pool only when active external voucher stake exists; otherwise `100%` to author proceeds.
 - Define free listing requirements using `min_author_bond_usdc_micros`.
 - Define reputation formula using USDC-backed risk and non-money signals.
 - Define dispute liability order:
@@ -738,7 +739,7 @@ Goal: align the existing USDC/x402 commerce path with `v0.2.0` protocol semantic
 Tasks:
 
 - Treat direct `purchase_skill` as the canonical protocol-visible paid purchase path.
-- Require every protocol-listed paid purchase path to preserve the `60%` author / `40%` voucher split.
+- Require every protocol-listed paid purchase path to preserve voucher rewards when active external voucher stake exists; otherwise route the full payment to author proceeds.
 - Run the x402 settlement bridge POC before making x402 primary for protocol-listed paid skills:
   - x402 exact payment credits a protocol settlement vault
   - `extra.memo` binds payment to skill, listing, chain context, and nonce
@@ -1246,7 +1247,7 @@ The migration is complete when:
 - Every USDC-moving instruction has at least one positive and one negative test (wrong mint, wrong token program, missing ATA, wrong owner).
 - Vouching, author bonds, purchases, voucher rewards, disputes, and reputation all use USDC accounting.
 - Web primary flows no longer require `v0.1.0` SOL instructions.
-- Protocol-listed paid purchases preserve the `60%` author / `40%` voucher split. If the x402 bridge POC passes, x402 purchases do this through `settle_x402_purchase`; if it fails, x402 is disabled for protocol-listed paid skills until a later bridge or custom scheme ships.
+- Protocol-listed paid purchases preserve the `60%` author / `40%` voucher split only when active external voucher stake exists. If there are no active vouchers, the full payment goes to author proceeds. If the x402 bridge POC passes, x402 purchases do this through `settle_x402_purchase`; if it fails, x402 is disabled for protocol-listed paid skills until a later bridge or custom scheme ships.
 - x402 paid downloads still work for allowed v0.2.0 entitlement flows.
 - Direct on-chain purchases are indexed into download entitlements through verified API submission plus reconciliation.
 - Active-dispute freeze invariants, vault close/refund rules, reward-index math, and listing-removal behavior are covered by tests.

@@ -127,11 +127,6 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
     let price_usdc_micros = ctx.accounts.skill_listing.price_usdc_micros;
     require!(price_usdc_micros > 0, PurchaseError::FreeSkillNotPurchased);
     let active_vouch_stake_usdc_micros = ctx.accounts.author_profile.total_vouch_stake_usdc_micros;
-    require!(
-        active_vouch_stake_usdc_micros > 0
-            || ctx.accounts.author_profile.author_bond_usdc_micros > 0,
-        PurchaseError::NoActiveAuthorBacking
-    );
 
     if ctx.accounts.author_profile.reward_vault != ctx.accounts.author_reward_vault.key() {
         ctx.accounts.author_profile.reward_vault = ctx.accounts.author_reward_vault.key();
@@ -290,8 +285,6 @@ pub enum PurchaseError {
     ProtocolPaused,
     #[msg("Free skills do not require purchase")]
     FreeSkillNotPurchased,
-    #[msg("Paid purchases require active author backing")]
-    NoActiveAuthorBacking,
     #[msg("Payment calculation overflowed")]
     PaymentOverflow,
     #[msg("Voucher pool is too small")]

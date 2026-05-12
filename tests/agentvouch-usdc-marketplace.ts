@@ -114,27 +114,54 @@ describe("agentvouch usdc marketplace rewards", () => {
     await assertTokenDelta(ctx, voucher.usdc, voucherBefore, 799_999);
   });
 
-  it("rejects unsupported prices and purchases without active author backing", async () => {
+  it("rejects unsupported prices", async () => {
     const ctx = await getTestContext();
     const author = await createActor(ctx);
-    const buyer = await createActor(ctx);
     await registerAgent(ctx, author);
 
     await expectFailure(
       createSkillListing(ctx, author, uniqueSkillId("floor"), 1),
       "Price must be zero or at least the minimum paid listing price"
     );
+  });
+
+  it("allows paid purchases with no slashable backing", async () => {
+    const ctx = await getTestContext();
+    const author = await createActor(ctx);
+    const buyer = await createActor(ctx);
+    await registerAgent(ctx, author);
 
     const listing = await createSkillListing(
       ctx,
       author,
-      uniqueSkillId("nostake"),
+      uniqueSkillId("noback"),
       ONE_USDC
     );
-    await expectFailure(
-      purchaseSkill(ctx, buyer, author, listing.skillListing, listing.vault),
-      "Paid purchases require active author backing"
+    const proceedsBefore = await tokenAmount(ctx, listing.proceedsVault);
+    const purchase = await purchaseSkill(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      listing.vault
     );
+
+    await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, ONE_USDC);
+    assert.equal(Number(await tokenAmount(ctx, listing.vault)), 0);
+
+    const listingAccount = await ctx.program.account.skillListing.fetch(
+      listing.skillListing
+    );
+    const authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
+    );
+    const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
+    assert.equal(Number(listingAccount.totalRevenueUsdcMicros), ONE_USDC);
+    assert.equal(Number(listingAccount.totalAuthorRevenueUsdcMicros), ONE_USDC);
+    assert.equal(Number(listingAccount.totalVoucherRevenueUsdcMicros), 0);
+    assert.equal(Number(authorProfile.unclaimedVoucherRevenueUsdcMicros), 0);
+    assert.equal(Number(purchaseAccount.authorShareUsdcMicros), ONE_USDC);
+    assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 0);
   });
 
   it("allows paid purchases backed only by author self-stake", async () => {
@@ -162,17 +189,7 @@ describe("agentvouch usdc marketplace rewards", () => {
     await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, ONE_USDC);
     assert.equal(Number(await tokenAmount(ctx, listing.vault)), 0);
 
-    const listingAccount = await ctx.program.account.skillListing.fetch(
-      listing.skillListing
-    );
-    const authorProfile = await ctx.program.account.agentProfile.fetch(
-      author.profile
-    );
     const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
-    assert.equal(Number(listingAccount.totalRevenueUsdcMicros), ONE_USDC);
-    assert.equal(Number(listingAccount.totalAuthorRevenueUsdcMicros), ONE_USDC);
-    assert.equal(Number(listingAccount.totalVoucherRevenueUsdcMicros), 0);
-    assert.equal(Number(authorProfile.unclaimedVoucherRevenueUsdcMicros), 0);
     assert.equal(Number(purchaseAccount.authorShareUsdcMicros), ONE_USDC);
     assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 0);
   });

@@ -530,9 +530,7 @@ export function useMarketplaceOracle() {
           );
         }
         if (
-          purchaseEstimate.purchasePreflightStatus ===
-            "authorPayoutRentBlocked" ||
-          purchaseEstimate.purchasePreflightStatus === "authorMissingBacking"
+          purchaseEstimate.purchasePreflightStatus === "authorPayoutRentBlocked"
         ) {
           throw new Error(
             purchaseEstimate.purchasePreflightMessage ??
@@ -621,8 +619,7 @@ export function useMarketplaceOracle() {
             }
             if (
               latestEstimate.purchasePreflightStatus ===
-                "authorPayoutRentBlocked" ||
-              latestEstimate.purchasePreflightStatus === "authorMissingBacking"
+              "authorPayoutRentBlocked"
             ) {
               throw new Error(
                 latestEstimate.purchasePreflightMessage ??
