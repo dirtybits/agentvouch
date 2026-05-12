@@ -131,3 +131,57 @@ I can't actually sign in with Google myself. Once item 0a (env fix) lands, you s
 4. Open browser devtools console and confirm no Phantom SDK errors.
 
 If that surfaces a problem (e.g., the app id is invalid, redirect URI is misconfigured, or the Phantom dashboard isn't set up for this origin), it's a config issue that doesn't require code changes — just a Phantom dashboard tweak. Worth doing this verification *before* item 0b so we don't bake on top of broken connect UX.
+
+## Smoke findings & decision — 2026-05-12
+
+### Item 0a outcome
+
+`web/.env.local` and `web/.vercel/.env.production.local` both contain a clean `NEXT_PUBLIC_PHANTOM_APP_ID` value (no literal trailing `\n`). Likely fixed alongside the Phantom Connect redirect URI work in commit `0a42110`. No action needed.
+
+Side issue surfaced during manual testing: the Phantom dashboard had not whitelisted `http://localhost:3000/auth/callback` as a redirect URI. User added it via https://phantom.com/portal; not a code change.
+
+### Item 0b smoke: embedded `signTransaction` confirmed working
+
+Mounted a temporary `PhantomDebugShim` inside `<PhantomProvider>` that pinned the `EmbeddedSolanaChain` to `window.__phantom`, then probed from devtools after a Google sign-in.
+
+- `EmbeddedSolanaChain` prototype exposes all five signing methods: `signMessage`, `signTransaction`, `signAndSendTransaction`, `signAllTransactions`, `signAndSendAllTransactions`, plus `switchNetwork`. The "send-only" claim in AGENTS.md note 26 is confirmed stale.
+- `signMessage` returns a 64-byte ed25519 signature out of the box.
+- `signTransaction` initially failed with `POST /v1/wallets/prepare 403 — Attempt to debit an account but found no record of a prior credit`. Cause: **Phantom embedded sessions default to mainnet at SDK init.** Our test transaction was built against devnet, but Phantom's policy/simulation check was running against mainnet where the wallet has 0 SOL.
+- After calling `solana.switchNetwork("solana:devnet")` the simulation passed. The follow-up call hit a `POST /v1/wallets/kms/rpc 500` (transient Phantom KMS issue on devnet) — but at that point the SDK was past simulation and inside the actual signing pipeline, which is sufficient to confirm `signTransaction` is fully wired client-side.
+
+The debug shim was removed after smoke completion.
+
+### Side findings to act on
+
+1. **Phantom embedded defaults to mainnet at init.** `EmbeddedProviderConfig` (the type that backs `PhantomSDKConfig`) accepts no `defaultNetwork` / `initialNetwork` field. The fix is imperative: call `solana.switchNetwork("solana:devnet")` after the embedded session reports `isConnected && isAvailable`. Must be wired in any code path that targets devnet (or any non-mainnet network).
+2. **Phantom runs a server-side simulation on every `signTransaction`.** Transactions that fail simulation are rejected before the user is even prompted. Implication for sponsored x402 flows: the partially-signed transaction must be valid against the user's real balance at submission time — we cannot rely on "the sponsor will add lamports later." This matches the existing x402 split-signature design, but worth verifying once during devnet end-to-end smoke.
+3. **The `useSolana()` hook is the canonical signing surface for embedded wallets** — `usePhantom()` is connect/disconnect state only.
+
+### Path decision
+
+Two unification approaches were on the table:
+
+- **Path 1.5 (minimum-diff):** Hand-roll a Wallet Standard wallet wrapping `ISolanaChain` and dispatch the `wallet-standard:register-wallet` event so `@solana/client`'s `autoDiscover()` picks it up. No downstream code changes. ~2 files, ~250 lines.
+- **Path 2 (architectural unification):** Adopt `@solana/connector` (ConnectorKit) as the wallet library. Phantom embedded gets registered via ConnectorKit's `additionalWallets` config option. Migrates every `useWalletConnection()` / `createWalletTransactionSigner` call site to ConnectorKit's `useWallet()` / `useTransactionSigner()`. ~11 files.
+
+**Chosen: Path 2.** Rationale:
+
+- The spike root-cause finding ("two parallel, unconnected wallet states") is only actually fixed by Path 2; Path 1.5 hides the duality rather than eliminating it.
+- ConnectorKit is the Solana Foundation's recommended direction; `@solana/wallet-adapter` is in maintenance mode. Migration cost grows monotonically — every Phase 2 addition that uses `useWalletConnection` is another file to migrate later.
+- ConnectorKit's pre-built UI elements (`BalanceElement`, `WalletListElement`, etc.) are useful for the Phase 2 onboarding UX work.
+
+Tradeoff accepted: larger Phase 1 diff (~1500–2500 lines across 11 files) in exchange for actually collapsing the wallet-state duality and aligning with the SF direction.
+
+### Migration plan (Path 2 execution order)
+
+1. Update `AGENTS.md` note 26 to retire the "send-only" claim.
+2. Install `@solana/connector` (+ `@walletconnect/universal-provider` as an optional peer dep — defer unless we want QR/deep-link).
+3. Write `web/lib/phantomEmbeddedWalletStandard.ts`: a `createPhantomEmbeddedWallet(solanaChain, address)` factory that returns a Wallet Standard wallet exposing `solana:signMessage`, `solana:signTransaction`, `solana:signAndSendTransaction`, `solana:signAllTransactions`. Modeled on ConnectorKit's `createRemoteSignerWallet` source but delegating to in-memory `ISolanaChain` instead of HTTP.
+4. Restructure `web/components/WalletContextProvider.tsx`: `<PhantomProvider>` on the outside owning the embedded session, a small bridge component inside reads `useSolana()` + `useAccounts()` + `usePhantom()` and produces the Wallet Standard wallet, ConnectorKit's `<AppProvider>` underneath consumes it via `additionalWallets`. Also calls `solana.switchNetwork("solana:devnet")` once `isConnected && isAvailable`.
+5. Replace `web/components/ClientWalletButton.tsx` with a single-state implementation using ConnectorKit's `useWallet()` / `useConnectWallet()`. The current dual-branching (extension vs Phantom embedded) collapses.
+6. Migrate page-level reads (`settings`, `author/[pubkey]`, `dashboard`, `skills`, `skills/publish`, `skills/[id]`) from `useWalletConnection()` to `useWallet()`. Each page is a small mechanical change.
+7. Migrate large hooks (`useReputationOracle`, `useMarketplaceOracle`): replace `useWalletConnection` + `useSendTransaction` + `createWalletTransactionSigner` with `useWallet` + `useTransactionSigner`. These are the biggest individual files.
+8. Update `web/lib/browserX402.ts`: `BrowserX402Wallet` typing + `walletSupportsBrowserX402` + `createWalletTransactionSigner` usage. The Wallet Standard feature-detection logic stays, but the input type changes.
+9. Audit `web/lib/purchasePreflight.ts` for any wallet-shape assumptions that change.
+10. Type-check / lint pass.
+11. Devnet end-to-end manual smoke: Google sign-in → free skill install → paid skill x402 checkout. Confirms `switchNetwork`-on-connect is wired, `signTransaction` returns a partially-signed tx through the Wallet Standard interface, and the x402 flow round-trips.
