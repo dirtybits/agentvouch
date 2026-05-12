@@ -1,14 +1,38 @@
 "use client";
 
-import { createContext, FC, ReactNode, useContext, useMemo } from "react";
+import { createContext, FC, ReactNode, useContext, useEffect, useMemo } from "react";
 import { SolanaProvider } from "@solana/react-hooks";
 import { autoDiscover, createClient } from "@solana/client";
 import {
   AddressType,
   PhantomProvider,
+  useAccounts,
+  usePhantom,
+  useSolana,
   type PhantomSDKConfig,
 } from "@phantom/react-sdk";
 import { useMounted } from "@/hooks/useMounted";
+
+function PhantomDebugShim() {
+  const phantom = usePhantom();
+  const accounts = useAccounts();
+  const { solana, isAvailable } = useSolana();
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (window as unknown as { __phantom?: unknown }).__phantom = {
+      phantom,
+      accounts,
+      solana,
+      isAvailable,
+    };
+    // eslint-disable-next-line no-console
+    console.info(
+      "[PhantomDebugShim] window.__phantom set",
+      { isConnected: phantom.isConnected, isAvailable, accountCount: accounts?.length ?? 0 }
+    );
+  }, [phantom, accounts, solana, isAvailable]);
+  return null;
+}
 
 const PhantomConfiguredContext = createContext(false);
 export const usePhantomConfigured = () => useContext(PhantomConfiguredContext);
@@ -59,6 +83,7 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
     <PhantomConfiguredContext.Provider value={phantomReady}>
       {wantsPhantom ? (
         <PhantomProvider config={phantomConfig}>
+          {process.env.NODE_ENV !== "production" ? <PhantomDebugShim /> : null}
           {solanaProvider}
         </PhantomProvider>
       ) : (
