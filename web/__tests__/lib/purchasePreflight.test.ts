@@ -85,7 +85,7 @@ describe("purchase preflight", () => {
     expect(result.purchaseRiskWarning).toBeNull();
   });
 
-  it("warns but does not block when the author has no slashable backing", () => {
+  it("notes limited dispute recovery but does not block when the author has no slashable backing", () => {
     const result = assessPurchasePreflight({
       context: createContext({
         buyerBalanceLamports: 50_000_000n,
@@ -99,7 +99,7 @@ describe("purchase preflight", () => {
     expect(result.purchasePreflightStatus).toBe("ok");
     expect(result.purchasePreflightMessage).toBeNull();
     expect(result.purchaseRiskWarning).toBe(
-      "This author has no slashable backing. If a dispute is upheld, no funds are recoverable; the protocol can only record the reputation hit."
+      "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution."
     );
 
     const serialized = serializePurchasePreflight(result);

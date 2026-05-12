@@ -47,6 +47,7 @@ import {
 } from "@/lib/chains";
 import {
   FiAlertTriangle,
+  FiInfo,
   FiArrowLeft,
   FiCheckCircle,
   FiDownload,
@@ -1363,10 +1364,10 @@ export default function SkillDetailPage({
               hasUsdcPrimary &&
               !buyerHasPurchased &&
               !isAuthor && (
-                <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-                  <div className="mb-1 flex items-center gap-2 font-semibold">
-                    <FiAlertTriangle className="h-3.5 w-3.5" />
-                    No Slashable Backing
+                <div className="mt-3 rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+                  <div className="mb-1 flex items-center gap-2 font-medium">
+                    <FiInfo className="h-3.5 w-3.5" />
+                    Limited dispute recovery
                   </div>
                   <p>{skill.purchaseRiskWarning}</p>
                 </div>

@@ -6,6 +6,7 @@ import {
   FiCheckCircle,
   FiDownload,
   FiExternalLink,
+  FiInfo,
   FiShield,
   FiTag,
   FiUser,
@@ -317,8 +318,8 @@ export default function SkillPreviewCard({
           ) : null}
         </div>
         {skill.purchaseRiskWarning && hasUsdcPrimary && !hasPurchased && (
-          <div className="mt-3 flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-            <FiAlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="mt-3 flex items-start gap-2 rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+            <FiInfo className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>{skill.purchaseRiskWarning}</span>
           </div>
         )}

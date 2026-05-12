@@ -117,7 +117,7 @@ function buildBuyerInsufficientMessage(
 }
 
 function buildZeroBackingPurchaseRiskWarning(): string {
-  return "This author has no slashable backing. If a dispute is upheld, no funds are recoverable; the protocol can only record the reputation hit.";
+  return "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution.";
 }
 
 export function createFreePurchasePreflight(): PurchasePreflightAssessment {
