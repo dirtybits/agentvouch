@@ -3,7 +3,11 @@
 import { createContext, FC, ReactNode, useContext, useMemo } from "react";
 import { SolanaProvider } from "@solana/react-hooks";
 import { autoDiscover, createClient } from "@solana/client";
-import { PhantomProvider, type PhantomSDKConfig } from "@phantom/react-sdk";
+import {
+  AddressType,
+  PhantomProvider,
+  type PhantomSDKConfig,
+} from "@phantom/react-sdk";
 import { useMounted } from "@/hooks/useMounted";
 
 const PhantomConfiguredContext = createContext(false);
@@ -29,12 +33,20 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   );
 
   const phantomConfig = useMemo<PhantomSDKConfig>(
-    () => ({
-      appId: PHANTOM_APP_ID,
-      providers: ["google", "apple"],
-      addressTypes: ["Solana"] as PhantomSDKConfig["addressTypes"],
-    }),
-    []
+    () => {
+      const redirectUrl =
+        mounted && typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : undefined;
+
+      return {
+        appId: PHANTOM_APP_ID,
+        providers: ["google", "apple"],
+        addressTypes: [AddressType.solana],
+        ...(redirectUrl ? { authOptions: { redirectUrl } } : {}),
+      };
+    },
+    [mounted]
   );
 
   const wantsPhantom = mounted && !!PHANTOM_APP_ID;
