@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { initializeDatabase } from "@/lib/db";
+import { bootstrapDatabase } from "@/lib/databaseBootstrap";
 import { getErrorMessage } from "@/lib/errors";
 
 export async function POST() {
   try {
-    await initializeDatabase();
+    await bootstrapDatabase();
     return NextResponse.json({
       success: true,
       message: "Database tables created",

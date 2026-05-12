@@ -3,18 +3,19 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
+  initializeDatabase: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/onchain", () => ({
-  getOnChainPrice: vi.fn(),
+  getOnChainUsdcPrice: vi.fn(),
 }));
 
 import { GET } from "@/app/api/skills/[id]/update/route";
 import { sql } from "@/lib/db";
-import { getOnChainPrice } from "@/lib/onchain";
+import { getOnChainUsdcPrice } from "@/lib/onchain";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
-const mockOnChain = getOnChainPrice as unknown as ReturnType<typeof vi.fn>;
+const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string, query = "") {
   const url = new URL(`http://localhost/api/skills/${id}/update${query}`);
@@ -66,7 +67,10 @@ describe("GET /api/skills/[id]/update", () => {
       },
     ]);
     mockSql.mockReturnValue(dbQuery);
-    mockOnChain.mockResolvedValue({ price: 1_000_000, author: "Author1" });
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "1000000",
+      author: "Author1",
+    });
 
     const { req, params } = makeRequest(
       "uuid-paid",
@@ -83,7 +87,9 @@ describe("GET /api/skills/[id]/update", () => {
       installed_version: 2,
       latest_version: 3,
       on_chain_address: "ListingAddr2",
-      price_lamports: 1_000_000,
+      price_lamports: 0,
+      price_usdc_micros: "1000000",
+      payment_flow: "direct-purchase-skill",
       requires_purchase: true,
       listing_changed: true,
     });
@@ -113,6 +119,8 @@ describe("GET /api/skills/[id]/update", () => {
       installed_version: null,
       latest_version: 4,
       price_lamports: 0,
+      price_usdc_micros: null,
+      payment_flow: "free",
       requires_purchase: false,
       listing_changed: false,
     });

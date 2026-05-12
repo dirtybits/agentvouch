@@ -3,8 +3,11 @@ import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
-import { hasOnChainPurchase } from "@/lib/x402";
-import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
+import {
+  getUsdcPurchaseEntitlementSummary,
+  hasUsdcPurchaseEntitlement,
+} from "@/lib/usdcPurchases";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import {
   getConfiguredSolanaChainContext,
@@ -17,7 +20,7 @@ import {
   PUBLIC_ROUTE_STALE_SECONDS,
 } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
-import { fetchOnChainSkillListing, getOnChainPrice } from "@/lib/onchain";
+import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import {
   assessPurchasePreflight,
   createPurchasePreflightContext,
@@ -25,6 +28,14 @@ import {
 } from "@/lib/purchasePreflight";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 import { address, createSolanaRpc, isAddress } from "@solana/kit";
+import {
+  AGENTVOUCH_PROTOCOL_VERSION,
+  getAgentVouchProgramId,
+} from "@/lib/protocolMetadata";
+import {
+  getSkillPaymentFlow,
+  normalizeUsdcMicros,
+} from "@/lib/listingContract";
 
 const CHAIN_PREFIX = "chain-";
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -46,6 +57,8 @@ type SkillRow = {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
+  on_chain_protocol_version?: string | null;
+  on_chain_program_id?: string | null;
   contact?: string | null;
   created_at: string;
   updated_at: string;
@@ -81,17 +94,14 @@ export async function GET(
       const preflightContext = await createPurchasePreflightContext({
         rpc,
         buyer: buyerAddress,
-        authors: isAddress(String(listing.data.author))
-          ? [address(String(listing.data.author))]
-          : [],
+        usdcMint: address(getConfiguredUsdcMint()),
+        authors: [],
       });
       const preflight = serializePurchasePreflight(
         assessPurchasePreflight({
           context: preflightContext,
-          priceLamports: BigInt(listing.data.priceLamports),
-          author: isAddress(String(listing.data.author))
-            ? address(String(listing.data.author))
-            : null,
+          priceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
+          author: null,
         })
       );
 
@@ -124,7 +134,7 @@ export async function GET(
         }
       }
       const buyerHasPurchased =
-        buyerAddress && BigInt(listing.data.priceLamports) > 0n
+        buyerAddress && BigInt(listing.data.priceUsdcMicros) > 0n
           ? await hasOnChainPurchase(
               String(buyerAddress),
               listing.publicKey
@@ -152,11 +162,15 @@ export async function GET(
           chain_context: configuredSolanaChainContext,
           total_installs: 0,
           total_downloads: Number(listing.data.totalDownloads),
-          price_lamports: Number(listing.data.priceLamports),
-          price_usdc_micros: null,
-          currency_mint: null,
+          price_lamports: null,
+          price_usdc_micros: String(listing.data.priceUsdcMicros),
+          currency_mint: getConfiguredUsdcMint(),
+          on_chain_protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
+          on_chain_program_id: getAgentVouchProgramId(),
           payment_flow:
-            Number(listing.data.priceLamports) > 0 ? "legacy-sol" : "free",
+            Number(listing.data.priceUsdcMicros) > 0
+              ? "direct-purchase-skill"
+              : "free",
           contact: null,
           created_at: new Date(
             Number(listing.data.createdAt) * 1000
@@ -172,6 +186,7 @@ export async function GET(
           author_trust_summary,
           author_identity,
           buyerHasPurchased,
+          buyerPurchaseSummary: null,
           content_verification: null,
           ...preflight,
         },
@@ -199,10 +214,16 @@ export async function GET(
     const skill = rows[0];
     skill.chain_context = normalizePersistedChainContext(skill.chain_context);
 
-    if (skill.on_chain_address && !skill.price_usdc_micros) {
-      const listing = await getOnChainPrice(skill.on_chain_address);
+    if (
+      skill.on_chain_address &&
+      !normalizeUsdcMicros(skill.price_usdc_micros)
+    ) {
+      const listing = await getOnChainUsdcPrice(skill.on_chain_address);
       if (listing) {
-        skill.price_lamports = listing.price;
+        skill.price_usdc_micros = listing.priceUsdcMicros;
+        skill.currency_mint ??= getConfiguredUsdcMint();
+        skill.on_chain_protocol_version ??= AGENTVOUCH_PROTOCOL_VERSION;
+        skill.on_chain_program_id ??= getAgentVouchProgramId();
       }
     }
 
@@ -253,33 +274,48 @@ export async function GET(
     const preflightContext = await createPurchasePreflightContext({
       rpc,
       buyer: buyerAddress,
-      authors: isAddress(skill.author_pubkey)
-        ? [address(skill.author_pubkey)]
-        : [],
+      usdcMint: address(getConfiguredUsdcMint()),
+      authors: [address(skill.author_pubkey)],
     });
+    const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
     const preflight = serializePurchasePreflight(
       assessPurchasePreflight({
         context: preflightContext,
-        priceLamports: skill.price_usdc_micros
-          ? 0n
-          : BigInt(skill.price_lamports ?? 0),
-        author: !skill.price_usdc_micros && isAddress(skill.author_pubkey)
-          ? address(skill.author_pubkey)
-          : null,
+        priceUsdcMicros: priceUsdcMicros ? BigInt(priceUsdcMicros) : 0n,
+        author: address(skill.author_pubkey),
+        authorBackingUsdcMicros:
+          skill.on_chain_address && priceUsdcMicros
+            ? BigInt(author_trust?.totalStakeAtRisk ?? 0)
+            : null,
       })
     );
     const buyerHasPurchased = buyerAddress
-      ? skill.price_usdc_micros
-        ? await hasUsdcPurchaseEntitlement(id, String(buyerAddress)).catch(
-            () => false
-          )
-        : skill.on_chain_address && (skill.price_lamports ?? 0) > 0
+      ? priceUsdcMicros
+        ? skill.on_chain_address
+          ? await hasOnChainPurchase(
+              String(buyerAddress),
+              String(skill.on_chain_address)
+            ).catch(() => false)
+          : await hasUsdcPurchaseEntitlement(id, String(buyerAddress)).catch(
+              () => false
+            )
+        : getSkillPaymentFlow({
+            legacySolLamports: skill.price_lamports,
+            allowLegacySol: true,
+          }) === "legacy-sol" && skill.on_chain_address
         ? await hasOnChainPurchase(
             String(buyerAddress),
             String(skill.on_chain_address)
           ).catch(() => false)
         : false
       : false;
+    const buyerPurchaseSummary =
+      buyerAddress && buyerHasPurchased
+        ? await getUsdcPurchaseEntitlementSummary(
+            id,
+            String(buyerAddress)
+          ).catch(() => null)
+        : null;
     const author_trust_summary = author_trust
       ? buildAgentTrustSummary({
           walletPubkey: skill.author_pubkey,
@@ -291,17 +327,20 @@ export async function GET(
     return NextResponse.json(
       {
         ...skill,
-        payment_flow: skill.price_usdc_micros
-          ? "x402-usdc"
-          : (skill.price_lamports ?? 0) > 0
-          ? "legacy-sol"
-          : "free",
+        price_usdc_micros: priceUsdcMicros,
+        payment_flow: getSkillPaymentFlow({
+          priceUsdcMicros,
+          onChainAddress: skill.on_chain_address,
+          legacySolLamports: skill.price_lamports,
+          allowLegacySol: true,
+        }),
         content: latestContent,
         versions: versionsWithoutContent,
         author_trust,
         author_trust_summary,
         author_identity,
         buyerHasPurchased,
+        buyerPurchaseSummary,
         content_verification,
         ...preflight,
       },
@@ -365,9 +404,24 @@ export async function PATCH(
       );
     }
 
+    const listing = await getOnChainUsdcPrice(on_chain_address);
+    if (!listing) {
+      return NextResponse.json(
+        { error: "On-chain listing not found or unreadable" },
+        { status: 404 }
+      );
+    }
+    const priceUsdcMicros = normalizeUsdcMicros(listing?.priceUsdcMicros);
+
     const [updated] = await sql()<SkillRow>`
       UPDATE skills
-      SET on_chain_address = ${on_chain_address}, updated_at = NOW()
+      SET
+        on_chain_address = ${on_chain_address},
+        price_usdc_micros = ${priceUsdcMicros},
+        currency_mint = ${priceUsdcMicros ? getConfiguredUsdcMint() : null},
+        on_chain_protocol_version = ${AGENTVOUCH_PROTOCOL_VERSION},
+        on_chain_program_id = ${getAgentVouchProgramId()},
+        updated_at = NOW()
       WHERE id = ${id}::uuid
       RETURNING *
     `;

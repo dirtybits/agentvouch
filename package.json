@@ -21,9 +21,11 @@
     "lint": "npm run format && npm run lint --workspaces --if-present",
     "lint:check": "npm run format:check && npm run lint --workspaces --if-present",
     "migrate:config": "ts-node scripts/migrate-config.ts",
+    "migrate:skill-listings": "ts-node scripts/migrate-skill-listings-m13.ts",
     "migrate:agents": "ts-node scripts/migrate-agent-profiles.ts",
     "postinstall": "npm run build:cli",
     "repair:registered-at": "ts-node scripts/repair-agent-registered-at.ts",
+    "smoke:devnet-usdc": "node scripts/devnet-usdc-smoke.mjs",
     "smoke:flow-surface": "node scripts/smoke-flow-surface.mjs",
     "test": "npm run test --workspaces --if-present",
     "test:cli": "npm run test --workspace @agentvouch/cli",
@@ -34,6 +36,7 @@
     "vercel": "^50.25.6"
   },
   "devDependencies": {
+    "@solana/spl-token": "^0.4.14",
     "@types/bn.js": "^5.1.0",
     "@types/chai": "^4.3.0",
     "@types/mocha": "^9.0.0",

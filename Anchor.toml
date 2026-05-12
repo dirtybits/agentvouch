@@ -1,5 +1,5 @@
 [toolchain]
-package_manager = "yarn"
+package_manager = "npm"
 anchor_version = "0.32.1"
 
 [features]
@@ -7,10 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-reputation_oracle = "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf"
+agentvouch = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
 
 [programs.devnet]
-reputation_oracle = "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf"
+agentvouch = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
 
 [registry]
 url = "https://api.apr.dev"
@@ -20,4 +20,5 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
+init-agentvouch-config = "npm exec ts-node -- scripts/init-agentvouch-config.ts"
+test = "npm exec ts-mocha -- -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""

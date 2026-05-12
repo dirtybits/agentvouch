@@ -44,6 +44,8 @@ next-env.d.ts
 *.secret
 .agent-keys/
 **/keypair*.json
+db-cutover-export*.json
+db-inventory*.json
 
 # tooling
 .vercel

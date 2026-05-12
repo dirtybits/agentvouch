@@ -12,8 +12,11 @@ import {
 } from "./chains";
 import { getErrorMessage } from "./errors";
 import { DEFAULT_SOLANA_RPC_URL } from "./solanaRpc";
-import { fetchMaybePurchase } from "../generated/reputation-oracle/src/generated";
-import { REPUTATION_ORACLE_PROGRAM_ADDRESS } from "../generated/reputation-oracle/src/generated/programs";
+import {
+  fetchMaybePurchase,
+  fetchMaybeSkillListing,
+} from "../generated/agentvouch/src/generated";
+import { AGENTVOUCH_PROGRAM_ADDRESS } from "../generated/agentvouch/src/generated/programs";
 
 const SOL_NATIVE_MINT = "So11111111111111111111111111111111111111112";
 export const USDC_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
@@ -76,26 +79,31 @@ export interface PaymentProof {
 
 export function generatePaymentRequirement(opts: {
   skillId: string;
-  priceLamports: number;
+  legacySolLamports: number;
   skillListingAddress: string;
   resourcePath: string;
 }): PaymentRequirement {
+  if (!Number.isFinite(opts.legacySolLamports) || opts.legacySolLamports <= 0) {
+    throw new Error(
+      "Legacy SOL payment requirements require a positive amount"
+    );
+  }
   const expirySeconds = 300;
   return {
     scheme: "exact",
     network: "solana",
     chainContext: getConfiguredSolanaChainContext(),
-    programId: REPUTATION_ORACLE_PROGRAM_ADDRESS,
+    programId: AGENTVOUCH_PROGRAM_ADDRESS,
     instruction: "purchaseSkill",
     skillListingAddress: opts.skillListingAddress,
     mint: SOL_NATIVE_MINT,
-    amount: opts.priceLamports,
+    amount: opts.legacySolLamports,
     resource: hashResource(opts.resourcePath),
     expiry: Math.floor(Date.now() / 1000) + expirySeconds,
     nonce: randomBytes(16).toString("hex"),
     metadata: {
       skill_id: opts.skillId,
-      display_price: `${(opts.priceLamports / 1e9).toFixed(4)} SOL`,
+      display_price: `${(opts.legacySolLamports / 1e9).toFixed(4)} SOL`,
     },
   };
 }
@@ -114,17 +122,21 @@ export function paymentRefFromProof(proof: PaymentProof): string {
 
 async function derivePurchasePda(
   buyer: string,
-  skillListingAddress: string
+  skillListingAddress: string,
+  revision: bigint | number
 ): Promise<Address> {
   const addressEncoder = getAddressEncoder();
   const utf8Encoder = getUtf8Encoder();
+  const revisionBytes = new Uint8Array(8);
+  new DataView(revisionBytes.buffer).setBigUint64(0, BigInt(revision), true);
 
   const [pda] = await getProgramDerivedAddress({
-    programAddress: REPUTATION_ORACLE_PROGRAM_ADDRESS,
+    programAddress: AGENTVOUCH_PROGRAM_ADDRESS,
     seeds: [
       utf8Encoder.encode("purchase"),
       addressEncoder.encode(buyer as Address),
       addressEncoder.encode(skillListingAddress as Address),
+      revisionBytes,
     ],
   });
 
@@ -136,7 +148,15 @@ async function getOnChainPurchaseStatus(
   skillListingAddress: string
 ): Promise<"valid" | "missing" | "buyerMismatch"> {
   const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
-  const purchasePda = await derivePurchasePda(buyer, skillListingAddress);
+  const listing = await fetchMaybeSkillListing(
+    rpc,
+    skillListingAddress as Address
+  );
+  const purchasePda = await derivePurchasePda(
+    buyer,
+    skillListingAddress,
+    listing.exists ? listing.data.currentRevision : 0n
+  );
   const account = await fetchMaybePurchase(rpc, purchasePda);
   if (!account.exists) return "missing";
   if (account.data.buyer !== (buyer as Address)) return "buyerMismatch";
@@ -257,9 +277,10 @@ type FacilitatorSupportedKind = {
   extra?: Record<string, unknown>;
 };
 
-let facilitatorSupportedKindsCache:
-  | { expiresAt: number; kinds: FacilitatorSupportedKind[] }
-  | null = null;
+let facilitatorSupportedKindsCache: {
+  expiresAt: number;
+  kinds: FacilitatorSupportedKind[];
+} | null = null;
 
 export interface X402ResourceInfo {
   url: string;
@@ -330,7 +351,9 @@ export function getFacilitatorAuthHeader(): string | null {
   return process.env.FACILITATOR_AUTH_HEADER || null;
 }
 
-async function getFacilitatorSupportedKinds(): Promise<FacilitatorSupportedKind[]> {
+async function getFacilitatorSupportedKinds(): Promise<
+  FacilitatorSupportedKind[]
+> {
   if (
     facilitatorSupportedKindsCache &&
     facilitatorSupportedKindsCache.expiresAt > Date.now()
@@ -349,9 +372,7 @@ async function getFacilitatorSupportedKinds(): Promise<FacilitatorSupportedKind[
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `Facilitator /supported returned ${res.status}${
-        text ? `: ${text}` : ""
-      }`
+      `Facilitator /supported returned ${res.status}${text ? `: ${text}` : ""}`
     );
   }
 
@@ -595,7 +616,7 @@ export async function verifySettledUsdcTransfer(opts: {
   }
 
   const accountKeys = messageAccountKeys.map((key) =>
-    typeof key === "string" ? key : (key.pubkey ?? "")
+    typeof key === "string" ? key : key.pubkey ?? ""
   );
   const destinationIndex = accountKeys.findIndex(
     (accountKey) => accountKey === opts.destinationAta

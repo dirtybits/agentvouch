@@ -16,7 +16,7 @@ import {
 
 export default function DocsPage() {
   const downloadCommand = "curl -s https://agentvouch.xyz/skill.md";
-  const programId = "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf";
+  const programId = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ";
   const browseSkillsCommand = `curl -s https://agentvouch.xyz/api/skills | jq '.skills[:3]'`;
   const inspectSkillCommand = `curl -s https://agentvouch.xyz/api/skills/{id} | jq`;
   const trustLookupCommand = `curl -s https://agentvouch.xyz/api/agents/{pubkey}/trust | jq '{trust, author_trust}'`;
@@ -26,7 +26,11 @@ curl -s https://agentvouch.xyz/api/index/skills | jq '.skills[:3]'
 curl -s https://agentvouch.xyz/api/index/trusted-authors | jq '.authors[:3]'`;
   const installSkillCommand = `# Free skills download directly; paid skills require X-AgentVouch-Auth (see skill.md)
 curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md`;
-  const paidDownloadFlow = `1. GET /api/skills/{id}/raw\n2. If response is 402 with PAYMENT-REQUIRED, complete the x402 USDC payment flow and retry with PAYMENT-SIGNATURE\n3. Legacy SOL listings still return X-Payment; call purchaseSkill on-chain, then retry with X-AgentVouch-Auth\n4. For re-downloads, sign the canonical download message and retry with X-AgentVouch-Auth`;
+  const paidDownloadFlow = `1. GET /api/skills/{id}/raw
+2. Protocol-listed USDC skills return direct-purchase-skill; call purchaseSkill on-chain, POST the confirmed signature to /api/skills/{id}/purchase/verify, then retry with X-AgentVouch-Auth
+3. Repo-only USDC skills may return PAYMENT-REQUIRED; complete x402 and retry with PAYMENT-SIGNATURE
+4. Historical SOL listings may still return X-Payment for legacy downloads; new v0.2.0 writes are USDC-native
+5. For re-downloads, sign the canonical download message and retry with X-AgentVouch-Auth`;
   const paidDownloadMessage = `AgentVouch Skill Download
 Action: download-raw
 Skill id: {id}
@@ -43,7 +47,7 @@ curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/ra
   const searchSkillsCommand = `curl -s 'https://agentvouch.xyz/api/skills?q=calendar' | jq`;
   const updateSkillCommand = `agentvouch skills update --file ./SKILL.md`;
   const agentRegisterCommand = `agentvouch agent register --keypair ~/.config/solana/id.json --metadata-uri https://example.com/agent.json`;
-  const publishSkillCommand = `agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --keypair ~/.config/solana/id.json`;
+  const publishSkillCommand = `agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json`;
   const addVersionCommand = `agentvouch skill version add {repoSkillId} --file ./SKILL.md --changelog "Fix env names" --keypair ~/.config/solana/id.json`;
   const registerAgentExample = `import { useReputationOracle } from './hooks/useReputationOracle';
 
@@ -52,7 +56,7 @@ const { tx, agentProfile } = await oracle.registerAgent(
   "https://your-metadata.json"
 );`;
   const vouchExample = `const vouchee = "AGENT_WALLET_ADDRESS";
-const { tx } = await oracle.vouch(vouchee, 0.1); // 0.1 SOL stake`;
+const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -72,7 +76,7 @@ const { tx } = await oracle.vouch(vouchee, 0.1); // 0.1 SOL stake`;
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             AgentVouch is a reputation oracle for AI agents. Use these docs to
             discover skills, inspect agent trust, verify paid downloads, and
-            query the stake-backed trust record behind an agent before giving
+            query the USDC-backed trust record behind an agent before giving
             them work, access, or payment.
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -142,14 +146,14 @@ const { tx } = await oracle.vouch(vouchee, 0.1); // 0.1 SOL stake`;
               <code>/openapi.json</code>
             </a>
             <a
-              href="/reputation_oracle.json"
+              href="/agentvouch.json"
               download
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
               <span className="block font-semibold text-gray-900 dark:text-white mb-1">
                 Program IDL
               </span>
-              <code>/reputation_oracle.json</code>
+              <code>/agentvouch.json</code>
             </a>
           </div>
         </div>
@@ -174,11 +178,11 @@ const { tx } = await oracle.vouch(vouchee, 0.1); // 0.1 SOL stake`;
                   IDL
                 </div>
                 <a
-                  href="/reputation_oracle.json"
+                  href="/agentvouch.json"
                   download
                   className="text-sm font-semibold text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                 >
-                  reputation_oracle.json
+                  agentvouch.json
                 </a>
               </div>
             </div>
@@ -292,12 +296,12 @@ const { tx } = await oracle.vouch(vouchee, 0.1); // 0.1 SOL stake`;
             Download
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Paid skills are USDC-first: the primary path is x402 with{" "}
-            <code>PAYMENT-REQUIRED</code> and <code>PAYMENT-SIGNATURE</code>.
-            Older SOL listings still use <code>purchaseSkill</code> on-chain,
-            then retry the raw download with a signed{" "}
-            <code>X-AgentVouch-Auth</code> header that proves the buyer controls
-            the wallet.
+            Paid skills are USDC-first. Protocol-listed skills use the on-chain{" "}
+            <code>purchaseSkill</code> instruction and verify through{" "}
+            <code>/api/skills/{"{id}"}/purchase/verify</code>. Repo-only USDC
+            skills can use x402 with <code>PAYMENT-REQUIRED</code> and{" "}
+            <code>PAYMENT-SIGNATURE</code>. Historical SOL listings remain a
+            legacy read/download path.
           </p>
           <div className="space-y-4">
             <div>

@@ -12,7 +12,6 @@ export interface PublishSkillInput {
   description: string;
   contact?: string;
   tags: string[];
-  priceLamports: number;
   priceUsdcMicros: string;
   baseUrl: string;
   rpcUrl: string;
@@ -30,7 +29,7 @@ export interface AddSkillVersionInput {
 
 export interface LinkSkillListingInput {
   id: string;
-  priceLamports: number;
+  priceUsdcMicros: string;
   baseUrl: string;
   rpcUrl: string;
   keypairPath: string;
@@ -42,7 +41,7 @@ async function linkRepoSkillListing(input: {
   solana: AgentVouchSolanaClient;
   keypairPath: string;
   baseUrl: string;
-  priceLamports: number;
+  priceUsdcMicros: string;
   repoSkill: SkillRecord;
   dryRun?: boolean;
 }) {
@@ -73,7 +72,7 @@ async function linkRepoSkillListing(input: {
       skillId: repoSkill.skill_id,
       skillUri,
       listingAddress,
-      priceLamports: input.priceLamports,
+      priceUsdcMicros: input.priceUsdcMicros,
       createListingTx: null as string | null,
       listingAlreadyExisted: false,
       alreadyLinked: repoSkill.on_chain_address === listingAddress,
@@ -86,7 +85,7 @@ async function linkRepoSkillListing(input: {
     skillUri,
     name: repoSkill.name,
     description: repoSkill.description ?? "",
-    priceLamports: input.priceLamports,
+    priceUsdcMicros: input.priceUsdcMicros,
   });
 
   const linkAuth = createRepoAuthPayload(
@@ -103,7 +102,7 @@ async function linkRepoSkillListing(input: {
     skillId: repoSkill.skill_id,
     skillUri,
     listingAddress,
-    priceLamports: input.priceLamports,
+    priceUsdcMicros: input.priceUsdcMicros,
     createListingTx: chainListing.tx,
     listingAlreadyExisted: chainListing.alreadyExists,
     alreadyLinked: repoSkill.on_chain_address === listingAddress,
@@ -134,7 +133,7 @@ export async function publishSkill(input: PublishSkillInput) {
       },
       onChainListing: {
         address: listingAddress,
-        priceLamports: input.priceLamports,
+        priceUsdcMicros: input.priceUsdcMicros,
       },
     };
   }
@@ -158,7 +157,7 @@ export async function publishSkill(input: PublishSkillInput) {
       solana,
       keypairPath: input.keypairPath,
       baseUrl: input.baseUrl,
-      priceLamports: input.priceLamports,
+      priceUsdcMicros: input.priceUsdcMicros,
       repoSkill: {
         ...repoSkill,
         author_pubkey: keypair.publicKey.toBase58(),
@@ -172,8 +171,8 @@ export async function publishSkill(input: PublishSkillInput) {
     throw new CliError(
       `Repo skill ${repoSkill.id} was published, but the on-chain listing was not linked: ${getErrorMessage(
         error
-      )}\nRetry with: agentvouch skill link-listing ${repoSkill.id} --price-lamports ${
-        input.priceLamports
+      )}\nRetry with: agentvouch skill link-listing ${repoSkill.id} --price-usdc ${
+        Number(BigInt(input.priceUsdcMicros)) / 1_000_000
       } --keypair ${input.keypairPath} --base-url ${input.baseUrl} --rpc-url ${
         input.rpcUrl
       }`,
@@ -205,7 +204,7 @@ export async function linkSkillListing(input: LinkSkillListingInput) {
     solana,
     keypairPath: input.keypairPath,
     baseUrl: input.baseUrl,
-    priceLamports: input.priceLamports,
+    priceUsdcMicros: input.priceUsdcMicros,
     repoSkill,
     dryRun: input.dryRun,
   });

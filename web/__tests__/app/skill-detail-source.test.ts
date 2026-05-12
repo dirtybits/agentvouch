@@ -3,16 +3,14 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 describe("skill detail source", () => {
-  it("shows creator price, estimated total, and preflight warnings", () => {
+  it("shows USDC price, receipt rent, and preflight warnings", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/[id]/page.tsx"),
       "utf8"
     );
 
-    expect(source).toContain("Estimated total");
-    expect(source).toContain("Legacy fallback");
+    expect(source).toContain("USDC primary pricing");
     expect(source).toContain("Receipt rent");
-    expect(source).toContain("Seller Needs SOL");
     expect(source).toContain("purchasePreflightMessage");
   });
 
@@ -29,19 +27,18 @@ describe("skill detail source", () => {
     expect(source).toContain("Manage Listing");
     expect(source).toContain("X-AgentVouch-Auth");
     expect(source).toContain("/docs#paid-skill-download");
-    expect(source).toContain("Call purchaseSkill on-chain");
+    expect(source).toContain("purchase_skill");
     expect(source).toContain("buyerHasPurchased");
     expect(source).toContain("UsdcIcon");
     expect(source).toContain("Pay with USDC");
-    expect(source).toContain("Use SOL Fallback");
     expect(source).toContain("getConfiguredSolanaExplorerAddressUrl");
     expect(source).toContain("View PDA");
-    expect(source).toContain("Buy & Unlock");
     expect(source).toContain("Sign & Download");
     expect(source).toContain("buildDownloadRawMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
-    expect(source).toContain("buildSignedDownloadErrorMessage");
+    expect(source).toContain("fetchSignedRawSkill");
+    expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });
 

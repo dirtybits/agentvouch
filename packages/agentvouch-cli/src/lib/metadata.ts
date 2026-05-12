@@ -13,7 +13,7 @@ export interface InstalledSkillMetadata {
   on_chain_address: string | null;
   skill_slug: string;
   author_pubkey: string;
-  price_lamports: number;
+  historical_sol_price_base_units?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
   installed_at: string;
@@ -36,7 +36,7 @@ export function buildInstalledSkillMetadata(
     on_chain_address: skill.on_chain_address ?? null,
     skill_slug: skill.skill_id,
     author_pubkey: skill.author_pubkey,
-    price_lamports: skill.price_lamports ?? 0,
+    historical_sol_price_base_units: skill.price_lamports ?? 0,
     price_usdc_micros: skill.price_usdc_micros ?? null,
     currency_mint: skill.currency_mint ?? null,
     installed_at: new Date().toISOString(),
@@ -59,7 +59,10 @@ function isInstalledSkillMetadata(
     typeof candidate.installed_version === "number" &&
     typeof candidate.skill_slug === "string" &&
     typeof candidate.author_pubkey === "string" &&
-    typeof candidate.price_lamports === "number" &&
+    (typeof candidate.historical_sol_price_base_units === "number" ||
+      typeof (candidate as { price_lamports?: unknown }).price_lamports ===
+        "number" ||
+      candidate.historical_sol_price_base_units === undefined) &&
     typeof candidate.installed_at === "string" &&
     (typeof candidate.price_usdc_micros === "string" ||
       candidate.price_usdc_micros === null ||

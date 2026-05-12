@@ -1,264 +1,229 @@
-# Deploy And IDL Runbook
+# AgentVouch Deploy And IDL Runbook
 
-## Devnet Program
+This runbook covers the USDC-native `agentvouch` v0.2.0 program.
 
-- Program ID: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
-- Upgrade authority: `<UPGRADE_AUTHORITY_PUBKEY>`
-- Canonical program keypair: `<REPO_ROOT>/target/deploy/reputation_oracle-keypair.json`
+## Active Devnet Program
 
-## Important Constraint
+- Program ID: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Program name: `agentvouch`
+- Canonical keypair path: `target/deploy/agentvouch-keypair.json`
+- Executable artifact: `target/deploy/agentvouch.so`
+- IDL artifact: `target/idl/agentvouch.json`
+- Checked-in web IDL: `web/agentvouch.json`
+- Generated web client: `web/generated/agentvouch/`
+- Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+- Devnet chain context: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`
 
-`anchor deploy` needs two different keys to line up:
+## Preflight
 
-- the upgrade authority wallet
-- the original program keypair for `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
-
-If the wallet is correct but the program keypair is wrong, Anchor will deploy a brand-new program at a different address and then fail IDL upload with `DeclaredProgramIdMismatch`.
-
-## Preflight Checks
-
-Run these from the repo root:
+Run from the repo root:
 
 ```bash
 cd <REPO_ROOT>
 ```
 
-Verify the upgrade authority wallet:
+Set the deployment environment explicitly. `Anchor.toml` defaults to localnet, so do not rely on implicit provider config.
 
 ```bash
-solana-keygen pubkey /path/to/deploy-authority.json
+export ANCHOR_PROVIDER_URL=https://api.devnet.solana.com
+export ANCHOR_WALLET=/path/to/deploy-authority.json
 ```
 
-Expected output:
+Verify the wallet and program keypair:
 
 ```bash
-<UPGRADE_AUTHORITY_PUBKEY>
+solana-keygen pubkey "$ANCHOR_WALLET"
+solana-keygen verify AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
+  target/deploy/agentvouch-keypair.json
+solana balance --url "$ANCHOR_PROVIDER_URL" -k "$ANCHOR_WALLET"
 ```
 
-Verify the program keypair matches the declared program ID:
+Verify source files agree on the program ID:
 
 ```bash
-solana-keygen verify ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
-  /path/to/program-keypair.json
-```
-
-Check devnet balance for the deploy authority:
-
-```bash
-solana balance --url https://api.devnet.solana.com \
-  -k /path/to/deploy-authority.json
+rg "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" \
+  Anchor.toml programs/agentvouch/src/lib.rs packages/agentvouch-protocol/src/index.ts web/agentvouch.json
 ```
 
 ## Build
 
-Export the deploy environment explicitly. `Anchor.toml` defaults to `localnet`, so do not rely on implicit defaults.
-
-```bash
-export ANCHOR_WALLET=/path/to/deploy-authority.json
-export ANCHOR_PROVIDER_URL=https://api.devnet.solana.com
-```
-
 Build the program:
 
 ```bash
-anchor build
+NO_DNA=1 anchor build
 ```
 
-If the deployed behavior still looks old, do not assume `anchor build` refreshed the executable. `anchor deploy` uploads `target/deploy/reputation_oracle.so`, so a stale `.so` can redeploy stale code even when the IDL and generated types are newer. In that case, force a clean rebuild:
+If deployed behavior looks stale, force a clean rebuild:
 
 ```bash
-anchor clean
-anchor build
+NO_DNA=1 anchor clean
+NO_DNA=1 anchor build
 ```
 
-If the web app consumes the checked-in IDL or generated client, refresh those artifacts after the build:
+After every successful Anchor build, sync the web IDL and generated client:
 
 ```bash
-cp target/idl/reputation_oracle.json web/reputation_oracle.json
+cp target/idl/agentvouch.json web/agentvouch.json
 npm run generate:client
 ```
+
+Do not deploy if `target/idl/agentvouch.json` is missing or the generated web client is stale.
 
 ## Deploy
 
-Use the explicit program keypair so Anchor upgrades the existing program instead of creating a new one:
+Use the explicit program keypair:
 
 ```bash
-anchor deploy \
-  --program-name reputation_oracle \
-  --program-keypair /path/to/program-keypair.json \
+NO_DNA=1 anchor deploy \
+  --program-name agentvouch \
+  --program-keypair target/deploy/agentvouch-keypair.json \
   --provider.cluster devnet \
   --provider.wallet "$ANCHOR_WALLET"
 ```
 
-## Verify Program Upgrade
-
-Check the on-chain program metadata:
+Check the deployed program:
 
 ```bash
-solana program show --url https://api.devnet.solana.com \
-  ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf
+solana program show --url "$ANCHOR_PROVIDER_URL" \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ
 ```
 
-You should see:
-
-- the same program ID: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
-- authority: `<UPGRADE_AUTHORITY_PUBKEY>`
-- a newer `Last Deployed In Slot`
-
-Verify the executable binary too, not just the metadata:
+Verify the executable binary, not just metadata:
 
 ```bash
-solana program dump --url https://api.devnet.solana.com \
-  ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
-  /tmp/reputation_oracle_devnet.so
+solana program dump --url "$ANCHOR_PROVIDER_URL" \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
+  /tmp/agentvouch_devnet.so
 
-shasum -a 256 \
-  target/deploy/reputation_oracle.so \
-  /tmp/reputation_oracle_devnet.so
+shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch_devnet.so
 ```
 
-Those two hashes should match. If they do not, the deploy did not put the local executable on-chain.
+The hashes should match.
+
+## Bootstrap Program State
+
+Deploying the executable does not initialize PDA state. A fresh program ID needs `initialize_config` once before registration-dependent flows such as skill listing, vouching, purchases, or author bonds.
+
+`initialize_config` creates:
+
+- the singleton `ReputationConfig` PDA from seed `["config"]`
+- the protocol treasury USDC vault
+- the x402 settlement USDC vault
+
+Dry-run config initialization first:
+
+```bash
+export AGENTVOUCH_RPC_URL=https://api.devnet.solana.com
+export AGENTVOUCH_WALLET=~/dev-keypair.json
+export SOLANA_CHAIN_CONTEXT=solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1
+export USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+
+NO_DNA=1 anchor run init-agentvouch-config
+```
+
+If the printed program ID, authorities, PDAs, and simulation result are correct, submit it:
+
+```bash
+INIT_AGENTVOUCH_CONFIG_APPLY=1 NO_DNA=1 anchor run init-agentvouch-config
+```
+
+The script is idempotent. If `config` already exists, it prints the current config and exits without sending a transaction.
+
+If this step is skipped, instructions that read `config` fail even though the program account exists:
+
+```text
+AnchorError caused by account: config.
+Error Code: AccountNotInitialized.
+Error Number: 3012.
+Error Message: The program expected this account to be already initialized.
+```
 
 ## Anchor IDL
 
-When `anchor deploy` succeeds with the correct program keypair, Anchor upgrades both:
-
-- the executable program
-- the on-chain IDL account
-
-That IDL account makes the program self-describing for Anchor-aware tooling.
+The checked-in web app uses `web/agentvouch.json` and `web/generated/agentvouch/`. The on-chain IDL account is still useful for explorers and Anchor-aware tooling.
 
 Fetch the on-chain IDL:
 
 ```bash
-anchor idl fetch ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
+anchor idl fetch AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   --provider.cluster devnet
 ```
 
-Check the current IDL authority:
-
-```bash
-anchor idl authority ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
-  --provider.cluster devnet
-```
-
-Upgrade the IDL manually if needed:
+Upgrade the IDL if needed:
 
 ```bash
 anchor idl upgrade \
-  ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
-  -f target/idl/reputation_oracle.json \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
+  -f target/idl/agentvouch.json \
   --provider.cluster devnet \
   --provider.wallet "$ANCHOR_WALLET"
 ```
 
-Initialize the IDL only if the program has never had one before:
+Initialize the IDL only if the program has never had one:
 
 ```bash
 anchor idl init \
-  ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
-  -f target/idl/reputation_oracle.json \
+  AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
+  -f target/idl/agentvouch.json \
   --provider.cluster devnet \
   --provider.wallet "$ANCHOR_WALLET"
 ```
 
-## Common Failure Mode
+## Post-Deploy Smoke
 
-If you see:
+After deploy and config bootstrap:
 
-```text
-DeclaredProgramIdMismatch
-```
+1. Confirm the app and generated client target `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`.
+2. Register a fresh test agent.
+3. Deposit author bond with USDC.
+4. Create a vouch with USDC.
+5. Publish a paid listing with `price_usdc_micros`.
+6. Simulate or execute `purchase_skill`.
+7. Verify raw download entitlement through the API.
 
-it usually means:
+## Web And Vercel Alignment
 
-- `declare_id!(...)` is still `ELmVn...`
-- but `anchor deploy` used the wrong `reputation_oracle-keypair.json`
-- so Anchor deployed to a different program ID and then failed the IDL step
+After any program, IDL, generated-client, or env change:
 
-## Post-Deploy Check
+1. Sync `target/idl/agentvouch.json` to `web/agentvouch.json`.
+2. Run `npm run generate:client`.
+3. Confirm Vercel preview and production env vars match the intended Neon branch and Solana devnet RPC:
+   - `DATABASE_URL`
+   - `DATABASE_URL_UNPOOLED`
+   - `SOLANA_RPC_URL`
+   - `NEXT_PUBLIC_SOLANA_RPC_URL`
+   - `SOLANA_CHAIN_CONTEXT`
+   - `NEXT_PUBLIC_SOLANA_CHAIN_CONTEXT`
+4. Run `npm run build --workspace @agentvouch/web`.
+5. Redeploy or promote in the `agentvouch` Vercel project.
+6. Follow `docs/PRODUCTION_RUNBOOK.md` for deployed smoke checks and rollback.
 
-After a successful deploy:
+## Common Failure Modes
 
-1. Retry the author-wide dispute flow in the app.
-2. Confirm the transaction targets `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`.
-3. Confirm the UI either succeeds cleanly or surfaces a real on-chain error.
+### `DeclaredProgramIdMismatch`
 
-## IDL Verification And Fallback Triage
-
-If the frontend throws `Fallback functions are not supported`, verify the deployed program and the web client are using the same interface.
-
-Fetch the on-chain IDL:
+Usually means `declare_id!(...)`, `Anchor.toml`, or `target/deploy/agentvouch-keypair.json` do not agree. Verify before deploying:
 
 ```bash
-anchor idl fetch ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf \
+solana-keygen verify AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
+  target/deploy/agentvouch-keypair.json
+```
+
+### `Fallback functions are not supported`
+
+This usually means the web client or on-chain IDL does not match the deployed executable.
+
+Check:
+
+```bash
+anchor idl fetch AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ \
   --provider.cluster devnet
+
+shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch_devnet.so
 ```
 
-Compare it against:
+Then rebuild, redeploy, sync `web/agentvouch.json`, regenerate the client, and rebuild the web app.
 
-- `target/idl/reputation_oracle.json`
-- `web/reputation_oracle.json`
+## Legacy v0.1 Notes
 
-If the local files contain a new instruction but `anchor idl fetch` does not, the on-chain program/IDL is stale and needs a fresh build + deploy.
-
-If `anchor idl fetch` contains the new instruction but the program still throws `Fallback functions are not supported`, the on-chain IDL may be newer than the deployed executable. In that case:
-
-1. Run `anchor clean && anchor build`.
-2. Redeploy with the canonical program keypair.
-3. Compare `target/deploy/reputation_oracle.so` against `solana program dump` from the live program.
-
-If `target/idl/reputation_oracle.json` contains the new instruction but `web/reputation_oracle.json` or `web/generated/reputation-oracle/` does not, the web client artifacts are stale and need to be regenerated:
-
-```bash
-cp target/idl/reputation_oracle.json web/reputation_oracle.json
-npm run generate:client
-```
-
-### Quick Runbook
-
-```bash
-cd <REPO_ROOT>
-
-mv target/deploy/reputation_oracle-keypair.json target/deploy/reputation_oracle-keypair.old.json
-cp target/deploy/reputation_oracle_v2-keypair.json target/deploy/reputation_oracle-keypair.json
-
-solana-keygen pubkey target/deploy/reputation_oracle-keypair.json
-solana-keygen verify ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf target/deploy/reputation_oracle-keypair.json
-
-export ANCHOR_WALLET=~/dev-keypair.json
-export ANCHOR_PROVIDER_URL=https://api.devnet.solana.com
-
-anchor clean
-anchor build
-
-anchor deploy \
-  --program-name reputation_oracle \
-  --program-keypair target/deploy/reputation_oracle-keypair.json \
-  --provider.cluster devnet \
-  --provider.wallet "$ANCHOR_WALLET"
-
-solana program show --url https://api.devnet.solana.com ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf
-
-cp target/idl/reputation_oracle.json web/reputation_oracle.json
-npm run generate:client
-pkill -f "next dev" || true
-npm run dev
-```
-
-Expected checks:
-
-- `solana-keygen pubkey ...` prints `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
-- `solana-keygen verify ...` succeeds
-- `anchor deploy` upgrades instead of creating a new program
-- `solana program show ...` shows the same program ID with a fresh deploy slot
-
-If you want one extra safety check after deploy:
-
-```bash
-cd <REPO_ROOT>
-solana program dump --url https://api.devnet.solana.com ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf /tmp/reputation_oracle_devnet.so
-shasum -a 256 target/deploy/reputation_oracle.so /tmp/reputation_oracle_devnet.so
-```
-
-Those hashes should match.
+Older runbooks and historical deploys used a different v0.1 program name and program ID. Treat those as archived references. New v0.2.0 deploys and docs should use `agentvouch`, `AgNt...`, USDC-native instructions, and `web/agentvouch.json`.

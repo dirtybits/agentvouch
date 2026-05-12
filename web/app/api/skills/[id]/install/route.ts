@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
-import { getOnChainPrice } from "@/lib/onchain";
+import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import { normalizeUsdcMicros } from "@/lib/listingContract";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -48,14 +49,14 @@ export async function POST(
 
     if (id.startsWith(CHAIN_PREFIX)) {
       const pubkey = id.slice(CHAIN_PREFIX.length);
-      const listing = await getOnChainPrice(pubkey);
+      const listing = await getOnChainUsdcPrice(pubkey);
       if (!listing) {
         return NextResponse.json(
           { error: "Skill not found on-chain" },
           { status: 404 }
         );
       }
-      if (listing.price > 0) {
+      if (normalizeUsdcMicros(listing.priceUsdcMicros)) {
         const purchased = await hasOnChainPurchase(
           verification.pubkey,
           pubkey
@@ -89,12 +90,24 @@ export async function POST(
     }
 
     const skill = rows[0];
+    let onChainPriceResolved = false;
+    if (skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)) {
+      const listing = await getOnChainUsdcPrice(skill.on_chain_address);
+      if (listing) {
+        onChainPriceResolved = true;
+        skill.price_usdc_micros = listing.priceUsdcMicros;
+      }
+    }
 
-    if (skill.price_usdc_micros) {
-      const purchased = await hasUsdcPurchaseEntitlement(
-        id,
-        verification.pubkey
-      ).catch(() => false);
+    if (normalizeUsdcMicros(skill.price_usdc_micros)) {
+      const purchased = skill.on_chain_address
+        ? await hasOnChainPurchase(
+            verification.pubkey,
+            skill.on_chain_address
+          ).catch(() => false)
+        : await hasUsdcPurchaseEntitlement(id, verification.pubkey).catch(
+            () => false
+          );
       if (purchased) {
         const [updated] = await sql()<
           Required<Pick<InstallSkillRow, "id" | "total_installs">>
@@ -114,40 +127,19 @@ export async function POST(
       }
 
       return NextResponse.json(
-        { error: "Paid skills require a verified USDC x402 purchase" },
+        { error: "Paid skills require a verified USDC purchase" },
         { status: 402 }
       );
     }
 
-    if (skill.on_chain_address) {
-      const listing = await getOnChainPrice(skill.on_chain_address);
-      if (listing && listing.price > 0) {
-        const purchased = await hasOnChainPurchase(
-          verification.pubkey,
-          skill.on_chain_address
-        ).catch(() => false);
-        if (purchased) {
-          const [updated] = await sql()<
-            Required<Pick<InstallSkillRow, "id" | "total_installs">>
-          >`
-            UPDATE skills
-            SET total_installs = total_installs + 1, updated_at = NOW()
-            WHERE id = ${id}::uuid
-            RETURNING id, total_installs
-          `;
-
-          return NextResponse.json({
-            success: true,
-            skill_id: updated.id,
-            total_installs: updated.total_installs,
-            installed_by: verification.pubkey,
-          });
-        }
-        return NextResponse.json(
-          { error: "Paid skills require an on-chain purchase" },
-          { status: 402 }
-        );
-      }
+    if (skill.on_chain_address && !onChainPriceResolved) {
+      return NextResponse.json(
+        {
+          error:
+            "Linked on-chain listing has no readable USDC price; historical SOL install fallback is disabled",
+        },
+        { status: 409 }
+      );
     }
 
     const [updated] = await sql()<

@@ -6,8 +6,10 @@ erDiagram
 
     REPUTATION-CONFIG {
         pubkey  authority           "admin / arbitrator"
-        u64     min_stake
-        u64     dispute_bond
+        u64     min_vouch_stake_usdc_micros
+        u64     dispute_bond_usdc_micros
+        u64     min_paid_listing_price_usdc_micros
+        u64     min_author_bond_for_free_listing_usdc_micros
         u8      slash_percentage
         i64     cooldown_period
         u64     stake_weight
@@ -22,7 +24,8 @@ erDiagram
         u64     reputation_score    "computed on-chain"
         u32     total_vouches_received
         u32     total_vouches_given
-        u64     total_staked_for
+        u64     total_vouch_stake_usdc_micros
+        u64     author_bond_usdc_micros
         u32     disputes_won
         u32     disputes_lost
         i64     registered_at
@@ -31,9 +34,9 @@ erDiagram
     VOUCH {
         pubkey  voucher
         pubkey  vouchee
-        u64     stake_amount        "SOL locked in PDA"
-        enum    status              "Active | Revoked | Disputed | Slashed | Vindicated"
-        u64     cumulative_revenue  "total earned from skills"
+        u64     stake_usdc_micros   "USDC locked in PDA vault"
+        enum    status              "Active | Revoked | Slashed"
+        u64     cumulative_revenue_usdc_micros
         i64     last_payout_at
         i64     created_at
     }
@@ -56,7 +59,7 @@ erDiagram
         string  evidence_uri
         u32     backing_vouch_count_snapshot
         u32     linked_vouch_count
-        u64     bond_amount
+        u64     bond_amount_usdc_micros
         enum    status              "Open | Resolved"
         enum    ruling              "Upheld | Dismissed"
     }
@@ -71,18 +74,18 @@ erDiagram
         pubkey  author
         string  skill_uri           "off-chain (IPFS/Arweave)"
         string  name
-        u64     price_lamports      "min 1,000,000"
+        u64     price_usdc_micros   "0 for free, min 10,000 if paid"
         enum    status              "Active | Suspended | Removed"
         u32     total_downloads
-        u64     total_revenue
-        u64     unclaimed_voucher_revenue   "40% pool for vouchers"
+        u64     total_revenue_usdc_micros
+        u64     unclaimed_voucher_revenue_usdc_micros
     }
 
     PURCHASE {
         pubkey  buyer
         pubkey  skill_listing
         i64     purchased_at
-        u64     price_paid
+        u64     price_paid_usdc_micros
     }
 
     %% ── Core identity ──────────────────────────────────────────────────

@@ -9,8 +9,8 @@ import {
   AuthorDisputeStatus,
   getAuthorDisputeDecoder,
   type AuthorDispute,
-} from "../generated/reputation-oracle/src/generated";
-import { REPUTATION_ORACLE_PROGRAM_ADDRESS } from "../generated/reputation-oracle/src/generated/programs";
+} from "../generated/agentvouch/src/generated";
+import { AGENTVOUCH_PROGRAM_ADDRESS } from "../generated/agentvouch/src/generated/programs";
 import { IN_MEMORY_CACHE_TTL_MS } from "./cachePolicy";
 import { DEFAULT_SOLANA_RPC_URL } from "./solanaRpc";
 import { getOrPopulateMemoryCache } from "./serverCache";
@@ -54,7 +54,7 @@ export interface AuthorDisputeRecord {
   liabilityScope: AuthorDisputeLiabilityScope;
   liabilityScopeLabel: string;
   skillListing: string;
-  skillPriceLamportsSnapshot: number;
+  skillPriceUsdcMicrosSnapshot: number;
   purchase: string | null;
   backingVouchCountSnapshot: number;
   linkedVouchCount: number;
@@ -155,7 +155,7 @@ async function getAllAuthorDisputeAccounts(
   }
 
   const accounts = await rpc
-    .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+    .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
       encoding: "base64",
       filters: [
         {
@@ -182,7 +182,7 @@ async function loadAuthorDisputeAccountsByAuthor(
   authorPubkey: string
 ): Promise<DecodedAuthorDisputeAccount[]> {
   const accounts = await rpc
-    .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+    .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
       encoding: "base64",
       filters: [
         {
@@ -271,14 +271,14 @@ export async function listAuthorDisputesByAuthor(
           dispute.account.liabilityScope
         ),
         skillListing,
-        skillPriceLamportsSnapshot: Number(
-          dispute.account.skillPriceLamportsSnapshot
+        skillPriceUsdcMicrosSnapshot: Number(
+          dispute.account.skillPriceUsdcMicrosSnapshot
         ),
         purchase,
         backingVouchCountSnapshot: dispute.account.backingVouchCountSnapshot,
         linkedVouchCount: dispute.account.linkedVouchCount,
         linkedVouches: linkedVouchesByDispute?.get(dispute.publicKey) ?? [],
-        bondAmount: Number(dispute.account.bondAmount),
+        bondAmount: Number(dispute.account.bondAmountUsdcMicros),
         createdAt: Number(dispute.account.createdAt),
         resolvedAt: resolvedAt === null ? null : Number(resolvedAt),
       };
@@ -373,7 +373,7 @@ export async function listAuthorDisputeLinks(
 ): Promise<string[]> {
   void useCache;
   const accounts = await rpc
-    .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+    .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
       encoding: "base64",
       filters: [
         {

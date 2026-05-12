@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
+  initializeDatabase: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -10,7 +11,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/onchain", () => ({
-  getOnChainPrice: vi.fn(),
+  getOnChainUsdcPrice: vi.fn(),
 }));
 
 vi.mock("@/lib/x402", () => ({
@@ -20,12 +21,12 @@ vi.mock("@/lib/x402", () => ({
 import { POST } from "@/app/api/skills/[id]/install/route";
 import { sql } from "@/lib/db";
 import { verifyWalletSignature } from "@/lib/auth";
-import { getOnChainPrice } from "@/lib/onchain";
+import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { hasOnChainPurchase } from "@/lib/x402";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerify = verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
-const mockOnChain = getOnChainPrice as unknown as ReturnType<typeof vi.fn>;
+const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 const mockHasOnChainPurchase = hasOnChainPurchase as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -74,7 +75,7 @@ describe("POST /api/skills/[id]/install", () => {
 
   it("returns 200 for free chain-prefixed skill", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
-    mockOnChain.mockResolvedValue({ price: 0, author: "Author1" });
+    mockOnChain.mockResolvedValue({ priceUsdcMicros: "0", author: "Author1" });
     const { req, params } = makeRequest("chain-ABC123", {
       auth: { pubkey: "Wallet1" },
     });
@@ -87,7 +88,10 @@ describe("POST /api/skills/[id]/install", () => {
 
   it("returns 402 for paid chain-prefixed skill", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
-    mockOnChain.mockResolvedValue({ price: 1_000_000, author: "Author1" });
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "1000000",
+      author: "Author1",
+    });
     const { req, params } = makeRequest("chain-DEF456", {
       auth: { pubkey: "Wallet1" },
     });
@@ -97,7 +101,10 @@ describe("POST /api/skills/[id]/install", () => {
 
   it("returns 200 for paid chain-prefixed skill when the wallet already purchased it", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
-    mockOnChain.mockResolvedValue({ price: 1_000_000, author: "Author1" });
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "1000000",
+      author: "Author1",
+    });
     mockHasOnChainPurchase.mockResolvedValue(true);
 
     const { req, params } = makeRequest("chain-DEF456", {
@@ -139,7 +146,10 @@ describe("POST /api/skills/[id]/install", () => {
 
   it("returns 402 for repo skill with paid on-chain listing", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
-    mockOnChain.mockResolvedValue({ price: 50_000_000, author: "Author2" });
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "50000000",
+      author: "Author2",
+    });
 
     const dbQuery = vi
       .fn()
@@ -155,7 +165,10 @@ describe("POST /api/skills/[id]/install", () => {
 
   it("returns 200 for repo skill with paid on-chain listing when the wallet already purchased it", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
-    mockOnChain.mockResolvedValue({ price: 50_000_000, author: "Author2" });
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "50000000",
+      author: "Author2",
+    });
     mockHasOnChainPurchase.mockResolvedValue(true);
 
     const dbQuery = vi

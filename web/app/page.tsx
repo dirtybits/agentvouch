@@ -3,17 +3,14 @@
 import { useState, useEffect } from "react";
 import TypewriterText from "@/components/TypewriterText";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
-import { SolAmount } from "@/components/SolAmount";
 import {
-  navButtonInlineClass,
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import Link from "next/link";
-import { formatSolAmount } from "@/lib/pricing";
+import { formatUsdcMicros } from "@/lib/pricing";
 import {
   FiArrowRight,
-  FiAward,
   FiCheck,
   FiCheckCircle,
   FiCopy,
@@ -27,11 +24,6 @@ import {
   FiTrendingUp,
   FiZap,
 } from "react-icons/fi";
-import {
-  getCompetitionPhase,
-  formatDateRange,
-  SHOW_COMPETITION_CTA,
-} from "@/lib/competition";
 import { SITE_URL } from "@/lib/site";
 
 type ToggleMode = "none" | "human" | "agent";
@@ -40,9 +32,9 @@ type FeaturedSkill = {
   account: {
     name?: string;
     description?: string | null;
-    priceLamports?: number | bigint;
+    priceUsdcMicros?: number | bigint;
     totalDownloads?: number | bigint;
-    totalRevenue?: number | bigint;
+    totalRevenueUsdcMicros?: number | bigint;
   };
 };
 type SkillsIndexResponse = {
@@ -86,6 +78,10 @@ const homepageJsonLd = {
     },
   ],
 };
+
+function formatUsdc(micros: number | bigint | string | null | undefined) {
+  return `${formatUsdcMicros(micros) ?? "0"} USDC`;
+}
 
 export default function Home() {
   const [toggle, setToggle] = useState<ToggleMode>("none");
@@ -144,152 +140,132 @@ export default function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(homepageJsonLd) }}
       />
       {/* Hero */}
-      <section className="px-6 pt-10 pb-3 md:pt-16 md:pb-5">
-        <div className="max-w-4xl mx-auto">
-          <span className="inline-block px-4 py-1.5 mb-4 text-xs font-semibold tracking-widest uppercase rounded-full border border-[var(--lobster-accent-border)] text-[var(--lobster-accent)] bg-[var(--lobster-accent-soft)]">
-            Agent Reputation Oracle
-          </span>
+      <section className="px-6 pt-10 pb-8 md:pt-16 md:pb-10">
+        <div className="max-w-4xl mx-auto grid gap-8 md:grid-cols-[minmax(0,1fr)_360px] md:items-end">
+          <div className="min-w-0">
+            <span className="inline-block px-4 py-1.5 mb-4 text-xs font-semibold tracking-widest uppercase rounded-full border border-[var(--lobster-accent-border)] text-[var(--lobster-accent)] bg-[var(--lobster-accent-soft)]">
+              Agent Reputation Oracle
+            </span>
 
-          <h1 className="text-4xl md:text-6xl font-heading font-bold text-gray-900 dark:text-white leading-tight mb-3">
-            AgentVouch
-          </h1>
+            <h1 className="text-4xl md:text-5xl font-heading font-bold text-gray-900 dark:text-white leading-tight mb-3">
+              AgentVouch
+            </h1>
 
-          <h2 className="text-2xl md:text-3xl font-heading font-medium text-gray-500 dark:text-gray-300 leading-tight mb-4">
-            <TypewriterText text="Trusted Skills for AI Agents" />
-          </h2>
+            <h2 className="text-xl md:text-2xl font-heading font-medium text-gray-500 dark:text-gray-300 leading-tight mb-4 break-words">
+              <TypewriterText text="Trusted Skills for AI Agents" />
+            </h2>
 
-          <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 max-w-2xl mb-6">
-            Find stake-backed skills for AI agents. Inspect Author trust scores. Put your cash where your claw is.
-          </p>
+            <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mb-6">
+              Find stake-backed skills for AI agents. Inspect Author trust scores. Put your cash where your claw is.
+            </p>
 
-          <div className="flex flex-wrap gap-3 mb-5">
-            <Link href="/skills" className={navButtonPrimaryInlineClass}>
-              Browse Skills <FiArrowRight />
-            </Link>
-            <Link href="/docs" className={navButtonSecondaryInlineClass}>
-              Agent Integration
-            </Link>
-            {SHOW_COMPETITION_CTA && (
-              <div className="relative group/comp">
-                <Link
-                  href="/competition"
-                  className={`${navButtonInlineClass} font-semibold bg-[var(--gold-accent-soft)] text-[var(--gold-accent-strong)] border border-[var(--gold-accent-border)] hover:border-[var(--gold-accent)] transition`}
-                >
-                  <FiAward className="w-4 h-4" />
-                  Competition
-                  <span className="px-1.5 py-0.5 text-xs font-bold rounded-full bg-[var(--gold-accent-soft-hover)] text-[var(--gold-accent-strong)]">
-                    {getCompetitionPhase() === "upcoming"
-                      ? "Starts Mar 11"
-                      : getCompetitionPhase() === "active"
-                      ? "Live"
-                      : "Ended"}
-                  </span>
-                </Link>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 px-3 py-2 bg-gray-900 dark:bg-gray-800 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover/comp:opacity-100 transition-opacity pointer-events-none z-10">
-                  {getCompetitionPhase() === "upcoming"
-                    ? `Best Skill Competition — ${formatDateRange()}. 1.75 SOL in prizes.`
-                    : getCompetitionPhase() === "active"
-                    ? "Live now — submit your skill before March 15! 1.75 SOL in prizes."
-                    : "Competition has ended. Winners will be announced soon."}
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-800" />
-                </div>
-              </div>
-            )}
+            <div className="flex flex-wrap gap-3">
+              <Link href="/skills" className={navButtonPrimaryInlineClass}>
+                Browse Skills <FiArrowRight />
+              </Link>
+              <Link href="/docs" className={navButtonSecondaryInlineClass}>
+                Agent Integration
+              </Link>
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <Link
-              href="/docs/what-is-an-agent-reputation-oracle"
-              className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
-            >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
-                What is an agent reputation oracle?
-              </span>
-              How agents query trust before delegation.
-            </Link>
-            <Link
-              href="/docs/skill-md-security"
-              className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
-            >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
-                Why `skill.md` needs trust context
-              </span>
-              Why unsigned skill files create a supply-chain problem.
-            </Link>
+          {/* Getting Started Card */}
+          <div className="w-full rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
+            {/* Tab toggle */}
+            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1 mb-3">
+              <button
+                onClick={() => setToggle("agent")}
+                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition ${
+                  toggle === "agent" || toggle === "none"
+                    ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)] shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
+                }`}
+              >
+                For agents
+              </button>
+              <button
+                onClick={() => setToggle("human")}
+                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition ${
+                  toggle === "human"
+                    ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)] shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
+                }`}
+              >
+                For humans
+              </button>
+            </div>
+
+            {/* Tab content */}
+            <div className="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 mb-3">
+              {(toggle === "agent" || toggle === "none") && (
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                  <li>Install the skill</li>
+                  <div className="ml-5 mt-1 mb-1.5 rounded-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1.5 flex items-center justify-between gap-2">
+                    <code className="font-mono text-[11px] text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-nowrap">
+                      curl -s https://agentvouch.xyz/skill.md
+                    </code>
+                    <button
+                      onClick={() =>
+                        copyCmd(
+                          "curl -s https://agentvouch.xyz/skill.md",
+                          "card"
+                        )
+                      }
+                      className="shrink-0 p-1 rounded text-gray-400 hover:text-[var(--sea-accent)] transition"
+                      title="Copy command"
+                    >
+                      {copied === "card" ? (
+                        <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                      ) : (
+                        <FiCopy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  <li>
+                    Ask your agent: &quot;Read the skill and follow the
+                    instructions&quot;
+                  </li>
+                  <li>Approve the wallet connection</li>
+                </ol>
+              )}
+              {toggle === "human" && (
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                  <li>Connect your wallet</li>
+                  <li>Your Solana profile is created on-chain</li>
+                  <li>Browse skills and start vouching</li>
+                </ol>
+              )}
+            </div>
+
+            {/* Wallet CTA */}
+            <div className="landing-wallet-cta [&>div]:w-full [&>div>button]:w-full">
+              <ClientWalletButton />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Getting Started Card */}
-      <section className="px-6 pb-4">
-        <div className="max-w-lg mx-auto rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
-          {/* Tab toggle */}
-          <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 mb-5">
-            <button
-              onClick={() => setToggle("agent")}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
-                toggle === "agent" || toggle === "none"
-                  ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)] shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
-              }`}
-            >
-              For agents
-            </button>
-            <button
-              onClick={() => setToggle("human")}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
-                toggle === "human"
-                  ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)] shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
-              }`}
-            >
-              For humans
-            </button>
-          </div>
-
-          {/* Tab content */}
-          <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-5 mb-5">
-            {(toggle === "agent" || toggle === "none") && (
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                <li>Install the skill</li>
-                <div className="ml-5 mt-1 mb-2 rounded-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2 flex items-center justify-between gap-2">
-                  <code className="font-mono text-xs text-gray-700 dark:text-gray-300 overflow-x-auto">
-                    curl -s https://agentvouch.xyz/skill.md
-                  </code>
-                  <button
-                    onClick={() =>
-                      copyCmd("curl -s https://agentvouch.xyz/skill.md", "card")
-                    }
-                    className="shrink-0 p-1 rounded text-gray-400 hover:text-[var(--sea-accent)] transition"
-                    title="Copy command"
-                  >
-                    {copied === "card" ? (
-                      <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-                    ) : (
-                      <FiCopy className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
-                <li>
-                  Ask your agent: &quot;Read the skill and follow the
-                  instructions&quot;
-                </li>
-                <li>Approve the wallet connection</li>
-              </ol>
-            )}
-            {toggle === "human" && (
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                <li>Connect your wallet</li>
-                <li>Your Solana profile is created on-chain</li>
-                <li>Browse skills and start vouching</li>
-              </ol>
-            )}
-          </div>
-
-          {/* Wallet CTA */}
-          <div className="landing-wallet-cta [&>div]:w-full [&>div>button]:w-full">
-            <ClientWalletButton />
-          </div>
+      {/* Doc shortcuts */}
+      <section className="px-6 pb-8">
+        <div className="max-w-4xl mx-auto grid gap-3 md:grid-cols-2">
+          <Link
+            href="/docs/what-is-an-agent-reputation-oracle"
+            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+          >
+            <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              What is an agent reputation oracle?
+            </span>
+            How agents query trust before delegation.
+          </Link>
+          <Link
+            href="/docs/skill-md-security"
+            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+          >
+            <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              Why `skill.md` needs trust context
+            </span>
+            Why unsigned skill files create a supply-chain problem.
+          </Link>
         </div>
       </section>
 
@@ -331,9 +307,9 @@ export default function Home() {
               </div>
               <div className="grid md:grid-cols-3 gap-3">
                 {featuredSkills.map((skill) => {
-                  const price = Number(skill.account.priceLamports ?? 0);
+                  const price = skill.account.priceUsdcMicros ?? 0;
                   const downloads = Number(skill.account.totalDownloads ?? 0);
-                  const revenue = Number(skill.account.totalRevenue ?? 0);
+                  const revenue = skill.account.totalRevenueUsdcMicros ?? 0;
                   return (
                     <Link
                       key={skill.publicKey}
@@ -347,11 +323,9 @@ export default function Home() {
                         {skill.account.description || "No description"}
                       </p>
                       <div className="mt-auto flex items-center justify-between text-xs">
-                        <SolAmount
-                          amount={formatSolAmount(price)}
-                          className="font-semibold text-gray-900 dark:text-white"
-                          iconClassName="w-3 h-3"
-                        />
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {formatUsdc(price)}
+                        </span>
                         <div className="flex items-center gap-3 text-gray-400 dark:text-gray-500">
                           <span className="flex items-center gap-1">
                             <FiDownload className="w-3 h-3" />
@@ -359,7 +333,7 @@ export default function Home() {
                           </span>
                           <span className="flex items-center gap-1">
                             <FiTrendingUp className="w-3 h-3" />
-                            {formatSolAmount(revenue)}
+                            {formatUsdc(revenue)}
                           </span>
                         </div>
                       </div>
@@ -400,12 +374,12 @@ export default function Home() {
               {
                 label: "Revenue",
                 value: landingMetrics?.revenue,
-                format: (v: number) => `${formatSolAmount(v)} SOL`,
+                format: (v: number) => formatUsdc(v),
               },
               {
-                label: "Total Staked",
+                label: "USDC Staked",
                 value: landingMetrics?.staked,
-                format: (v: number) => `${formatSolAmount(v)} SOL`,
+                format: (v: number) => formatUsdc(v),
               },
             ].map((m) => (
               <div
@@ -496,7 +470,7 @@ export default function Home() {
               {
                 step: "2",
                 title: "Stake & Vouch",
-                desc: "Stake SOL to vouch for agents you trust. Your reputation grows with time and successful vouches.",
+                desc: "Stake USDC to vouch for agents you trust. SOL is still used for fees and account rent.",
                 icon: <FiZap />,
               },
               {
@@ -537,7 +511,7 @@ export default function Home() {
                 Devnet
               </span>
               <code className="font-mono text-xs text-gray-500 dark:text-gray-400 truncate">
-                ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf
+                AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ
               </code>
             </div>
             <a

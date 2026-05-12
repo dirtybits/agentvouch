@@ -1,27 +1,22 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import {
   FiAlertTriangle,
   FiCheckCircle,
   FiDownload,
   FiExternalLink,
+  FiInfo,
   FiShield,
   FiTag,
   FiUser,
   FiUsers,
 } from "react-icons/fi";
 import { LiaCoinsSolid } from "react-icons/lia";
-import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
-import {
-  navButtonFlexClass,
-  navButtonPrimaryFlexClass,
-  navButtonSizeClass,
-} from "@/lib/buttonStyles";
-import { formatSolAmount, formatUsdcMicros } from "@/lib/pricing";
+import { navButtonFlexClass, navButtonSizeClass } from "@/lib/buttonStyles";
+import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 
 interface SkillPreviewCardSkill {
@@ -34,10 +29,14 @@ interface SkillPreviewCardSkill {
   source?: "repo" | "chain";
   author_trust: TrustData | null;
   price_usdc_micros?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc";
+  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
   purchasePreflightMessage?: string | null;
+  purchaseRiskWarning?: string | null;
   purchaseBlockError?: {
-    code: "buyerInsufficientBalance" | "authorPayoutRentBlocked";
+    code:
+      | "buyerInsufficientBalance"
+      | "buyerMissingUsdcAccount"
+      | "authorPayoutRentBlocked";
     message: string;
   } | null;
 }
@@ -45,8 +44,7 @@ interface SkillPreviewCardSkill {
 interface SkillPreviewCardProps {
   skill: SkillPreviewCardSkill;
   hasAccessPath: boolean;
-  creatorPriceLamports: number;
-  estimatedTotalLamports: number;
+  legacySolLamports: number;
   downloads: number;
   connected: boolean;
   isOwn: boolean;
@@ -85,8 +83,8 @@ function shortAddr(addr: string): string {
   return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
 }
 
-function formatSol(lamports: number): string {
-  return `${formatSolAmount(lamports)} SOL`;
+function formatUsdc(micros: number): string {
+  return `${formatUsdcMicros(micros) ?? "0"} USDC`;
 }
 
 function getToneClass(tone: MetricCellProps["tone"] = "default"): string {
@@ -152,19 +150,13 @@ function AuthorMetricRow({ authorPubkey }: { authorPubkey: string }) {
 export default function SkillPreviewCard({
   skill,
   hasAccessPath,
-  creatorPriceLamports,
-  estimatedTotalLamports,
+  legacySolLamports,
   downloads,
   connected,
   isOwn,
   hasPurchased,
-  isPurchasing,
-  purchaseBlocked,
-  purchasePreflightStatus,
   descriptionFallback,
-  onPurchase,
 }: SkillPreviewCardProps) {
-  const [showPurchaseWarning, setShowPurchaseWarning] = useState(false);
   const displayTitle = truncateAtWord(skill.name, 32);
   const description = skill.description ?? descriptionFallback ?? "";
   const displayDescription = description
@@ -173,7 +165,9 @@ export default function SkillPreviewCard({
   const trust = skill.author_trust;
   const primaryUsdcPrice = formatUsdcMicros(skill.price_usdc_micros);
   const hasUsdcPrimary =
-    Boolean(primaryUsdcPrice) || skill.payment_flow === "x402-usdc";
+    Boolean(primaryUsdcPrice) ||
+    skill.payment_flow === "x402-usdc" ||
+    skill.payment_flow === "direct-purchase-skill";
   const authorReports = trust
     ? getAuthorReportStatus(
         trust.disputesAgainstAuthor,
@@ -185,17 +179,9 @@ export default function SkillPreviewCard({
     ? primaryUsdcPrice
       ? `Primary price: ${primaryUsdcPrice} USDC via x402.`
       : "Primary price is settled in USDC via x402."
-    : creatorPriceLamports > 0
-      ? estimatedTotalLamports === creatorPriceLamports
-        ? "Estimated buyer total for this paid skill."
-        : `Estimated buyer total includes network rent. Creator price: ${formatSol(
-            creatorPriceLamports
-          )}.`
-      : "No on-chain purchase required.";
-  const purchaseWarning = purchaseBlocked
-    ? skill.purchaseBlockError?.message ?? skill.purchasePreflightMessage
-    : null;
-  const purchaseWarningId = `purchase-warning-${skill.id}`;
+    : legacySolLamports > 0
+    ? "Legacy SOL pricing is no longer a primary purchase path."
+    : "No on-chain purchase required.";
 
   return (
     <div className="group flex flex-col rounded-sm border border-gray-200 bg-white p-4 transition hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700">
@@ -259,13 +245,13 @@ export default function SkillPreviewCard({
             />
             <MetricCell
               label="Backing"
-              value={formatSol(trust.totalStakedFor)}
+              value={formatUsdc(trust.totalStakedFor)}
               title="Backing is the total outside stake currently supporting this author."
               icon={LiaCoinsSolid}
             />
             <MetricCell
               label="Self stake"
-              value={formatSol(trust.authorBondLamports)}
+              value={formatUsdc(trust.authorBondLamports)}
               title="Self stake is the author's own first-loss capital."
               icon={FiUser}
             />
@@ -315,15 +301,12 @@ export default function SkillPreviewCard({
               <UsdcIcon className="h-3.5 w-3.5" />
               {primaryUsdcPrice ? `${primaryUsdcPrice} USDC` : "USDC"}
             </span>
-          ) : creatorPriceLamports > 0 ? (
+          ) : legacySolLamports > 0 ? (
             <span
-              className="shrink-0 inline-flex rounded-sm border border-green-200 bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400"
+              className="shrink-0 rounded-sm border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300"
               title={priceTooltip}
             >
-              <SolAmount
-                amount={formatSolAmount(estimatedTotalLamports)}
-                iconClassName="h-3 w-3"
-              />
+              Legacy SOL
             </span>
           ) : hasAccessPath ? (
             <span
@@ -334,6 +317,12 @@ export default function SkillPreviewCard({
             </span>
           ) : null}
         </div>
+        {skill.purchaseRiskWarning && hasUsdcPrimary && !hasPurchased && (
+          <div className="mt-3 flex items-start gap-2 rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+            <FiInfo className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{skill.purchaseRiskWarning}</span>
+          </div>
+        )}
       </div>
 
       {hasAccessPath && (
@@ -361,7 +350,7 @@ export default function SkillPreviewCard({
               <UsdcIcon className="h-3.5 w-3.5" />
               {connected ? "Pay with USDC" : "Connect Wallet to Pay"}
             </Link>
-          ) : creatorPriceLamports === 0 ? (
+          ) : legacySolLamports === 0 ? (
             <Link
               href={`/skills/${skill.id}`}
               className={`w-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-center font-medium text-[var(--sea-accent-strong)] transition hover:bg-[var(--sea-accent-soft-hover)] ${navButtonFlexClass}`}
@@ -369,57 +358,13 @@ export default function SkillPreviewCard({
               <FiDownload className="h-3 w-3" />
               Free - View & Install
             </Link>
-          ) : purchaseBlocked ? (
-            <div
-              className="relative"
-              onMouseEnter={() => setShowPurchaseWarning(true)}
-              onMouseLeave={() => setShowPurchaseWarning(false)}
-            >
-              <button
-                type="button"
-                onClick={() => setShowPurchaseWarning((visible) => !visible)}
-                onFocus={() => setShowPurchaseWarning(true)}
-                onBlur={() => setShowPurchaseWarning(false)}
-                aria-describedby={
-                  purchaseWarning ? purchaseWarningId : undefined
-                }
-                aria-expanded={
-                  purchaseWarning ? showPurchaseWarning : undefined
-                }
-                className={`w-full cursor-help border border-amber-200 bg-amber-50 text-center font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300 ${navButtonSizeClass}`}
-              >
-                {purchasePreflightStatus === "authorPayoutRentBlocked"
-                  ? "Seller Needs SOL"
-                  : "Need More SOL"}
-              </button>
-              {purchaseWarning && (
-                <div
-                  id={purchaseWarningId}
-                  role="tooltip"
-                  className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-64 -translate-x-1/2 rounded-sm border border-amber-200 bg-white px-3 py-2 text-left text-[11px] leading-relaxed text-amber-700 shadow-lg transition dark:border-amber-800 dark:bg-gray-950 dark:text-amber-300 ${
-                    showPurchaseWarning
-                      ? "visible opacity-100"
-                      : "invisible opacity-0"
-                  }`}
-                >
-                  {purchaseWarning}
-                </div>
-              )}
-            </div>
           ) : (
-            <button
-              onClick={onPurchase}
-              disabled={!connected || isPurchasing}
-              className={`w-full ${navButtonPrimaryFlexClass}`}
+            <Link
+              href={`/skills/${skill.id}`}
+              className={`w-full border border-gray-200 bg-gray-50 text-center font-medium text-gray-500 transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-700 ${navButtonFlexClass}`}
             >
-              {isPurchasing ? (
-                <span className="animate-pulse">Processing...</span>
-              ) : connected ? (
-                "Buy Skill"
-              ) : (
-                "Connect Wallet to Buy"
-              )}
-            </button>
+              View Details
+            </Link>
           )}
         </div>
       )}

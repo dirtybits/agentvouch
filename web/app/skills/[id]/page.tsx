@@ -16,7 +16,6 @@ import {
 import { encodeBase64 } from "@/lib/base64";
 import {
   buildPaidSkillDownloadRequiredMessage,
-  buildSignedDownloadErrorMessage,
 } from "@/lib/skillFlowMessages";
 import {
   navButtonPrimaryInlineClass,
@@ -31,19 +30,24 @@ import {
   PRICING,
   formatUsdcMicros,
   formatMinPrice,
-  toLamports,
+  toUsdcMicros,
   fromLamports,
+  fromUsdcMicros,
   isValidListingPriceLamports,
 } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getErrorMessage } from "@/lib/errors";
-import { fetchSkillWithBrowserX402 } from "@/lib/browserX402";
+import {
+  fetchSkillWithBrowserX402,
+  walletSupportsBrowserX402,
+} from "@/lib/browserX402";
 import {
   getConfiguredSolanaExplorerAddressUrl,
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
-import { SiSolana } from "react-icons/si";
 import {
+  FiAlertTriangle,
+  FiInfo,
   FiArrowLeft,
   FiCheckCircle,
   FiDownload,
@@ -90,7 +94,7 @@ interface SkillDetail {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc";
+  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
   contact: string | null;
   created_at: string;
   updated_at: string;
@@ -100,14 +104,22 @@ interface SkillDetail {
   author_trust: TrustData | null;
   author_identity: AgentIdentitySummary | null;
   content_verification: ContentVerification | null;
-  creatorPriceLamports?: number;
+  legacySolLamports?: number;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
   estimatedBuyerTotalLamports?: number;
   purchasePreflightStatus?: PurchasePreflightStatus;
   purchasePreflightMessage?: string | null;
+  purchaseRiskWarning?: string | null;
   priceDisclosure?: string | null;
   buyerHasPurchased?: boolean;
+  buyerPurchaseSummary?: {
+    purchasePda: string | null;
+    listingRevision: string | null;
+    settlementPda: string | null;
+    refundStatus: string;
+    legacyRefundEligible: boolean;
+  } | null;
 }
 
 function shortAddr(addr: string): string {
@@ -127,6 +139,7 @@ function isBlockingPurchaseStatus(
 ) {
   return (
     status === "buyerInsufficientBalance" ||
+    status === "buyerMissingUsdcAccount" ||
     status === "authorPayoutRentBlocked"
   );
 }
@@ -202,6 +215,45 @@ function extractCapabilitySummary(
   );
 }
 
+async function fetchSignedRawSkill({
+  id,
+  walletAddress,
+  signMessage,
+  skill,
+}: {
+  id: string;
+  walletAddress: string;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  skill: SkillDetail;
+}): Promise<string> {
+  const authHeader = JSON.stringify(
+    await createSignedDownloadAuthPayload({
+      walletAddress,
+      signMessage,
+      skillId: skill.id,
+      listingAddress: skill.on_chain_address ?? undefined,
+    })
+  );
+  const rawRes = await fetch(`/api/skills/${id}/raw`, {
+    headers: {
+      "X-AgentVouch-Auth": authHeader,
+    },
+  });
+  if (!rawRes.ok) {
+    const rawBody = (await rawRes.json().catch(() => null)) as {
+      error?: string;
+      message?: string;
+    } | null;
+    throw new Error(
+      rawBody?.error ||
+        rawBody?.message ||
+        "Purchase verified, but download failed"
+    );
+  }
+
+  return rawRes.text();
+}
+
 export default function SkillDetailPage({
   params,
 }: {
@@ -220,7 +272,7 @@ export default function SkillDetailPage({
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const [listPrice, setListPrice] = useState(String(PRICING.SOL.defaultPrice));
+  const [listPrice, setListPrice] = useState(String(PRICING.USDC.defaultPrice));
   const [listing, setListing] = useState(false);
   const [listResult, setListResult] = useState<{
     success: boolean;
@@ -251,6 +303,18 @@ export default function SkillDetailPage({
   const [editUri, setEditUri] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateResult, setUpdateResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [settlementSummary, setSettlementSummary] = useState<{
+    pda: string;
+    withdrawableUsdcMicros: bigint;
+    withdrawnUsdcMicros: bigint;
+    refundedUsdcMicros: bigint;
+    locked: boolean;
+  } | null>(null);
+  const [withdrawingProceeds, setWithdrawingProceeds] = useState(false);
+  const [withdrawResult, setWithdrawResult] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
@@ -315,8 +379,8 @@ export default function SkillDetailPage({
     setListing(true);
     setListResult(null);
     try {
-      const priceLamports = toLamports(parseFloat(listPrice || "0"));
-      if (!isValidListingPriceLamports(priceLamports)) {
+      const priceUsdcMicros = toUsdcMicros(parseFloat(listPrice || "0"));
+      if (!isValidListingPriceLamports(priceUsdcMicros)) {
         setListResult({
           success: false,
           message: `Price must be 0 for a free listing or at least ${formatMinPrice()}.`,
@@ -330,7 +394,7 @@ export default function SkillDetailPage({
         skillUri,
         skill.name,
         skill.description ?? "",
-        priceLamports
+        priceUsdcMicros
       );
       const onChainAddress = await oracle.getSkillListingPDA(
         walletAddress as Address,
@@ -434,84 +498,6 @@ export default function SkillDetailPage({
     }
   };
 
-  const handlePaidInstall = async () => {
-    if (
-      !connected ||
-      !walletAddress ||
-      !signMessage ||
-      !skill?.on_chain_address
-    ) {
-      return;
-    }
-    if (isBlockingPurchaseStatus(skill.purchasePreflightStatus)) {
-      setInstallResult({
-        success: false,
-        message:
-          skill.purchasePreflightMessage ??
-          "This listing is temporarily not purchasable.",
-      });
-      return;
-    }
-
-    setInstalling(true);
-    setInstallResult(null);
-    try {
-      const purchaseResult = await oracle.purchaseSkill(
-        address(skill.on_chain_address),
-        address(skill.author_pubkey)
-      );
-
-      const timestamp = Date.now();
-      const message = `AgentVouch Skill Repo\nAction: install-skill\nTimestamp: ${timestamp}`;
-      const msgBytes = new TextEncoder().encode(message);
-      const sigBytes = await signMessage(msgBytes);
-      const signature = encodeBase64(sigBytes);
-
-      const res = await fetch(`/api/skills/${id}/install`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          auth: { pubkey: walletAddress, signature, message, timestamp },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setInstallResult({
-          success: false,
-          message: data.error || "Install failed",
-        });
-        return;
-      }
-
-      setInstallResult({
-        success: true,
-        message: purchaseResult.alreadyPurchased
-          ? browserUsesLegacySolFallback
-            ? "Legacy SOL fallback already purchased. Use Sign & Download below to fetch the skill file."
-            : "Skill already purchased. Use Sign & Download below to fetch the skill file."
-          : browserUsesLegacySolFallback
-          ? "Legacy SOL fallback purchased successfully. Use Sign & Download below to fetch the skill file."
-          : "Skill purchased and installed successfully. Use Sign & Download below to fetch the skill file.",
-      });
-      setSkill((s) =>
-        s
-          ? {
-              ...s,
-              total_installs: data.total_installs,
-              buyerHasPurchased: true,
-            }
-          : s
-      );
-    } catch (error: unknown) {
-      setInstallResult({
-        success: false,
-        message: getErrorMessage(error, "Purchase failed"),
-      });
-    } finally {
-      setInstalling(false);
-    }
-  };
-
   const handleUsdcPurchase = async () => {
     if (!connected || !wallet || !walletAddress || !signMessage || !skill) {
       return;
@@ -523,6 +509,55 @@ export default function SkillDetailPage({
     setUsdcPurchaseTx(null);
 
     try {
+      if (skill.on_chain_address) {
+        const purchaseResult = await oracle.purchaseSkill(
+          address(skill.on_chain_address),
+          address(skill.author_pubkey)
+        );
+
+        if (purchaseResult.tx) {
+          const verifyRes = await fetch(`/api/skills/${id}/purchase/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signature: purchaseResult.tx,
+              buyer: walletAddress,
+              listingAddress: skill.on_chain_address,
+            }),
+          });
+          if (!verifyRes.ok) {
+            const verifyBody = (await verifyRes.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              verifyBody?.error ||
+                "Purchase confirmed, but entitlement verification failed"
+            );
+          }
+          setUsdcPurchaseTx(purchaseResult.tx);
+        }
+
+        const markdown = await fetchSignedRawSkill({
+          id,
+          walletAddress,
+          signMessage,
+          skill,
+        });
+
+        downloadSkillFile(skill.skill_id, markdown);
+        await refreshSkill();
+        setSkill((current) =>
+          current ? { ...current, buyerHasPurchased: true } : current
+        );
+        setInstallResult({
+          success: true,
+          message: purchaseResult.tx
+            ? "USDC purchase confirmed and verified. Downloaded SKILL.md."
+            : "USDC entitlement already active. Downloaded SKILL.md.",
+        });
+        return;
+      }
+
       const purchaseResult = await fetchSkillWithBrowserX402({
         wallet,
         walletAddress,
@@ -560,9 +595,8 @@ export default function SkillDetailPage({
       return;
     }
 
-    const creatorPriceLamports =
-      skill.creatorPriceLamports ?? skill.price_lamports ?? 0;
-    if (creatorPriceLamports > 0 && !skill.buyerHasPurchased) {
+    const priceUsdcMicros = BigInt(skill.price_usdc_micros ?? 0);
+    if (priceUsdcMicros > 0n && !skill.buyerHasPurchased) {
       setDownloadResult({
         success: false,
         message: buildPaidSkillDownloadRequiredMessage(),
@@ -573,37 +607,12 @@ export default function SkillDetailPage({
     setDownloading(true);
     setDownloadResult(null);
     try {
-      const authHeader = JSON.stringify(
-        await createSignedDownloadAuthPayload({
-          walletAddress,
-          signMessage,
-          skillId: skill.id,
-          listingAddress: skill.on_chain_address ?? undefined,
-        })
-      );
-
-      const res = await fetch(`/api/skills/${id}/raw`, {
-        headers: {
-          "X-AgentVouch-Auth": authHeader,
-        },
+      const markdown = await fetchSignedRawSkill({
+        id,
+        walletAddress,
+        signMessage,
+        skill,
       });
-
-      if (!res.ok) {
-        let errorMessage = "Signed download failed";
-        try {
-          const data = await res.json();
-          errorMessage = buildSignedDownloadErrorMessage(
-            data.error,
-            data.message ?? errorMessage
-          );
-        } catch {
-          // ignore non-json error bodies
-        }
-        setDownloadResult({ success: false, message: errorMessage });
-        return;
-      }
-
-      const markdown = await res.text();
       downloadSkillFile(skill.skill_id, markdown);
 
       setDownloadResult({
@@ -629,9 +638,9 @@ export default function SkillDetailPage({
     setEditName(skill.name);
     setEditDescription(skill.description ?? "");
     setEditPrice(
-      skill.price_lamports
-        ? fromLamports(skill.price_lamports).toString()
-        : String(PRICING.SOL.defaultPrice)
+      skill.price_usdc_micros
+        ? fromUsdcMicros(Number(skill.price_usdc_micros)).toString()
+        : String(PRICING.USDC.defaultPrice)
     );
     setEditUri(canonicalUri);
     setUpdateResult(null);
@@ -652,8 +661,8 @@ export default function SkillDetailPage({
     try {
       const nextSkillUri =
         skill.source !== "chain" ? buildCanonicalSkillUri(skill.id) : editUri;
-      const priceLamports = toLamports(parseFloat(editPrice || "0"));
-      if (!isValidListingPriceLamports(priceLamports)) {
+      const priceUsdcMicros = toUsdcMicros(parseFloat(editPrice || "0"));
+      if (!isValidListingPriceLamports(priceUsdcMicros)) {
         setUpdateResult({
           success: false,
           message: `Price must be 0 for a free listing or at least ${formatMinPrice()}.`,
@@ -666,7 +675,7 @@ export default function SkillDetailPage({
         nextSkillUri,
         editName,
         editDescription,
-        priceLamports
+        priceUsdcMicros
       );
       await refreshSkill();
       setSkill((s) =>
@@ -675,7 +684,7 @@ export default function SkillDetailPage({
               ...s,
               name: editName,
               description: editDescription,
-              price_lamports: priceLamports,
+              price_usdc_micros: String(priceUsdcMicros),
               skill_uri: nextSkillUri,
             }
           : s
@@ -714,7 +723,9 @@ export default function SkillDetailPage({
     try {
       const timestamp = Date.now();
       const message = buildSignMessage("publish-skill", timestamp);
-      const signatureBytes = await signMessage(new TextEncoder().encode(message));
+      const signatureBytes = await signMessage(
+        new TextEncoder().encode(message)
+      );
       const signature = encodeBase64(signatureBytes);
       const response = await fetch(`/api/skills/${skill.id}/versions`, {
         method: "POST",
@@ -783,10 +794,58 @@ export default function SkillDetailPage({
   ]);
 
   const isChainOnly = skill?.source === "chain";
-  const isAuthor = !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
+  const isAuthor =
+    !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
   const CANONICAL_ORIGIN =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://agentvouch.xyz";
   const paidSkillDocsHref = "/docs#paid-skill-download";
+
+  const refreshSettlementSummary = useCallback(async () => {
+    if (!skill?.on_chain_address || !isAuthor) {
+      setSettlementSummary(null);
+      return;
+    }
+    const settlement = await oracle
+      .getListingSettlement(address(skill.on_chain_address))
+      .catch(() => null);
+    if (!settlement) {
+      setSettlementSummary(null);
+      return;
+    }
+    setSettlementSummary({
+      pda: String(settlement.publicKey),
+      withdrawableUsdcMicros:
+        settlement.account.withdrawableAuthorProceedsUsdcMicros,
+      withdrawnUsdcMicros: settlement.account.withdrawnAuthorProceedsUsdcMicros,
+      refundedUsdcMicros: settlement.account.refundedAuthorProceedsUsdcMicros,
+      locked: !!settlement.account.lockedByDispute,
+    });
+  }, [isAuthor, oracle, skill?.on_chain_address]);
+
+  useEffect(() => {
+    void refreshSettlementSummary();
+  }, [refreshSettlementSummary]);
+
+  const handleWithdrawAuthorProceeds = useCallback(async () => {
+    if (!skill?.on_chain_address) return;
+    setWithdrawingProceeds(true);
+    setWithdrawResult(null);
+    try {
+      await oracle.withdrawAuthorProceeds(address(skill.on_chain_address));
+      await refreshSettlementSummary();
+      setWithdrawResult({
+        success: true,
+        message: "Author proceeds withdrawn.",
+      });
+    } catch (error: unknown) {
+      setWithdrawResult({
+        success: false,
+        message: getErrorMessage(error, "Failed to withdraw author proceeds"),
+      });
+    } finally {
+      setWithdrawingProceeds(false);
+    }
+  }, [oracle, refreshSettlementSummary, skill?.on_chain_address]);
 
   if (loading) {
     return (
@@ -814,28 +873,37 @@ export default function SkillDetailPage({
     );
   }
 
-  const creatorPriceLamports =
-    skill.creatorPriceLamports ?? skill.price_lamports ?? 0;
+  const legacySolLamports =
+    skill.price_usdc_micros || skill.payment_flow === "direct-purchase-skill"
+      ? 0
+      : skill.legacySolLamports ?? skill.price_lamports ?? 0;
   const primaryUsdcPrice = formatUsdcMicros(skill.price_usdc_micros);
   const estimatedPurchaseRentLamports =
     skill.estimatedPurchaseRentLamports ?? 0;
-  const estimatedBuyerTotalLamports =
-    skill.estimatedBuyerTotalLamports ?? creatorPriceLamports;
-  const purchasePreflightStatus =
-    skill.purchasePreflightStatus ??
-    (creatorPriceLamports > 0 ? "estimateUnavailable" : "ok");
-  const purchaseBlocked =
-    creatorPriceLamports > 0 &&
-    isBlockingPurchaseStatus(purchasePreflightStatus);
   const paymentFlow =
     skill.payment_flow ??
-    (skill.price_usdc_micros ? "x402-usdc" : creatorPriceLamports > 0 ? "legacy-sol" : "free");
-  const hasUsdcPrimary = Boolean(primaryUsdcPrice) || paymentFlow === "x402-usdc";
-  const hasSolFallback = creatorPriceLamports > 0;
-  const isPaidSkill = hasUsdcPrimary || hasSolFallback;
-  const browserUsesLegacySolFallback = hasUsdcPrimary && hasSolFallback;
-  const browserCanUseUsdc = hasUsdcPrimary;
-  const signedRedownloadAvailable = hasUsdcPrimary || Boolean(skill.on_chain_address);
+    (skill.price_usdc_micros
+      ? skill.on_chain_address
+        ? "direct-purchase-skill"
+        : "x402-usdc"
+      : "free");
+  const hasUsdcPrimary =
+    Boolean(primaryUsdcPrice) ||
+    paymentFlow === "x402-usdc" ||
+    paymentFlow === "direct-purchase-skill";
+  const hasLegacySolPrice = legacySolLamports > 0;
+  const purchasePreflightStatus =
+    skill.purchasePreflightStatus ??
+    (hasUsdcPrimary ? "estimateUnavailable" : "ok");
+  const purchaseBlocked =
+    hasUsdcPrimary && isBlockingPurchaseStatus(purchasePreflightStatus);
+  const isPaidSkill = hasUsdcPrimary;
+  const browserCanUseUsdc =
+    hasUsdcPrimary &&
+    (paymentFlow === "direct-purchase-skill" ||
+      walletSupportsBrowserX402(wallet));
+  const signedRedownloadAvailable =
+    hasUsdcPrimary || Boolean(skill.on_chain_address);
   const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
@@ -855,11 +923,9 @@ export default function SkillDetailPage({
   "timestamp": 1709234567890
 }`;
   const installCommand = hasUsdcPrimary
-    ? `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
-    : isPaidSkill
-    ? `# ${
-        browserUsesLegacySolFallback ? `Primary price: ${usdcPriceLabel} via x402` : "Legacy SOL purchase flow"
-      }\n# 1) GET ${installUrl} to receive 402 + X-Payment\n# 2) Call purchaseSkill on-chain\n# 3) Retry with X-AgentVouch-Auth\ncurl -sL -H "X-AgentVouch-Auth: $AUTH" ${installUrl} -o SKILL.md`
+    ? paymentFlow === "direct-purchase-skill"
+      ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
+      : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
   const purchaseTitle = primaryUsdcPrice
     ? "USDC primary pricing"
@@ -870,11 +936,7 @@ export default function SkillDetailPage({
     ? "Install with a wallet signature — no transaction fee."
     : isAuthor
     ? primaryUsdcPrice
-      ? browserUsesLegacySolFallback
-        ? `This listing is priced at ${usdcPriceLabel} via x402, with ${fromLamports(
-            creatorPriceLamports
-          ).toFixed(4)} SOL still available as the legacy fallback.`
-        : `This listing is priced at ${usdcPriceLabel} via x402.`
+      ? `This listing is priced at ${usdcPriceLabel}.`
       : "This connected wallet is the author for this skill. Use the author actions below to manage the listing instead of purchasing it."
     : buyerHasPurchased
     ? signedRedownloadAvailable
@@ -882,15 +944,13 @@ export default function SkillDetailPage({
       : "This skill is already purchased for your connected wallet. The file is delivered at checkout."
     : primaryUsdcPrice
     ? browserCanUseUsdc
-      ? browserUsesLegacySolFallback
-        ? `Pay ${usdcPriceLabel} from this page. The SOL path remains available below as an explicit fallback.`
-        : `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
-      : `This listing is priced in ${usdcPriceLabel}. Use the agent/API x402 flow below.`
-    : "Complete the on-chain purchase, then use Sign & Download with your wallet signature.";
+      ? `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
+      : `This listing is priced in ${usdcPriceLabel}. This wallet cannot use browser x402; use direct purchase or the agent/API fallback below.`
+    : hasLegacySolPrice
+    ? "This historical SOL-priced listing is not available for new USDC checkout."
+    : "Install with a wallet signature.";
   const connectWalletLabel = primaryUsdcPrice
-    ? browserUsesLegacySolFallback
-      ? "Connect wallet to pay with USDC or use the SOL fallback"
-      : "Connect wallet to pay with USDC"
+    ? "Connect wallet to pay with USDC"
     : isPaidSkill
     ? "Connect wallet to buy and unlock"
     : "Connect wallet to install";
@@ -950,8 +1010,8 @@ export default function SkillDetailPage({
             Author Trust Signals
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Reputation, vouches, staked SOL, and author-wide dispute history
-            help show how much accountability sits behind this author.
+            Reputation, USDC backing, and author-wide dispute history help show
+            how much accountability sits behind this author.
           </p>
           <div className="flex items-center gap-3 mb-4">
             <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -1032,8 +1092,8 @@ export default function SkillDetailPage({
         {/* Meta Row */}
         <div
           className={`grid grid-cols-2 ${
-            creatorPriceLamports > 0 || primaryUsdcPrice
-              ? "sm:grid-cols-6"
+            hasLegacySolPrice || primaryUsdcPrice
+              ? "sm:grid-cols-5"
               : "sm:grid-cols-4"
           } gap-3 mb-6`}
         >
@@ -1048,29 +1108,13 @@ export default function SkillDetailPage({
               </div>
             </div>
           )}
-          {creatorPriceLamports > 0 && (
-            <div className="rounded-sm border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-3 text-center">
-              <div className="text-lg font-bold text-green-700 dark:text-green-400 font-mono flex items-center justify-center">
-                <SolAmount
-                  amount={fromLamports(creatorPriceLamports).toFixed(4)}
-                  iconClassName="w-4 h-4"
-                />
+          {hasLegacySolPrice && (
+            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-center">
+              <div className="text-lg font-bold text-gray-700 dark:text-gray-300 font-mono flex items-center justify-center">
+                Legacy
               </div>
-              <div className="text-xs text-green-600 dark:text-green-500">
-                Legacy fallback (SOL)
-              </div>
-            </div>
-          )}
-          {creatorPriceLamports > 0 && (
-            <div className="rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-3 text-center">
-              <div className="text-lg font-bold text-[var(--sea-accent-strong)] font-mono flex items-center justify-center">
-                <SolAmount
-                  amount={fromLamports(estimatedBuyerTotalLamports).toFixed(4)}
-                  iconClassName="w-4 h-4"
-                />
-              </div>
-              <div className="text-xs text-[var(--sea-accent)]">
-                Estimated total
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Legacy SOL price
               </div>
             </div>
           )}
@@ -1155,8 +1199,7 @@ export default function SkillDetailPage({
         )}
 
         {/* Install / Buy action */}
-        {(creatorPriceLamports === 0 ||
-          (creatorPriceLamports > 0 && skill.source !== "chain")) && (
+        {(!hasLegacySolPrice || hasUsdcPrimary) && (
           <div className="rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-4 mb-6">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1219,75 +1262,32 @@ export default function SkillDetailPage({
                       </span>
                     )
                   ) : primaryUsdcPrice && browserCanUseUsdc ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleUsdcPurchase}
-                        disabled={purchasingUsdc}
-                        className={navButtonPrimaryInlineClass}
-                      >
-                        {purchasingUsdc ? (
-                          <>
-                            <FiLoader className="w-4 h-4 animate-spin" />
-                            Processing…
-                          </>
-                        ) : (
-                          <>
-                            <UsdcIcon className="w-4 h-4" />
-                            Pay with USDC
-                          </>
-                        )}
-                      </button>
-                      {hasSolFallback && (
-                        <button
-                          onClick={handlePaidInstall}
-                          disabled={installing || purchasingUsdc || purchaseBlocked}
-                          className={navButtonSecondaryInlineClass}
-                        >
-                          {installing ? (
-                            <>
-                              <FiLoader className="w-4 h-4 animate-spin" />
-                              Installing…
-                            </>
-                          ) : purchaseBlocked ? (
-                            purchasePreflightStatus === "authorPayoutRentBlocked" ? (
-                              "Seller Needs SOL"
-                            ) : (
-                              "Need More SOL"
-                            )
-                          ) : (
-                            <>
-                              <SiSolana className="w-4 h-4" />
-                              Use SOL Fallback
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  ) : (
                     <button
-                      onClick={handlePaidInstall}
-                      disabled={installing || purchaseBlocked}
+                      onClick={handleUsdcPurchase}
+                      disabled={purchasingUsdc || purchaseBlocked}
                       className={navButtonPrimaryInlineClass}
                     >
-                      {installing ? (
+                      {purchasingUsdc ? (
                         <>
                           <FiLoader className="w-4 h-4 animate-spin" />
-                          Installing…
+                          Processing…
                         </>
                       ) : (
                         <>
-                          <FiCheckCircle className="w-4 h-4" />
+                          <UsdcIcon className="w-4 h-4" />
                           {purchaseBlocked
                             ? purchasePreflightStatus ===
-                              "authorPayoutRentBlocked"
-                              ? "Seller Needs SOL"
-                              : "Need More SOL"
-                            : browserUsesLegacySolFallback
-                            ? "Buy via SOL Fallback"
-                            : "Buy & Unlock"}
+                              "buyerMissingUsdcAccount"
+                              ? "Set Up USDC Account"
+                              : "Need More USDC"
+                            : "Pay with USDC"}
                         </>
                       )}
                     </button>
+                  ) : (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      USDC checkout is required for new purchases.
+                    </span>
                   )}
                 </div>
               ) : (
@@ -1296,8 +1296,8 @@ export default function SkillDetailPage({
                 </span>
               )}
             </div>
-            {(creatorPriceLamports > 0 || primaryUsdcPrice) && (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {(primaryUsdcPrice || estimatedPurchaseRentLamports > 0) && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {primaryUsdcPrice && (
                   <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
                     <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -1309,62 +1309,70 @@ export default function SkillDetailPage({
                     </div>
                   </div>
                 )}
-                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Legacy fallback
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                    {creatorPriceLamports > 0 ? (
+                {estimatedPurchaseRentLamports > 0 && (
+                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Receipt rent
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
                       <SolAmount
-                        amount={fromLamports(creatorPriceLamports).toFixed(4)}
+                        amount={fromLamports(
+                          estimatedPurchaseRentLamports
+                        ).toFixed(4)}
                         iconClassName="w-3.5 h-3.5"
                       />
-                    ) : (
-                      "None"
-                    )}
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Receipt rent
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                    <SolAmount
-                      amount={fromLamports(
-                        estimatedPurchaseRentLamports
-                      ).toFixed(4)}
-                      iconClassName="w-3.5 h-3.5"
-                    />
-                  </div>
-                </div>
-                <div className="rounded-sm border border-[var(--sea-accent-border)] bg-white/80 dark:bg-gray-950/40 p-3">
-                  <div className="text-[11px] uppercase tracking-wide text-[var(--sea-accent)]">
-                    Estimated total
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                    <SolAmount
-                      amount={fromLamports(estimatedBuyerTotalLamports).toFixed(
-                        4
-                      )}
-                      iconClassName="w-3.5 h-3.5"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
             )}
-            {skill.priceDisclosure && creatorPriceLamports > 0 && (
+            {buyerHasPurchased && skill.buyerPurchaseSummary && !isAuthor && (
+              <div className="mt-3 rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Refund status
+                </div>
+                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                  {skill.buyerPurchaseSummary.refundStatus === "refunded"
+                    ? "Refund claimed for this purchase."
+                    : skill.buyerPurchaseSummary.legacyRefundEligible
+                    ? "Legacy purchase metadata is present; refund eligibility depends on a mapped refund pool."
+                    : "No active refund claim is recorded for this purchase."}
+                </p>
+                {skill.buyerPurchaseSummary.purchasePda && (
+                  <p className="mt-1 font-mono text-[11px] text-gray-400">
+                    Purchase {shortAddr(skill.buyerPurchaseSummary.purchasePda)}
+                    {skill.buyerPurchaseSummary.listingRevision
+                      ? ` · revision ${skill.buyerPurchaseSummary.listingRevision}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+            )}
+            {skill.priceDisclosure && hasLegacySolPrice && !hasUsdcPrimary && (
               <p className="text-xs mt-3 text-gray-500 dark:text-gray-400">
                 {skill.priceDisclosure}
               </p>
             )}
             {primaryUsdcPrice && (
               <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
-                {browserUsesLegacySolFallback
-                  ? "USDC is the default app-layer price. The button above settles x402 directly, while SOL remains available only as a legacy fallback."
-                  : "USDC is the default app-layer price. The button above settles the x402 flow directly and signed re-downloads stay wallet-bound."}
+                USDC is the default app-layer price. The button above settles
+                the x402 flow directly and signed re-downloads stay
+                wallet-bound.
               </p>
             )}
-            {skill.purchasePreflightMessage && creatorPriceLamports > 0 && (
+            {skill.purchaseRiskWarning &&
+              hasUsdcPrimary &&
+              !buyerHasPurchased &&
+              !isAuthor && (
+                <div className="mt-3 rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+                  <div className="mb-1 flex items-center gap-2 font-medium">
+                    <FiInfo className="h-3.5 w-3.5" />
+                    Limited dispute recovery
+                  </div>
+                  <p>{skill.purchaseRiskWarning}</p>
+                </div>
+              )}
+            {skill.purchasePreflightMessage && hasUsdcPrimary && (
               <p
                 className={`text-xs mt-2 ${
                   purchaseBlocked
@@ -1414,7 +1422,7 @@ export default function SkillDetailPage({
             )}
             {connected &&
               walletAddress === skill.author_pubkey &&
-              creatorPriceLamports === 0 &&
+              !hasUsdcPrimary &&
               skill.on_chain_address && (
                 <p className="text-xs mt-2 text-amber-600 dark:text-amber-400">
                   This skill is listed for free. You can set a price via Edit
@@ -1497,13 +1505,15 @@ export default function SkillDetailPage({
               primaryUsdcPrice ? (
                 <>
                   This listing is USDC-primary. Agents should use the x402 raw
-                  endpoint directly; the SOL path remains only as a legacy
-                  fallback when available.
+                  endpoint directly; browser checkout uses the same USDC
+                  entitlement path.
                 </>
               ) : (
                 <>
                   This is a paid skill. Requests return{" "}
-                  <code className="text-amber-600 dark:text-amber-400">402</code>{" "}
+                  <code className="text-amber-600 dark:text-amber-400">
+                    402
+                  </code>{" "}
                   until you purchase on-chain and provide a signed{" "}
                   <code className="text-amber-600 dark:text-amber-400">
                     X-AgentVouch-Auth
@@ -1764,6 +1774,71 @@ export default function SkillDetailPage({
                 {removeResult.message}
               </p>
             )}
+            {isAuthor && settlementSummary && (
+              <div className="mt-4 rounded-sm border border-green-200 dark:border-green-800/50 bg-white/70 dark:bg-gray-950/40 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                      Author proceeds escrow
+                    </p>
+                    <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                      Withdrawable{" "}
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {formatUsdcMicros(
+                          settlementSummary.withdrawableUsdcMicros.toString()
+                        ) ?? "0"}{" "}
+                        USDC
+                      </span>
+                      {settlementSummary.locked ? (
+                        <span className="ml-2 text-amber-600 dark:text-amber-400">
+                          Locked by dispute
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Withdrawn{" "}
+                      {formatUsdcMicros(
+                        settlementSummary.withdrawnUsdcMicros.toString()
+                      ) ?? "0"}{" "}
+                      USDC · Refunded{" "}
+                      {formatUsdcMicros(
+                        settlementSummary.refundedUsdcMicros.toString()
+                      ) ?? "0"}{" "}
+                      USDC
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleWithdrawAuthorProceeds}
+                    disabled={
+                      withdrawingProceeds ||
+                      settlementSummary.locked ||
+                      settlementSummary.withdrawableUsdcMicros <= 0n
+                    }
+                    className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium disabled:opacity-50`}
+                  >
+                    {withdrawingProceeds ? (
+                      <>
+                        <FiLoader className="w-3.5 h-3.5 animate-spin" />
+                        Withdrawing…
+                      </>
+                    ) : (
+                      "Withdraw Proceeds"
+                    )}
+                  </button>
+                </div>
+                {withdrawResult && (
+                  <p
+                    className={`text-xs mt-2 ${
+                      withdrawResult.success
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {withdrawResult.message}
+                  </p>
+                )}
+              </div>
+            )}
             {editing && (
               <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-800/50 space-y-3">
                 <div>
@@ -1793,12 +1868,12 @@ export default function SkillDetailPage({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      Legacy fallback (SOL)
+                      Price (USDC)
                     </label>
                     <input
                       type="number"
                       min={0}
-                      step={PRICING.SOL.step}
+                      step={PRICING.USDC.step}
                       value={editPrice}
                       onChange={(e) => setEditPrice(e.target.value)}
                       className="w-full px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
@@ -1873,7 +1948,7 @@ export default function SkillDetailPage({
           walletAddress === skill.author_pubkey && (
             <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 mb-6">
               <div className="flex items-center gap-2 mb-3">
-                <SiSolana className="w-4 h-4 text-gray-400" />
+                <UsdcIcon className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-semibold text-gray-900 dark:text-white">
                   List on Marketplace
                 </span>
@@ -1898,12 +1973,12 @@ export default function SkillDetailPage({
               <div className="flex items-center gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Legacy fallback (SOL)
+                    Price (USDC)
                   </label>
                   <input
                     type="number"
                     min={0}
-                    step={PRICING.SOL.step}
+                    step={PRICING.USDC.step}
                     value={listPrice}
                     onChange={(e) => setListPrice(e.target.value)}
                     className="w-28 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
@@ -1921,17 +1996,15 @@ export default function SkillDetailPage({
                     </>
                   ) : (
                     <>
-                      <SiSolana className="w-4 h-4" />
+                      <UsdcIcon className="w-4 h-4" />
                       List Now
                     </>
                   )}
                 </button>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                This controls the older SOL `purchaseSkill` fallback path. Set 0
-                for a free listing only if you intentionally want legacy SOL
-                buyers to bypass payment and your author bond meets the on-chain
-                floor. Otherwise the minimum paid fallback is {formatMinPrice()}.
+                Set 0 for a free listing. Otherwise the minimum paid USDC price
+                is {formatMinPrice()}.
               </p>
             </div>
           )
@@ -1948,8 +2021,8 @@ export default function SkillDetailPage({
                   Author Actions
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Publish a new repo version without changing the on-chain listing
-                  metadata.
+                  Publish a new repo version without changing the on-chain
+                  listing metadata.
                 </p>
               </div>
               <button

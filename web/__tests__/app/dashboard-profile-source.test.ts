@@ -14,8 +14,8 @@ describe("dashboard profile source", () => {
     expect(source).toContain("No purchased skills yet.");
     expect(source).toContain("Purchased skills are unavailable right now.");
     expect(source).toContain("Marketplace Listings");
-    expect(source).toContain("Low-priced sales are currently blocked");
-    expect(source).toContain("wallet holds enough SOL");
+    expect(source).toContain("purchasePreflightMessage");
+    expect(source).toContain("USDC");
   });
 
   it("links marketplace listings into author edit and version publish actions", () => {

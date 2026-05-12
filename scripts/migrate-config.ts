@@ -1,27 +1,12 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
-import { ReputationOracle } from "../target/types/reputation_oracle";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { Agentvouch } from "../target/types/agentvouch";
 
-const LEGACY_REPUTATION_CONFIG_LEN = 82;
-const CURRENT_REPUTATION_CONFIG_LEN = 86;
+const M13_REPUTATION_CONFIG_MIN_LEN = 491;
 
 type Options = {
   apply: boolean;
-};
-
-type ParsedConfig = {
-  authority: PublicKey;
-  minStake: bigint;
-  disputeBond: bigint;
-  minAuthorBondForFreeListing: bigint;
-  slashPercentage: number;
-  cooldownPeriod: bigint;
-  stakeWeight: number;
-  vouchWeight: number;
-  longevityBonus: number;
-  bump: number;
-  legacyDisputePenalty?: number;
 };
 
 function printUsage(): never {
@@ -49,65 +34,13 @@ function parseArgs(argv: string[]): Options {
   return { apply };
 }
 
-function readPubkey(data: Buffer, start: number) {
-  return new PublicKey(data.subarray(start, start + 32));
-}
-
-function readU64(data: Buffer, start: number) {
-  return data.readBigUInt64LE(start);
-}
-
-function readI64(data: Buffer, start: number) {
-  return data.readBigInt64LE(start);
-}
-
-function readU32(data: Buffer, start: number) {
-  return data.readUInt32LE(start);
-}
-
-function parseLegacyConfig(data: Buffer): ParsedConfig {
-  return {
-    authority: readPubkey(data, 8),
-    minStake: readU64(data, 40),
-    disputeBond: readU64(data, 48),
-    minAuthorBondForFreeListing: readU64(data, 48),
-    slashPercentage: data.readUInt8(56),
-    cooldownPeriod: readI64(data, 57),
-    stakeWeight: readU32(data, 65),
-    vouchWeight: readU32(data, 69),
-    longevityBonus: readU32(data, 77),
-    legacyDisputePenalty: readU32(data, 73),
-    bump: data.readUInt8(81),
-  };
-}
-
-function parseCurrentConfig(data: Buffer): ParsedConfig {
-  return {
-    authority: readPubkey(data, 8),
-    minStake: readU64(data, 40),
-    disputeBond: readU64(data, 48),
-    minAuthorBondForFreeListing: readU64(data, 56),
-    slashPercentage: data.readUInt8(64),
-    cooldownPeriod: readI64(data, 65),
-    stakeWeight: readU32(data, 73),
-    vouchWeight: readU32(data, 77),
-    longevityBonus: readU32(data, 81),
-    bump: data.readUInt8(85),
-  };
-}
-
-function formatLamports(value: bigint) {
-  return `${value.toString()} lamports`;
-}
-
 async function main() {
   const options = parseArgs(process.argv.slice(2));
 
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace
-    .ReputationOracle as Program<ReputationOracle>;
+  const program = anchor.workspace.Agentvouch as Program<Agentvouch>;
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     program.programId
@@ -133,45 +66,10 @@ async function main() {
   console.log("Config PDA:", configPda.toBase58());
   console.log("Config size:", accountInfo.data.length, "bytes");
 
-  let parsed: ParsedConfig;
-  if (accountInfo.data.length === LEGACY_REPUTATION_CONFIG_LEN) {
-    parsed = parseLegacyConfig(accountInfo.data);
-    console.log("Layout: legacy 82-byte config");
-    console.log(
-      "Legacy dispute penalty:",
-      parsed.legacyDisputePenalty ?? "(not present)"
-    );
-    console.log(
-      "Mapped min_author_bond_for_free_listing:",
-      formatLamports(parsed.minAuthorBondForFreeListing)
-    );
-  } else if (accountInfo.data.length === CURRENT_REPUTATION_CONFIG_LEN) {
-    parsed = parseCurrentConfig(accountInfo.data);
-    console.log("Layout: current 86-byte config");
-  } else {
-    throw new Error(
-      `Unsupported config size ${accountInfo.data.length}; expected ${LEGACY_REPUTATION_CONFIG_LEN} or ${CURRENT_REPUTATION_CONFIG_LEN}`
-    );
-  }
-
-  console.log("Authority:", parsed.authority.toBase58());
-  console.log("Min stake:", formatLamports(parsed.minStake));
-  console.log("Dispute bond:", formatLamports(parsed.disputeBond));
-  console.log("Slash percentage:", parsed.slashPercentage);
-  console.log("Cooldown period:", parsed.cooldownPeriod.toString(), "seconds");
-  console.log("Stake weight:", parsed.stakeWeight);
-  console.log("Vouch weight:", parsed.vouchWeight);
-  console.log("Longevity bonus:", parsed.longevityBonus);
-  console.log("Stored bump:", parsed.bump);
-
-  if (!parsed.authority.equals(provider.wallet.publicKey)) {
-    throw new Error(
-      `Connected wallet ${provider.wallet.publicKey.toBase58()} is not the config authority ${parsed.authority.toBase58()}`
-    );
-  }
-
-  if (accountInfo.data.length === CURRENT_REPUTATION_CONFIG_LEN) {
-    console.log("Config already uses the current layout. No migration needed.");
+  if (accountInfo.data.length >= M13_REPUTATION_CONFIG_MIN_LEN) {
+    const config = await program.account.reputationConfig.fetch(configPda);
+    console.log("Config already uses the M13 layout.");
+    console.log("Config authority:", config.configAuthority.toBase58());
     return;
   }
 
@@ -181,9 +79,12 @@ async function main() {
   }
 
   const tx = await program.methods
-    .migrateConfig()
-    .accountsPartial({
+    .migrateConfigM13()
+    .accountsStrict({
+      config: configPda,
+      payer: provider.wallet.publicKey,
       authority: provider.wallet.publicKey,
+      systemProgram: SystemProgram.programId,
     })
     .rpc();
 
@@ -192,10 +93,13 @@ async function main() {
   const migratedAccount = await program.account.reputationConfig.fetch(
     configPda
   );
-  console.log("Migrated config size:", CURRENT_REPUTATION_CONFIG_LEN, "bytes");
   console.log(
-    "Migrated min_author_bond_for_free_listing:",
-    migratedAccount.minAuthorBondForFreeListing.toString()
+    "Migrated config authority:",
+    migratedAccount.configAuthority.toBase58()
+  );
+  console.log(
+    "Author proceeds lock seconds:",
+    migratedAccount.authorProceedsLockSeconds.toString()
   );
 }
 

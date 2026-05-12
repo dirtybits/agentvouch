@@ -33,9 +33,9 @@ export function formatSkillSummary(skill: SkillRecord): string[] {
   const paymentFlow =
     skill.payment_flow ??
     (skill.price_usdc_micros
-      ? "x402-usdc"
-      : (skill.price_lamports ?? 0) > 0
-      ? "legacy-sol"
+      ? skill.on_chain_address
+        ? "direct-purchase-skill"
+        : "x402-usdc"
       : "free");
 
   return [
@@ -46,8 +46,8 @@ export function formatSkillSummary(skill: SkillRecord): string[] {
     `author: ${skill.author_pubkey}`,
     `author_reputation: ${trust.reputation}`,
     `payment_flow: ${paymentFlow}`,
-    `price_lamports: ${skill.price_lamports ?? 0}`,
     `price_usdc_micros: ${skill.price_usdc_micros ?? "none"}`,
+    `currency_mint: ${skill.currency_mint ?? "none"}`,
     `listing: ${skill.on_chain_address ?? "none"}`,
     `registered: ${trust.isRegistered ? "yes" : "no"}`,
     ...(trust.recommendedAction
@@ -158,7 +158,7 @@ export function formatAgentTrust(trust: AgentTrustResponse): string[] {
     `chain_context: ${trust.trust.chain_context}`,
     `total_vouches_received: ${trust.trust.totalVouchesReceived}`,
     `total_staked_for: ${trust.trust.totalStakedFor}`,
-    `author_bond_lamports: ${rawTrust?.authorBondLamports ?? 0}`,
+    `author_bond_usdc_micros: ${rawTrust?.authorBondLamports ?? 0}`,
     `total_stake_at_risk: ${rawTrust?.totalStakeAtRisk ?? 0}`,
     `active_author_disputes: ${trust.trust.activeDisputesAgainstAuthor}`,
     `upheld_author_disputes: ${trust.trust.disputesUpheldAgainstAuthor}`,
@@ -185,7 +185,7 @@ export function formatRegisterAgentResult(
 export interface CreateVouchResult {
   vouch: string;
   alreadyExists: boolean;
-  lamports?: number;
+  stakeUsdcMicros?: number;
   tx?: string | null;
 }
 
@@ -195,7 +195,9 @@ export function formatCreateVouchResult(
   return [
     `vouch: ${result.vouch}`,
     `already_exists: ${result.alreadyExists ? "yes" : "no"}`,
-    ...(result.lamports ? [`lamports: ${result.lamports}`] : []),
+    ...(result.stakeUsdcMicros
+      ? [`stake_usdc_micros: ${result.stakeUsdcMicros}`]
+      : []),
     ...(result.tx ? [`tx: ${result.tx}`] : []),
   ];
 }

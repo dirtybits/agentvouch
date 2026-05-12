@@ -2,7 +2,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import type { ConfirmedSignatureInfo } from "@solana/web3.js";
-import { ReputationOracle } from "../target/types/reputation_oracle";
+import { Agentvouch } from "../target/types/agentvouch";
 
 const MIN_PLAUSIBLE_REGISTERED_AT = 946_684_800; // 2000-01-01T00:00:00Z
 const MAX_FUTURE_SKEW_SECONDS = 366 * 24 * 60 * 60;
@@ -167,7 +167,7 @@ async function recoverRegisteredAtFromHistory(
 }
 
 async function loadTargets(
-  program: Program<ReputationOracle>,
+  program: Program<Agentvouch>,
   options: Options
 ): Promise<RepairTarget[]> {
   if (options.authorPubkey) {
@@ -212,7 +212,7 @@ async function main() {
   anchor.setProvider(provider);
 
   const program = anchor.workspace
-    .ReputationOracle as Program<ReputationOracle>;
+    .Agentvouch as Program<Agentvouch>;
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     program.programId

@@ -1,0 +1,2 @@
+- When debugging wallet signing errors on AgentVouch, verify the configured program account exists on the active RPC before assuming wallet balance, Phantom, or transaction construction. A missing deployed program can surface as generic Phantom signing/simulation errors.
+- When the user explicitly frames AgentVouch as greenfield or says to minimize friction over preserving devnet history, prefer fresh v0.2.0 fixture/state reset paths over adding compatibility or migration instructions for old layouts.

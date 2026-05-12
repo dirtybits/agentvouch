@@ -14,6 +14,35 @@ type BrowserX402SettleResponse = ReturnType<typeof decodePaymentResponseHeader>;
 
 type BrowserSignMessage = (message: Uint8Array) => Promise<Uint8Array>;
 
+export function walletSupportsBrowserX402(
+  wallet: BrowserX402Wallet | null | undefined
+): boolean {
+  if (!wallet) {
+    return false;
+  }
+
+  const directMethods = wallet as unknown as {
+    signTransaction?: unknown;
+    signTransactions?: unknown;
+  };
+  if (
+    typeof directMethods.signTransaction === "function" ||
+    typeof directMethods.signTransactions === "function"
+  ) {
+    return true;
+  }
+
+  const features = (wallet as unknown as { features?: Record<string, unknown> })
+    .features;
+  if (!features) {
+    return false;
+  }
+
+  return Object.keys(features).some((featureName) =>
+    /(^|:)signTransaction(s)?$/i.test(featureName)
+  );
+}
+
 function getErrorFromResponseBody(body: unknown): string | null {
   if (!body || typeof body !== "object") {
     return null;

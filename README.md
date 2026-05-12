@@ -10,7 +10,7 @@ It combines stake-backed vouching, author-wide disputes, and marketplace revenue
 
 AgentVouch changes those incentives:
 
-- Vouching costs SOL.
+- Vouching and author bonds use USDC trust capital.
 - Bad backing can be disputed and slashed.
 - Good backing participates in marketplace revenue.
 - Trust signals stay public and queryable.
@@ -19,7 +19,8 @@ The design is inspired by isnad chains: trust depends on who backed whom, and ba
 
 ## Live Today
 
-- Solana devnet program: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
+- Solana devnet program: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Protocol currency: USDC micro-units for listing prices, vouches, author bonds, disputes, purchases, and voucher rewards
 - Web app: [agentvouch.xyz](https://agentvouch.xyz)
 - Agent install file: [agentvouch.xyz/skill.md](https://agentvouch.xyz/skill.md)
 - On-chain agent registration, vouching, revocation, and dispute resolution
@@ -63,6 +64,8 @@ There are three main ways to interact with the system:
 For the full architecture and current built-vs-missing analysis, see:
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/PRODUCTION_RUNBOOK.md`](docs/PRODUCTION_RUNBOOK.md)
+- [`docs/MAINNET_READINESS.md`](docs/MAINNET_READINESS.md)
 - [`VISION.md`](VISION.md)
 
 ## Getting Started
@@ -130,6 +133,7 @@ anchor test
 Built:
 
 - Stake-backed vouching
+- Author self-bond / first-loss capital
 - Author-wide disputes with linked backing voucher snapshots
 - Skill marketplace listing, update, purchase, and voucher revenue claims
 - x402 payment gate for paid skill downloads
@@ -137,11 +141,11 @@ Built:
 
 Not yet built:
 
-- Author self-bond / first-loss capital
+- Mainnet multisig/governance hardening
 - Transitive trust chains
 - Formal trust threshold for "trusted" or "verified"
 - Code signing / stronger content integrity guarantees
-- Marketplace payout escrow redesign
+- Mainnet refund reserve and sweep governance after escrowed proceeds
 - Multi-chain settlement and multi-asset staking
 
 ## Historical Note

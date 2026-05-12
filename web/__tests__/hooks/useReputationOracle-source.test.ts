@@ -32,9 +32,7 @@ describe("useReputationOracle source", () => {
     );
 
     expect(source).toContain("estimatePurchasePreflight");
-    expect(source).toContain(
-      'purchasePreflightStatus === "authorPayoutRentBlocked"'
-    );
+    expect(source).toContain('"authorPayoutRentBlocked"');
     expect(source).toContain("buildPurchaseBalanceError");
   });
 

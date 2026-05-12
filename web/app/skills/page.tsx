@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useWalletConnection } from "@solana/react-hooks";
-import { type Address } from "@solana/kit";
+import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
 import { getConfiguredSolanaExplorerTxUrl } from "@/lib/chains";
@@ -20,16 +20,14 @@ import {
   navButtonPrimaryFlexClass,
   navButtonPrimaryInlineClass,
 } from "@/lib/buttonStyles";
-import { formatSolAmount, formatUsdcMicros } from "@/lib/pricing";
+import { formatUsdcMicros } from "@/lib/pricing";
 import SkillPreviewCard from "@/components/SkillPreviewCard";
-import { SolAmount } from "@/components/SolAmount";
 import type { TrustData } from "@/components/TrustBadge";
-import type { Purchase } from "../../generated/reputation-oracle/src/generated/accounts/purchase";
-import type { SkillListing } from "../../generated/reputation-oracle/src/generated/accounts/skillListing";
+import type { Purchase } from "../../generated/agentvouch/src/generated/accounts/purchase";
+import type { SkillListing } from "../../generated/agentvouch/src/generated/accounts/skillListing";
 import {
   FiActivity,
   FiAlertTriangle,
-  FiAward,
   FiBookOpen,
   FiBox,
   FiCheckCircle,
@@ -47,7 +45,6 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import { isRpcRateLimitError } from "@/lib/rpcErrors";
-import { getCompetitionPhase, SHOW_COMPETITION_CTA } from "@/lib/competition";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -68,18 +65,18 @@ interface SkillRow {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc";
+  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
   on_chain_address?: string;
   skill_uri?: string | null;
   source?: "repo" | "chain";
   created_at: string;
   author_trust: TrustData | null;
-  creatorPriceLamports?: number;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
   estimatedBuyerTotalLamports?: number;
   purchasePreflightStatus?: PurchasePreflightStatus;
   purchasePreflightMessage?: string | null;
+  purchaseRiskWarning?: string | null;
   priceDisclosure?: string | null;
   buyerHasPurchased?: boolean;
 }
@@ -101,10 +98,10 @@ type ActivityRepoListing = {
   name: string;
   author_pubkey: string;
   on_chain_address: string | null;
-  price_lamports: number | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
-  payment_flow: "free" | "legacy-sol" | "x402-usdc";
+  payment_flow: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
+  created_at: string;
 };
 type ActivityUsdcPurchase = {
   payment_tx_signature: string;
@@ -132,14 +129,16 @@ type FeedItem = {
   skillRepoId: string | null;
   author: string | null;
   timestamp: number;
-  priceLamports: number | null;
+  legacySolLamports: number | null;
   priceUsdcMicros: string | null;
 };
 
 type SortOption = "newest" | "installs" | "trusted" | "name";
 
-function formatSol(lamports: number): string {
-  return formatSolAmount(lamports);
+function formatUsdc(
+  micros: number | bigint | string | null | undefined
+): string {
+  return formatUsdcMicros(micros) ?? "0";
 }
 
 function shortAddr(addr: string): string {
@@ -163,6 +162,7 @@ function isBlockingPurchaseStatus(
 ) {
   return (
     status === "buyerInsufficientBalance" ||
+    status === "buyerMissingUsdcAccount" ||
     status === "authorPayoutRentBlocked"
   );
 }
@@ -191,24 +191,25 @@ export default function MarketplacePage() {
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortOption>("newest");
+  const [sort, setSort] = useState<SortOption>("trusted");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
   // Marketplace state
-  const [listings, setListings] = useState<SkillListingData[]>([]);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [purchasedKeys, setPurchasedKeys] = useState<Set<string>>(new Set());
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
-  const [purchaseStatusReady, setPurchaseStatusReady] = useState(false);
   const [purchaseStatusWarning, setPurchaseStatusWarning] = useState<
     string | null
   >(null);
 
   // My data
   const [myPurchases, setMyPurchases] = useState<PurchaseData[]>([]);
+  const [myPurchaseListings, setMyPurchaseListings] = useState<
+    SkillListingData[]
+  >([]);
   const [myListings, setMyListings] = useState<SkillListingData[]>([]);
   const [myListingDetails, setMyListingDetails] = useState<
     Map<string, SkillRow>
@@ -234,7 +235,6 @@ export default function MarketplacePage() {
       if (search) params.set("q", search);
       params.set("sort", sort);
       params.set("page", String(page));
-      if (publicKey) params.set("buyer", String(publicKey));
 
       const res = await fetch(`/api/skills?${params}`);
       if (!res.ok) throw new Error("Failed to fetch skills");
@@ -249,117 +249,62 @@ export default function MarketplacePage() {
     } finally {
       setLoading(false);
     }
-  }, [page, publicKey, search, sort]);
+  }, [page, search, sort]);
 
-  const loadFeed = useCallback(
-    async (resolvedListings: SkillListingData[]) => {
-      setFeedLoading(true);
-      try {
-        const [purchases, activityRes] = await Promise.all([
-          oracle.getAllPurchases(),
-          fetch("/api/skills/activity"),
-        ]);
-        if (!activityRes.ok) {
-          throw new Error("Failed to fetch marketplace activity");
-        }
-        const activity = (await activityRes.json()) as ActivityResponse;
-        const listingMap = new Map(
-          resolvedListings.map((l) => [l.publicKey as string, l])
-        );
-        const repoListingMap = new Map(
-          activity.repoListings
-            .filter(
-              (listing): listing is ActivityRepoListing & {
-                on_chain_address: string;
-              } => Boolean(listing.on_chain_address)
-            )
-            .map((listing) => [listing.on_chain_address, listing])
-        );
-        const purchaseItems: FeedItem[] = purchases.map((purchase) => {
-          const skillListing = String(purchase.account.skillListing);
-          const listing = listingMap.get(skillListing);
-          const repoListing = repoListingMap.get(skillListing);
-          return {
-            id: String(purchase.publicKey),
-            type: "purchase",
-            actor: String(purchase.account.buyer),
-            skillListing,
-            skillName: repoListing?.name ?? listing?.account.name ?? "Unknown Skill",
-            skillRepoId: repoListing?.id ?? null,
-            author: repoListing?.author_pubkey ?? String(listing?.account.author ?? ""),
-            timestamp: Number(purchase.account.purchasedAt),
-            priceLamports: Number(purchase.account.pricePaid),
-            priceUsdcMicros: null,
-          };
-        });
-        const listingItems: FeedItem[] = resolvedListings.map((listing) => {
-          const skillListing = String(listing.publicKey);
-          const repoListing = repoListingMap.get(skillListing);
-          return {
-            id: skillListing,
-            type: "listing",
-            actor: repoListing?.author_pubkey ?? String(listing.account.author),
-            skillListing,
-            skillName: repoListing?.name ?? listing.account.name,
-            skillRepoId: repoListing?.id ?? null,
-            author: repoListing?.author_pubkey ?? String(listing.account.author),
-            timestamp: Number(listing.account.createdAt),
-            priceLamports: repoListing?.price_usdc_micros
-              ? null
-              : Number(listing.account.priceLamports),
-            priceUsdcMicros: repoListing?.price_usdc_micros ?? null,
-          };
-        });
-        const usdcPurchaseItems: FeedItem[] = activity.usdcPurchases.map(
-          (purchase) => ({
-            id: `usdc-${purchase.payment_tx_signature}`,
-            type: "purchase",
-            actor: purchase.buyer_pubkey,
-            skillListing: purchase.on_chain_address,
-            skillName: purchase.skill_name,
-            skillRepoId: purchase.skill_db_id,
-            author: purchase.author_pubkey,
-            timestamp: Math.floor(
-              new Date(purchase.verified_at).getTime() / 1000
-            ),
-            priceLamports: null,
-            priceUsdcMicros: purchase.amount_micros,
-          })
-        );
-        const items: FeedItem[] = [
-          ...purchaseItems,
-          ...listingItems,
-          ...usdcPurchaseItems,
-        ]
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, 20);
-        setFeedItems(items);
-      } catch (e) {
-        console.error("Failed to load feed:", e);
-      } finally {
-        setFeedLoading(false);
-      }
-    },
-    [oracle]
-  );
-
-  const loadListings = useCallback(async () => {
+  const loadFeed = useCallback(async () => {
+    setFeedLoading(true);
     try {
-      const all = await oracle.getAllSkillListings();
-      setListings(all);
-      void loadFeed(all);
+      const activityRes = await fetch("/api/skills/activity");
+      if (!activityRes.ok) {
+        throw new Error("Failed to fetch marketplace activity");
+      }
+      const activity = (await activityRes.json()) as ActivityResponse;
+      const listingItems: FeedItem[] = activity.repoListings.map((listing) => ({
+        id: listing.on_chain_address ?? listing.id,
+        type: "listing",
+        actor: listing.author_pubkey,
+        skillListing: listing.on_chain_address,
+        skillName: listing.name,
+        skillRepoId: listing.id,
+        author: listing.author_pubkey,
+        timestamp: Math.floor(new Date(listing.created_at).getTime() / 1000),
+        legacySolLamports: null,
+        priceUsdcMicros: listing.price_usdc_micros,
+      }));
+      const usdcPurchaseItems: FeedItem[] = activity.usdcPurchases.map(
+        (purchase) => ({
+          id: `usdc-${purchase.payment_tx_signature}`,
+          type: "purchase",
+          actor: purchase.buyer_pubkey,
+          skillListing: purchase.on_chain_address,
+          skillName: purchase.skill_name,
+          skillRepoId: purchase.skill_db_id,
+          author: purchase.author_pubkey,
+          timestamp: Math.floor(
+            new Date(purchase.verified_at).getTime() / 1000
+          ),
+          legacySolLamports: null,
+          priceUsdcMicros: purchase.amount_micros,
+        })
+      );
+      const items: FeedItem[] = [...listingItems, ...usdcPurchaseItems]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 20);
+      setFeedItems(items);
     } catch (e) {
-      console.error("Failed to load listings:", e);
+      console.error("Failed to load feed:", e);
+    } finally {
+      setFeedLoading(false);
     }
-  }, [loadFeed, oracle]);
+  }, []);
 
   const loadMyData = useCallback(async () => {
     if (!publicKey) {
       setMyPurchases([]);
+      setMyPurchaseListings([]);
       setMyListings([]);
       setMyListingDetails(new Map());
       setPurchasedKeys(new Set());
-      setPurchaseStatusReady(false);
       setPurchaseStatusWarning(null);
       purchaseStateWalletRef.current = null;
       return;
@@ -375,10 +320,20 @@ export default function MarketplacePage() {
             )}&sort=newest`
           ),
         ]);
+      const purchasedListingAddresses = [
+        ...new Set(
+          purchases.map((purchase) => String(purchase.account.skillListing))
+        ),
+      ].map((skillListing) => address(skillListing));
+      const purchaseListings =
+        purchasedListingAddresses.length > 0
+          ? await oracle.getSkillListingsByAddresses(purchasedListingAddresses)
+          : [];
       const authoredSkillsData: ApiResponse | null = authoredSkillsResponse.ok
         ? await authoredSkillsResponse.json()
         : null;
       setMyPurchases(purchases);
+      setMyPurchaseListings(purchaseListings);
       setMyListings(authorListings);
       setMyListingDetails(
         new Map(
@@ -390,13 +345,13 @@ export default function MarketplacePage() {
       setPurchasedKeys(
         new Set(purchases.map((p) => String(p.account.skillListing)))
       );
-      setPurchaseStatusReady(true);
       setPurchaseStatusWarning(null);
       purchaseStateWalletRef.current = String(publicKey);
     } catch (e) {
       console.error("Failed to load user data:", e);
       if (purchaseStateWalletRef.current !== String(publicKey)) {
         setMyPurchases([]);
+        setMyPurchaseListings([]);
         setMyListings([]);
         setMyListingDetails(new Map());
         setPurchasedKeys(new Set());
@@ -409,51 +364,21 @@ export default function MarketplacePage() {
     }
   }, [oracle, publicKey]);
 
-  const refreshPurchasedFlags = useCallback(async () => {
-    if (!publicKey || listings.length === 0) {
-      if (!publicKey) setPurchasedKeys(new Set());
-      return;
-    }
-
-    try {
-      const purchasedListingKeys = await oracle.getPurchasedSkillListingKeys(
-        publicKey,
-        listings.map((listing) => listing.publicKey)
-      );
-      setPurchasedKeys((prev) => new Set([...prev, ...purchasedListingKeys]));
-      setPurchaseStatusReady(true);
-      setPurchaseStatusWarning(null);
-      purchaseStateWalletRef.current = String(publicKey);
-    } catch (error) {
-      console.error("Failed to resolve purchased listing flags:", error);
-      if (!purchaseStatusReady && purchasedSkillListingKeys.size === 0) {
-        setPurchaseStatusWarning(
-          isRpcRateLimitError(error)
-            ? "Purchase status is temporarily unavailable because the RPC is rate-limiting requests."
-            : "Purchase status could not be refreshed right now."
-        );
-      }
-    }
-  }, [
-    listings,
-    oracle,
-    publicKey,
-    purchaseStatusReady,
-    purchasedSkillListingKeys.size,
-  ]);
-
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
   useEffect(() => {
-    loadListings();
-  }, [loadListings]);
+    void loadFeed();
+  }, [loadFeed]);
   useEffect(() => {
-    loadMyData();
-  }, [loadMyData]);
-  useEffect(() => {
-    refreshPurchasedFlags();
-  }, [refreshPurchasedFlags]);
+    if (!publicKey) {
+      void loadMyData();
+      return;
+    }
+    if (activeTab === "my-purchases" || activeTab === "my-listings") {
+      void loadMyData();
+    }
+  }, [activeTab, loadMyData, publicKey]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,16 +398,19 @@ export default function MarketplacePage() {
       );
       if (alreadyPurchased) {
         setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
-        setPurchaseStatusReady(true);
         setPurchaseStatusWarning(null);
         setTxSuccess("Already purchased with this wallet.");
       } else if (tx) {
         setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
-        setPurchaseStatusReady(true);
         setPurchaseStatusWarning(null);
         setTxSuccess(tx);
       }
-      await Promise.all([loadListings(), loadMyData()]);
+      await Promise.all([
+        fetchSkills(),
+        activeTab === "my-purchases" || activeTab === "my-listings"
+          ? loadMyData()
+          : Promise.resolve(),
+      ]);
     } catch (error: unknown) {
       console.error("Purchase failed:", error);
       setTxError(getErrorMessage(error, "Transaction failed"));
@@ -491,31 +419,20 @@ export default function MarketplacePage() {
     }
   };
 
-  const getListingForSkill = (
-    skill: SkillRow
-  ): SkillListingData | undefined => {
-    if (skill.on_chain_address) {
-      return listings.find(
-        (l) => (l.publicKey as string) === skill.on_chain_address
-      );
-    }
-    return undefined;
-  };
-
   const sortOptions: {
     value: SortOption;
     label: string;
     icon: React.ReactNode;
   }[] = [
     {
-      value: "newest",
-      label: "Newest",
-      icon: <FiClock className="w-3.5 h-3.5" />,
-    },
-    {
       value: "trusted",
       label: "Most Trusted",
       icon: <FiShield className="w-3.5 h-3.5" />,
+    },
+    {
+      value: "newest",
+      label: "Newest",
+      icon: <FiClock className="w-3.5 h-3.5" />,
     },
     {
       value: "installs",
@@ -565,24 +482,6 @@ export default function MarketplacePage() {
               )}
             </p>
           </div>
-          {SHOW_COMPETITION_CTA && (
-            <div className="flex shrink-0 items-center gap-3 self-start whitespace-nowrap">
-              <Link
-                href="/competition"
-                className={`${navButtonFlexClass} font-semibold bg-[var(--gold-accent-soft)] text-[var(--gold-accent-strong)] border border-[var(--gold-accent-border)] hover:border-[var(--gold-accent)] transition`}
-              >
-                <FiAward className="w-4 h-4" />
-                <span className="hidden sm:inline">Competition</span>
-                <span className="hidden sm:inline px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-[var(--gold-accent-soft-hover)] text-[var(--gold-accent-strong)]">
-                  {getCompetitionPhase() === "upcoming"
-                    ? "Mar 11"
-                    : getCompetitionPhase() === "active"
-                    ? "Live"
-                    : "Ended"}
-                </span>
-              </Link>
-            </div>
-          )}
         </div>
 
         {/* 
@@ -752,42 +651,38 @@ export default function MarketplacePage() {
                       const downloads =
                         (skill.total_installs ?? 0) +
                         (skill.total_downloads ?? 0);
-                      const listing = getListingForSkill(skill);
+                      const listingPubkey = skill.on_chain_address ?? null;
                       const hasPurchased =
                         Boolean(skill.buyerHasPurchased) ||
-                        (listing
-                          ? purchasedSkillListingKeys.has(
-                              String(listing.publicKey)
-                            )
+                        (listingPubkey
+                          ? purchasedSkillListingKeys.has(listingPubkey)
                           : false);
                       const isOwn =
                         publicKey &&
                         skill.author_pubkey === (publicKey as string);
-                      const isPurchasing = listing
-                        ? purchasing === (listing.publicKey as string)
+                      const isPurchasing = listingPubkey
+                        ? purchasing === listingPubkey
                         : false;
-                      const creatorPrice =
-                        skill.creatorPriceLamports ??
-                        (listing
-                          ? Number(listing.account.priceLamports)
-                          : skill.price_lamports ?? 0);
-                      const estimatedTotal =
-                        skill.estimatedBuyerTotalLamports ?? creatorPrice;
+                      const legacySolLamports =
+                        skill.price_usdc_micros || listingPubkey
+                          ? 0
+                          : skill.price_lamports ?? 0;
                       const purchasePreflightStatus =
                         skill.purchasePreflightStatus ??
-                        (creatorPrice > 0 ? "estimateUnavailable" : "ok");
+                        (skill.price_usdc_micros || listingPubkey
+                          ? "estimateUnavailable"
+                          : "ok");
                       const purchaseBlocked =
-                        creatorPrice > 0 &&
+                        Boolean(skill.price_usdc_micros || listingPubkey) &&
                         isBlockingPurchaseStatus(purchasePreflightStatus);
                       const hasAccessPath =
-                        skill.source === "repo" || Boolean(listing);
+                        skill.source === "repo" || Boolean(listingPubkey);
                       return (
                         <SkillPreviewCard
                           key={skill.id}
                           skill={skill}
                           hasAccessPath={hasAccessPath}
-                          creatorPriceLamports={creatorPrice}
-                          estimatedTotalLamports={estimatedTotal}
+                          legacySolLamports={legacySolLamports}
                           downloads={downloads}
                           connected={connected}
                           isOwn={Boolean(isOwn)}
@@ -799,10 +694,10 @@ export default function MarketplacePage() {
                             skill.tags ?? []
                           )}
                           onPurchase={() => {
-                            if (!listing) return;
+                            if (!listingPubkey) return;
                             handlePurchase(
-                              listing.publicKey,
-                              listing.account.author
+                              address(listingPubkey),
+                              address(skill.author_pubkey)
                             );
                           }}
                         />
@@ -907,12 +802,10 @@ export default function MarketplacePage() {
                               <UsdcIcon className="w-3 h-3" />
                               {formatUsdcMicros(item.priceUsdcMicros)} USDC
                             </span>
-                          ) : item.priceLamports && item.priceLamports > 0 ? (
-                            <span className="text-xs font-mono text-green-600 dark:text-green-400">
-                              <SolAmount
-                                amount={formatSol(item.priceLamports)}
-                                iconClassName="w-3 h-3"
-                              />
+                          ) : item.legacySolLamports &&
+                            item.legacySolLamports > 0 ? (
+                            <span className="text-xs font-mono text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+                              Legacy SOL
                             </span>
                           ) : null}
                         </div>
@@ -963,7 +856,7 @@ export default function MarketplacePage() {
             ) : (
               <div className="space-y-4">
                 {myPurchases.map((purchase) => {
-                  const listing = listings.find(
+                  const listing = myPurchaseListings.find(
                     (l) => l.publicKey === purchase.account.skillListing
                   );
                   return (
@@ -978,13 +871,10 @@ export default function MarketplacePage() {
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                           Purchased{" "}
                           {formatDate(Number(purchase.account.purchasedAt))} ·{" "}
-                          <SolAmount
-                            amount={formatSol(
-                              Number(purchase.account.pricePaid)
-                            )}
-                            className="font-mono text-gray-900 dark:text-white"
-                            iconClassName="w-3 h-3"
-                          />
+                          <span className="font-mono text-gray-900 dark:text-white">
+                            {formatUsdc(purchase.account.pricePaidUsdcMicros)}{" "}
+                            USDC
+                          </span>
                         </p>
                       </div>
                       {listing?.account.skillUri && (
@@ -1048,16 +938,14 @@ export default function MarketplacePage() {
                   );
                   const detailId =
                     listingDetail?.id ?? `chain-${String(listing.publicKey)}`;
-                  const canPublishVersion = !!listingDetail && detailId.indexOf("chain-") !== 0;
-                  const price = Number(listing.account.priceLamports);
+                  const canPublishVersion =
+                    !!listingDetail && detailId.indexOf("chain-") !== 0;
+                  const price = Number(listing.account.priceUsdcMicros);
                   const downloads = Number(listing.account.totalDownloads);
-                  const revenue = Number(listing.account.totalRevenue);
-                  const authorEarnings = revenue * 0.6;
-                  const sellerRentBlocked =
-                    listingDetail?.purchasePreflightStatus ===
-                    "authorPayoutRentBlocked";
-                  const estimatedBuyerTotal =
-                    listingDetail?.estimatedBuyerTotalLamports ?? price;
+                  const revenue = Number(
+                    listing.account.totalRevenueUsdcMicros
+                  );
+                  const authorEarnings = Math.floor(revenue * 0.6);
 
                   return (
                     <div
@@ -1069,36 +957,15 @@ export default function MarketplacePage() {
                           {listing.account.name}
                         </h3>
                         <span className="text-green-600 dark:text-green-400 font-mono font-bold">
-                          <SolAmount
-                            amount={formatSol(price)}
-                            iconClassName="w-3.5 h-3.5"
-                          />
+                          <span className="inline-flex items-center gap-1">
+                            <UsdcIcon className="w-3.5 h-3.5" />
+                            {formatUsdc(price)} USDC
+                          </span>
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                         {listing.account.description}
                       </p>
-                      {sellerRentBlocked && (
-                        <div className="mb-3 rounded-sm border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
-                          <div className="flex items-start gap-2">
-                            <FiAlertTriangle className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                                Low-priced sales are currently blocked
-                              </p>
-                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                                {listingDetail?.purchasePreflightMessage}
-                              </p>
-                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                                Buyers currently see an estimated total of{" "}
-                                {formatSol(estimatedBuyerTotal)} SOL, but
-                                purchases will fail until this payout wallet
-                                holds enough SOL.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                       <div className="flex gap-4 text-sm">
                         <span className="text-gray-500 dark:text-gray-400">
                           <span className="inline-flex items-center gap-1">
@@ -1107,8 +974,8 @@ export default function MarketplacePage() {
                         </span>
                         <span className="text-green-600 dark:text-green-400 font-mono">
                           <span className="inline-flex items-center gap-1">
-                            <FiTrendingUp /> {formatSol(revenue)} SOL total (
-                            {formatSol(authorEarnings)} your share)
+                            <FiTrendingUp /> {formatUsdc(revenue)} USDC total (
+                            {formatUsdc(authorEarnings)} your share)
                           </span>
                         </span>
                       </div>
@@ -1122,7 +989,10 @@ export default function MarketplacePage() {
                         </Link>
                         {canPublishVersion && (
                           <Link
-                            href={getAuthorActionHref(detailId, "publish-version")}
+                            href={getAuthorActionHref(
+                              detailId,
+                              "publish-version"
+                            )}
                             className={navButtonInlineClass}
                           >
                             <FiGitCommit className="w-3.5 h-3.5" />

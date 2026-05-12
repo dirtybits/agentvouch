@@ -72,7 +72,6 @@ describe("publish flows", () => {
       name: "Calendar Agent",
       description: "Books meetings",
       tags: ["calendar", "ops"],
-      priceLamports: 1_000_000,
       priceUsdcMicros: "1000000",
       baseUrl: "https://agentvouch.xyz",
       rpcUrl: "https://api.devnet.solana.com",
@@ -143,7 +142,7 @@ describe("publish flows", () => {
 
     const result = await linkSkillListing({
       id: "44e50012-b146-426a-ac0f-1056b14bd1fc",
-      priceLamports: 1_000_000,
+      priceUsdcMicros: "1000000",
       baseUrl: "https://agentvouch.xyz",
       rpcUrl: "https://api.devnet.solana.com",
       keypairPath,

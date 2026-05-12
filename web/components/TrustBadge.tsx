@@ -2,7 +2,7 @@
 
 import { FiShield, FiUsers, FiAlertTriangle, FiUser } from "react-icons/fi";
 import { LiaCoinsSolid } from "react-icons/lia";
-import { formatSolAmount } from "@/lib/pricing";
+import { formatUsdcMicros } from "@/lib/pricing";
 
 export interface TrustData {
   reputationScore: number;
@@ -22,8 +22,8 @@ interface TrustBadgeProps {
   compact?: boolean;
 }
 
-function formatSol(lamports: number): string {
-  return formatSolAmount(lamports);
+function formatUsdc(micros: number): string {
+  return formatUsdcMicros(micros) ?? "0";
 }
 
 export function getAuthorReportStatus(
@@ -77,10 +77,10 @@ export default function TrustBadge({
           {trust.totalVouchesReceived}
         </span>
         <span className="text-gray-500 dark:text-gray-400">
-          Backing {formatSol(trust.totalStakedFor)} SOL
+          Backing {formatUsdc(trust.totalStakedFor)} USDC
         </span>
         <span className="text-gray-500 dark:text-gray-400">
-          Self {formatSol(trust.authorBondLamports)} SOL
+          Self {formatUsdc(trust.authorBondLamports)} USDC
         </span>
         <span className={`flex items-center gap-1 ${authorReports.color}`}>
           <FiAlertTriangle className="w-3.5 h-3.5" />
@@ -115,7 +115,7 @@ export default function TrustBadge({
           <LiaCoinsSolid className="w-4 h-4" />
         </div>
         <div className="text-lg font-bold">
-          {formatSol(trust.totalStakedFor)}
+          {formatUsdc(trust.totalStakedFor)}
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400">Backing</div>
       </div>
@@ -125,13 +125,13 @@ export default function TrustBadge({
           <FiUser className="w-4 h-4" />
         </div>
         <div className="text-lg font-bold">
-          {formatSol(trust.authorBondLamports)}
+          {formatUsdc(trust.authorBondLamports)}
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400">
           Self Stake
         </div>
         <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-          Aggregate stake: {formatSol(trust.totalStakeAtRisk)} SOL
+          Aggregate stake: {formatUsdc(trust.totalStakeAtRisk)} USDC
         </div>
       </div>
 

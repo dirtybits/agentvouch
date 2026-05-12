@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
-import { buildProgram, parseAmountSol } from "../src/cli.js";
+import { buildProgram, parseUsdcAmount } from "../src/cli.js";
 import { formatCreateVouchResult } from "../src/lib/format.js";
 
 function captureHelp(command: Command): string {
@@ -30,30 +30,30 @@ describe("vouch command tree", () => {
     const create = vouch!.commands.find((c) => c.name() === "create")!;
     const help = captureHelp(create);
     expect(help).toContain("--author");
-    expect(help).toContain("--amount-sol");
+    expect(help).toContain("--amount-usdc");
     expect(help).toContain("--keypair");
     expect(help).toContain("agentvouch vouch create --author");
   });
 });
 
-describe("parseAmountSol", () => {
+describe("parseUsdcAmount", () => {
   it("accepts positive amounts", () => {
-    expect(parseAmountSol("0.1")).toBe(0.1);
-    expect(parseAmountSol("1")).toBe(1);
-    expect(parseAmountSol("3.5")).toBe(3.5);
+    expect(parseUsdcAmount("0.1")).toBe("100000");
+    expect(parseUsdcAmount("1")).toBe("1000000");
+    expect(parseUsdcAmount("3.5")).toBe("3500000");
   });
 
   it("rejects zero, negatives, and non-numeric input", () => {
-    expect(() => parseAmountSol("0")).toThrow(/positive SOL amount/);
-    expect(() => parseAmountSol("-1")).toThrow(/positive SOL amount/);
-    expect(() => parseAmountSol("not-a-number")).toThrow(
-      /positive SOL amount/
+    expect(() => parseUsdcAmount("0")).toThrow(/positive USDC amount/);
+    expect(() => parseUsdcAmount("-1")).toThrow(/positive USDC amount/);
+    expect(() => parseUsdcAmount("not-a-number")).toThrow(
+      /positive USDC amount/
     );
   });
 });
 
 describe("formatCreateVouchResult", () => {
-  it("omits lamports and tx when the vouch already exists", () => {
+  it("omits stake amount and tx when the vouch already exists", () => {
     const lines = formatCreateVouchResult({
       vouch: "PDAvouch",
       alreadyExists: true,
@@ -61,20 +61,20 @@ describe("formatCreateVouchResult", () => {
 
     expect(lines).toContain("vouch: PDAvouch");
     expect(lines).toContain("already_exists: yes");
-    expect(lines.some((l) => l.startsWith("lamports:"))).toBe(false);
+    expect(lines.some((l) => l.startsWith("stake_usdc_micros:"))).toBe(false);
     expect(lines.some((l) => l.startsWith("tx:"))).toBe(false);
   });
 
-  it("emits lamports and tx on a fresh vouch", () => {
+  it("emits USDC stake and tx on a fresh vouch", () => {
     const lines = formatCreateVouchResult({
       vouch: "PDAvouch",
       alreadyExists: false,
-      lamports: 100_000_000,
+      stakeUsdcMicros: 1_000_000,
       tx: "txsig",
     });
 
     expect(lines).toContain("already_exists: no");
-    expect(lines).toContain("lamports: 100000000");
+    expect(lines).toContain("stake_usdc_micros: 1000000");
     expect(lines).toContain("tx: txsig");
   });
 });

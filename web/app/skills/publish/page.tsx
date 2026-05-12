@@ -21,13 +21,7 @@ import {
   slugify,
 } from "@/lib/skillDraft";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
-import {
-  PRICING,
-  formatMinPrice,
-  isValidListingPriceLamports,
-  fromLamports,
-  toLamports,
-} from "@/lib/pricing";
+import { formatMinPrice, isValidListingPriceMicros } from "@/lib/pricing";
 import { getErrorMessage } from "@/lib/errors";
 import {
   FiUpload,
@@ -158,7 +152,6 @@ function PublishSkillPageInner() {
   const [tagInput, setTagInput] = useState("");
   const [contact, setContact] = useState("");
   const [usdcPrice, setUsdcPrice] = useState("1");
-  const [price, setPrice] = useState(String(PRICING.SOL.defaultPrice));
   const [showPreview, setShowPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishStep, setPublishStep] = useState<"idle" | "repo" | "chain">(
@@ -254,7 +247,6 @@ function PublishSkillPageInner() {
       return;
     }
 
-    const priceLamports = toLamports(parseFloat(price || "0"));
     const usdcPriceMicros = parseUsdcPriceToMicros(usdcPrice);
     if (!usdcPriceMicros) {
       setResult({
@@ -263,11 +255,12 @@ function PublishSkillPageInner() {
       });
       return;
     }
+    const onChainPriceUsdcMicros = Number(usdcPriceMicros);
 
-    if (!isValidListingPriceLamports(priceLamports)) {
+    if (!isValidListingPriceMicros(onChainPriceUsdcMicros)) {
       setResult({
         success: false,
-        message: `Legacy SOL fallback must be 0 for a free listing or at least ${formatMinPrice()}.`,
+        message: `On-chain USDC price must be 0 for a free listing or at least ${formatMinPrice()}.`,
       });
       return;
     }
@@ -334,7 +327,7 @@ function PublishSkillPageInner() {
           skillUri,
           cleanName,
           cleanDescription,
-          priceLamports
+          onChainPriceUsdcMicros
         );
 
         const onChainAddress = await oracle.getSkillListingPDA(
@@ -383,9 +376,7 @@ function PublishSkillPageInner() {
 
       setResult({
         success: true,
-        message: `Skill published with ${usdcPriceMicros} USDC micros as the primary x402 price and ${fromLamports(
-          priceLamports
-        ).toFixed(3)} SOL as the legacy fallback listing price.`,
+        message: `Skill published with ${usdcPriceMicros} USDC micros as the on-chain price.`,
         id: skillDbId,
       });
 
@@ -925,30 +916,15 @@ function PublishSkillPageInner() {
                 <div className="flex items-center gap-2 mb-1">
                   <FiDollarSign className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                   <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Legacy fallback
+                    Protocol currency
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Kept on-chain for the older SOL `purchaseSkill` path. Do not
-                  set this to `0` unless you intentionally want the listing to
-                  be free for legacy SOL clients.
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  New listings use USDC-native `purchase_skill`. SOL is only
+                  needed for transaction fees, rent, and ATA creation.
                 </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={PRICING.SOL.step}
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="0"
-                    className="w-32 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
-                  />
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    SOL
-                  </span>
-                </div>
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
-                  Minimum paid fallback is {formatMinPrice()}.
+                  Minimum paid listing is {formatMinPrice()}.
                 </p>
               </div>
             </div>

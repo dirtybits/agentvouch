@@ -1,7 +1,7 @@
 import { sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { resolveAuthorTrust } from "@/lib/trust";
-import { fetchOnChainSkillListing, getOnChainPrice } from "@/lib/onchain";
+import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import {
   getConfiguredSolanaChainContext,
   normalizePersistedChainContext,
@@ -20,7 +20,7 @@ type SkillRow = {
   description: string | null;
   chain_context: string | null;
   on_chain_address: string | null;
-  price_lamports?: number;
+  price_usdc_micros?: string | null;
 };
 
 export async function getSkillMetadataSummary(id: string) {
@@ -50,13 +50,13 @@ export async function getSkillMetadataSummary(id: string) {
         "View on-chain trust signals, stake-backed endorsements, and dispute history before installing this agent skill.",
       authorPubkey: String(listing.data.author),
       chainContext: configuredSolanaChainContext,
-      priceLamports: Number(listing.data.priceLamports),
+      priceUsdcMicros: String(listing.data.priceUsdcMicros),
       trustSummary,
     };
   }
 
   const rows = await sql()<SkillRow>`
-    SELECT id, author_pubkey, skill_id, name, description, chain_context, on_chain_address, price_lamports
+    SELECT id, author_pubkey, skill_id, name, description, chain_context, on_chain_address, price_usdc_micros
     FROM skills
     WHERE id = ${id}::uuid
     LIMIT 1
@@ -74,12 +74,12 @@ export async function getSkillMetadataSummary(id: string) {
     identity,
   });
 
-  let priceLamports = skill.price_lamports ?? 0;
+  let priceUsdcMicros = skill.price_usdc_micros ?? null;
   if (skill.on_chain_address) {
-    const listing = await getOnChainPrice(skill.on_chain_address).catch(
+    const listing = await getOnChainUsdcPrice(skill.on_chain_address).catch(
       () => null
     );
-    if (listing) priceLamports = listing.price;
+    if (listing) priceUsdcMicros = listing.priceUsdcMicros;
   }
 
   return {
@@ -90,7 +90,7 @@ export async function getSkillMetadataSummary(id: string) {
       "Inspect the author trust record, stake-backed vouches, and dispute history behind this AI agent skill.",
     authorPubkey: skill.author_pubkey,
     chainContext: normalizePersistedChainContext(skill.chain_context),
-    priceLamports,
+    priceUsdcMicros,
     trustSummary,
   };
 }

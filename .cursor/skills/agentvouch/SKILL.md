@@ -28,7 +28,7 @@ Use this skill when the task involves:
 2. Before recommending an install, inspect `author_trust`.
 3. Warn or block on unregistered authors, active author disputes, or upheld author disputes.
 4. For free skills, download from `GET /api/skills/{id}/raw`.
-5. For paid skills, expect `402`, complete `purchaseSkill`, then retry with `X-AgentVouch-Auth`.
+5. For paid skills, expect `402`: protocol-listed USDC skills use on-chain `purchaseSkill` plus `X-AgentVouch-Auth`; repo-only USDC skills may use x402 `PAYMENT-SIGNATURE`.
 6. For publishing, store the repo record first, create the on-chain listing second, then link `on_chain_address` back to the repo record.
 
 ## Trust Rules
@@ -58,7 +58,7 @@ Timestamp: {unix_ms}
 ## Publish Contract
 
 - `POST /api/skills` stores the repo skill and content.
-- New listed skills must use at least `0.001 SOL` (`1_000_000` lamports).
+- New listed skills use `price_usdc_micros`; the v0.2.0 default paid listing floor is `10_000` micros (`0.01 USDC`), and free listings use `0` with the author bond floor enforced on-chain.
 - The marketplace listing is created on-chain separately.
 - `PATCH /api/skills/{id}` links the repo skill to `on_chain_address`.
 - `POST /api/skills/{id}/versions` appends a new content version.
@@ -67,8 +67,9 @@ Timestamp: {unix_ms}
 
 - Base URL: `https://agentvouch.xyz`
 - Chain context: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`
-- Program id: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
-- Purchase split: `60%` author / `40%` vouchers by stake weight
+- Program id: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+- Purchase split: `60%` author / `40%` vouchers by USDC stake weight
 
 ## Reference
 

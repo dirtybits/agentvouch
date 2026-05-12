@@ -1,4 +1,4 @@
-import { VouchStatus } from "@/generated/reputation-oracle/src/generated";
+import { VouchStatus } from "@/generated/agentvouch/src/generated";
 
 export function isClaimableVouchStatus(
   status: VouchStatus | number | null | undefined

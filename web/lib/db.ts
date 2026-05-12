@@ -5,6 +5,10 @@ import {
   SOLANA_TESTNET_CHAIN_CONTEXT,
   getConfiguredSolanaChainContext,
 } from "@/lib/chains";
+import {
+  AGENTVOUCH_PROTOCOL_VERSION,
+  getAgentVouchProgramId,
+} from "@/lib/protocolMetadata";
 
 type SqlRow = Record<string, unknown>;
 type SqlQuery = {
@@ -42,6 +46,7 @@ export async function initializeDatabase() {
   _initializePromise = (async () => {
   const db = sql();
   const configuredSolanaChainContext = getConfiguredSolanaChainContext();
+  const currentProgramId = getAgentVouchProgramId();
   const chainContextDefault = sqlStringLiteral(
     db,
     configuredSolanaChainContext
@@ -125,6 +130,33 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS on_chain_protocol_version VARCHAR(16)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS on_chain_program_id VARCHAR(44)
+  `;
+
+  await db`
+    UPDATE skills
+    SET
+      on_chain_protocol_version = COALESCE(on_chain_protocol_version, ${AGENTVOUCH_PROTOCOL_VERSION}),
+      on_chain_program_id = COALESCE(on_chain_program_id, ${currentProgramId}),
+      chain_context = COALESCE(NULLIF(chain_context, ''), ${configuredSolanaChainContext})
+    WHERE on_chain_address IS NOT NULL
+      AND price_usdc_micros IS NOT NULL
+  `;
+
+  await db`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_chain_program_address
+    ON skills(chain_context, on_chain_program_id, on_chain_address)
+    WHERE on_chain_address IS NOT NULL
+      AND on_chain_program_id IS NOT NULL
+  `;
+
+  await db`
     CREATE TABLE IF NOT EXISTS usdc_purchase_receipts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       skill_db_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
@@ -138,6 +170,42 @@ export async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(skill_db_id, buyer_pubkey)
     )
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS payment_flow VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(16)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS on_chain_program_id VARCHAR(44)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS on_chain_address VARCHAR(44)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS purchase_pda VARCHAR(44)
+  `;
+
+  await db`
+    UPDATE usdc_purchase_receipts
+    SET payment_flow = COALESCE(payment_flow, 'repo-x402-usdc')
+    WHERE payment_flow IS NULL
   `;
 
   await db`

@@ -17,7 +17,11 @@ type SkillIndexRow = {
   price_lamports?: number | null;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc";
+  payment_flow?:
+    | "free"
+    | "legacy-sol"
+    | "x402-usdc"
+    | "direct-purchase-skill";
   skill_uri?: string | null;
   source?: "repo" | "chain";
   created_at: string;

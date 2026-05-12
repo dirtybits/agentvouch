@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
-import { REPUTATION_ORACLE_PROGRAM_ADDRESS } from "../../../../generated/reputation-oracle/src/generated/programs";
-import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { getConfiguredUsdcMint, getFacilitatorUrl } from "@/lib/x402";
-
-const SOL_NATIVE_MINT = "So11111111111111111111111111111111111111112";
+import {
+  AGENTVOUCH_PROTOCOL_VERSION,
+  getAgentVouchChainContext,
+  getAgentVouchProgramId,
+} from "@/lib/protocolMetadata";
+import { isProtocolX402BridgeEnabled } from "@/lib/x402BridgePoc";
 
 export async function GET() {
-  const chainContext = getConfiguredSolanaChainContext();
+  const chainContext = getAgentVouchChainContext();
+  const bridgeEnabled = isProtocolX402BridgeEnabled();
+
+  if (!bridgeEnabled) {
+    console.info(
+      `[x402-supported] protocol bridge disabled for program=${getAgentVouchProgramId()} chain=${chainContext}`
+    );
+  }
+
   return NextResponse.json({
     schemes: ["exact"],
     networks: [chainContext],
@@ -17,19 +27,28 @@ export async function GET() {
         symbol: "USDC",
         decimals: 6,
         name: "USD Coin",
-        flow: "x402-usdc-direct",
-      },
-      {
-        address: SOL_NATIVE_MINT,
-        symbol: "SOL",
-        decimals: 9,
-        name: "Wrapped SOL",
-        flow: "legacy-purchase-skill",
+        flow: "repo-x402-usdc",
       },
     ],
     program: {
-      id: REPUTATION_ORACLE_PROGRAM_ADDRESS,
+      id: getAgentVouchProgramId(),
+      protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
       instructions: ["purchaseSkill"],
+    },
+    capabilities: {
+      repo_x402_usdc: true,
+      protocol_listed_x402_bridge: bridgeEnabled,
+      protocol_listed_purchase_flow: bridgeEnabled
+        ? "x402-bridge-or-direct-purchase-skill"
+        : "direct-purchase-skill",
+      protocol_listed_message: bridgeEnabled
+        ? "Protocol-listed x402 bridge support is explicitly enabled."
+        : "Protocol-listed paid skills require direct purchase_skill verification; x402 is limited to repo-only/off-chain entitlement flows.",
+    },
+    bridge: {
+      status: bridgeEnabled ? "enabled" : "disabled",
+      feature_flag: "AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED",
+      default_enabled: false,
     },
     facilitator: {
       url: getFacilitatorUrl(),
@@ -39,6 +58,6 @@ export async function GET() {
         settle: "/settle",
       },
     },
-    version: "2.3.0-x402-usdc-direct",
+    version: "2.4.0-usdc-direct-purchase-gated",
   });
 }

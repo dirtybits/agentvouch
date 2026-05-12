@@ -14,6 +14,9 @@ import {
   normalizePersistedChainContext,
 } from "@/lib/chains";
 import {
+  MAX_SKILL_CONTACT_LENGTH,
+  MAX_SKILL_DESCRIPTION_LENGTH,
+  MAX_SKILL_NAME_LENGTH,
   normalizeSkillContact,
   normalizeSkillDescription,
   normalizeSkillName,
@@ -36,6 +39,14 @@ import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { address, createSolanaRpc, isAddress } from "@solana/kit";
 import { getConfiguredUsdcMint } from "@/lib/x402";
+import {
+  AGENTVOUCH_PROTOCOL_VERSION,
+  getAgentVouchProgramId,
+} from "@/lib/protocolMetadata";
+import {
+  getSkillPaymentFlow,
+  normalizeUsdcMicros,
+} from "@/lib/listingContract";
 
 const PAGE_SIZE = 20;
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -59,6 +70,8 @@ type RepoSkillRow = {
   price_lamports?: number | null;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
+  on_chain_protocol_version?: string | null;
+  on_chain_program_id?: string | null;
   contact?: string | null;
   created_at: string;
   updated_at: string;
@@ -77,9 +90,11 @@ type ChainSkillRow = Omit<
   chain_context: string;
   total_downloads: number;
   total_revenue: number;
-  price_lamports: number;
-  price_usdc_micros: null;
-  currency_mint: null;
+  price_lamports: null;
+  price_usdc_micros: string;
+  currency_mint: string | null;
+  on_chain_protocol_version: string;
+  on_chain_program_id: string;
   skill_uri: string | null;
   source: "chain";
 };
@@ -104,10 +119,12 @@ async function fetchOnChainListings(): Promise<ChainSkillRow[]> {
       chain_context: configuredSolanaChainContext,
       total_installs: 0,
       total_downloads: Number(listing.data.totalDownloads),
-      price_lamports: Number(listing.data.priceLamports),
-      price_usdc_micros: null,
-      currency_mint: null,
-      total_revenue: Number(listing.data.totalRevenue),
+      price_lamports: null,
+      price_usdc_micros: String(listing.data.priceUsdcMicros),
+      currency_mint: getConfiguredUsdcMint(),
+      on_chain_protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
+      on_chain_program_id: getAgentVouchProgramId(),
+      total_revenue: Number(listing.data.totalRevenueUsdcMicros),
       created_at: new Date(Number(listing.data.createdAt) * 1000).toISOString(),
       updated_at: new Date(Number(listing.data.updatedAt) * 1000).toISOString(),
       source: "chain" as const,
@@ -132,10 +149,13 @@ function mergeSkills(
         s.source === "repo" && s.on_chain_address === chain.on_chain_address
     );
     if (existing) {
-      existing.price_lamports = chain.price_lamports;
+      existing.price_usdc_micros ??= chain.price_usdc_micros;
       existing.total_downloads = chain.total_downloads;
       existing.total_revenue = chain.total_revenue;
       existing.skill_uri = chain.skill_uri;
+      existing.on_chain_protocol_version ??= chain.on_chain_protocol_version;
+      existing.on_chain_program_id ??= chain.on_chain_program_id;
+      existing.currency_mint ??= chain.currency_mint;
     } else {
       merged.push(chain);
     }
@@ -179,9 +199,12 @@ export async function GET(request: NextRequest) {
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
     const q = searchParams.get("q");
-    const sort = searchParams.get("sort") || "newest";
+    const sort = searchParams.get("sort") || "trusted";
     const author = searchParams.get("author");
     const buyer = searchParams.get("buyer");
+    const includeBuyerStatus =
+      searchParams.get("buyerStatus") === "1" ||
+      searchParams.get("includeBuyerStatus") === "true";
     const tags = searchParams.get("tags");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
@@ -266,14 +289,17 @@ export async function GET(request: NextRequest) {
     const enriched = allSkills.map((skill) => {
       const authorTrust = trustMap.get(skill.author_pubkey) || null;
       const authorIdentity = identityMap.get(skill.author_pubkey) || null;
+      const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
 
       return {
         ...skill,
-        payment_flow: skill.price_usdc_micros
-          ? "x402-usdc"
-          : (skill.price_lamports ?? 0) > 0
-          ? "legacy-sol"
-          : "free",
+        price_usdc_micros: priceUsdcMicros,
+        payment_flow: getSkillPaymentFlow({
+          priceUsdcMicros,
+          onChainAddress: skill.on_chain_address,
+          legacySolLamports: skill.price_lamports,
+          allowLegacySol: true,
+        }),
         author_trust: authorTrust,
         author_trust_summary: authorTrust
           ? buildAgentTrustSummary({
@@ -311,46 +337,55 @@ export async function GET(request: NextRequest) {
     const total = enriched.length;
     const offset = (page - 1) * PAGE_SIZE;
     const paged = enriched.slice(offset, offset + PAGE_SIZE);
-    const buyerAddress = buyer && isAddress(buyer) ? address(buyer) : null;
+    const buyerAddress =
+      includeBuyerStatus && buyer && isAddress(buyer) ? address(buyer) : null;
+    const usdcMint = address(getConfiguredUsdcMint());
     const preflightContext = await createPurchasePreflightContext({
       rpc,
       buyer: buyerAddress,
-      authors: paged
-        .filter(
-          (skill) => !skill.price_usdc_micros && (skill.price_lamports ?? 0) > 0
-        )
-        .map((skill) => skill.author_pubkey)
-        .filter(isAddress)
-        .map((pubkey) => address(pubkey)),
+      usdcMint,
+      authors: paged.map((skill) => address(skill.author_pubkey)),
     });
     const pagedWithPricing = await Promise.all(
       paged.map(async (skill) => {
-        const creatorPriceLamports = skill.price_usdc_micros
-          ? 0n
-          : BigInt(skill.price_lamports ?? 0);
+        const creatorPriceUsdcMicros = normalizeUsdcMicros(
+          skill.price_usdc_micros
+        );
         const preflight = serializePurchasePreflight(
           assessPurchasePreflight({
             context: preflightContext,
-            priceLamports: creatorPriceLamports,
-            author: !skill.price_usdc_micros && isAddress(skill.author_pubkey)
-              ? address(skill.author_pubkey)
-              : null,
+            priceUsdcMicros: creatorPriceUsdcMicros
+              ? BigInt(creatorPriceUsdcMicros)
+              : 0n,
+            author: address(skill.author_pubkey),
+            authorBackingUsdcMicros:
+              skill.on_chain_address && creatorPriceUsdcMicros
+                ? BigInt(skill.author_trust?.totalStakeAtRisk ?? 0)
+                : null,
           })
         );
         const buyerHasPurchased = buyerAddress
-          ? skill.price_usdc_micros
-            ? skill.source === "repo"
+          ? creatorPriceUsdcMicros
+            ? skill.source === "repo" && !skill.on_chain_address
               ? await hasUsdcPurchaseEntitlement(
                   skill.id,
                   String(buyerAddress)
                 ).catch(() => false)
-              : false
-            : skill.on_chain_address && (skill.price_lamports ?? 0) > 0
+              : skill.on_chain_address
               ? await hasOnChainPurchase(
                   String(buyerAddress),
                   String(skill.on_chain_address)
                 ).catch(() => false)
               : false
+            : getSkillPaymentFlow({
+                legacySolLamports: skill.price_lamports,
+                allowLegacySol: true,
+              }) === "legacy-sol" && skill.on_chain_address
+            ? await hasOnChainPurchase(
+                String(buyerAddress),
+                String(skill.on_chain_address)
+              ).catch(() => false)
+            : false
           : false;
         return {
           ...skill,
@@ -372,7 +407,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": buyer
+          "Cache-Control": buyerAddress
             ? PRIVATE_NO_STORE_CACHE_CONTROL
             : buildPublicCacheControl(
                 PUBLIC_ROUTE_CACHE_SECONDS.skillsList,
@@ -403,19 +438,18 @@ export async function POST(request: NextRequest) {
       contact,
       price_usdc_micros,
       currency_mint,
-    } =
-      body as {
-        auth: AuthPayload;
-        skill_id: string;
-        name: string;
-        description?: string;
-        tags?: string[];
-        content: string;
-        contact?: string;
-        chain_context?: string;
-        price_usdc_micros?: string | number;
-        currency_mint?: string;
-      };
+    } = body as {
+      auth: AuthPayload;
+      skill_id: string;
+      name: string;
+      description?: string;
+      tags?: string[];
+      content: string;
+      contact?: string;
+      chain_context?: string;
+      price_usdc_micros?: string | number;
+      currency_mint?: string;
+    };
 
     if (!auth || !skill_id || !name || !content) {
       return NextResponse.json(
@@ -433,6 +467,29 @@ export async function POST(request: NextRequest) {
     }
 
     const authorPubkey = verification.pubkey!;
+
+    const fieldByteLimits: Array<{
+      field: string;
+      value: string | undefined;
+      max: number;
+    }> = [
+      { field: "name", value: name, max: MAX_SKILL_NAME_LENGTH },
+      { field: "description", value: description, max: MAX_SKILL_DESCRIPTION_LENGTH },
+      { field: "contact", value: contact, max: MAX_SKILL_CONTACT_LENGTH },
+    ];
+    for (const { field, value, max } of fieldByteLimits) {
+      if (typeof value !== "string") continue;
+      const bytes = Buffer.byteLength(value, "utf8");
+      if (bytes > max) {
+        return NextResponse.json(
+          {
+            error: `${field} is ${bytes} bytes, exceeds on-chain cap of ${max} bytes`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const normalizedName = normalizeSkillName(name);
     const normalizedDescription = description
       ? normalizeSkillDescription(description)

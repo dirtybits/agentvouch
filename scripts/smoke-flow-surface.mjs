@@ -34,7 +34,9 @@ async function ensureCliBuilt() {
 async function fetchJson(url, label) {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`${label} failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `${label} failed: ${response.status} ${response.statusText}`
+    );
   }
 
   return response.json();
@@ -51,6 +53,16 @@ async function runCliJson(args, label) {
   }
 
   return JSON.parse(stdout);
+}
+
+function isFreeSkill(skill) {
+  const usdcPrice = BigInt(skill.price_usdc_micros ?? "0");
+  const historicalSolPrice = BigInt(skill.price_lamports ?? 0);
+
+  return (
+    skill.payment_flow === "free" ||
+    (usdcPrice === 0n && historicalSolPrice === 0n)
+  );
 }
 
 async function createPublishFixture() {
@@ -85,7 +97,15 @@ async function runOptionalLivePublishSmoke() {
   const skillId = `smoke-live-${Date.now()}`;
 
   await runCliJson(
-    ["author", "register", "--keypair", keypairPath, "--rpc-url", rpcUrl, "--json"],
+    [
+      "author",
+      "register",
+      "--keypair",
+      keypairPath,
+      "--rpc-url",
+      rpcUrl,
+      "--json",
+    ],
     "cli author register"
   );
 
@@ -126,15 +146,41 @@ async function runOptionalLivePublishSmoke() {
 async function main() {
   await ensureCliBuilt();
 
-  const list = await fetchJson(`${baseUrl}/api/skills?sort=newest`, "skills list");
-  assert(Array.isArray(list.skills), "Skills list did not return a skills array.");
+  const list = await fetchJson(
+    `${baseUrl}/api/skills?sort=newest`,
+    "skills list"
+  );
+  assert(
+    Array.isArray(list.skills),
+    "Skills list did not return a skills array."
+  );
   assert(list.skills.length > 0, "Skills list returned no skills to inspect.");
 
   const repoSkill =
     list.skills.find((skill) => skill.source !== "chain") ?? list.skills[0];
   assert(repoSkill?.id, "Could not find a skill id for smoke checks.");
+  let installSkill = null;
+  for (const candidate of list.skills.filter(
+    (skill) => skill.source !== "chain"
+  )) {
+    const candidateDetail = await fetchJson(
+      `${baseUrl}/api/skills/${candidate.id}`,
+      `install candidate ${candidate.id}`
+    );
+    if (isFreeSkill(candidateDetail) && !candidateDetail.on_chain_address) {
+      installSkill = candidateDetail;
+      break;
+    }
+  }
+  assert(
+    installSkill?.id,
+    "Could not find a free repo skill for install dry-run."
+  );
 
-  const detail = await fetchJson(`${baseUrl}/api/skills/${repoSkill.id}`, "skill inspect");
+  const detail = await fetchJson(
+    `${baseUrl}/api/skills/${repoSkill.id}`,
+    "skill inspect"
+  );
   assert(detail.id === repoSkill.id, "Skill inspect returned the wrong id.");
   assert(detail.author_pubkey, "Skill detail is missing author_pubkey.");
   assert(
@@ -161,8 +207,14 @@ async function main() {
   const openapi = await fetchJson(`${baseUrl}/openapi.json`, "openapi");
   assert(openapi.paths?.["/api/skills"], "OpenAPI is missing /api/skills.");
 
-  const indexSkills = await fetchJson(`${baseUrl}/api/index/skills`, "index skills");
-  assert(Array.isArray(indexSkills.skills), "Index skills response is malformed.");
+  const indexSkills = await fetchJson(
+    `${baseUrl}/api/index/skills`,
+    "index skills"
+  );
+  assert(
+    Array.isArray(indexSkills.skills),
+    "Index skills response is malformed."
+  );
 
   const cliList = await runCliJson(
     ["skill", "list", "--base-url", baseUrl, "--json"],
@@ -174,13 +226,16 @@ async function main() {
     ["skill", "inspect", repoSkill.id, "--base-url", baseUrl, "--json"],
     "cli inspect"
   );
-  assert(cliInspect.id === repoSkill.id, "CLI inspect returned the wrong skill.");
+  assert(
+    cliInspect.id === repoSkill.id,
+    "CLI inspect returned the wrong skill."
+  );
 
   const installDryRun = await runCliJson(
     [
       "skill",
       "install",
-      repoSkill.id,
+      installSkill.id,
       "--out",
       path.join(os.tmpdir(), "agentvouch-smoke-install.md"),
       "--dry-run",
@@ -209,8 +264,8 @@ async function main() {
       "Publish dry-run verification",
       "--keypair",
       publishFixture.keypairPath,
-      "--price-lamports",
-      "1000000",
+      "--price-usdc",
+      "1",
       "--base-url",
       baseUrl,
       "--rpc-url",
@@ -220,7 +275,10 @@ async function main() {
     ],
     "cli publish dry-run"
   );
-  assert(publishDryRun.mode === "dry-run", "CLI publish dry-run did not succeed.");
+  assert(
+    publishDryRun.mode === "dry-run",
+    "CLI publish dry-run did not succeed."
+  );
 
   await runOptionalLivePublishSmoke();
 

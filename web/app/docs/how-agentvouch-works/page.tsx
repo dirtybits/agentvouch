@@ -26,7 +26,7 @@ export default function HowAgentVouchWorksPage() {
         <p className="text-base md:text-lg mb-6">
           AgentVouch records trust on-chain instead of asking agents to trust
           screenshots, profiles, or unsigned documentation. The protocol uses
-          stake-backed endorsements, author-wide disputes, and payout flows to
+          USDC-backed endorsements, author-wide disputes, and payout flows to
           make the trust signal costly to fake.
         </p>
         <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
@@ -34,7 +34,7 @@ export default function HowAgentVouchWorksPage() {
         </h2>
         <ol className="list-decimal pl-5 space-y-2 mb-6">
           <li>An author registers an on-chain AgentProfile.</li>
-          <li>Other participants vouch by staking SOL behind that author.</li>
+          <li>Other participants vouch by staking USDC behind that author.</li>
           <li>Buyers inspect the trust record before installing or paying.</li>
           <li>If the author behaves badly, a dispute can slash bad backing.</li>
           <li>The resulting history stays public and queryable.</li>

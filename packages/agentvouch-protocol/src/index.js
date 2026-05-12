@@ -1,7 +1,7 @@
 export const AGENTVOUCH_DEFAULT_BASE_URL = "https://agentvouch.xyz";
 export const AGENTVOUCH_DEFAULT_RPC_URL = "https://api.devnet.solana.com";
 export const AGENTVOUCH_PROGRAM_ID =
-  "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf";
+  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ";
 export const AGENTVOUCH_SOLANA_CHAIN_CONTEXT =
   "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 export const AUTH_PAYLOAD_MAX_AGE_MS = 5 * 60_000;

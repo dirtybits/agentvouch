@@ -1,4 +1,11 @@
 export const PRICING = {
+  USDC: {
+    symbol: "USDC",
+    decimals: 6,
+    minPrice: 0.01,
+    defaultPrice: 0.01,
+    step: 0.001,
+  },
   SOL: {
     symbol: "SOL",
     decimals: 9,
@@ -10,7 +17,7 @@ export const PRICING = {
 
 export type CurrencyKey = keyof typeof PRICING;
 
-export const DEFAULT_CURRENCY: CurrencyKey = "SOL";
+export const DEFAULT_CURRENCY: CurrencyKey = "USDC";
 
 export function formatMinPrice(
   currency: CurrencyKey = DEFAULT_CURRENCY
@@ -21,7 +28,9 @@ export function formatMinPrice(
 export function getMinPriceLamports(
   currency: CurrencyKey = DEFAULT_CURRENCY
 ): number {
-  return toLamports(PRICING[currency].minPrice);
+  return currency === "SOL"
+    ? toLamports(PRICING.SOL.minPrice)
+    : toUsdcMicros(PRICING.USDC.minPrice);
 }
 
 export function isValidListingPriceLamports(
@@ -31,6 +40,13 @@ export function isValidListingPriceLamports(
   return (
     Number.isFinite(lamports) &&
     (lamports === 0 || lamports >= getMinPriceLamports(currency))
+  );
+}
+
+export function isValidListingPriceMicros(micros: number): boolean {
+  return (
+    Number.isFinite(micros) &&
+    (micros === 0 || micros >= getMinPriceLamports("USDC"))
   );
 }
 
@@ -47,7 +63,7 @@ export function formatSolAmount(
 }
 
 export function formatUsdcMicros(
-  micros: string | null | undefined
+  micros: string | number | bigint | null | undefined
 ): string | null {
   if (!micros) return null;
   try {
@@ -67,4 +83,12 @@ export function toLamports(sol: number): number {
 
 export function fromLamports(lamports: number): number {
   return lamports / 10 ** PRICING.SOL.decimals;
+}
+
+export function toUsdcMicros(usdc: number): number {
+  return Math.round(usdc * 10 ** PRICING.USDC.decimals);
+}
+
+export function fromUsdcMicros(micros: number): number {
+  return micros / 10 ** PRICING.USDC.decimals;
 }

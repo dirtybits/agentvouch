@@ -5,8 +5,8 @@ import {
   getSkillListingDecoder,
   SKILL_LISTING_DISCRIMINATOR,
   type SkillListing,
-} from "../generated/reputation-oracle/src/generated";
-import { REPUTATION_ORACLE_PROGRAM_ADDRESS } from "../generated/reputation-oracle/src/generated/programs";
+} from "../generated/agentvouch/src/generated";
+import { AGENTVOUCH_PROGRAM_ADDRESS } from "../generated/agentvouch/src/generated/programs";
 import { IN_MEMORY_CACHE_TTL_MS } from "./cachePolicy";
 import { DEFAULT_SOLANA_RPC_URL } from "./solanaRpc";
 import { getOrPopulateMemoryCache } from "./serverCache";
@@ -15,6 +15,7 @@ const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const asBase64 = (bytes: Uint8Array) =>
   Buffer.from(bytes).toString("base64") as Base64EncodedBytes;
 const ALL_LISTINGS_CACHE_KEY = "all-skill-listings";
+export const SKILL_LISTING_ACCOUNT_SIZE = 859;
 const listingCache = new Map<
   string,
   { value: OnChainSkillListingRecord | null; expiresAt: number }
@@ -29,11 +30,15 @@ export type OnChainSkillListingRecord = {
   data: SkillListing;
 };
 
+export function isCurrentSkillListingAccountData(data: Uint8Array): boolean {
+  return data.length === SKILL_LISTING_ACCOUNT_SIZE;
+}
+
 async function loadAllOnChainSkillListings(): Promise<
   OnChainSkillListingRecord[]
 > {
   const accounts = await rpc
-    .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+    .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
       encoding: "base64",
       filters: [
         {
@@ -48,12 +53,19 @@ async function loadAllOnChainSkillListings(): Promise<
     .send();
 
   const decoder = getSkillListingDecoder();
-  const listings = accounts.map((account) => ({
-    publicKey: account.pubkey,
-    data: decoder.decode(
-      new Uint8Array(Buffer.from(account.account.data[0], "base64"))
-    ),
-  }));
+  const listings = accounts.flatMap((account) => {
+    const data = new Uint8Array(Buffer.from(account.account.data[0], "base64"));
+    if (!isCurrentSkillListingAccountData(data)) {
+      return [];
+    }
+
+    return [
+      {
+        publicKey: account.pubkey,
+        data: decoder.decode(data),
+      },
+    ];
+  });
 
   const expiresAt = Date.now() + IN_MEMORY_CACHE_TTL_MS.onChainListings;
   for (const listing of listings) {
@@ -122,15 +134,15 @@ export async function fetchOnChainSkillListing(
   );
 }
 
-export async function getOnChainPrice(
+export async function getOnChainUsdcPrice(
   onChainAddress: string
-): Promise<{ price: number; author: string } | null> {
+): Promise<{ priceUsdcMicros: string; author: string } | null> {
   try {
     const listing = await fetchOnChainSkillListing(onChainAddress);
     if (!listing) return null;
 
     return {
-      price: Number(listing.data.priceLamports),
+      priceUsdcMicros: String(listing.data.priceUsdcMicros),
       author: listing.data.author as string,
     };
   } catch {

@@ -6,6 +6,7 @@ import {
   PUBLIC_ROUTE_STALE_SECONDS,
 } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
+import { getSkillPaymentFlow } from "@/lib/listingContract";
 
 type RepoListingActivityRow = {
   id: string;
@@ -14,6 +15,10 @@ type RepoListingActivityRow = {
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
+  on_chain_protocol_version: string | null;
+  on_chain_program_id: string | null;
+  chain_context: string | null;
+  created_at: string;
 };
 
 type UsdcPurchaseActivityRow = {
@@ -27,6 +32,11 @@ type UsdcPurchaseActivityRow = {
   author_pubkey: string;
   on_chain_address: string | null;
   price_usdc_micros: string | null;
+  payment_flow: string | null;
+  protocol_version: string | null;
+  on_chain_program_id: string | null;
+  chain_context: string | null;
+  purchase_pda: string | null;
 };
 
 export async function GET() {
@@ -41,9 +51,15 @@ export async function GET() {
           author_pubkey,
           on_chain_address,
           price_usdc_micros,
-          currency_mint
+          currency_mint,
+          on_chain_protocol_version,
+          on_chain_program_id,
+          chain_context,
+          created_at::text AS created_at
         FROM skills
         WHERE on_chain_address IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 20
       `,
       sql()<UsdcPurchaseActivityRow>`
         SELECT
@@ -56,7 +72,12 @@ export async function GET() {
           s.name AS skill_name,
           s.author_pubkey,
           s.on_chain_address,
-          s.price_usdc_micros
+          s.price_usdc_micros,
+          r.payment_flow,
+          r.protocol_version,
+          r.on_chain_program_id,
+          r.chain_context,
+          r.purchase_pda
         FROM usdc_purchase_receipts r
         INNER JOIN skills s
           ON s.id = r.skill_db_id
@@ -69,7 +90,10 @@ export async function GET() {
       {
         repoListings: repoListings.map((skill) => ({
           ...skill,
-          payment_flow: skill.price_usdc_micros ? "x402-usdc" : "free",
+          payment_flow: getSkillPaymentFlow({
+            priceUsdcMicros: skill.price_usdc_micros,
+            onChainAddress: skill.on_chain_address,
+          }),
         })),
         usdcPurchases,
       },

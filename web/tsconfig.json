@@ -32,6 +32,6 @@
   ],
   "exclude": [
     "node_modules",
-    "generated/reputation-oracle/src/generated/programs/reputationOracle.ts"
+    "generated/agentvouch/src/generated/programs/agentvouch.ts"
   ]
 }

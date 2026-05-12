@@ -8,11 +8,13 @@ Rendered `.pptx` decks that describe the AgentVouch product and architecture. Ke
 |------|---------|------------------|
 | `AgentVouch_walkthrough.pptx` | Coral Terminal (canonical hybrid — coral title + light content + dark code) | Yes — edit this one |
 | `AgentVouch_walkthrough.paper.pptx` | Coral Paper (fully light, same content) | No — regenerate via `themes/recolor_to_paper.py` |
+| `AgentVouch_walkthrough.no-notes.pptx` | Coral Terminal, speaker notes removed | No — regenerate via `themes/remove_speaker_notes.py` |
 
 The Paper variant is produced by a color-substitution script, not hand-edited. If you change the canonical deck, regenerate Paper (and any future Midnight variant) so they stay in sync:
 
 ```bash
 python3 themes/recolor_to_paper.py   # writes AgentVouch_walkthrough.paper.pptx
+python3 themes/remove_speaker_notes.py # writes AgentVouch_walkthrough.no-notes.pptx
 ```
 
 ## Theme system
@@ -22,14 +24,14 @@ All three AgentVouch theme variants (Coral Terminal, Coral Paper, Coral Midnight
 ## Editing workflow
 
 1. Open `AgentVouch_walkthrough.pptx` in PowerPoint, Keynote, or import to Google Slides.
-2. Edit content. Keep numbers, instruction names, and account names tightly aligned with the current codebase (`programs/reputation-oracle/` and `target/idl/`).
+2. Edit content. Keep numbers, instruction names, and account names tightly aligned with the current codebase (`programs/agentvouch/` and `target/idl/`).
 3. Export as `.pptx`, replacing the canonical file in place.
 4. Re-run the Paper recolor script if you want the light variant updated too.
 5. Commit both files in the same PR as the code change that motivated the edit.
 
 ## Why in-repo and not Google Drive?
 
-Co-versioning. Slide 15 lists "8 on-chain accounts / 15 instructions" — those facts come from the Anchor program. Keeping the deck next to the code means:
+Co-versioning. The architecture appendix lists the current Anchor account structs and instructions — those facts come from the Anchor program. Keeping the deck next to the code means:
 
 - One PR updates both
 - `git blame` on a slide shows when architecture moved

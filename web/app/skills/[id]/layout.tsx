@@ -22,7 +22,7 @@ export async function generateMetadata({
   return buildMetadata({
     title: `${skill.name} Trust Record`,
     description: truncateDescription(
-      `${skill.description} Author recommendation: ${skill.trustSummary.recommended_action}. ${skill.trustSummary.totalStakedFor} lamports staked behind this author.`
+      `${skill.description} Author recommendation: ${skill.trustSummary.recommended_action}. ${skill.trustSummary.totalStakedFor} USDC micros of trust capital behind this author.`
     ),
     path: `/skills/${id}`,
     keywords: [

@@ -17,7 +17,7 @@ describe("AgentVouchSolanaClient", () => {
     vi.restoreAllMocks();
   });
 
-  it("converts publish lamports through a live BN path", async () => {
+  it("converts publish USDC micros through a live BN path", async () => {
     const client = new AgentVouchSolanaClient(
       Keypair.generate(),
       "https://api.devnet.solana.com"
@@ -35,11 +35,11 @@ describe("AgentVouchSolanaClient", () => {
       skillUri: "https://agentvouch.xyz/api/skills/test/raw",
       name: "Calendar Agent",
       description: "Books meetings",
-      priceLamports: 1_000_000,
+      priceUsdcMicros: 10_000,
     });
 
     expect(createSkillListing).toHaveBeenCalledTimes(1);
-    expect(createSkillListing.mock.calls[0]?.[4]?.toString()).toBe("1000000");
+    expect(createSkillListing.mock.calls[0]?.[4]?.toString()).toBe("10000");
   });
 
   it("rejects unsupported paid listing prices before sending", async () => {
@@ -57,13 +57,15 @@ describe("AgentVouchSolanaClient", () => {
         skillUri: "https://agentvouch.xyz/api/skills/test/raw",
         name: "Calendar Agent",
         description: "Books meetings",
-        priceLamports: 1,
+        priceUsdcMicros: 1,
       })
-    ).rejects.toThrow("priceLamports must be 0 or at least 1000000 lamports.");
+    ).rejects.toThrow(
+      "priceUsdcMicros must be 0 or at least 10000 micro-USDC."
+    );
     expect(createSkillListing).not.toHaveBeenCalled();
   });
 
-  it("converts vouch SOL amounts into lamports through the same BN path", async () => {
+  it("converts vouch USDC micros through the same BN path", async () => {
     const client = new AgentVouchSolanaClient(
       Keypair.generate(),
       "https://api.devnet.solana.com"
@@ -76,10 +78,13 @@ describe("AgentVouchSolanaClient", () => {
     vi.spyOn(client, "accountExists").mockResolvedValue(false);
     setMockProgram(client, { vouch });
 
-    const result = await client.vouch(Keypair.generate().publicKey.toBase58(), 0.1);
+    const result = await client.vouch(
+      Keypair.generate().publicKey.toBase58(),
+      1_000_000
+    );
 
     expect(vouch).toHaveBeenCalledTimes(1);
-    expect(vouch.mock.calls[0]?.[0]?.toString()).toBe("100000000");
-    expect(result.lamports).toBe(100000000);
+    expect(vouch.mock.calls[0]?.[0]?.toString()).toBe("1000000");
+    expect(result.stakeUsdcMicros).toBe(1000000);
   });
 });

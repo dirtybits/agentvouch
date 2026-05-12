@@ -26,28 +26,7 @@ import { loadKeypair } from "./lib/signer.js";
 import { AgentVouchSolanaClient } from "./lib/solana.js";
 import { updateSkill } from "./lib/update.js";
 
-export const MIN_SKILL_PRICE_LAMPORTS = 1_000_000;
-
-export function parseLamports(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || !Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new Error("Expected a non-negative integer lamport amount.");
-  }
-  if (parsed !== 0 && parsed < MIN_SKILL_PRICE_LAMPORTS) {
-    throw new Error(
-      `Expected 0 or at least ${MIN_SKILL_PRICE_LAMPORTS} lamports.`
-    );
-  }
-  return parsed;
-}
-
-export function parseAmountSol(value: string): number {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("Expected a positive SOL amount.");
-  }
-  return parsed;
-}
+export const MIN_SKILL_PRICE_USDC_MICROS = 10_000n;
 
 export function parseUsdcAmount(value: string): string {
   const normalized = value.trim();
@@ -61,6 +40,22 @@ export function parseUsdcAmount(value: string): string {
   }
 
   return micros;
+}
+
+export function parseUsdcListingPrice(value: string): string {
+  const normalized = value.trim();
+  if (!/^\d+(\.\d{1,6})?$/.test(normalized)) {
+    throw new Error("Expected a USDC amount with up to 6 decimals.");
+  }
+
+  const micros = BigInt(convertToTokenAmount(normalized, 6));
+  if (micros !== 0n && micros < MIN_SKILL_PRICE_USDC_MICROS) {
+    throw new Error(
+      `Expected 0 or at least 0.01 USDC (${MIN_SKILL_PRICE_USDC_MICROS.toString()} micro-USDC).`
+    );
+  }
+
+  return micros.toString();
 }
 
 export function parsePage(value: string): number {
@@ -333,9 +328,11 @@ addRpcUrlOption(
               `mode: ${result.mode}`,
               `output: ${result.outputPath}`,
               `metadata: ${result.metadataPath}`,
-              `price_lamports: ${result.priceLamports}`,
               ...(result.priceUsdcMicros
                 ? [`price_usdc_micros: ${result.priceUsdcMicros}`]
+                : []),
+              ...(result.legacySolBaseUnits
+                ? [`historical_sol_price_base_units: ${result.legacySolBaseUnits}`]
                 : []),
               ...(result.listingAddress
                 ? [`listing: ${result.listingAddress}`]
@@ -433,15 +430,9 @@ addRpcUrlOption(
       .option("--tags <csv>", "Comma-separated tags", "")
       .option(
         "--price-usdc <amount>",
-        "USDC price for the primary x402 flow",
-        parseUsdcAmount,
-        parseUsdcAmount("1")
-      )
-      .option(
-        "--price-lamports <lamports>",
-        "Legacy SOL fallback listing price in lamports",
-        parseLamports,
-        1_000_000
+        "USDC price for repo metadata and the on-chain v0.2 listing; use 0 for a free listing",
+        parseUsdcListingPrice,
+        parseUsdcListingPrice("1")
       )
       .option(
         "--dry-run",
@@ -450,7 +441,7 @@ addRpcUrlOption(
       .option("--json", "Print structured JSON output")
       .addHelpText(
         "after",
-        '\nExamples:\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 2.5 --price-lamports 1000000 --keypair ~/.config/solana/id.json --dry-run'
+        '\nExamples:\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json --dry-run'
       )
       .action(
         async (options: {
@@ -462,7 +453,6 @@ addRpcUrlOption(
           contact?: string;
           tags: string;
           priceUsdc: string;
-          priceLamports: number;
           dryRun?: boolean;
           baseUrl: string;
           rpcUrl: string;
@@ -483,7 +473,6 @@ addRpcUrlOption(
                   .map((tag) => tag.trim())
                   .filter(Boolean),
                 priceUsdcMicros: options.priceUsdc,
-                priceLamports: options.priceLamports,
                 dryRun: options.dryRun,
                 baseUrl: resolveBaseUrl(options.baseUrl),
                 rpcUrl: resolveRpcUrl(options.rpcUrl),
@@ -495,7 +484,6 @@ addRpcUrlOption(
                     `repo_skill_id: ${result.repoRequest.skill_id}`,
                     `listing: ${result.onChainListing.address}`,
                     `price_usdc_micros: ${result.repoRequest.price_usdc_micros}`,
-                    `price_lamports: ${result.onChainListing.priceLamports}`,
                     "dry_run: true",
                   ]
                 : [
@@ -522,10 +510,10 @@ addBaseUrlOption(
       .argument("<id>", "Repo skill UUID to link to an on-chain SkillListing")
       .requiredOption("--keypair <file>", "Author Solana keypair JSON file")
       .option(
-        "--price-lamports <lamports>",
-        "Legacy SOL fallback listing price in lamports",
-        parseLamports,
-        1_000_000
+        "--price-usdc <amount>",
+        "USDC price for the on-chain v0.2 listing; use 0 for a free listing",
+        parseUsdcListingPrice,
+        parseUsdcListingPrice("1")
       )
       .option(
         "--dry-run",
@@ -534,14 +522,14 @@ addBaseUrlOption(
       .option("--json", "Print structured JSON output")
       .addHelpText(
         "after",
-        "\nExamples:\n  agentvouch skill link-listing 595f5534-07ae-4839-a45a-b6858ab731fe --price-lamports 1000000 --keypair ~/.config/solana/id.json\n  agentvouch skill link-listing 595f5534-07ae-4839-a45a-b6858ab731fe --dry-run --json --keypair ~/.config/solana/id.json"
+        "\nExamples:\n  agentvouch skill link-listing 595f5534-07ae-4839-a45a-b6858ab731fe --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill link-listing 595f5534-07ae-4839-a45a-b6858ab731fe --price-usdc 0 --dry-run --json --keypair ~/.config/solana/id.json"
       )
       .action(
         async (
           id: string,
           options: {
             keypair: string;
-            priceLamports: number;
+            priceUsdc: string;
             dryRun?: boolean;
             baseUrl: string;
             rpcUrl: string;
@@ -554,7 +542,7 @@ addBaseUrlOption(
               linkSkillListing({
                 id,
                 keypairPath: options.keypair,
-                priceLamports: options.priceLamports,
+                priceUsdcMicros: options.priceUsdc,
                 dryRun: options.dryRun,
                 baseUrl: resolveBaseUrl(options.baseUrl),
                 rpcUrl: resolveRpcUrl(options.rpcUrl),
@@ -564,7 +552,7 @@ addBaseUrlOption(
               `repo_id: ${result.repoSkillId}`,
               `listing: ${result.listingAddress}`,
               `skill_uri: ${result.skillUri}`,
-              `price_lamports: ${result.priceLamports}`,
+              `price_usdc_micros: ${result.priceUsdcMicros}`,
               ...(result.createListingTx
                 ? [`create_listing_tx: ${result.createListingTx}`]
                 : []),
@@ -644,27 +632,27 @@ registerAgentTrustCommand(author, "author");
 
 const vouch = program
   .command("vouch")
-  .description("Create stake-backed vouches.");
+  .description("Create USDC-backed vouches.");
 
 addRpcUrlOption(
   vouch
     .command("create")
     .requiredOption("--author <pubkey>", "Author wallet pubkey to vouch for")
     .requiredOption(
-      "--amount-sol <amount>",
-      "SOL amount to stake",
-      parseAmountSol
+      "--amount-usdc <amount>",
+      "USDC amount to stake",
+      parseUsdcAmount
     )
     .requiredOption("--keypair <file>", "Solana keypair JSON file")
     .option("--json", "Print structured JSON output")
     .addHelpText(
       "after",
-      "\nExamples:\n  agentvouch vouch create --author asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw --amount-sol 0.1 --keypair ~/.config/solana/id.json"
+      "\nExamples:\n  agentvouch vouch create --author asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw --amount-usdc 1 --keypair ~/.config/solana/id.json"
     )
     .action(
       async (options: {
         author: string;
-        amountSol: number;
+        amountUsdc: string;
         keypair: string;
         rpcUrl: string;
         json?: boolean;
@@ -677,7 +665,7 @@ addRpcUrlOption(
               keypair,
               resolveRpcUrl(options.rpcUrl)
             );
-            return solana.vouch(options.author, options.amountSol);
+            return solana.vouch(options.author, BigInt(options.amountUsdc));
           },
           formatCreateVouchResult
         );

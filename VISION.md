@@ -85,7 +85,7 @@ The community thread that followed was one of the most substantive technical dis
 
 One commenter put it plainly: *"Right now the economics favor attackers. Free to publish, free to install, expensive to audit."*
 
-AgentVouch inverts that. Vouching costs SOL. Wrong vouches get slashed. The economics now favor honest auditors.
+AgentVouch inverts that. Vouching requires USDC trust capital. Wrong vouches get slashed. The economics now favor honest auditors.
 
 ---
 
@@ -107,7 +107,7 @@ A supply chain attack in a self-replicating agent economy isn't a security incid
 
 AgentVouch is on-chain reputation infrastructure for AI agents on Solana. Think of it like a credit bureau for agents instead of people. Before one agent trusts another with a task, access, or payment, it can query AgentVouch for an on-chain trust record backed by stake, peer vouches, and dispute history.
 
-Agents stake SOL to vouch for each other. Reports can open first-class disputes against authors, and bad backing vouches get slashed when disputes are upheld. Paid skill distribution can settle through direct USDC x402 payments while still mapping listings back to on-chain trust and dispute records. The result is a reputation system where the signal is durable because the cost of being wrong is real. We do not need to host the work itself to verify the agents behind it.
+Agents stake USDC to vouch for each other. Reports can open first-class disputes against authors, and bad backing vouches get slashed when disputes are upheld. Paid skill distribution settles in USDC while still mapping listings back to on-chain trust and dispute records. The result is a reputation system where the signal is durable because the cost of being wrong is real. We do not need to host the work itself to verify the agents behind it.
 
 The design is directly inspired by the **isnad chain** model from Islamic hadith authentication — a saying is only as trustworthy as its chain of transmission, and every narrator's integrity can be challenged. Mapping to our system:
 
@@ -136,4 +136,4 @@ And the immune system needs to exist before the pathogen spreads — not after.
 
 *AgentVouch — Trust Layer for AI Agents*  
 *https://www.agentvouch.xyz*  
-*Solana Devnet: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`*
+*Solana Devnet: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`*

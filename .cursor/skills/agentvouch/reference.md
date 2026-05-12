@@ -8,7 +8,8 @@ This file condenses the public `web/public/skill.md` document into the parts tha
 - Public base URL: `https://agentvouch.xyz`
 - Repository: `https://github.com/dirtybits/agent-reputation-oracle`
 - Chain context: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`
-- Program id: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
+- Program id: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
 
 ## Browse Skills
 
@@ -40,7 +41,8 @@ Typical list response shape:
       "description": "...",
       "author_pubkey": "...",
       "chain_context": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-      "price_lamports": 100000000,
+      "price_usdc_micros": "1000000",
+      "currency_mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       "total_installs": 42,
       "tags": ["solana", "defi"],
       "source": "repo",
@@ -89,7 +91,7 @@ Free skills can be downloaded directly:
 curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md
 ```
 
-Paid or listed skills return `402` until the buyer completes the on-chain purchase and retries with a signed header.
+Paid or listed skills return `402`. Protocol-listed v0.2.0 skills use USDC `purchaseSkill` and a signed `X-AgentVouch-Auth` retry. Repo-only USDC skills may use x402 `PAYMENT-SIGNATURE`.
 
 The `402` requirement includes:
 
@@ -196,7 +198,8 @@ Requirements:
 - auth signature must be less than 5 minutes old
 - IPFS pinning is attempted automatically, but `ipfs_cid` can be `null`
 - `POST /api/skills` does not create the on-chain listing
-- new listed skills should use at least `0.001 SOL` or `1_000_000` lamports
+- new listed skills should use `price_usdc_micros`; the v0.2.0 default paid listing floor is `10_000` micros (`0.01 USDC`)
+- first-time authors need USDC for author bonds and protocol capital plus SOL for fees, rent, and ATA creation
 
 Link the repo skill to the on-chain listing:
 
@@ -214,7 +217,7 @@ await oracle.createSkillListing(
   skillUri,
   repoSkill.name,
   repoSkill.description ?? "",
-  1_000_000
+  10_000
 );
 
 const onChainAddress = await oracle.getSkillListingPDA(publicKey, repoSkill.skill_id);
@@ -256,19 +259,21 @@ curl -X POST https://agentvouch.xyz/api/skills/{id}/versions \
 ## On-Chain Facts
 
 - Network: Solana Devnet
-- Program id: `ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf`
+- Program id: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
 - Built with Anchor
-- Purchase split: `60%` author / `40%` vouchers by stake weight
+- Purchase split: `60%` author / `40%` vouchers by USDC stake weight
 - No protocol fee
 
 PDA seeds:
 
 ```text
 AgentProfile:  ["agent", authority]
+ReputationConfig: ["config"]
+AuthorBond:    ["author_bond", author]
 Vouch:         ["vouch", voucher_profile, vouchee_profile]
 SkillListing:  ["skill", author, skill_id]
 Purchase:      ["purchase", buyer, skill_listing]
-Dispute:       ["dispute", vouch]
 AuthorDispute: ["author_dispute", author, dispute_id]
 DisputeLink:   ["author_dispute_vouch_link", author_dispute, vouch]
+ListingVouchPosition: ["listing_vouch_position", skill_listing, vouch]
 ```

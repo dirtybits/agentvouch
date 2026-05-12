@@ -16,23 +16,31 @@ describe("skills page source", () => {
     expect(source).not.toContain(") : purchaseStatusUnavailable ? (");
   });
 
-  it("shows estimated totals and seller rent warnings for paid skills", () => {
+  it("does not run broad browser-side marketplace scans on initial browse mount", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("fetch(`/api/skills?${params}`)");
+    expect(source).toContain('fetch("/api/skills/activity")');
+    expect(source).not.toContain("oracle.getAllSkillListings");
+    expect(source).not.toContain("oracle.getAllPurchases");
+    expect(source).not.toContain("oracle.getPurchasedSkillListingKeys");
+    expect(source).not.toContain('params.set("buyer"');
+  });
+
+  it("shows USDC purchase preflight warnings for paid skills", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/page.tsx"),
       "utf8"
     );
 
     expect(source).toContain("estimatedBuyerTotalLamports");
-    expect(source).toContain("creatorPriceLamports");
+    expect(source).toContain("price_usdc_micros");
     expect(source).toContain("purchasePreflightStatus");
-    expect(source).toMatch(
-      /purchasePreflightStatus\s*===\s*"authorPayoutRentBlocked"/
-    );
     expect(source).toContain("purchaseBlocked={purchaseBlocked}");
-    expect(source).toContain("Low-priced sales are currently blocked");
-    expect(source).toMatch(
-      /will fail until this payout wallet\s+holds enough SOL/
-    );
+    expect(source).toContain("legacySolLamports");
   });
 
   it("links author listing cards into edit and repo version actions", () => {

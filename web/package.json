@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:cutover": "tsx scripts/db-cutover.ts",
+    "x402:bridge-poc": "tsx scripts/x402-bridge-poc.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

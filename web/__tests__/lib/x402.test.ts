@@ -12,13 +12,15 @@ vi.mock("@solana/kit", () => ({
 }));
 
 const mockFetchMaybePurchase = vi.fn();
-vi.mock("../../generated/reputation-oracle/src/generated", () => ({
+const mockFetchMaybeSkillListing = vi.fn();
+vi.mock("../../generated/agentvouch/src/generated", () => ({
   fetchMaybePurchase: (...args: unknown[]) => mockFetchMaybePurchase(...args),
+  fetchMaybeSkillListing: (...args: unknown[]) =>
+    mockFetchMaybeSkillListing(...args),
 }));
 
-vi.mock("../../generated/reputation-oracle/src/generated/programs", () => ({
-  REPUTATION_ORACLE_PROGRAM_ADDRESS:
-    "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf",
+vi.mock("../../generated/agentvouch/src/generated/programs", () => ({
+  AGENTVOUCH_PROGRAM_ADDRESS: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
 }));
 
 import {
@@ -40,7 +42,7 @@ function makeRequirement(
   return {
     scheme: "exact",
     network: "solana",
-    programId: "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf",
+    programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
     instruction: "purchaseSkill",
     skillListingAddress: FAKE_SKILL_LISTING,
     mint: "So11111111111111111111111111111111111111112",
@@ -65,7 +67,7 @@ describe("generatePaymentRequirement", () => {
   it("returns correct structure with all fields", () => {
     const req = generatePaymentRequirement({
       skillId: "test-skill",
-      priceLamports: 50_000_000,
+      legacySolLamports: 50_000_000,
       skillListingAddress: "SkillAddr123",
       resourcePath: "/api/skills/123/raw",
     });
@@ -73,7 +75,7 @@ describe("generatePaymentRequirement", () => {
     expect(req.scheme).toBe("exact");
     expect(req.network).toBe("solana");
     expect(req.chainContext).toBe(SOLANA_DEVNET_CHAIN_CONTEXT);
-    expect(req.programId).toBe("ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf");
+    expect(req.programId).toBe("AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ");
     expect(req.instruction).toBe("purchaseSkill");
     expect(req.skillListingAddress).toBe("SkillAddr123");
     expect(req.mint).toBe("So11111111111111111111111111111111111111112");
@@ -87,7 +89,7 @@ describe("generatePaymentRequirement", () => {
     const before = Math.floor(Date.now() / 1000);
     const req = generatePaymentRequirement({
       skillId: "x",
-      priceLamports: 1,
+      legacySolLamports: 1,
       skillListingAddress: "x",
       resourcePath: "/x",
     });
@@ -100,7 +102,7 @@ describe("generatePaymentRequirement", () => {
   it("generates unique nonces per call", () => {
     const opts = {
       skillId: "x",
-      priceLamports: 1,
+      legacySolLamports: 1,
       skillListingAddress: "x",
       resourcePath: "/x",
     };
@@ -112,7 +114,7 @@ describe("generatePaymentRequirement", () => {
   it("does not include recipient field", () => {
     const req = generatePaymentRequirement({
       skillId: "x",
-      priceLamports: 1,
+      legacySolLamports: 1,
       skillListingAddress: "x",
       resourcePath: "/x",
     });
@@ -170,6 +172,10 @@ describe("paymentRefFromProof", () => {
 describe("verifyPaymentProof", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetchMaybeSkillListing.mockResolvedValue({
+      exists: true,
+      data: { currentRevision: 0n },
+    });
   });
 
   it("rejects unsupported scheme", async () => {

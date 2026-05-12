@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { createSolanaRpc } from "@solana/kit";
 import type { Base64EncodedBytes } from "@solana/rpc-types";
 import {
-  getSkillListingDecoder,
-  SKILL_LISTING_DISCRIMINATOR,
   getAgentProfileDecoder,
   AGENT_PROFILE_DISCRIMINATOR,
   SkillStatus,
-} from "../../../generated/reputation-oracle/src/generated";
-import { REPUTATION_ORACLE_PROGRAM_ADDRESS } from "../../../generated/reputation-oracle/src/generated/programs";
+} from "../../../generated/agentvouch/src/generated";
+import { AGENTVOUCH_PROGRAM_ADDRESS } from "../../../generated/agentvouch/src/generated/programs";
 import { resolveManyAgentIdentitiesByWallet } from "@/lib/agentIdentity";
 import {
   buildPublicCacheControl,
@@ -16,31 +14,26 @@ import {
   PUBLIC_ROUTE_STALE_SECONDS,
 } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
+import { listOnChainSkillListings } from "@/lib/onchain";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const asBase64 = (bytes: Uint8Array) =>
   Buffer.from(bytes).toString("base64") as Base64EncodedBytes;
 
+function toSafeMetricNumber(value: bigint): number {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return 0;
+  }
+  return Number(value);
+}
+
 export async function GET() {
   try {
     const [skillAccounts, agentAccounts] = await Promise.all([
+      listOnChainSkillListings(),
       rpc
-        .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
-          encoding: "base64",
-          filters: [
-            {
-              memcmp: {
-                offset: 0n,
-                bytes: asBase64(SKILL_LISTING_DISCRIMINATOR),
-                encoding: "base64",
-              },
-            },
-          ],
-        })
-        .send(),
-      rpc
-        .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+        .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
           encoding: "base64",
           filters: [
             {
@@ -55,22 +48,20 @@ export async function GET() {
         .send(),
     ]);
 
-    const skillDecoder = getSkillListingDecoder();
     const agentDecoder = getAgentProfileDecoder();
 
-    const skills = skillAccounts.map((a) => {
-      const data = skillDecoder.decode(
-        new Uint8Array(Buffer.from(a.account.data[0], "base64"))
-      );
+    const skills = skillAccounts.map(({ publicKey, data }) => {
       return {
-        publicKey: a.pubkey,
+        publicKey,
         account: {
           author: data.author,
           name: data.name,
           description: data.description,
-          priceLamports: Number(data.priceLamports),
-          totalDownloads: Number(data.totalDownloads),
-          totalRevenue: Number(data.totalRevenue),
+          priceUsdcMicros: toSafeMetricNumber(data.priceUsdcMicros),
+          totalDownloads: toSafeMetricNumber(data.totalDownloads),
+          totalRevenueUsdcMicros: toSafeMetricNumber(
+            data.totalRevenueUsdcMicros
+          ),
           status: data.status,
         },
       };
@@ -84,7 +75,7 @@ export async function GET() {
         publicKey: a.pubkey,
         account: {
           authority: data.authority,
-          totalStakedFor: Number(data.totalStakedFor),
+          totalStakedFor: Number(data.totalVouchStakeUsdcMicros),
         },
       };
     });
@@ -114,7 +105,7 @@ export async function GET() {
       )
     );
     const totalRevenue = skills.reduce(
-      (sum, s) => sum + s.account.totalRevenue,
+      (sum, s) => sum + s.account.totalRevenueUsdcMicros,
       0
     );
     const totalStaked = agents.reduce(

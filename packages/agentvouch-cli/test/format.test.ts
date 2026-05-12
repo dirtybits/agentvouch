@@ -19,7 +19,8 @@ function buildSkill(overrides: Partial<SkillRecord> = {}): SkillRecord {
     name: "Calendar Agent",
     description: "Books meetings",
     on_chain_address: "Eq35iaSKECtZAGMkPVSk18tqFDFe6L3hgEhJsUzkByFd",
-    price_lamports: 1_000_000,
+    price_usdc_micros: "1000000",
+    currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     total_installs: 4,
     source: "repo",
     ...overrides,
@@ -200,7 +201,7 @@ describe("formatAgentTrust", () => {
     expect(lines).toContain("agent_reputation: 321");
     expect(lines).toContain("recommended_action: allow");
     expect(lines).toContain("registered: yes");
-    expect(lines).toContain("author_bond_lamports: 500000");
+    expect(lines).toContain("author_bond_usdc_micros: 500000");
     expect(lines).toContain("total_stake_at_risk: 1500000");
     expect(lines).toContain("author_dispute_count: 2");
   });
@@ -215,7 +216,7 @@ describe("formatAgentTrust", () => {
     );
 
     expect(lines[0]).not.toBe("Calendar Agent");
-    expect(lines).toContain("author_bond_lamports: 0");
+    expect(lines).toContain("author_bond_usdc_micros: 0");
     expect(lines).toContain("total_stake_at_risk: 0");
     expect(lines).toContain("author_dispute_count: 0");
   });

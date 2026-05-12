@@ -147,28 +147,13 @@ describe("POST /api/skills", () => {
     });
   });
 
-  it("truncates long descriptions before inserting", async () => {
-    const dbQuery = vi
-      .fn()
-      .mockResolvedValueOnce([
-        {
-          id: "uuid-skill-2",
-          skill_id: "my-skill",
-          author_pubkey: "AuthorWallet1111111111111111111111111111111",
-          name: "My Skill",
-          description: "trimmed",
-          tags: [],
-          current_version: 1,
-          ipfs_cid: "bafy-test-cid",
-          on_chain_address: null,
-          chain_context: "solana:devnet",
-          total_installs: 0,
-          contact: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
-      .mockResolvedValueOnce([]);
+  it("rejects descriptions that exceed the on-chain byte cap", async () => {
+    // The on-chain SkillListing account caps description at 256 bytes
+    // (MAX_DESCRIPTION_LEN). The API now byte-length-validates and fails
+    // fast with a 400 rather than silently truncating, so callers never
+    // ship a repo row whose paired on-chain CreateSkillListing would
+    // revert with DescriptionTooLong.
+    const dbQuery = vi.fn();
     mockSql.mockReturnValue(dbQuery);
 
     const longDescription = "a".repeat(MAX_SKILL_DESCRIPTION_LENGTH + 25);
@@ -189,8 +174,11 @@ describe("POST /api/skills", () => {
       })
     );
 
-    expect(res.status).toBe(201);
-    expect(dbQuery).toHaveBeenCalledTimes(2);
-    expect(dbQuery.mock.calls[0][4]).toHaveLength(MAX_SKILL_DESCRIPTION_LENGTH);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/description is \d+ bytes/i);
+    expect(body.error).toContain(String(MAX_SKILL_DESCRIPTION_LENGTH));
+    // No DB write should have happened.
+    expect(dbQuery).not.toHaveBeenCalled();
   });
 });

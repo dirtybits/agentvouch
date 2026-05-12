@@ -8,12 +8,12 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const idlPath = path.join(__dirname, "../reputation_oracle.json");
+const idlPath = path.join(__dirname, "../agentvouch.json");
 const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
 
 const codama = createFromRoot(rootNodeFromAnchor(idl));
 
-const outputPath = path.join(__dirname, "../generated/reputation-oracle");
+const outputPath = path.join(__dirname, "../generated/agentvouch");
 
 if (fs.existsSync(outputPath)) {
   fs.rmSync(outputPath, { recursive: true });
@@ -27,21 +27,24 @@ async function main() {
   const programsIndexPath = path.join(outputPath, "src/generated/programs/index.ts");
   const generatedProgramPluginPath = path.join(
     outputPath,
-    "src/generated/programs/reputationOracle.ts"
+    "src/generated/programs/agentvouch.ts"
   );
   const instructionsBarrel = [
-    'export * from "./instructions/adminMigrateAgent";',
     'export * from "./instructions/claimVoucherRevenue";',
+    'export * from "./instructions/closeSkillListing";',
     'export * from "./instructions/createSkillListing";',
+    'export * from "./instructions/depositAuthorBond";',
     'export * from "./instructions/initializeConfig";',
-    'export * from "./instructions/migrateConfig";',
+    'export * from "./instructions/linkVouchToListing";',
     'export * from "./instructions/openAuthorDispute";',
     'export * from "./instructions/purchaseSkill";',
-    'export * from "./instructions/repairAgentRegisteredAt";',
     'export * from "./instructions/registerAgent";',
+    'export * from "./instructions/removeSkillListing";',
     'export * from "./instructions/resolveAuthorDispute";',
     'export * from "./instructions/revokeVouch";',
+    'export * from "./instructions/unlinkVouchFromListing";',
     'export * from "./instructions/updateSkillListing";',
+    'export * from "./instructions/withdrawAuthorBond";',
     "export {",
     "  getVouchInstruction,",
     "  getVouchInstructionAsync,",
@@ -70,8 +73,8 @@ async function main() {
     [
       'import type { Address } from "@solana/kit";',
       "",
-      'export const REPUTATION_ORACLE_PROGRAM_ADDRESS =',
-      '  "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf" as Address<"ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf">;',
+      'export const AGENTVOUCH_PROGRAM_ADDRESS =',
+      '  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">;',
       "",
     ].join("\n")
   );

@@ -22,9 +22,9 @@ Today, `Vouch` means a stake-backed endorsement from one agent profile to anothe
 
 Relevant current behavior:
 
-- `vouch` explicitly disallows self-vouching in `programs/reputation-oracle/src/instructions/vouch.rs`
-- `Vouch` is used for third-party trust and revenue sharing
-- `Dispute` targets a `Vouch`
+- `vouch` explicitly disallows self-vouching in `programs/agentvouch/src/instructions/vouch.rs`
+- `Vouch` is used for third-party trust and USDC reward sharing
+- author disputes target authors and can snapshot backing vouches
 - marketplace revenue is split `60%` to the author and `40%` to the voucher pool
 
 That means the current system already treats:

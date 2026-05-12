@@ -6,7 +6,13 @@ import {
   PUBLIC_ROUTE_STALE_SECONDS,
 } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
-import { getOnChainPrice } from "@/lib/onchain";
+import { getOnChainUsdcPrice } from "@/lib/onchain";
+import {
+  getSkillPaymentFlow,
+  normalizeUsdcMicros,
+  requiresPurchase,
+} from "@/lib/listingContract";
+import { getConfiguredUsdcMint } from "@/lib/x402";
 
 type SkillRow = {
   id: string;
@@ -16,6 +22,8 @@ type SkillRow = {
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
+  on_chain_protocol_version?: string | null;
+  on_chain_program_id?: string | null;
 };
 
 const CHAIN_PREFIX = "chain-";
@@ -69,8 +77,16 @@ export async function GET(
     const providedListing = request.nextUrl.searchParams.get("listing");
 
     const rows = await sql()<SkillRow>`
-      SELECT id, skill_id, current_version, updated_at, on_chain_address
-      , price_usdc_micros, currency_mint
+      SELECT
+        id,
+        skill_id,
+        current_version,
+        updated_at,
+        on_chain_address,
+        price_usdc_micros,
+        currency_mint,
+        on_chain_protocol_version,
+        on_chain_program_id
       FROM skills
       WHERE id = ${id}::uuid
     `;
@@ -80,10 +96,16 @@ export async function GET(
     }
 
     const skill = rows[0];
-    const listing = skill.on_chain_address && !skill.price_usdc_micros
-      ? await getOnChainPrice(skill.on_chain_address)
+    const listing = skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)
+      ? await getOnChainUsdcPrice(skill.on_chain_address)
       : null;
-    const priceLamports = listing?.price ?? 0;
+    const priceUsdcMicros =
+      normalizeUsdcMicros(skill.price_usdc_micros) ??
+      normalizeUsdcMicros(listing?.priceUsdcMicros);
+    const paymentFlow = getSkillPaymentFlow({
+      priceUsdcMicros,
+      onChainAddress: skill.on_chain_address,
+    });
 
     const status =
       installedVersion === null
@@ -102,15 +124,16 @@ export async function GET(
         latest_version: skill.current_version,
         latest_updated_at: new Date(skill.updated_at).toISOString(),
         on_chain_address: skill.on_chain_address,
-        price_lamports: priceLamports,
-        price_usdc_micros: skill.price_usdc_micros,
-        currency_mint: skill.currency_mint,
-        payment_flow: skill.price_usdc_micros
-          ? "x402-usdc"
-          : priceLamports > 0
-          ? "legacy-sol"
-          : "free",
-        requires_purchase: Boolean(skill.price_usdc_micros) || priceLamports > 0,
+        price_lamports: 0,
+        price_usdc_micros: priceUsdcMicros,
+        currency_mint:
+          priceUsdcMicros && !skill.currency_mint
+            ? getConfiguredUsdcMint()
+            : skill.currency_mint,
+        on_chain_protocol_version: skill.on_chain_protocol_version ?? null,
+        on_chain_program_id: skill.on_chain_program_id ?? null,
+        payment_flow: paymentFlow,
+        requires_purchase: requiresPurchase(paymentFlow),
         listing_changed:
           providedListing !== null && providedListing !== skill.on_chain_address,
       },

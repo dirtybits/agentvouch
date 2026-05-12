@@ -11,7 +11,7 @@ import {
   AuthorDisputeReason,
   AuthorDisputeRuling,
   AuthorDisputeStatus,
-} from "@/generated/reputation-oracle/src/generated";
+} from "@/generated/agentvouch/src/generated";
 
 describe("author dispute helpers", () => {
   it("formats author dispute reasons for UI", () => {

@@ -27,9 +27,12 @@ async function resolveChainSkillContent(
   skill: SkillRecord,
   api: AgentVouchApiClient
 ): Promise<string> {
-  if ((skill.price_lamports ?? 0) > 0) {
+  if (
+    skill.payment_flow === "direct-purchase-skill" ||
+    BigInt(skill.price_usdc_micros ?? "0") > 0n
+  ) {
     throw new CliError(
-      `Skill ${skill.id} is chain-only and paid. Use the repo-backed skill id for signed raw downloads.`
+      `Skill ${skill.id} is chain-only and paid in USDC. Use the repo-backed skill id for signed raw downloads.`
     );
   }
 
@@ -104,7 +107,7 @@ export async function installSkill(input: InstallSkillInput) {
       skillId: input.id,
       outputPath,
       metadataPath,
-      priceLamports: skill.price_lamports ?? 0,
+      priceUsdcMicros: skill.price_usdc_micros ?? null,
       dryRun: !!input.dryRun,
     };
   }
@@ -124,14 +127,16 @@ export async function installSkill(input: InstallSkillInput) {
       skillId: input.id,
       outputPath,
       metadataPath,
-      priceLamports: skill.price_lamports ?? 0,
+      priceUsdcMicros: skill.price_usdc_micros ?? null,
       dryRun: !!input.dryRun,
     };
   }
 
   if (
     initialDownload.status !== 402 ||
-    (!initialDownload.requirement && !initialDownload.x402PaymentRequired)
+    (!initialDownload.requirement &&
+      !initialDownload.x402PaymentRequired &&
+      !initialDownload.directPurchaseRequired)
   ) {
     throw new CliError(
       `Failed to download skill ${input.id}: ${
@@ -149,18 +154,21 @@ export async function installSkill(input: InstallSkillInput) {
       skillId: input.id,
       outputPath,
       metadataPath,
-      priceLamports:
-        initialDownload.requirement?.amount ?? (skill.price_lamports ?? 0),
+      legacySolBaseUnits: initialDownload.requirement?.amount ?? null,
       priceUsdcMicros:
         initialDownload.x402PaymentRequired?.accepts[0]?.amount ??
+        initialDownload.directPurchaseRequired?.amountMicros ??
         skill.price_usdc_micros ??
         null,
       listingAddress:
         initialDownload.requirement?.skillListingAddress ??
+        initialDownload.directPurchaseRequired?.skillListingAddress ??
         skill.on_chain_address ??
         null,
       requirement:
-        initialDownload.x402PaymentRequired ?? initialDownload.requirement,
+        initialDownload.x402PaymentRequired ??
+        initialDownload.requirement ??
+        initialDownload.directPurchaseRequired,
       dryRun: true,
     };
   }
@@ -209,7 +217,7 @@ export async function installSkill(input: InstallSkillInput) {
       skillId: input.id,
       outputPath,
       metadataPath,
-      priceLamports: skill.price_lamports ?? 0,
+      legacySolBaseUnits: skill.price_lamports ?? null,
       priceUsdcMicros:
         paidDownload.paymentResponse?.amount ??
         initialDownload.x402PaymentRequired.accepts[0]?.amount ??
@@ -230,14 +238,29 @@ export async function installSkill(input: InstallSkillInput) {
 
   const keypair = loadKeypair(input.keypairPath);
   const solana = new AgentVouchSolanaClient(keypair, input.rpcUrl);
+  const skillListingAddress =
+    initialDownload.requirement?.skillListingAddress ??
+    initialDownload.directPurchaseRequired?.skillListingAddress;
+  if (!skillListingAddress) {
+    throw new CliError(
+      `Skill ${input.id} returned a direct-purchase requirement without a listing address.`
+    );
+  }
   const purchase = await solana.purchaseSkill(
-    initialDownload.requirement.skillListingAddress,
+    skillListingAddress,
     skill.author_pubkey
   );
+  if (purchase.tx) {
+    await api.verifyDirectPurchase(input.id, {
+      signature: purchase.tx,
+      buyer: keypair.publicKey.toBase58(),
+      listingAddress: skillListingAddress,
+    });
+  }
   const auth = createDownloadAuthPayload(
     keypair,
     input.id,
-    initialDownload.requirement.skillListingAddress
+    skillListingAddress
   );
   const signedDownload = await api.downloadRaw(input.id, { auth });
 
@@ -261,9 +284,12 @@ export async function installSkill(input: InstallSkillInput) {
     skillId: input.id,
     outputPath,
     metadataPath,
-    priceLamports: initialDownload.requirement.amount,
-    priceUsdcMicros: skill.price_usdc_micros ?? null,
-    listingAddress: initialDownload.requirement.skillListingAddress,
+    legacySolBaseUnits: initialDownload.requirement?.amount ?? null,
+    priceUsdcMicros:
+      initialDownload.directPurchaseRequired?.amountMicros ??
+      skill.price_usdc_micros ??
+      null,
+    listingAddress: skillListingAddress,
     purchaseTx: purchase.tx,
     alreadyPurchased: purchase.alreadyPurchased,
     dryRun: false,

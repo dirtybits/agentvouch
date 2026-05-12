@@ -33,28 +33,37 @@ import {
 } from "@/lib/chains";
 import { getErrorMessage } from "@/lib/errors";
 import { wrapRpcLookupError } from "@/lib/rpcErrors";
+import { getConfiguredUsdcMint } from "@/lib/x402";
+import {
+  assertUsdcAccountReady,
+  formatUsdcMicrosValue,
+  getAssociatedTokenAccount,
+  logTransactionSummary,
+  type AgentVouchTransactionSummary,
+} from "@/lib/agentvouchUsdc";
 import {
   fetchAllMaybePurchase,
   fetchMaybePurchase,
   getPurchaseDecoder,
   PURCHASE_DISCRIMINATOR,
-} from "../generated/reputation-oracle/src/generated/accounts/purchase";
+} from "../generated/agentvouch/src/generated/accounts/purchase";
+import { fetchMaybeAgentProfile } from "../generated/agentvouch/src/generated";
 import {
+  fetchAllMaybeSkillListing,
   fetchMaybeSkillListing,
   getSkillListingDecoder,
   SKILL_LISTING_DISCRIMINATOR,
-} from "../generated/reputation-oracle/src/generated/accounts/skillListing";
-import { getPurchaseSkillInstructionAsync } from "../generated/reputation-oracle/src/generated/instructions/purchaseSkill";
+} from "../generated/agentvouch/src/generated/accounts/skillListing";
+import { getPurchaseSkillInstructionAsync } from "../generated/agentvouch/src/generated/instructions/purchaseSkill";
 
-const REPUTATION_ORACLE_PROGRAM_ADDRESS = address(
-  "ELmVnLSNuwNca4PfPqeqNowoUF8aDdtfto3rF9d89wf"
+const AGENTVOUCH_PROGRAM_ADDRESS = address(
+  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
 );
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
 const rpc = createSolanaRpc(ENDPOINT);
 const SIGNATURE_CONFIRMATION_TIMEOUT_MS = 45_000;
 const SIGNATURE_CONFIRMATION_POLL_MS = 1_000;
-const LAMPORTS_PER_SOL = 1_000_000_000n;
 
 const textEncoder = getUtf8Encoder();
 const addressEncoder = getAddressEncoder();
@@ -87,21 +96,32 @@ function normalizeInstructionForSend(ix: SendInstruction): SendInstruction {
 }
 
 function buildTransactionSendRequest(
-  ix: SendInstruction,
+  ix: SendInstruction | readonly SendInstruction[],
   authority: TransactionSigner
 ): TransactionPrepareAndSendRequest {
+  const instructions = Array.isArray(ix) ? ix : [ix];
   return {
-    instructions: [normalizeInstructionForSend(ix)],
+    instructions: instructions.map(normalizeInstructionForSend),
     authority,
   };
 }
 
+function u64Seed(value: bigint | number): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, BigInt(value), true);
+  return bytes;
+}
+
 async function deriveAddress(
-  seeds: (string | Address)[],
-  programId: Address = REPUTATION_ORACLE_PROGRAM_ADDRESS
+  seeds: (string | Address | Uint8Array)[],
+  programId: Address = AGENTVOUCH_PROGRAM_ADDRESS
 ): Promise<Address> {
   const encodedSeeds = seeds.map((seed) =>
-    isAddress(seed) ? addressEncoder.encode(seed) : textEncoder.encode(seed)
+    seed instanceof Uint8Array
+      ? seed
+      : isAddress(seed)
+      ? addressEncoder.encode(seed)
+      : textEncoder.encode(seed)
   );
   const [derived] = await getProgramDerivedAddress({
     programAddress: programId,
@@ -114,11 +134,24 @@ async function getAgentPDA(agentKey: Address): Promise<Address> {
   return deriveAddress(["agent", agentKey]);
 }
 
+async function getAuthorRewardVaultAuthorityPDA(
+  authorProfile: Address
+): Promise<Address> {
+  return deriveAddress(["author_reward_vault_authority", authorProfile]);
+}
+
+async function getAuthorRewardVaultPDA(
+  authorProfile: Address
+): Promise<Address> {
+  return deriveAddress(["author_reward_vault", authorProfile]);
+}
+
 async function getPurchasePDA(
   buyer: Address,
-  skillListing: Address
+  skillListing: Address,
+  revision: bigint | number = 0n
 ): Promise<Address> {
-  return deriveAddress(["purchase", buyer, skillListing]);
+  return deriveAddress(["purchase", buyer, skillListing, u64Seed(revision)]);
 }
 
 function sleep(ms: number) {
@@ -129,12 +162,6 @@ function shortAddress(value: string) {
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
-function formatLamportsAsSol(lamports: bigint) {
-  const sol = Number(lamports) / Number(LAMPORTS_PER_SOL);
-  const decimals = sol >= 1 ? 4 : 6;
-  return sol.toFixed(decimals).replace(/\.?0+$/, "");
-}
-
 async function estimatePurchasePreflight(
   buyer: Address,
   skillListing: Address,
@@ -142,15 +169,26 @@ async function estimatePurchasePreflight(
 ): Promise<PurchasePreflightAssessment> {
   const listing = await fetchMaybeSkillListing(rpc, skillListing);
   if (!listing.exists) throw new Error("Skill listing not found on-chain");
+  const usdcMint = address(getConfiguredUsdcMint());
+  const authorProfile = await getAgentPDA(author);
+  const maybeAuthorProfile = await fetchMaybeAgentProfile(
+    rpc,
+    authorProfile
+  ).catch(() => null);
   const context = await createPurchasePreflightContext({
     rpc,
     buyer,
+    usdcMint,
     authors: [author],
   });
   return assessPurchasePreflight({
     context,
-    priceLamports: BigInt(listing.data.priceLamports),
+    priceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
     author,
+    authorBackingUsdcMicros: maybeAuthorProfile?.exists
+      ? BigInt(maybeAuthorProfile.data.totalVouchStakeUsdcMicros) +
+        BigInt(maybeAuthorProfile.data.authorBondUsdcMicros)
+      : 0n,
   });
 }
 
@@ -161,11 +199,11 @@ function buildPurchaseBalanceError(
   const configuredNetwork = `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`;
   return `Connected wallet ${shortAddress(
     walletAddress
-  )} has ${formatLamportsAsSol(
-    estimate.buyerBalanceLamports ?? 0n
-  )} SOL on the configured ${configuredNetwork}. Buying this skill needs about ${formatLamportsAsSol(
-    estimate.estimatedBuyerTotalLamports
-  )} SOL including rent for the purchase record.`;
+  )} has ${formatUsdcMicrosValue(
+    estimate.buyerUsdcBalanceMicros ?? 0n
+  )} USDC on the configured ${configuredNetwork}. Buying this skill needs ${formatUsdcMicrosValue(
+    estimate.creatorPriceUsdcMicros
+  )} USDC plus SOL for receipt rent and network fees.`;
 }
 
 function buildPurchaseClusterMismatchError(
@@ -175,9 +213,7 @@ function buildPurchaseClusterMismatchError(
   const configuredNetwork = `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`;
   return `Phantom reported insufficient SOL, but connected wallet ${shortAddress(
     walletAddress
-  )} has ${formatLamportsAsSol(
-    estimate.buyerBalanceLamports ?? 0n
-  )} SOL on the configured ${configuredNetwork}. If Phantom shows a different balance, switch Phantom and the app to the same network and retry.`;
+  )} appears connected to the configured ${configuredNetwork}. If Phantom shows a different balance, switch Phantom and the app to the same network and retry.`;
 }
 
 async function waitForConfirmedSignature(
@@ -232,10 +268,14 @@ export function useMarketplaceOracle() {
   }, [connected, wallet]);
 
   const sendIx = useCallback(
-    async (ix: SendInstruction) => {
+    async (
+      ix: SendInstruction | readonly SendInstruction[],
+      summary?: AgentVouchTransactionSummary
+    ) => {
       if (!walletAddress || !signer) throw new Error("Wallet not connected");
       const request = buildTransactionSendRequest(ix, signer);
       try {
+        if (summary) logTransactionSummary(summary);
         const sig = await frameworkSend(request);
         const txSignature = signature(String(sig));
         await waitForConfirmedSignature(txSignature);
@@ -274,7 +314,7 @@ export function useMarketplaceOracle() {
   const getAllSkillListings = useCallback(async () => {
     try {
       const accounts = await rpc
-        .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+        .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
           encoding: "base64",
           filters: [
             {
@@ -301,7 +341,7 @@ export function useMarketplaceOracle() {
   const getSkillListingsByAuthor = useCallback(async (author: Address) => {
     try {
       const accounts = await rpc
-        .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+        .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
           encoding: "base64",
           filters: [
             {
@@ -331,10 +371,36 @@ export function useMarketplaceOracle() {
     }
   }, []);
 
+  const getSkillListingsByAddresses = useCallback(
+    async (skillListings: Address[]) => {
+      if (skillListings.length === 0) return [];
+      try {
+        const accounts = await fetchAllMaybeSkillListing(rpc, skillListings);
+        return accounts.flatMap((account, index) =>
+          account.exists
+            ? [
+                {
+                  publicKey: skillListings[index],
+                  account: account.data,
+                },
+              ]
+            : []
+        );
+      } catch (error) {
+        console.error("Error fetching skill listings by address:", error);
+        throw wrapRpcLookupError(
+          error,
+          "Failed to fetch skill listings by address"
+        );
+      }
+    },
+    []
+  );
+
   const getAllPurchases = useCallback(async () => {
     try {
       const accounts = await rpc
-        .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+        .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
           encoding: "base64",
           filters: [
             {
@@ -360,7 +426,7 @@ export function useMarketplaceOracle() {
   const getPurchasesByBuyer = useCallback(async (buyer: Address) => {
     try {
       const accounts = await rpc
-        .getProgramAccounts(REPUTATION_ORACLE_PROGRAM_ADDRESS, {
+        .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
           encoding: "base64",
           filters: [
             {
@@ -395,9 +461,16 @@ export function useMarketplaceOracle() {
     async (buyer: Address, skillListings: Address[]) => {
       if (skillListings.length === 0) return new Set<string>();
       try {
+        const listings = await fetchAllMaybeSkillListing(rpc, skillListings);
         const purchaseAddresses = await Promise.all(
-          skillListings.map((skillListing) =>
-            getPurchasePDA(buyer, skillListing)
+          skillListings.map((skillListing, index) =>
+            getPurchasePDA(
+              buyer,
+              skillListing,
+              listings[index]?.exists
+                ? listings[index].data.currentRevision
+                : 0n
+            )
           )
         );
         const maybePurchases = await fetchAllMaybePurchase(
@@ -424,7 +497,13 @@ export function useMarketplaceOracle() {
   const purchaseSkill = useCallback(
     async (skillListingKey: Address, authorKey: Address) => {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
-      const purchasePda = await getPurchasePDA(walletAddress, skillListingKey);
+      const listing = await fetchMaybeSkillListing(rpc, skillListingKey);
+      if (!listing.exists) throw new Error("Skill listing not found");
+      const purchasePda = await getPurchasePDA(
+        walletAddress,
+        skillListingKey,
+        listing.data.currentRevision
+      );
       const existingPurchase = await fetchMaybePurchase(rpc, purchasePda).catch(
         () => null
       );
@@ -470,14 +549,44 @@ export function useMarketplaceOracle() {
       }
 
       const authorProfile = await getAgentPDA(authorKey);
+      const usdcMint = address(getConfiguredUsdcMint());
+      const [buyerUsdcAccount, authorRewardVaultAuthority, authorRewardVault] =
+        await Promise.all([
+          getAssociatedTokenAccount(walletAddress, usdcMint),
+          getAuthorRewardVaultAuthorityPDA(authorProfile),
+          getAuthorRewardVaultPDA(authorProfile),
+        ]);
+      await assertUsdcAccountReady({
+        rpc,
+        owner: walletAddress,
+        mint: usdcMint,
+        purpose: "Skill purchase",
+        minimumBalanceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
+      });
       const ix = await getPurchaseSkillInstructionAsync({
         skillListing: skillListingKey,
+        purchase: purchasePda,
         author: authorKey,
         authorProfile,
+        usdcMint,
+        buyerUsdcAccount,
+        listingSettlement: listing.data.currentSettlement,
+        authorProceedsVault: listing.data.currentAuthorProceedsVault,
+        authorRewardVaultAuthority,
+        authorRewardVault,
         buyer: signer,
       });
+      const summary = {
+        action: "Purchase skill",
+        token: "USDC" as const,
+        amountUsdcMicros: BigInt(listing.data.priceUsdcMicros),
+        recipient: listing.data.currentAuthorProceedsVault,
+        vault: authorRewardVault,
+        feePayer: signer.address,
+        cluster: `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`,
+      };
       try {
-        return { tx: await sendIx(ix) };
+        return { tx: await sendIx(ix, summary), summary };
       } catch (error: unknown) {
         const existingPurchaseAfterFailure = await fetchMaybePurchase(
           rpc,
@@ -534,6 +643,7 @@ export function useMarketplaceOracle() {
       walletAddress,
       getAllSkillListings,
       getSkillListingsByAuthor,
+      getSkillListingsByAddresses,
       getAllPurchases,
       getPurchasesByBuyer,
       getPurchasedSkillListingKeys,
@@ -544,6 +654,7 @@ export function useMarketplaceOracle() {
       walletAddress,
       getAllSkillListings,
       getSkillListingsByAuthor,
+      getSkillListingsByAddresses,
       getAllPurchases,
       getPurchasesByBuyer,
       getPurchasedSkillListingKeys,

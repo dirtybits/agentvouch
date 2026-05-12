@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
         source: skill.source ?? "repo",
         chain_context: skill.chain_context ?? null,
         on_chain_address: skill.on_chain_address ?? null,
-        price_lamports: skill.price_lamports ?? 0,
+        price_lamports: skill.price_lamports ?? null,
         price_usdc_micros: skill.price_usdc_micros ?? null,
         currency_mint: skill.currency_mint ?? null,
         payment_flow: skill.payment_flow ?? "free",

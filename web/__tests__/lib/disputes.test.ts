@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { VouchStatus } from "@/generated/reputation-oracle/src/generated";
+import { VouchStatus } from "@/generated/agentvouch/src/generated";
 import {
   countsTowardAuthorWideReportSnapshot,
   getVouchStatusLabel,

@@ -5,7 +5,7 @@ import type {
   ConfirmedSignatureInfo,
   GetProgramAccountsFilter,
 } from "@solana/web3.js";
-import { ReputationOracle } from "../target/types/reputation_oracle";
+import { Agentvouch } from "../target/types/agentvouch";
 
 const CURRENT_AGENT_PROFILE_LEN = 293;
 const LEGACY_AGENT_PROFILE_TRAILING_LEN = 41;
@@ -285,7 +285,7 @@ async function recoverRegisteredAtFromHistory(
 }
 
 async function loadTargets(
-  program: Program<ReputationOracle>,
+  program: Program<Agentvouch>,
   options: Options
 ): Promise<ParsedAgentProfile[]> {
   if (options.authorPubkey) {
@@ -346,7 +346,7 @@ async function main() {
   anchor.setProvider(provider);
 
   const program = anchor.workspace
-    .ReputationOracle as Program<ReputationOracle>;
+    .Agentvouch as Program<Agentvouch>;
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     program.programId
