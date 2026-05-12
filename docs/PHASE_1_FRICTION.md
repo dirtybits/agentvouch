@@ -80,3 +80,54 @@ When/if these mechanisms move to mainnet:
 ## Tracking
 
 This branch (`feat/phase-1-friction-removal`) is the scope-and-plan vehicle. Each must-have lands as its own commit directly to `main` after this doc is reviewed. The spike (item 1) gates the rest of the plan — do not start items 2–5 until the spike confirms the embedded path actually works end-to-end on devnet.
+
+## Spike findings — 2026-05-11
+
+**Headline:** Phantom embedded login is wired for connect/disconnect UX only. **None of the on-chain flows (purchase, publish, vouch, dispute) can be initiated by an embedded-wallet user.** This is the load-bearing gap. AGENTS.md note 26's "embedded wallets are send-only" claim is **outdated** — the current `@phantom/react-sdk` v1.0.5 exposes the full `ISolanaChain` signing surface including `signTransaction`. The gap is integration, not capability.
+
+### Evidence
+
+1. **The Phantom SDK does expose full signing.** `node_modules/@phantom/chain-interfaces/dist/interfaces/ISolanaChain.d.ts` defines `signMessage`, `signTransaction`, `signAndSendTransaction`, `signAllTransactions`, `signAndSendAllTransactions`, and `switchNetwork`. The embedded wallet is *not* send-only.
+2. **Two parallel, unconnected wallet states.** `web/components/ClientWalletButton.tsx` branches on:
+   - Extension wallet: `const { wallet, status } = useWalletConnection()` from `@solana/react-hooks` (Wallet Standard).
+   - Phantom embedded: `const phantom = usePhantom()`, `useAccounts()`, `useDisconnect()` from `@phantom/react-sdk`.
+   These two states never merge. The connect/disconnect UX handles both, but downstream consumers don't.
+3. **All downstream consumers read only the Wallet Standard state.** `web/app/skills/[id]/page.tsx:264` does `const { wallet, status } = useWalletConnection()` and feeds `wallet` to `walletSupportsBrowserX402(wallet)` and `createWalletTransactionSigner(wallet)` from `@solana/client`. A user signed in via Phantom embedded leaves `useWalletConnection().wallet === null`, so the purchase button thinks no wallet is connected.
+4. **`createWalletTransactionSigner` requires a Wallet Standard wallet.** The signer factory in `web/lib/browserX402.ts:69` expects the Wallet Standard shape. The Phantom embedded `ISolanaChain` is a different (richer) shape.
+
+### Side findings
+
+- **`NEXT_PUBLIC_PHANTOM_APP_ID` has a literal trailing `\n` in `web/.env.local`** (`NEXT_PUBLIC_PHANTOM_APP_ID="aa342c67-2cc8-45e9-a11d-ce80679db80d\n"`). Because the value is double-quoted, dotenv interprets `\n` as a real newline character and the SDK will see an app id with a trailing newline. Likely causes Phantom API rejection or silent failures. Trivial fix: drop the trailing `\n`. This may explain any "Phantom login doesn't work" anecdotal reports during dev.
+- The Phantom SDK exposes `useSolana()` (line 103 of `@phantom/react-sdk/dist/index.d.ts`) which returns `{ solana: ISolanaChain, isAvailable: boolean }`. This is the canonical entry point for signing through the embedded wallet — none of the current code uses it.
+- The Phantom embedded `signAndSendTransaction` accepts a `presignTransaction` callback for sponsored-fee flows (relevant for our devnet onboarding sponsor pattern).
+
+### Implications for Phase 1 must-haves
+
+This finding reshapes the must-have list materially:
+
+- **New item 0 (gates everything else): unify the wallet abstraction.** Either (a) wrap Phantom embedded `ISolanaChain` in a Wallet Standard adapter so existing flows pick it up unchanged, or (b) introduce a project-wide signer abstraction (a `UnifiedWalletSigner` interface) and route both extension and embedded wallets through it. (a) is one well-bounded library to write or borrow; (b) is invasive but cleaner long-term. Recommend (a) for Phase 1 — minimum diff, no downstream churn.
+- **Item 3 (x402 routing for embedded wallets) collapses into item 0.** Once the embedded wallet is visible to `useWalletConnection()`, the existing x402 split-signature path Just Works because `ISolanaChain.signTransaction` returns a partially signed tx, exactly what the sponsored x402 scheme needs.
+- **Item 2 (devnet faucet) is unblocked** but cosmetically gated on item 0 — a faucet that funds a wallet the rest of the app can't see is not useful.
+- **Items 4 and 5 (registration sponsor, USDC ATA pre-creation) are independent** of item 0 but practically meaningless until embedded users can submit *any* transaction.
+
+### Recommended order, revised
+
+1. **0a.** Fix the trailing `\n` in `NEXT_PUBLIC_PHANTOM_APP_ID` (5 min).
+2. **0b.** Wallet abstraction unification: Wallet Standard adapter wrapping the Phantom `ISolanaChain`, registered into the `@solana/client` `walletConnectors` pipeline alongside `autoDiscover()`. Manual smoke: Google sign-in, then verify `useWalletConnection().wallet?.account.address` is populated and signs a no-op message. (2–4 days; this is the real spike work.)
+3. **1 (was item 2): devnet faucet** for first-time signed-in users. (1–2 days.)
+4. **2 (was item 3, now mostly free):** sanity-check that x402 + `purchase_skill` actually round-trips through the unified embedded wallet on devnet. (0.5 day if 0b is clean.)
+5. **3 (was item 5): USDC ATA pre-creation** in purchase preflight when missing. (1 day.)
+6. **4 (was item 4): author-registration rent sponsor** for fresh Web2 sign-ups on devnet. (1–2 days.)
+
+Net effect on sizing: previous estimate of 1.5–2 weeks stands; the work just shifted from "verify and patch" to "actually wire the embedded wallet into the app surface." That's a clearer scope.
+
+### What still requires manual verification
+
+I can't actually sign in with Google myself. Once item 0a (env fix) lands, you should:
+
+1. Run the local dev server with the fixed `NEXT_PUBLIC_PHANTOM_APP_ID`.
+2. Open `http://localhost:3000`, click **Connect** → **Sign in with…** → choose Google.
+3. Verify the embedded wallet UI returns a Solana address.
+4. Open browser devtools console and confirm no Phantom SDK errors.
+
+If that surfaces a problem (e.g., the app id is invalid, redirect URI is misconfigured, or the Phantom dashboard isn't set up for this origin), it's a config issue that doesn't require code changes — just a Phantom dashboard tweak. Worth doing this verification *before* item 0b so we don't bake on top of broken connect UX.
