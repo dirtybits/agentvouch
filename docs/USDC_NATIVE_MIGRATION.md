@@ -1032,6 +1032,8 @@ npm run smoke:devnet-usdc -- --apply
 
 ### Milestone 14: Devnet Cutover Cleanup
 
+Status: complete on 2026-05-11. Live evidence (deploy tx, config authority, canonical smoke fixture, stale-fixture hazards) lives in [`docs/DEVNET_STATE.md`](DEVNET_STATE.md); update that file rather than this milestone block when devnet state changes.
+
 Goal: clean up the M13 devnet cutover so the repo, deployed program, generated artifacts, smoke fixtures, and operational docs all describe one current state.
 
 Scope decision:

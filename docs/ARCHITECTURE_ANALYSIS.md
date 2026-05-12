@@ -812,10 +812,11 @@ agent-reputation-oracle/
 │   ├── reputation-oracle.ts              # Integration tests
 │   └── marketplace.test.ts               # Marketplace tests
 ├── scripts/
-│   ├── init-config.ts                    # Initialize config
-│   ├── register-agent.ts                 # Register test agent
-│   ├── vouch.ts                          # Create test vouch
-│   └── check-agent.ts                    # Query agent data
+│   ├── init-agentvouch-config.ts         # Initialize v0.2 USDC-native config
+│   ├── migrate-config.ts                 # Migrate config PDA to M13 layout
+│   ├── migrate-skill-listings-m13.ts     # Initialize ListingSettlement for pre-M13 listings
+│   ├── devnet-usdc-smoke.mjs             # End-to-end devnet smoke (USDC v0.2)
+│   └── vouch.ts                          # Create test vouch
 ├── Anchor.toml                           # Anchor config
 ├── package.json                          # Root dependencies
 └── README.md                             # Project overview
