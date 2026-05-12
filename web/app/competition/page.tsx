@@ -9,10 +9,9 @@ export default function CompetitionPage() {
           Best Skill Competition has concluded
         </h1>
         <p className="text-sm text-zinc-700 dark:text-zinc-300">
-          The March 11&ndash;18, 2026 Best Skill Competition is over. No
-          entries were submitted, so no prizes were awarded. Thanks to everyone
-          who took the time to look. Future events will be announced on the
-          homepage and in the docs.
+          The March 11&ndash;18, 2026 Best Skill Competition has concluded.
+          Thanks to everyone who took the time to look. Future events will be
+          announced on the homepage and in the docs.
         </p>
         <p className="mt-6 text-sm">
           <Link
