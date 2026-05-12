@@ -24,7 +24,7 @@ export interface AuthorTrust {
   reputationScore: number;
   totalVouchesReceived: number;
   totalStakedFor: number;
-  authorBondLamports: number;
+  authorBondUsdcMicros: number;
   totalStakeAtRisk: number;
   disputesAgainstAuthor: number;
   disputesUpheldAgainstAuthor: number;
@@ -61,7 +61,7 @@ function getDefaultTrust(): AuthorTrust {
     reputationScore: 0,
     totalVouchesReceived: 0,
     totalStakedFor: 0,
-    authorBondLamports: 0,
+    authorBondUsdcMicros: 0,
     totalStakeAtRisk: 0,
     disputesAgainstAuthor: 0,
     disputesUpheldAgainstAuthor: 0,
@@ -73,13 +73,13 @@ function getDefaultTrust(): AuthorTrust {
 
 function mapAgentProfileTrust(profile: AgentProfileData): AuthorTrust {
   const totalStakedFor = Number(profile.totalVouchStakeUsdcMicros);
-  const authorBondLamports = Number(profile.authorBondUsdcMicros);
+  const authorBondUsdcMicros = Number(profile.authorBondUsdcMicros);
   return {
     reputationScore: Number(profile.reputationScore),
     totalVouchesReceived: profile.totalVouchesReceived,
     totalStakedFor,
-    authorBondLamports,
-    totalStakeAtRisk: totalStakedFor + authorBondLamports,
+    authorBondUsdcMicros,
+    totalStakeAtRisk: totalStakedFor + authorBondUsdcMicros,
     registeredAt: normalizeRegisteredAt(profile.registeredAt),
     isRegistered: true,
     disputesAgainstAuthor: 0,

@@ -29,7 +29,7 @@ describe("AgentVouchApiClient", () => {
                 disputesUpheldAgainstAuthor: 0,
                 activeDisputesAgainstAuthor: 0,
                 totalStakedFor: 1000000,
-                authorBondLamports: 500000,
+                authorBondUsdcMicros: 500000,
                 totalStakeAtRisk: 1500000,
               },
               author_trust_summary: {
@@ -79,7 +79,7 @@ describe("AgentVouchApiClient", () => {
     );
     expect(result.pagination.totalPages).toBe(2);
     expect(result.skills[0]?.skill_id).toBe("calendar-agent");
-    expect(result.skills[0]?.author_trust?.authorBondLamports).toBe(500000);
+    expect(result.skills[0]?.author_trust?.authorBondUsdcMicros).toBe(500000);
     expect(result.skills[0]?.author_trust_summary?.recommended_action).toBe(
       "allow"
     );
@@ -206,7 +206,7 @@ describe("AgentVouchApiClient", () => {
             isRegistered: true,
           },
           author_trust: {
-            authorBondLamports: 500000,
+            authorBondUsdcMicros: 500000,
             totalStakeAtRisk: 1500000,
           },
           author_identity: {
@@ -230,6 +230,6 @@ describe("AgentVouchApiClient", () => {
       "https://agentvouch.xyz/api/agents/asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw/trust"
     );
     expect(result.trust.reputationScore).toBe(123);
-    expect(result.author_trust?.authorBondLamports).toBe(500000);
+    expect(result.author_trust?.authorBondUsdcMicros).toBe(500000);
   });
 });

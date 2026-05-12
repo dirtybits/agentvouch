@@ -79,7 +79,7 @@ function buildAgentTrust(
       isRegistered: true,
     },
     author_trust: {
-      authorBondLamports: 500000,
+      authorBondUsdcMicros: 500000,
       totalStakeAtRisk: 1500000,
     },
     author_identity: {

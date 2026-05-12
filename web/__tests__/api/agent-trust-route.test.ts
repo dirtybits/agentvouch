@@ -44,7 +44,7 @@ describe("GET /api/agents/[pubkey]/trust", () => {
       reputationScore: 10,
       totalVouchesReceived: 2,
       totalStakedFor: 1000,
-      authorBondLamports: 500,
+      authorBondUsdcMicros: 500,
       totalStakeAtRisk: 1500,
       disputesAgainstAuthor: 1,
       disputesUpheldAgainstAuthor: 0,
@@ -72,8 +72,8 @@ describe("GET /api/agents/[pubkey]/trust", () => {
     expect(body.trust.recommended_action).toBe("allow");
     expect(body.trust.isRegistered).toBe(true);
     expect(body.trust.totalStakedFor).toBe(1000);
-    expect(body.trust.authorBondLamports).toBeUndefined();
-    expect(body.author_trust.authorBondLamports).toBe(500);
+    expect(body.trust.authorBondUsdcMicros).toBeUndefined();
+    expect(body.author_trust.authorBondUsdcMicros).toBe(500);
     expect(body.author_trust.totalStakeAtRisk).toBe(1500);
     expect(body.author_disputes).toEqual([{ publicKey: "Dispute111" }]);
   });
@@ -83,7 +83,7 @@ describe("GET /api/agents/[pubkey]/trust", () => {
       reputationScore: 0,
       totalVouchesReceived: 0,
       totalStakedFor: 0,
-      authorBondLamports: 0,
+      authorBondUsdcMicros: 0,
       totalStakeAtRisk: 0,
       disputesAgainstAuthor: 0,
       disputesUpheldAgainstAuthor: 0,
