@@ -14,6 +14,9 @@ import {
   normalizePersistedChainContext,
 } from "@/lib/chains";
 import {
+  MAX_SKILL_CONTACT_LENGTH,
+  MAX_SKILL_DESCRIPTION_LENGTH,
+  MAX_SKILL_NAME_LENGTH,
   normalizeSkillContact,
   normalizeSkillDescription,
   normalizeSkillName,
@@ -464,6 +467,29 @@ export async function POST(request: NextRequest) {
     }
 
     const authorPubkey = verification.pubkey!;
+
+    const fieldByteLimits: Array<{
+      field: string;
+      value: string | undefined;
+      max: number;
+    }> = [
+      { field: "name", value: name, max: MAX_SKILL_NAME_LENGTH },
+      { field: "description", value: description, max: MAX_SKILL_DESCRIPTION_LENGTH },
+      { field: "contact", value: contact, max: MAX_SKILL_CONTACT_LENGTH },
+    ];
+    for (const { field, value, max } of fieldByteLimits) {
+      if (typeof value !== "string") continue;
+      const bytes = Buffer.byteLength(value, "utf8");
+      if (bytes > max) {
+        return NextResponse.json(
+          {
+            error: `${field} is ${bytes} bytes, exceeds on-chain cap of ${max} bytes`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const normalizedName = normalizeSkillName(name);
     const normalizedDescription = description
       ? normalizeSkillDescription(description)
