@@ -88,6 +88,45 @@ npm run smoke:devnet-usdc -- --apply --skill-id "m13smoke-$(date +%s)"
 
 A new keypair set is generated under a fresh `.agent-keys/...` directory if `AGENTVOUCH_SMOKE_STATE_DIR` is overridden. Do **not** revive any of the historic state dirs (`v02-devnet-smoke-*`, `fresh-reset-smoke-*`); those predate the current Program ID and will fail decoding the M13 layout.
 
+## Draining before deletion
+
+**Before `rm -rf` on any `.agent-keys/*` directory, drain the SOL on every keypair back to a recoverable address.** The directories are intentionally gitignored, so a plain `rm -rf` is irreversible — the Ed25519 secrets are gone and any on-chain balance becomes unrecoverable. This is bounded on devnet (faucet-replenishable), but the same procedure must hold for any future testnet or mainnet fixture, so make it muscle memory now.
+
+Recommended drain loop, run from the repo root with `solana` on `PATH`:
+
+```bash
+STALE_DIR=.agent-keys/<dir-to-retire>
+FUNDER=$(solana-keygen pubkey ~/.config/solana/id.json)   # or whichever address should reclaim funds
+
+# 1. Enumerate balances first; abort if anything looks unexpected.
+for f in "$STALE_DIR"/*-keypair.json; do
+  PK=$(solana-keygen pubkey "$f")
+  BAL=$(solana balance -u devnet "$PK")
+  echo "$f  $PK  $BAL"
+done
+
+# 2. Drain non-trivial balances back to the funder.
+for f in "$STALE_DIR"/*-keypair.json; do
+  solana transfer \
+    --from "$f" \
+    --keypair "$f" \
+    --fee-payer "$f" \
+    --allow-unfunded-recipient \
+    -u devnet \
+    "$FUNDER" ALL
+done
+
+# 3. Confirm balances are zero, then delete.
+for f in "$STALE_DIR"/*-keypair.json; do
+  solana balance -u devnet "$(solana-keygen pubkey "$f")"
+done
+rm -rf "$STALE_DIR"
+```
+
+If the directory holds USDC ATAs as well (the smoke fixtures typically do), also close them with `spl-token close <ata>` against each owner keypair before deletion so the rent-exempt SOL is reclaimed. Skipping this step is what stranded the SOL in the `v02-devnet-smoke-1778533434`, `v02-devnet-smoke-1778533564`, and `fresh-reset-smoke-20260511` directories deleted during the M14 cutover — devnet only, but the procedural lesson applies anywhere.
+
+The current `m11-devnet-smoke` fixture is **active**, not stale; do not drain it unless you are explicitly retiring it (and re-run the smoke against a fresh `--skill-id` first to confirm a replacement fixture exists).
+
 ## Stale-fixture hazards
 
 | Symptom | Cause | Recovery |
