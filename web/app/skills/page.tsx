@@ -28,7 +28,6 @@ import type { SkillListing } from "../../generated/agentvouch/src/generated/acco
 import {
   FiActivity,
   FiAlertTriangle,
-  FiAward,
   FiBookOpen,
   FiBox,
   FiCheckCircle,
@@ -46,7 +45,6 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import { isRpcRateLimitError } from "@/lib/rpcErrors";
-import { getCompetitionPhase, SHOW_COMPETITION_CTA } from "@/lib/competition";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -484,24 +482,6 @@ export default function MarketplacePage() {
               )}
             </p>
           </div>
-          {SHOW_COMPETITION_CTA && (
-            <div className="flex shrink-0 items-center gap-3 self-start whitespace-nowrap">
-              <Link
-                href="/competition"
-                className={`${navButtonFlexClass} font-semibold bg-[var(--gold-accent-soft)] text-[var(--gold-accent-strong)] border border-[var(--gold-accent-border)] hover:border-[var(--gold-accent)] transition`}
-              >
-                <FiAward className="w-4 h-4" />
-                <span className="hidden sm:inline">Competition</span>
-                <span className="hidden sm:inline px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-[var(--gold-accent-soft-hover)] text-[var(--gold-accent-strong)]">
-                  {getCompetitionPhase() === "upcoming"
-                    ? "Mar 11"
-                    : getCompetitionPhase() === "active"
-                    ? "Live"
-                    : "Ended"}
-                </span>
-              </Link>
-            </div>
-          )}
         </div>
 
         {/* 

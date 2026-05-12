@@ -11,8 +11,6 @@ import {
   navPillActiveClass,
   navPillIdleClass,
 } from "@/lib/buttonStyles";
-import { getCompetitionPhase, SHOW_COMPETITION_CTA } from "@/lib/competition";
-
 type NavItem = {
   href: string;
   label: string;
@@ -39,15 +37,6 @@ const navItems: NavItem[] = [
     label: "Docs",
     match: (pathname) => pathname === "/docs",
   },
-  ...(SHOW_COMPETITION_CTA
-    ? [
-        {
-          href: "/competition",
-          label: "Competition",
-          match: (pathname: string) => pathname === "/competition",
-        },
-      ]
-    : []),
 ];
 
 function navLinkClass(isActive: boolean) {
@@ -59,7 +48,6 @@ function navLinkClass(isActive: boolean) {
 
 export function AppNavbar() {
   const pathname = usePathname();
-  const competitionPhase = getCompetitionPhase();
 
   return (
     <nav className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/80 backdrop-blur-sm">
@@ -90,12 +78,6 @@ export function AppNavbar() {
                 className={navLinkClass(isActive)}
               >
                 <span>{item.label}</span>
-                {item.href === "/competition" &&
-                competitionPhase !== "ended" ? (
-                  <span className="ml-1.5 text-[10px] uppercase tracking-wide opacity-80">
-                    {competitionPhase === "active" ? "Live" : "Soon"}
-                  </span>
-                ) : null}
               </Link>
             );
           })}

@@ -30,12 +30,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 0.9,
     },
-    {
-      url: getCanonicalUrl("/competition"),
-      lastModified: now,
-      changeFrequency: "weekly",
-      priority: 0.6,
-    },
     ...CONTENT_PAGES.map((page) => ({
       url: getCanonicalUrl(`/docs/${page.slug}`),
       lastModified: now,

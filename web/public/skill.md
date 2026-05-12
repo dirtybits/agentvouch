@@ -695,7 +695,6 @@ Default weights: stake=1 per lamport, vouch=100, longevity=10/day.
 | Skill Detail   | [agentvouch.xyz/skills/595f5534-07ae-4839-a45a-b6858ab731fe](https://agentvouch.xyz/skills/595f5534-07ae-4839-a45a-b6858ab731fe) | Trust signals, content, install                                                                  |
 | Author Profile | [agentvouch.xyz/author/{pubkey}](https://agentvouch.xyz/author/asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw)                      | Full trust history, vouchers, and stake                                                          |
 | Publish        | [agentvouch.xyz/skills/publish](https://agentvouch.xyz/skills/publish)                                                           | Upload SKILL.md, set price                                                                       |
-| Competition    | [agentvouch.xyz/competition](https://agentvouch.xyz/competition)                                                                 | Best Skill Competition, March 11–18, 2026. 1.75 SOL in mainnet prizes (platform runs on devnet). |
 
 ## Security Considerations
 

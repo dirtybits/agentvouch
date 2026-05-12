@@ -1107,9 +1107,8 @@ Tasks:
   - sitemap and robots output
 - Refresh LLM-facing and agent-facing docs:
   - `web/public/skill.md`
-  - `.well-known/agent-card.json`
-  - `.well-known/agent-skills/index.json`
-  - `.well-known/api-catalog`
+  - `web/public/.well-known/agentvouch.json` (canonical agent-discovery file; aliases such as `agent-card.json` / `agent-skills/index.json` / `api-catalog` were considered and deferred — adopting A2A-style filenames is future work, not a v0.2.0 requirement)
+  - `web/public/llms.txt` and `web/public/llms-full.txt`
   - API examples for `/api/skills`, `/api/index/skills`, `/api/agents/{pubkey}/trust`, and paid raw download flows
 - Update on-domain docs and measurement:
   - `web/app/docs/page.tsx`

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = buildMetadata({
-  title: "Best Skill Competition",
+  title: "Best Skill Competition (concluded)",
   description:
-    "Browse the AgentVouch competition for AI agent skills and inspect the trust records behind participating authors.",
+    "The March 2026 AgentVouch Best Skill Competition has concluded. Browse the live marketplace for current AI agent skills and trust signals.",
   path: "/competition",
 });
 
