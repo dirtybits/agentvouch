@@ -2,15 +2,16 @@
 
 import { useEffect, useState, useRef } from "react";
 import Image, { type ImageLoader } from "next/image";
-import { useWalletConnection } from "@solana/react-hooks";
 import {
-  ConnectButton,
-  usePhantom,
-  useAccounts,
-  useDisconnect,
-} from "@phantom/react-sdk";
+  useWallet,
+  useConnectWallet,
+  useDisconnectWallet,
+  useWalletConnectors,
+} from "@solana/connector/react";
+import { ConnectButton, useDisconnect } from "@phantom/react-sdk";
 import { usePhantomConfigured } from "./WalletContextProvider";
 import { useMounted } from "@/hooks/useMounted";
+import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
@@ -19,10 +20,6 @@ import {
 const PHANTOM_ICON = "https://phantom.com/_web_platform_assets/favicon.svg";
 const walletTriggerClass = navButtonPrimaryInlineClass;
 const walletMenuButtonClass = `w-full ${navButtonSecondaryInlineClass} justify-start`;
-type WalletConnector = ReturnType<
-  typeof useWalletConnection
->["connectors"][number];
-type PhantomAccount = NonNullable<ReturnType<typeof useAccounts>>[number];
 
 const passthroughImageLoader: ImageLoader = ({ src }) => src;
 
@@ -64,22 +61,101 @@ function isMobile(): boolean {
   );
 }
 
-// Wallet dropdown shared between both variants
-function WalletDropdown({
-  connectors,
-  connect,
-  showMenu,
-  setShowMenu,
-  menuRef,
-  socialSection,
-}: {
-  connectors: readonly WalletConnector[];
-  connect: (id: string) => void;
-  showMenu: boolean;
-  setShowMenu: (v: boolean) => void;
-  menuRef: React.RefObject<HTMLDivElement | null>;
-  socialSection?: React.ReactNode;
-}) {
+export function ClientWalletButton() {
+  const mounted = useMounted();
+  const phantomConfigured = usePhantomConfigured();
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const wallet = useWallet();
+  const { connect } = useConnectWallet();
+  const { disconnect } = useDisconnectWallet();
+  const allConnectors = useWalletConnectors();
+  // Phantom embedded appears in this list via additionalWallets; it gets its
+  // own "Sign in with" UI entry below, so exclude it from the extension list.
+  const extensionConnectors = allConnectors.filter(
+    (c) => c.name !== PHANTOM_EMBEDDED_WALLET_NAME
+  );
+
+  // Phantom embedded session disconnect needs to flow through the Phantom SDK
+  // too (not just ConnectorKit) so the OAuth session actually clears.
+  const phantomDisconnect = useDisconnect();
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setShowMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div
+        className={`${navButtonPrimaryInlineClass} opacity-60 pointer-events-none`}
+      >
+        Loading...
+      </div>
+    );
+  }
+
+  if (wallet.status === "connected" && wallet.account) {
+    const addr = wallet.account;
+    const short = `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+    const isEmbedded =
+      allConnectors.find((c) => c.id === wallet.connectorId)?.name ===
+      PHANTOM_EMBEDDED_WALLET_NAME;
+    const handleDisconnect = async () => {
+      try {
+        await disconnect();
+      } catch {
+        // ConnectorKit surfaces its own errors; ignore here.
+      }
+      if (isEmbedded) {
+        try {
+          await phantomDisconnect.disconnect();
+        } catch {
+          // Phantom session may already be cleared; safe to ignore.
+        }
+      }
+      setShowMenu(false);
+    };
+    return (
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          className={`${walletTriggerClass} font-mono`}
+        >
+          {short}
+        </button>
+        {showMenu && (
+          <div className="absolute right-0 mt-2 w-48 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
+            {isEmbedded && (
+              <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                Phantom Embedded
+              </div>
+            )}
+            <button onClick={handleDisconnect} className={walletMenuButtonClass}>
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const socialSection = phantomConfigured ? (
+    <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
+      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+        Sign in with
+      </p>
+      <div className="phantom-connect-wrapper">
+        <ConnectButton />
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="relative" ref={menuRef}>
       <button
@@ -99,16 +175,16 @@ function WalletDropdown({
             </div>
           )}
 
-          {connectors.length > 0 && (
+          {extensionConnectors.length > 0 && (
             <div className="px-4 py-2.5">
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
                 Browser Extension
               </p>
-              {connectors.map((connector) => (
+              {extensionConnectors.map((connector) => (
                 <button
                   key={connector.id}
                   onClick={() => {
-                    connect(connector.id);
+                    void connect(connector.id);
                     setShowMenu(false);
                   }}
                   className={`${walletMenuButtonClass} flex items-center gap-3`}
@@ -127,7 +203,7 @@ function WalletDropdown({
             </div>
           )}
 
-          {connectors.length === 0 && (
+          {extensionConnectors.length === 0 && (
             <div className="px-4 py-2.5">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 {isMobile()
@@ -206,193 +282,4 @@ function WalletDropdown({
       )}
     </div>
   );
-}
-
-function ClientWalletButtonWithPhantom() {
-  const mounted = useMounted();
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const { connectors, connect, disconnect, wallet, status } =
-    useWalletConnection();
-  const phantom = usePhantom();
-  const phantomAccounts = useAccounts();
-  const phantomDisconnect = useDisconnect();
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setShowMenu(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div
-        className={`${navButtonPrimaryInlineClass} opacity-60 pointer-events-none`}
-      >
-        Loading...
-      </div>
-    );
-  }
-
-  // Extension wallet connected
-  if (status === "connected" && wallet) {
-    const addr = wallet.account.address;
-    const short = `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-    return (
-      <div className="relative" ref={menuRef}>
-        <button
-          onClick={() => setShowMenu(!showMenu)}
-          className={`${walletTriggerClass} font-mono`}
-        >
-          {short}
-        </button>
-        {showMenu && (
-          <div className="absolute right-0 mt-2 w-48 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
-            <button
-              onClick={() => {
-                disconnect();
-                setShowMenu(false);
-              }}
-              className={walletMenuButtonClass}
-            >
-              Disconnect
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Phantom embedded wallet connected
-  const solanaAccount = phantomAccounts?.find(
-    (account: PhantomAccount) => account.addressType === "Solana"
-  );
-  if (phantom.isConnected && solanaAccount) {
-    const addr = solanaAccount.address as string;
-    const short = `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-    return (
-      <div className="relative" ref={menuRef}>
-        <button
-          onClick={() => setShowMenu(!showMenu)}
-          className={`${walletTriggerClass} font-mono`}
-        >
-          {short}
-        </button>
-        {showMenu && (
-          <div className="absolute right-0 mt-2 w-48 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
-            <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
-              Phantom Embedded
-            </div>
-            <button
-              onClick={() => {
-                phantomDisconnect.disconnect();
-                setShowMenu(false);
-              }}
-              className={walletMenuButtonClass}
-            >
-              Disconnect
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const socialSection = (
-    <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-        Sign in with
-      </p>
-      <div className="phantom-connect-wrapper">
-        <ConnectButton />
-      </div>
-    </div>
-  );
-
-  return (
-    <WalletDropdown
-      connectors={connectors}
-      connect={connect}
-      showMenu={showMenu}
-      setShowMenu={setShowMenu}
-      menuRef={menuRef}
-      socialSection={socialSection}
-    />
-  );
-}
-
-// Version without Phantom SDK hooks — used when PhantomProvider is not mounted
-function ClientWalletButtonBasic() {
-  const mounted = useMounted();
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const { connectors, connect, disconnect, wallet, status } =
-    useWalletConnection();
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setShowMenu(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div
-        className={`${navButtonPrimaryInlineClass} opacity-60 pointer-events-none`}
-      >
-        Loading...
-      </div>
-    );
-  }
-
-  if (status === "connected" && wallet) {
-    const addr = wallet.account.address;
-    const short = `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-    return (
-      <div className="relative" ref={menuRef}>
-        <button
-          onClick={() => setShowMenu(!showMenu)}
-          className={`${walletTriggerClass} font-mono`}
-        >
-          {short}
-        </button>
-        {showMenu && (
-          <div className="absolute right-0 mt-2 w-48 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
-            <button
-              onClick={() => {
-                disconnect();
-                setShowMenu(false);
-              }}
-              className={walletMenuButtonClass}
-            >
-              Disconnect
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <WalletDropdown
-      connectors={connectors}
-      connect={connect}
-      showMenu={showMenu}
-      setShowMenu={setShowMenu}
-      menuRef={menuRef}
-    />
-  );
-}
-
-export function ClientWalletButton() {
-  const phantomConfigured = usePhantomConfigured();
-  if (phantomConfigured) {
-    return <ClientWalletButtonWithPhantom />;
-  }
-  return <ClientWalletButtonBasic />;
 }

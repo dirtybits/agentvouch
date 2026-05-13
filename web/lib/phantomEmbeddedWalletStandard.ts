@@ -36,9 +36,12 @@ type ISolanaChain = {
   switchNetwork(network: "mainnet" | "devnet"): Promise<void>;
 };
 
-const PHANTOM_ICON =
-  "https://phantom.com/_web_platform_assets/favicon.svg" as const;
-const WALLET_NAME = "Phantom (Embedded)";
+// Wallet Standard requires a `data:` URI for the icon (not https). Inline
+// SVG: a small purple ghost-shaped silhouette as a visual stand-in for the
+// Phantom-branded embedded wallet entry in the wallet picker.
+const PHANTOM_ICON: `data:image/svg+xml;base64,${string}` =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cGF0aCBmaWxsPSIjQUI5RkYyIiBkPSJNNjQgOEMzMS41IDggOCAzMC44IDggNjMuOXY1Mi4xYzAgMy43IDQuMyA1LjcgNy4yIDMuM2wxMC44LTkuMmM3LjQgNi4yIDE4LjQgMTAuOSAzOCAxMC45IDE5LjUgMCAzMC42LTQuNyAzOC0xMC45bDEwLjggOS4yYzIuOSAyLjQgNy4yLjQgNy4yLTMuM1Y2My45QzEyMCAzMC44IDk2LjUgOCA2NCA4eiIvPjxjaXJjbGUgY3g9IjQ2IiBjeT0iNjAiIHI9IjEyIiBmaWxsPSIjZmZmIi8+PGNpcmNsZSBjeD0iODIiIGN5PSI2MCIgcj0iMTIiIGZpbGw9IiNmZmYiLz48L3N2Zz4=";
+export const PHANTOM_EMBEDDED_WALLET_NAME = "Phantom (Embedded)";
 const CHAINS = ["solana:mainnet", "solana:devnet"] as const;
 const ACCOUNT_FEATURES = [
   "solana:signMessage",
@@ -136,8 +139,8 @@ export function createPhantomEmbeddedWallet(): PhantomEmbeddedWalletHandle {
 
   const wallet: Wallet = {
     version: "1.0.0",
-    name: WALLET_NAME,
-    icon: PHANTOM_ICON as `data:image/${string}` | `https://${string}`,
+    name: PHANTOM_EMBEDDED_WALLET_NAME,
+    icon: PHANTOM_ICON,
     get chains() {
       return [...CHAINS];
     },
