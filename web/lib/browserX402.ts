@@ -18,7 +18,7 @@ export function walletSupportsBrowserX402(
   capabilities: TransactionSignerCapabilities | null | undefined
 ): boolean {
   if (!capabilities) return false;
-  return capabilities.canSign;
+  return capabilities.canSign && capabilities.canSignMessage;
 }
 
 function getErrorFromResponseBody(body: unknown): string | null {

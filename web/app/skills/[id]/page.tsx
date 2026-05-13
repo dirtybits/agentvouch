@@ -505,7 +505,28 @@ export default function SkillDetailPage({
   };
 
   const handleUsdcPurchase = async () => {
-    if (!connected || !kitSigner || !walletAddress || !signMessage || !skill) {
+    if (!skill) {
+      return;
+    }
+    if (!connected || !walletAddress) {
+      setInstallResult({
+        success: false,
+        message: "Connect a wallet to pay with USDC.",
+      });
+      return;
+    }
+    if (!kitSigner) {
+      setInstallResult({
+        success: false,
+        message: "This wallet cannot sign the USDC purchase transaction.",
+      });
+      return;
+    }
+    if (!signMessage) {
+      setInstallResult({
+        success: false,
+        message: "This wallet cannot sign the download authorization message.",
+      });
       return;
     }
 
@@ -904,8 +925,10 @@ export default function SkillDetailPage({
   const purchaseBlocked =
     hasUsdcPrimary && isBlockingPurchaseStatus(purchasePreflightStatus);
   const isPaidSkill = hasUsdcPrimary;
+  const walletCanAuthorizeBrowserUsdc = Boolean(kitSigner && signMessage);
   const browserCanUseUsdc =
     hasUsdcPrimary &&
+    walletCanAuthorizeBrowserUsdc &&
     (paymentFlow === "direct-purchase-skill" ||
       walletSupportsBrowserX402(capabilities));
   const signedRedownloadAvailable =

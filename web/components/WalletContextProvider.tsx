@@ -22,6 +22,7 @@ import {
   AddressType,
   PhantomProvider,
   useAccounts,
+  useDisconnect,
   usePhantom,
   useSolana,
   type PhantomSDKConfig,
@@ -35,6 +36,10 @@ import {
 
 const PhantomConfiguredContext = createContext(false);
 export const usePhantomConfigured = () => useContext(PhantomConfiguredContext);
+const PhantomDisconnectContext = createContext<(() => Promise<void>) | null>(
+  null
+);
+export const usePhantomDisconnect = () => useContext(PhantomDisconnectContext);
 
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -84,33 +89,57 @@ function PhantomEmbeddedBridge({
   );
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!isAvailable || !phantom.isConnected || !solana) {
       handle.clearSession();
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
     const solanaAccount = accounts?.find(
       (a) => a.addressType === AddressType.solana
     );
     if (!solanaAccount) {
       handle.clearSession();
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
-    handle.setSession(solana as never, solanaAccount.address);
-    // Idempotent: if already on this network, Phantom's SDK no-ops.
-    void solana.switchNetwork(PHANTOM_NETWORK).catch(() => {
-      // Transient or already-correct network — safe to ignore.
-    });
-    // Surface the embedded session to ConnectorKit if nothing else is
-    // already connected. Skipped when another wallet (e.g. extension) is
-    // active so we don't fight it.
-    if (
-      embeddedConnectorId &&
-      (wallet.status === "disconnected" || wallet.status === "error")
-    ) {
-      void connect(embeddedConnectorId).catch(() => {
-        // ConnectorKit will report via its own error surface.
-      });
-    }
+
+    void (async () => {
+      try {
+        await solana.switchNetwork(PHANTOM_NETWORK);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to switch Phantom embedded network:", error);
+          handle.clearSession();
+        }
+        return;
+      }
+
+      if (cancelled) return;
+      handle.setSession(solana as never, solanaAccount.address);
+      // Surface the embedded session to ConnectorKit if nothing else is
+      // already connected. Skipped when another wallet (e.g. extension) is
+      // active so we don't fight it.
+      if (
+        embeddedConnectorId &&
+        (wallet.status === "disconnected" || wallet.status === "error")
+      ) {
+        try {
+          await connect(embeddedConnectorId);
+        } catch (error) {
+          if (!cancelled) {
+            console.error("Failed to connect Phantom embedded wallet:", error);
+          }
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     phantom.isConnected,
     isAvailable,
@@ -123,6 +152,22 @@ function PhantomEmbeddedBridge({
   ]);
 
   return null;
+}
+
+function PhantomDisconnectProvider({ children }: { children: ReactNode }) {
+  const phantomDisconnect = useDisconnect();
+  const disconnect = useMemo(
+    () => async () => {
+      await phantomDisconnect.disconnect();
+    },
+    [phantomDisconnect]
+  );
+
+  return (
+    <PhantomDisconnectContext.Provider value={disconnect}>
+      {children}
+    </PhantomDisconnectContext.Provider>
+  );
 }
 
 export const WalletContextProvider: FC<{ children: ReactNode }> = ({
@@ -183,10 +228,12 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
     <PhantomConfiguredContext.Provider value={phantomReady}>
       {wantsPhantom ? (
         <PhantomProvider config={phantomConfig}>
-          <AppProvider connectorConfig={connectorConfig}>
-            <PhantomEmbeddedBridge handle={phantomEmbedded} />
-            <SolanaProvider client={legacyClient}>{children}</SolanaProvider>
-          </AppProvider>
+          <PhantomDisconnectProvider>
+            <AppProvider connectorConfig={connectorConfig}>
+              <PhantomEmbeddedBridge handle={phantomEmbedded} />
+              <SolanaProvider client={legacyClient}>{children}</SolanaProvider>
+            </AppProvider>
+          </PhantomDisconnectProvider>
         </PhantomProvider>
       ) : (
         <AppProvider connectorConfig={connectorConfig}>

@@ -8,8 +8,11 @@ import {
   useDisconnectWallet,
   useWalletConnectors,
 } from "@solana/connector/react";
-import { ConnectButton, useDisconnect } from "@phantom/react-sdk";
-import { usePhantomConfigured } from "./WalletContextProvider";
+import { ConnectButton } from "@phantom/react-sdk";
+import {
+  usePhantomConfigured,
+  usePhantomDisconnect,
+} from "./WalletContextProvider";
 import { useMounted } from "@/hooks/useMounted";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import {
@@ -76,10 +79,7 @@ export function ClientWalletButton() {
   const extensionConnectors = allConnectors.filter(
     (c) => c.name !== PHANTOM_EMBEDDED_WALLET_NAME
   );
-
-  // Phantom embedded session disconnect needs to flow through the Phantom SDK
-  // too (not just ConnectorKit) so the OAuth session actually clears.
-  const phantomDisconnect = useDisconnect();
+  const disconnectPhantomEmbedded = usePhantomDisconnect();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -112,9 +112,9 @@ export function ClientWalletButton() {
       } catch {
         // ConnectorKit surfaces its own errors; ignore here.
       }
-      if (isEmbedded) {
+      if (isEmbedded && disconnectPhantomEmbedded) {
         try {
-          await phantomDisconnect.disconnect();
+          await disconnectPhantomEmbedded();
         } catch {
           // Phantom session may already be cleared; safe to ignore.
         }
