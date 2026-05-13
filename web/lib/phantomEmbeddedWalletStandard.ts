@@ -18,7 +18,6 @@
  * `ISolanaChain`.
  */
 
-import { VersionedTransaction } from "@solana/web3.js";
 import type { Wallet, WalletAccount } from "@wallet-standard/base";
 
 type ISolanaChain = {
@@ -27,9 +26,8 @@ type ISolanaChain = {
   signMessage(
     message: string | Uint8Array
   ): Promise<{ signature: Uint8Array; publicKey: string }>;
-  signTransaction<T>(transaction: T): Promise<T>;
   signAndSendTransaction(
-    transaction: VersionedTransaction,
+    transaction: unknown,
     options?: unknown
   ): Promise<{ signature: string }>;
   switchNetwork(network: "mainnet" | "devnet"): Promise<void>;
@@ -44,12 +42,18 @@ export const PHANTOM_EMBEDDED_WALLET_NAME = "Phantom (Embedded)";
 const CHAINS = ["solana:mainnet", "solana:devnet"] as const;
 const ACCOUNT_FEATURES = [
   "solana:signMessage",
-  "solana:signTransaction",
   "solana:signAndSendTransaction",
 ] as const;
 
 type StandardEvent = "change";
 type StandardEventListener = (event: { accounts: readonly WalletAccount[] }) => void;
+type SignAndSendInput = {
+  account: WalletAccount;
+  transaction?: Uint8Array;
+  transactions?: readonly Uint8Array[];
+  chain?: string;
+  options?: unknown;
+};
 
 export type PhantomEmbeddedWalletHandle = {
   wallet: Wallet;
@@ -188,42 +192,41 @@ export function createPhantomEmbeddedWallet(): PhantomEmbeddedWalletHandle {
           return results;
         },
       },
-      "solana:signTransaction": {
-        version: "1.0.0",
-        supportedTransactionVersions: ["legacy", 0] as const,
-        signTransaction: async (
-          ...inputs: {
-            account: WalletAccount;
-            transaction: Uint8Array;
-            chain?: string;
-          }[]
-        ) => {
-          const c = requireChain();
-          const results = [];
-          for (const input of inputs) {
-            const tx = VersionedTransaction.deserialize(input.transaction);
-            const signed = (await c.signTransaction(tx)) as VersionedTransaction;
-            results.push({ signedTransaction: signed.serialize() });
-          }
-          return results;
-        },
-      },
       "solana:signAndSendTransaction": {
         version: "1.0.0",
         supportedTransactionVersions: ["legacy", 0] as const,
-        signAndSendTransaction: async (
-          ...inputs: {
-            account: WalletAccount;
-            transaction: Uint8Array;
-            chain?: string;
-            options?: unknown;
-          }[]
-        ) => {
+        signAndSendTransaction: async (...inputs: SignAndSendInput[]) => {
           const c = requireChain();
+          const signAndSendOne = async (
+            transaction: Uint8Array,
+            options?: unknown
+          ) => {
+            const { signature } = await c.signAndSendTransaction(
+              transaction,
+              options
+            );
+            return signature;
+          };
+
+          if (inputs.length === 1 && inputs[0]?.transactions) {
+            const input = inputs[0];
+            const transactions = input.transactions ?? [];
+            const signatures = [];
+            for (const transaction of transactions) {
+              signatures.push(await signAndSendOne(transaction, input.options));
+            }
+            return { signatures };
+          }
+
           const results = [];
           for (const input of inputs) {
-            const tx = VersionedTransaction.deserialize(input.transaction);
-            const { signature } = await c.signAndSendTransaction(tx);
+            if (!input.transaction) {
+              throw new Error("Missing transaction for Phantom embedded send");
+            }
+            const signature = await signAndSendOne(
+              input.transaction,
+              input.options
+            );
             results.push({ signature: base58ToBytes(signature) });
           }
           return results;

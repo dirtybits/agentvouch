@@ -7,7 +7,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
 } from "react";
 import {
   AppProvider,
@@ -188,12 +187,7 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   const mounted = useMounted();
   const phantomReady = mounted && !!PHANTOM_APP_ID;
 
-  // Stable handle — one per provider instance, lives across re-renders.
-  const phantomEmbeddedRef = useRef<PhantomEmbeddedWalletHandle | null>(null);
-  if (!phantomEmbeddedRef.current) {
-    phantomEmbeddedRef.current = createPhantomEmbeddedWallet();
-  }
-  const phantomEmbedded = phantomEmbeddedRef.current;
+  const phantomEmbedded = useMemo(() => createPhantomEmbeddedWallet(), []);
 
   const connectorConfig = useMemo(
     () =>

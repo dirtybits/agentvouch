@@ -25,9 +25,9 @@ import {
 import {
   useWallet,
   useTransactionSigner,
-  useKitTransactionSigner,
 } from "@solana/connector/react";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
+import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { address, type Address } from "@solana/kit";
 import {
@@ -267,7 +267,10 @@ export default function SkillDetailPage({
   const searchParams = useSearchParams();
   const { status, account } = useWallet();
   const { signer, capabilities } = useTransactionSigner();
-  const { signer: kitSigner } = useKitTransactionSigner();
+  const {
+    signer: protocolTransactionSigner,
+    partialSigner: kitSigner,
+  } = useAgentVouchTransactionSigner();
   const connected = status === "connected" && !!account;
   const walletAddress = account ?? null;
   const signMessage = signer?.signMessage ?? null;
@@ -515,13 +518,6 @@ export default function SkillDetailPage({
       });
       return;
     }
-    if (!kitSigner) {
-      setInstallResult({
-        success: false,
-        message: "This wallet cannot sign the USDC purchase transaction.",
-      });
-      return;
-    }
     if (!signMessage) {
       setInstallResult({
         success: false,
@@ -537,6 +533,14 @@ export default function SkillDetailPage({
 
     try {
       if (skill.on_chain_address) {
+        if (!protocolTransactionSigner) {
+          setInstallResult({
+            success: false,
+            message: "This wallet cannot send the USDC purchase transaction.",
+          });
+          return;
+        }
+
         const purchaseResult = await oracle.purchaseSkill(
           address(skill.on_chain_address),
           address(skill.author_pubkey)
@@ -585,10 +589,18 @@ export default function SkillDetailPage({
         return;
       }
 
+      if (!kitSigner) {
+        setInstallResult({
+          success: false,
+          message: "This wallet cannot sign the USDC payment transaction.",
+        });
+        return;
+      }
+
       const purchaseResult = await fetchSkillWithBrowserX402({
-        signer: kitSigner!,
-        walletAddress: walletAddress!,
-        signMessage: signMessage!,
+        signer: kitSigner,
+        walletAddress,
+        signMessage,
         skillId: skill.id,
         listingAddress: skill.on_chain_address ?? undefined,
         rawPath: `/api/skills/${id}/raw`,
@@ -925,12 +937,17 @@ export default function SkillDetailPage({
   const purchaseBlocked =
     hasUsdcPrimary && isBlockingPurchaseStatus(purchasePreflightStatus);
   const isPaidSkill = hasUsdcPrimary;
-  const walletCanAuthorizeBrowserUsdc = Boolean(kitSigner && signMessage);
+  const walletCanAuthorizeDirectUsdc = Boolean(
+    protocolTransactionSigner && signMessage
+  );
+  const walletCanAuthorizeBrowserX402 = Boolean(
+    kitSigner && signMessage && walletSupportsBrowserX402(capabilities)
+  );
   const browserCanUseUsdc =
     hasUsdcPrimary &&
-    walletCanAuthorizeBrowserUsdc &&
-    (paymentFlow === "direct-purchase-skill" ||
-      walletSupportsBrowserX402(capabilities));
+    (paymentFlow === "direct-purchase-skill"
+      ? walletCanAuthorizeDirectUsdc
+      : walletCanAuthorizeBrowserX402);
   const signedRedownloadAvailable =
     hasUsdcPrimary || Boolean(skill.on_chain_address);
   const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
