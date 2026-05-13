@@ -79,7 +79,7 @@ When/if these mechanisms move to mainnet:
 
 ## Tracking
 
-This branch (`feat/phase-1-friction-removal`) is the scope-and-plan vehicle. Each must-have lands as its own commit directly to `main` after this doc is reviewed. The spike (item 1) gates the rest of the plan — do not start items 2–5 until the spike confirms the embedded path actually works end-to-end on devnet.
+This branch (`feat/phase-1-friction-removal`) is the scope-and-plan vehicle. Each must-have lands as its own commit directly to `main` after this doc is reviewed. The embedded-wallet checkout spike no longer gates the rest of the plan: proceed with the devnet faucet, preflight, ATA, and sponsor work while keeping paid checkout on extension / externally signed Solana wallets. Track embedded Phantom purchase as a provider-blocked follow-up.
 
 ## Spike findings — 2026-05-11
 
@@ -185,3 +185,22 @@ Tradeoff accepted: larger Phase 1 diff (~1500–2500 lines across 11 files) in e
 9. Audit `web/lib/purchasePreflight.ts` for any wallet-shape assumptions that change.
 10. Type-check / lint pass.
 11. Devnet end-to-end manual smoke: Google sign-in → free skill install → paid skill x402 checkout. Confirms `switchNetwork`-on-connect is wired, `signTransaction` returns a partially-signed tx through the Wallet Standard interface, and the x402 flow round-trips.
+
+## Checkout boundary update — 2026-05-13
+
+Manual purchase smoke continued to fail inside Phantom's hosted signing path even after routing the embedded wallet through the documented `signAndSendTransaction` surface. The app should not keep Phase 1 blocked on opaque Phantom KMS / simulation behavior.
+
+### Product decision
+
+- Keep Phantom embedded social sign-in connected through ConnectorKit for onboarding experiments, identity, free installs, and future retry work.
+- Do not allow Phantom embedded wallets to initiate paid listing purchases for now.
+- Paid browser checkout stays available for extension / externally signed Solana wallets that support the required signing path.
+- Surface a clear fallback: embedded Phantom checkout is temporarily unavailable; connect the Phantom extension or another Solana wallet to purchase.
+
+### Phase 1 order from here
+
+1. Devnet onboarding faucet for signed-in users.
+2. Embedded-wallet-aware preflight copy and funding state, without attempting embedded paid purchase.
+3. First-purchase USDC ATA creation.
+4. Author registration rent sponsor for devnet sign-ups.
+5. Revisit embedded paid checkout only with Phantom support, a minimal repro, or a different embedded wallet provider.

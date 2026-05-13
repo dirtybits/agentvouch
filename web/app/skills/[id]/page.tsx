@@ -25,9 +25,11 @@ import {
 import {
   useWallet,
   useTransactionSigner,
+  useWalletInfo,
 } from "@solana/connector/react";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
+import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { address, type Address } from "@solana/kit";
 import {
@@ -266,6 +268,7 @@ export default function SkillDetailPage({
   const { id } = use(params);
   const searchParams = useSearchParams();
   const { status, account } = useWallet();
+  const walletInfo = useWalletInfo();
   const { signer, capabilities } = useTransactionSigner();
   const {
     signer: protocolTransactionSigner,
@@ -273,6 +276,8 @@ export default function SkillDetailPage({
   } = useAgentVouchTransactionSigner();
   const connected = status === "connected" && !!account;
   const walletAddress = account ?? null;
+  const isPhantomEmbeddedWallet =
+    connected && walletInfo.name === PHANTOM_EMBEDDED_WALLET_NAME;
   const signMessage = signer?.signMessage ?? null;
   const oracle = useReputationOracle();
 
@@ -522,6 +527,14 @@ export default function SkillDetailPage({
       setInstallResult({
         success: false,
         message: "This wallet cannot sign the download authorization message.",
+      });
+      return;
+    }
+    if (isPhantomEmbeddedWallet) {
+      setInstallResult({
+        success: false,
+        message:
+          "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase.",
       });
       return;
     }
@@ -937,12 +950,18 @@ export default function SkillDetailPage({
   const purchaseBlocked =
     hasUsdcPrimary && isBlockingPurchaseStatus(purchasePreflightStatus);
   const isPaidSkill = hasUsdcPrimary;
+  const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
   const walletCanAuthorizeDirectUsdc = Boolean(
-    protocolTransactionSigner && signMessage
+    protocolTransactionSigner && signMessage && !isPhantomEmbeddedWallet
   );
   const walletCanAuthorizeBrowserX402 = Boolean(
-    kitSigner && signMessage && walletSupportsBrowserX402(capabilities)
+    kitSigner &&
+      signMessage &&
+      !isPhantomEmbeddedWallet &&
+      walletSupportsBrowserX402(capabilities)
   );
+  const embeddedWalletCheckoutBlocked =
+    isPaidSkill && isPhantomEmbeddedWallet && !buyerHasPurchased;
   const browserCanUseUsdc =
     hasUsdcPrimary &&
     (paymentFlow === "direct-purchase-skill"
@@ -950,7 +969,6 @@ export default function SkillDetailPage({
       : walletCanAuthorizeBrowserX402);
   const signedRedownloadAvailable =
     hasUsdcPrimary || Boolean(skill.on_chain_address);
-  const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
     isChainOnly && skill?.skill_uri
@@ -988,6 +1006,8 @@ export default function SkillDetailPage({
     ? signedRedownloadAvailable
       ? "This skill is already purchased for your connected wallet. Sign to download the file."
       : "This skill is already purchased for your connected wallet. The file is delivered at checkout."
+    : embeddedWalletCheckoutBlocked
+    ? "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase."
     : primaryUsdcPrice
     ? browserCanUseUsdc
       ? `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
@@ -1307,6 +1327,11 @@ export default function SkillDetailPage({
                         Purchased. Signed re-downloads require an on-chain link.
                       </span>
                     )
+                  ) : embeddedWalletCheckoutBlocked ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
+                      <FiAlertTriangle className="w-3.5 h-3.5" />
+                      Use an extension wallet
+                    </span>
                   ) : primaryUsdcPrice && browserCanUseUsdc ? (
                     <button
                       onClick={handleUsdcPurchase}
