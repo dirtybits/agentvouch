@@ -1,4 +1,3 @@
-import { useSendTransaction } from "@solana/react-hooks";
 import { useWallet, useKitTransactionSigner } from "@solana/connector/react";
 import { useMemo, useCallback } from "react";
 import {
@@ -99,6 +98,7 @@ import {
   usdcToMicros,
   type AgentVouchTransactionSummary,
 } from "@/lib/agentvouchUsdc";
+import { getClientTransactionHelper } from "@/lib/solanaTransactionHelper";
 
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -1103,7 +1103,6 @@ async function waitForConfirmedSignature(
 export function useReputationOracle() {
   const { status, account } = useWallet();
   const connected = status === "connected" && !!account;
-  const { send: frameworkSend } = useSendTransaction();
   const { signer: kitSigner } = useKitTransactionSigner();
 
   const walletAddress: Address | null = connected
@@ -1121,7 +1120,7 @@ export function useReputationOracle() {
       const request = buildTransactionSendRequest(ix, signer);
       try {
         if (summary) logTransactionSummary(summary);
-        const sig = await frameworkSend(request);
+        const sig = await getClientTransactionHelper().prepareAndSend(request);
         const txSignature = signature(String(sig));
         await waitForConfirmedSignature(txSignature);
         return txSignature;
@@ -1153,7 +1152,7 @@ export function useReputationOracle() {
         throw new Error(getErrorMessage(error));
       }
     },
-    [walletAddress, signer, frameworkSend]
+    [walletAddress, signer]
   );
 
   const registerAgent = useCallback(

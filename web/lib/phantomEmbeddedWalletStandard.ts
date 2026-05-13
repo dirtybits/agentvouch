@@ -32,7 +32,6 @@ type ISolanaChain = {
     transaction: VersionedTransaction,
     options?: unknown
   ): Promise<{ signature: string }>;
-  signAllTransactions<T>(transactions: T[]): Promise<T[]>;
   switchNetwork(network: "mainnet" | "devnet"): Promise<void>;
 };
 
@@ -46,7 +45,6 @@ const CHAINS = ["solana:mainnet", "solana:devnet"] as const;
 const ACCOUNT_FEATURES = [
   "solana:signMessage",
   "solana:signTransaction",
-  "solana:signAllTransactions",
   "solana:signAndSendTransaction",
 ] as const;
 
@@ -208,24 +206,6 @@ export function createPhantomEmbeddedWallet(): PhantomEmbeddedWalletHandle {
             results.push({ signedTransaction: signed.serialize() });
           }
           return results;
-        },
-      },
-      "solana:signAllTransactions": {
-        version: "1.0.0",
-        supportedTransactionVersions: ["legacy", 0] as const,
-        signAllTransactions: async (
-          ...inputs: {
-            account: WalletAccount;
-            transaction: Uint8Array;
-            chain?: string;
-          }[]
-        ) => {
-          const c = requireChain();
-          const txs = inputs.map((input) =>
-            VersionedTransaction.deserialize(input.transaction)
-          );
-          const signed = (await c.signAllTransactions(txs)) as VersionedTransaction[];
-          return signed.map((s) => ({ signedTransaction: s.serialize() }));
         },
       },
       "solana:signAndSendTransaction": {

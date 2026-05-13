@@ -9,15 +9,19 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { SolanaProvider } from "@solana/react-hooks";
-import { autoDiscover, createClient } from "@solana/client";
 import {
   AppProvider,
   useConnectWallet,
   useWallet,
   useWalletConnectors,
 } from "@solana/connector/react";
-import { getDefaultConfig } from "@solana/connector/headless";
+import {
+  createSolanaDevnet,
+  createSolanaLocalnet,
+  createSolanaMainnet,
+  createSolanaTestnet,
+  getDefaultConfig,
+} from "@solana/connector/headless";
 import {
   AddressType,
   PhantomProvider,
@@ -56,6 +60,14 @@ const TARGET_NETWORK: "devnet" | "mainnet" | "testnet" | "localnet" =
     : "mainnet";
 const PHANTOM_NETWORK: "devnet" | "mainnet" =
   TARGET_NETWORK === "mainnet" ? "mainnet" : "devnet";
+const CONNECTOR_CLUSTER =
+  TARGET_NETWORK === "mainnet"
+    ? createSolanaMainnet(ENDPOINT)
+    : TARGET_NETWORK === "testnet"
+    ? createSolanaTestnet(ENDPOINT)
+    : TARGET_NETWORK === "localnet"
+    ? createSolanaLocalnet(ENDPOINT)
+    : createSolanaDevnet(ENDPOINT);
 
 /**
  * Bridges the Phantom embedded session into the Wallet Standard wallet
@@ -183,23 +195,13 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   }
   const phantomEmbedded = phantomEmbeddedRef.current;
 
-  // Legacy @solana/react-hooks client — kept during the migration so
-  // existing `useWalletConnection` consumers continue to work. Will be
-  // removed once all call sites are migrated to ConnectorKit's useWallet.
-  const legacyClient = useMemo(
-    () =>
-      createClient({
-        endpoint: ENDPOINT,
-        walletConnectors: autoDiscover(),
-      }),
-    []
-  );
-
   const connectorConfig = useMemo(
     () =>
       getDefaultConfig({
         appName: "AgentVouch",
         network: TARGET_NETWORK,
+        clusters: [CONNECTOR_CLUSTER],
+        persistClusterSelection: false,
         autoConnect: true,
         enableMobile: false,
         walletConnect: false,
@@ -231,14 +233,12 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
           <PhantomDisconnectProvider>
             <AppProvider connectorConfig={connectorConfig}>
               <PhantomEmbeddedBridge handle={phantomEmbedded} />
-              <SolanaProvider client={legacyClient}>{children}</SolanaProvider>
+              {children}
             </AppProvider>
           </PhantomDisconnectProvider>
         </PhantomProvider>
       ) : (
-        <AppProvider connectorConfig={connectorConfig}>
-          <SolanaProvider client={legacyClient}>{children}</SolanaProvider>
-        </AppProvider>
+        <AppProvider connectorConfig={connectorConfig}>{children}</AppProvider>
       )}
     </PhantomConfiguredContext.Provider>
   );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useSendTransaction } from "@solana/react-hooks";
 import { useWallet, useKitTransactionSigner } from "@solana/connector/react";
 import {
   address,
@@ -39,6 +38,7 @@ import {
   logTransactionSummary,
   type AgentVouchTransactionSummary,
 } from "@/lib/agentvouchUsdc";
+import { getClientTransactionHelper } from "@/lib/solanaTransactionHelper";
 import {
   fetchAllMaybePurchase,
   fetchMaybePurchase,
@@ -254,7 +254,6 @@ async function waitForConfirmedSignature(
 export function useMarketplaceOracle() {
   const { status, account } = useWallet();
   const connected = status === "connected" && !!account;
-  const { send: frameworkSend } = useSendTransaction();
   const { signer: kitSigner } = useKitTransactionSigner();
 
   const walletAddress: Address | null = connected
@@ -272,7 +271,7 @@ export function useMarketplaceOracle() {
       const request = buildTransactionSendRequest(ix, signer);
       try {
         if (summary) logTransactionSummary(summary);
-        const sig = await frameworkSend(request);
+        const sig = await getClientTransactionHelper().prepareAndSend(request);
         const txSignature = signature(String(sig));
         await waitForConfirmedSignature(txSignature);
         return txSignature;
@@ -304,7 +303,7 @@ export function useMarketplaceOracle() {
         throw new Error(getErrorMessage(error));
       }
     },
-    [walletAddress, signer, frameworkSend]
+    [walletAddress, signer]
   );
 
   const getAllSkillListings = useCallback(async () => {
