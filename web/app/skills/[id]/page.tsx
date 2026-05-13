@@ -22,7 +22,11 @@ import {
   navButtonSecondaryInlineClass,
   navButtonSizeClass,
 } from "@/lib/buttonStyles";
-import { useWalletConnection } from "@solana/react-hooks";
+import {
+  useWallet,
+  useTransactionSigner,
+  useKitTransactionSigner,
+} from "@solana/connector/react";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { address, type Address } from "@solana/kit";
@@ -261,10 +265,12 @@ export default function SkillDetailPage({
 }) {
   const { id } = use(params);
   const searchParams = useSearchParams();
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && !!wallet;
-  const walletAddress = wallet?.account.address ?? null;
-  const signMessage = wallet?.signMessage ?? null;
+  const { status, account } = useWallet();
+  const { signer, capabilities } = useTransactionSigner();
+  const { signer: kitSigner } = useKitTransactionSigner();
+  const connected = status === "connected" && !!account;
+  const walletAddress = account ?? null;
+  const signMessage = signer?.signMessage ?? null;
   const oracle = useReputationOracle();
 
   const [skill, setSkill] = useState<SkillDetail | null>(null);
@@ -499,7 +505,7 @@ export default function SkillDetailPage({
   };
 
   const handleUsdcPurchase = async () => {
-    if (!connected || !wallet || !walletAddress || !signMessage || !skill) {
+    if (!connected || !kitSigner || !walletAddress || !signMessage || !skill) {
       return;
     }
 
@@ -559,9 +565,9 @@ export default function SkillDetailPage({
       }
 
       const purchaseResult = await fetchSkillWithBrowserX402({
-        wallet,
-        walletAddress,
-        signMessage,
+        signer: kitSigner!,
+        walletAddress: walletAddress!,
+        signMessage: signMessage!,
         skillId: skill.id,
         listingAddress: skill.on_chain_address ?? undefined,
         rawPath: `/api/skills/${id}/raw`,
@@ -901,7 +907,7 @@ export default function SkillDetailPage({
   const browserCanUseUsdc =
     hasUsdcPrimary &&
     (paymentFlow === "direct-purchase-skill" ||
-      walletSupportsBrowserX402(wallet));
+      walletSupportsBrowserX402(capabilities));
   const signedRedownloadAvailable =
     hasUsdcPrimary || Boolean(skill.on_chain_address);
   const buyerHasPurchased = Boolean(skill.buyerHasPurchased);

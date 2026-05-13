@@ -7,7 +7,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { useWalletConnection } from "@solana/react-hooks";
+import { useWallet, useTransactionSigner } from "@solana/connector/react";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
@@ -121,10 +121,11 @@ export default function AuthorProfilePage() {
   const searchParams = useSearchParams();
   const pubkey = params.pubkey as string;
 
-  const { wallet, status: walletStatus } = useWalletConnection();
-  const connected = walletStatus === "connected" && !!wallet;
-  const myPubkey = wallet?.account.address ?? null;
-  const signMessage = wallet?.signMessage ?? null;
+  const { status: walletStatus, account } = useWallet();
+  const { signer } = useTransactionSigner();
+  const connected = walletStatus === "connected" && !!account;
+  const myPubkey = account ?? null;
+  const signMessage = signer?.signMessage ?? null;
   const oracle = useReputationOracle();
 
   const [profile, setProfile] = useState<AgentProfileData | null>(null);

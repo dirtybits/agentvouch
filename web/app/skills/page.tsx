@@ -8,7 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useWalletConnection } from "@solana/react-hooks";
+import { useWallet } from "@solana/connector/react";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
@@ -180,9 +180,9 @@ function getAuthorActionHref(
 }
 
 export default function MarketplacePage() {
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && !!wallet;
-  const publicKey = wallet?.account.address ?? null;
+  const { status, account } = useWallet();
+  const connected = status === "connected" && !!account;
+  const publicKey = account ?? null;
   const oracle = useMarketplaceOracle();
 
   const [activeTab, setActiveTab] = useState<PageTab>("browse");

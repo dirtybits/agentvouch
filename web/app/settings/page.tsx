@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useWalletConnection } from "@solana/react-hooks";
+import { useWallet, useTransactionSigner } from "@solana/connector/react";
 import Link from "next/link";
 import { encodeBase64 } from "@/lib/base64";
 import {
@@ -32,10 +32,11 @@ interface ApiKeyRow {
 }
 
 export default function SettingsPage() {
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && !!wallet;
-  const walletAddress = wallet?.account.address ?? null;
-  const signMessage = wallet?.signMessage ?? null;
+  const { status, account } = useWallet();
+  const { signer } = useTransactionSigner();
+  const connected = status === "connected" && !!account;
+  const walletAddress = account ?? null;
+  const signMessage = signer?.signMessage ?? null;
 
   const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [loading, setLoading] = useState(false);

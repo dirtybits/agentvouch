@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
-import { useWalletConnection } from "@solana/react-hooks";
+import { useWallet, useTransactionSigner } from "@solana/connector/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
@@ -133,10 +133,11 @@ export default function PublishSkillPage() {
 }
 
 function PublishSkillPageInner() {
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && !!wallet;
-  const publicKey = wallet?.account.address ?? null;
-  const signMessage = wallet?.signMessage ?? null;
+  const { status, account } = useWallet();
+  const { signer } = useTransactionSigner();
+  const connected = status === "connected" && !!account;
+  const publicKey = account ?? null;
+  const signMessage = signer?.signMessage ?? null;
   const router = useRouter();
   const searchParams = useSearchParams();
   const oracle = useReputationOracle();

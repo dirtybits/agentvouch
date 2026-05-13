@@ -1,4 +1,5 @@
-import { useWalletConnection, useSendTransaction } from "@solana/react-hooks";
+import { useSendTransaction } from "@solana/react-hooks";
+import { useWallet, useKitTransactionSigner } from "@solana/connector/react";
 import { useMemo, useCallback } from "react";
 import {
   address,
@@ -15,10 +16,7 @@ import {
   type ReadonlyUint8Array,
   type TransactionSigner,
 } from "@solana/kit";
-import {
-  createWalletTransactionSigner,
-  type TransactionPrepareAndSendRequest,
-} from "@solana/client";
+import { type TransactionPrepareAndSendRequest } from "@solana/client";
 import type { Base64EncodedBytes, Base58EncodedBytes } from "@solana/rpc-types";
 import { decodeBase64, encodeBase64 } from "@/lib/base64";
 
@@ -1103,18 +1101,16 @@ async function waitForConfirmedSignature(
 }
 
 export function useReputationOracle() {
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && wallet;
+  const { status, account } = useWallet();
+  const connected = status === "connected" && !!account;
   const { send: frameworkSend } = useSendTransaction();
+  const { signer: kitSigner } = useKitTransactionSigner();
 
   const walletAddress: Address | null = connected
-    ? (wallet.account.address as Address)
+    ? (account as Address)
     : null;
 
-  const signer: TransactionSigner | null = useMemo(() => {
-    if (!connected || !wallet) return null;
-    return createWalletTransactionSigner(wallet).signer;
-  }, [connected, wallet]);
+  const signer: TransactionSigner | null = kitSigner ?? null;
 
   const sendIx = useCallback(
     async (

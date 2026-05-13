@@ -1,4 +1,4 @@
-import { createWalletTransactionSigner } from "@solana/client";
+import type { TransactionSigner } from "@solana/kit";
 import {
   decodePaymentResponseHeader,
   wrapFetchWithPayment,
@@ -8,39 +8,17 @@ import {
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
 import { createSignedDownloadAuthPayload } from "@/lib/auth";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
+import type { TransactionSignerCapabilities } from "@solana/connector/headless";
 
-export type BrowserX402Wallet = Parameters<typeof createWalletTransactionSigner>[0];
 type BrowserX402SettleResponse = ReturnType<typeof decodePaymentResponseHeader>;
 
 type BrowserSignMessage = (message: Uint8Array) => Promise<Uint8Array>;
 
 export function walletSupportsBrowserX402(
-  wallet: BrowserX402Wallet | null | undefined
+  capabilities: TransactionSignerCapabilities | null | undefined
 ): boolean {
-  if (!wallet) {
-    return false;
-  }
-
-  const directMethods = wallet as unknown as {
-    signTransaction?: unknown;
-    signTransactions?: unknown;
-  };
-  if (
-    typeof directMethods.signTransaction === "function" ||
-    typeof directMethods.signTransactions === "function"
-  ) {
-    return true;
-  }
-
-  const features = (wallet as unknown as { features?: Record<string, unknown> })
-    .features;
-  if (!features) {
-    return false;
-  }
-
-  return Object.keys(features).some((featureName) =>
-    /(^|:)signTransaction(s)?$/i.test(featureName)
-  );
+  if (!capabilities) return false;
+  return capabilities.canSign;
 }
 
 function getErrorFromResponseBody(body: unknown): string | null {
@@ -60,14 +38,12 @@ function getErrorFromResponseBody(body: unknown): string | null {
 }
 
 export async function createBrowserX402Fetch(input: {
-  wallet: BrowserX402Wallet;
+  signer: TransactionSigner;
   authHeader?: string;
   rpcUrl?: string;
   fetchImpl?: typeof fetch;
 }) {
-  const signer = toClientSvmSigner(
-    createWalletTransactionSigner(input.wallet).signer
-  );
+  const signer = toClientSvmSigner(input.signer);
   const client = new x402HTTPClient(
     new x402Client().register(
       "solana:*",
@@ -90,7 +66,7 @@ export async function createBrowserX402Fetch(input: {
 }
 
 export async function fetchSkillWithBrowserX402(input: {
-  wallet: BrowserX402Wallet;
+  signer: TransactionSigner;
   walletAddress: string;
   signMessage: BrowserSignMessage;
   skillId: string;
@@ -112,7 +88,7 @@ export async function fetchSkillWithBrowserX402(input: {
     })
   );
   const paidFetch = await createBrowserX402Fetch({
-    wallet: input.wallet,
+    signer: input.signer,
     authHeader,
     rpcUrl: input.rpcUrl,
     fetchImpl: input.fetchImpl,
