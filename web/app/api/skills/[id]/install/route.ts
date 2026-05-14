@@ -99,7 +99,8 @@ export async function POST(
       }
     }
 
-    if (normalizeUsdcMicros(skill.price_usdc_micros)) {
+    const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
+    if (priceUsdcMicros) {
       const purchased = skill.on_chain_address
         ? await hasOnChainPurchase(
             verification.pubkey,
@@ -124,6 +125,20 @@ export async function POST(
           total_installs: updated.total_installs,
           installed_by: verification.pubkey,
         });
+      }
+
+      if (!skill.on_chain_address) {
+        return NextResponse.json(
+          {
+            error: "On-chain listing required",
+            message:
+              "This paid repo skill is not installable until the author links an on-chain SkillListing.",
+            payment_flow: "listing-required",
+            amount_micros: priceUsdcMicros,
+            on_chain_address: null,
+          },
+          { status: 402 }
+        );
       }
 
       return NextResponse.json(

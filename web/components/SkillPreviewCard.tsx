@@ -29,7 +29,12 @@ interface SkillPreviewCardSkill {
   source?: "repo" | "chain";
   author_trust: TrustData | null;
   price_usdc_micros?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
+  payment_flow?:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
   purchasePreflightMessage?: string | null;
   purchaseRiskWarning?: string | null;
   purchaseBlockError?: {
@@ -164,8 +169,10 @@ export default function SkillPreviewCard({
     : null;
   const trust = skill.author_trust;
   const primaryUsdcPrice = formatUsdcMicros(skill.price_usdc_micros);
+  const isListingRequired = skill.payment_flow === "listing-required";
   const hasUsdcPrimary =
     Boolean(primaryUsdcPrice) ||
+    isListingRequired ||
     skill.payment_flow === "x402-usdc" ||
     skill.payment_flow === "direct-purchase-skill";
   const authorReports = trust
@@ -176,7 +183,13 @@ export default function SkillPreviewCard({
       )
     : null;
   const priceTooltip = hasUsdcPrimary
-    ? primaryUsdcPrice
+    ? isListingRequired
+      ? "Paid skill setup is incomplete. The author must link an on-chain listing before new purchases are available."
+      : skill.payment_flow === "direct-purchase-skill"
+      ? primaryUsdcPrice
+        ? `Primary price: ${primaryUsdcPrice} USDC via purchase_skill.`
+        : "Primary price is settled in USDC via purchase_skill."
+      : primaryUsdcPrice
       ? `Primary price: ${primaryUsdcPrice} USDC via x402.`
       : "Primary price is settled in USDC via x402."
     : legacySolLamports > 0
@@ -299,7 +312,11 @@ export default function SkillPreviewCard({
               title={priceTooltip}
             >
               <UsdcIcon className="h-3.5 w-3.5" />
-              {primaryUsdcPrice ? `${primaryUsdcPrice} USDC` : "USDC"}
+              {isListingRequired
+                ? "Listing required"
+                : primaryUsdcPrice
+                ? `${primaryUsdcPrice} USDC`
+                : "USDC"}
             </span>
           ) : legacySolLamports > 0 ? (
             <span
@@ -317,7 +334,10 @@ export default function SkillPreviewCard({
             </span>
           ) : null}
         </div>
-        {skill.purchaseRiskWarning && hasUsdcPrimary && !hasPurchased && (
+        {skill.purchaseRiskWarning &&
+          hasUsdcPrimary &&
+          !isListingRequired &&
+          !hasPurchased && (
           <div className="mt-3 flex items-start gap-2 rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
             <FiInfo className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>{skill.purchaseRiskWarning}</span>
@@ -342,6 +362,14 @@ export default function SkillPreviewCard({
                 Purchased
               </span>
             </div>
+          ) : isListingRequired ? (
+            <Link
+              href={`/skills/${skill.id}`}
+              className={`w-full border border-gray-200 bg-gray-50 text-center font-medium text-gray-500 transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-700 ${navButtonFlexClass}`}
+            >
+              <FiInfo className="h-3.5 w-3.5" />
+              Listing Required
+            </Link>
           ) : hasUsdcPrimary ? (
             <Link
               href={`/skills/${skill.id}`}

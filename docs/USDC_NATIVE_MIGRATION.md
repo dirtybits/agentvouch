@@ -174,7 +174,7 @@ Purchase settlement principle:
 - When no external vouch stake is active, including zero-backing and author-self-stake-only listings, the full payment goes to author proceeds; no voucher reward pool is created because there are no voucher positions that can claim it.
 - With zero backing, an upheld dispute produces a reputation hit only. The protocol has no funds to slash, so no buyer funds are recoverable in that dispute path.
 - x402 purchases for protocol-listed paid skills must not bypass voucher rewards. The intended v0.2.0 path is a POC-gated settlement bridge: x402 pays a protocol settlement vault, the backend verifies the settled transaction and memo, then a configured `settlement_authority` calls `settle_x402_purchase` to create the on-chain purchase and split funds.
-- If the bridge POC fails, x402 remains limited to repo-only/off-chain entitlement flows until a trustless custom x402 scheme or facilitator extension can call the protocol directly.
+- If the bridge POC fails, x402 remains disabled for new paid marketplace purchases. Existing historical repo-only x402 entitlements can still re-download content, but new paid repo skills must link an on-chain `SkillListing`.
 
 x402 bridge POC pass/fail criteria:
 
@@ -184,8 +184,8 @@ x402 bridge POC pass/fail criteria:
 - Pass requires reliable buyer extraction (`settle.payer` or transaction authority) so the on-chain `Purchase` PDA is derived from the paying wallet, not the facilitator fee payer.
 - Pass requires idempotency: the same payment reference or transaction signature cannot create more than one `X402SettlementReceipt`, `Purchase`, entitlement, or reward split.
 - Pass requires a retry/refund path for the case where x402 settles but `settle_x402_purchase` fails after USDC lands in the settlement vault.
-- Fail means protocol-listed paid skills require direct `purchase_skill`; `/api/x402/supported` must advertise only repo-only/off-chain x402 support and return capability metadata explaining that protocol-listed paid skills require direct on-chain purchase.
-- Allowed x402 flows after bridge failure are: free downloads, existing legacy entitlements, and repo-only/off-chain paid skills that are explicitly marked as not protocol-visible.
+- Fail means paid skills require direct `purchase_skill`; `/api/x402/supported` must return capability metadata explaining that new repo-only x402 purchases are disabled and protocol-listed paid skills require direct on-chain purchase.
+- Allowed x402-related flows after bridge failure are: free downloads without payment and existing historical entitlements that re-download with `X-AgentVouch-Auth`.
 
 Settlement authority constraints:
 
@@ -748,7 +748,7 @@ Tasks:
   - program creates an idempotent `X402SettlementReceipt` PDA and the normal `Purchase` PDA
   - program splits USDC from the settlement vault to author ATA and listing reward vault
 - Browser USDC x402 uses split-signature sponsored flow; gate it to wallets that support `partialSign` (route Phantom embedded/send-only wallets to direct `signAndSendTransaction` or agent fallback). Document this for the settlement bridge POC.
-- If the bridge POC fails, disable x402 for protocol-listed paid skills and require direct `purchase_skill`; keep x402 only for repo-only/off-chain entitlement flows.
+- If the bridge POC fails, disable x402 for new paid marketplace purchases and require direct `purchase_skill`; keep historical repo-only/off-chain entitlements for signed re-downloads only.
 - Keep `usdc_purchase_receipts` and `usdc_purchase_entitlements` for raw download access.
 - Add active protocol metadata to `skills`:
   - `on_chain_protocol_version`
@@ -771,7 +771,7 @@ Tasks:
 Acceptance criteria:
 
 - Protocol-listed paid purchases update the same reputation/reward accounting model.
-- Raw skill downloads still work for agents using allowed x402 flows.
+- Raw skill downloads still work for agents using direct-purchase entitlements and historical x402 entitlements.
 - No duplicate entitlement path creates inconsistent purchase state.
 - Direct on-chain purchases grant download access after API verification, and background reconciliation can repair missed client callbacks.
 
@@ -1249,7 +1249,7 @@ The migration is complete when:
 - Vouching, author bonds, purchases, voucher rewards, disputes, and reputation all use USDC accounting.
 - Web primary flows no longer require `v0.1.0` SOL instructions.
 - Protocol-listed paid purchases preserve the `60%` author / `40%` voucher split only when active external voucher stake exists. If there are no active vouchers, the full payment goes to author proceeds. If the x402 bridge POC passes, x402 purchases do this through `settle_x402_purchase`; if it fails, x402 is disabled for protocol-listed paid skills until a later bridge or custom scheme ships.
-- x402 paid downloads still work for allowed v0.2.0 entitlement flows.
+- x402 paid downloads remain disabled for new paid marketplace purchases unless the bridge ships; historical x402 entitlements still re-download through signed auth.
 - Direct on-chain purchases are indexed into download entitlements through verified API submission plus reconciliation.
 - Active-dispute freeze invariants, vault close/refund rules, reward-index math, and listing-removal behavior are covered by tests.
 - Governance, treasury, authority rotation, pause, and mainnet readiness policies are documented even if `v0.2.0` remains devnet-only.

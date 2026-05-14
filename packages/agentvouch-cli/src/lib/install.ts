@@ -136,7 +136,8 @@ export async function installSkill(input: InstallSkillInput) {
     initialDownload.status !== 402 ||
     (!initialDownload.requirement &&
       !initialDownload.x402PaymentRequired &&
-      !initialDownload.directPurchaseRequired)
+      !initialDownload.directPurchaseRequired &&
+      !initialDownload.listingRequired)
   ) {
     throw new CliError(
       `Failed to download skill ${input.id}: ${
@@ -148,7 +149,9 @@ export async function installSkill(input: InstallSkillInput) {
   if (input.dryRun) {
     return {
       ok: true,
-      mode: initialDownload.x402PaymentRequired
+      mode: initialDownload.listingRequired
+        ? "listing-required-dry-run"
+        : initialDownload.x402PaymentRequired
         ? "x402-usdc-dry-run"
         : "paid-raw-dry-run",
       skillId: input.id,
@@ -158,6 +161,7 @@ export async function installSkill(input: InstallSkillInput) {
       priceUsdcMicros:
         initialDownload.x402PaymentRequired?.accepts[0]?.amount ??
         initialDownload.directPurchaseRequired?.amountMicros ??
+        initialDownload.listingRequired?.amountMicros ??
         skill.price_usdc_micros ??
         null,
       listingAddress:
@@ -168,7 +172,8 @@ export async function installSkill(input: InstallSkillInput) {
       requirement:
         initialDownload.x402PaymentRequired ??
         initialDownload.requirement ??
-        initialDownload.directPurchaseRequired,
+        initialDownload.directPurchaseRequired ??
+        initialDownload.listingRequired,
       dryRun: true,
     };
   }
@@ -176,6 +181,41 @@ export async function installSkill(input: InstallSkillInput) {
   if (!input.keypairPath) {
     throw new CliError(
       "Paid installs require --keypair so the CLI can either reuse a prior entitlement or complete the required payment flow."
+    );
+  }
+
+  if (initialDownload.listingRequired) {
+    const keypair = loadKeypair(input.keypairPath);
+    const auth = createDownloadAuthPayload(keypair, input.id, undefined);
+    const signedDownload = await api.downloadRaw(input.id, { auth });
+
+    if (signedDownload.ok && signedDownload.content !== undefined) {
+      await writeUtf8File(outputPath, signedDownload.content);
+      await writeInstalledSkillMetadata(
+        outputPath,
+        buildInstalledSkillMetadata(input.id, skill)
+      );
+
+      return {
+        ok: true,
+        mode: "signed-entitlement",
+        skillId: input.id,
+        outputPath,
+        metadataPath,
+        priceUsdcMicros:
+          initialDownload.listingRequired.amountMicros ??
+          skill.price_usdc_micros ??
+          null,
+        listingAddress: null,
+        alreadyPurchased: true,
+        dryRun: false,
+      };
+    }
+
+    throw new CliError(
+      `Skill ${input.id} is paid but has no linked on-chain SkillListing. New repo-only x402 purchases are disabled; ask the author to run agentvouch skill link-listing ${input.id} --price-usdc <amount>. ${
+        initialDownload.listingRequired.message ?? ""
+      }`.trim()
     );
   }
 

@@ -95,6 +95,35 @@ describe("GET /api/skills/[id]/update", () => {
     });
   });
 
+  it("returns listing-required for paid repo skills without an on-chain listing", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        id: "uuid-paid-unlinked",
+        skill_id: "calendar-agent",
+        current_version: 3,
+        updated_at: "2026-04-13T12:00:00.000Z",
+        on_chain_address: null,
+        price_usdc_micros: "1000000",
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest(
+      "uuid-paid-unlinked",
+      "?installed_version=2&source=repo"
+    );
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      id: "uuid-paid-unlinked",
+      price_usdc_micros: "1000000",
+      payment_flow: "listing-required",
+      requires_purchase: true,
+    });
+  });
+
   it("returns unknown_installed_version when the caller has no local metadata yet", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {

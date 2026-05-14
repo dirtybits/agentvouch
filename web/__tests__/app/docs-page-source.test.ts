@@ -12,7 +12,7 @@ describe("docs page source", () => {
     expect(source).toContain('id="paid-skill-download"');
     expect(source).toContain("Canonical signed message");
     expect(source).toContain("X-AgentVouch-Auth");
-    expect(source).toContain("PAYMENT-SIGNATURE");
+    expect(source).toContain("listing-required");
     expect(source).toContain("x402-usdc-direct");
     expect(source).toContain("purchaseSkill on-chain");
   });

@@ -223,6 +223,22 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(text).toBe(SKILL_CONTENT);
   });
 
+  it("returns listing-required for unlinked paid repo skills without x402 headers", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("PAYMENT-REQUIRED")).toBeNull();
+    expect(res.headers.get("Accept-Payment")).toBeNull();
+    const body = await res.json();
+    expect(body.payment_flow).toBe("listing-required");
+    expect(body.amount_micros).toBe("1000000");
+    expect(body.on_chain_address).toBeNull();
+  });
+
   it("returns 402 for paid skill with no auth header", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([PAID_SKILL]);
     mockSql.mockReturnValue(dbQuery);

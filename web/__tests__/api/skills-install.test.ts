@@ -18,11 +18,16 @@ vi.mock("@/lib/x402", () => ({
   hasOnChainPurchase: vi.fn(),
 }));
 
+vi.mock("@/lib/usdcPurchases", () => ({
+  hasUsdcPurchaseEntitlement: vi.fn(),
+}));
+
 import { POST } from "@/app/api/skills/[id]/install/route";
 import { sql } from "@/lib/db";
 import { verifyWalletSignature } from "@/lib/auth";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { hasOnChainPurchase } from "@/lib/x402";
+import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerify = verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
@@ -30,6 +35,8 @@ const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 const mockHasOnChainPurchase = hasOnChainPurchase as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockHasUsdcEntitlement =
+  hasUsdcPurchaseEntitlement as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string, body: Record<string, unknown> = {}) {
   const req = new NextRequest(`http://localhost/api/skills/${id}/install`, {
@@ -45,6 +52,7 @@ describe("POST /api/skills/[id]/install", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHasOnChainPurchase.mockResolvedValue(false);
+    mockHasUsdcEntitlement.mockResolvedValue(false);
   });
 
   it("returns 400 when auth payload is missing", async () => {
@@ -161,6 +169,55 @@ describe("POST /api/skills/[id]/install", () => {
     });
     const res = await POST(req, { params });
     expect(res.status).toBe(402);
+  });
+
+  it("returns listing-required for unlinked paid repo skills without an entitlement", async () => {
+    mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
+
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        id: "uuid-unlinked",
+        on_chain_address: null,
+        price_usdc_micros: "1000000",
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-unlinked", {
+      auth: { pubkey: "Wallet1" },
+    });
+    const res = await POST(req, { params });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.payment_flow).toBe("listing-required");
+    expect(body.amount_micros).toBe("1000000");
+  });
+
+  it("allows unlinked paid repo installs when a historical entitlement exists", async () => {
+    mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
+    mockHasUsdcEntitlement.mockResolvedValue(true);
+
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-unlinked",
+          on_chain_address: null,
+          price_usdc_micros: "1000000",
+        },
+      ])
+      .mockResolvedValueOnce([{ id: "uuid-unlinked", total_installs: 7 }]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-unlinked", {
+      auth: { pubkey: "Wallet1" },
+    });
+    const res = await POST(req, { params });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total_installs).toBe(7);
   });
 
   it("returns 200 for repo skill with paid on-chain listing when the wallet already purchased it", async () => {

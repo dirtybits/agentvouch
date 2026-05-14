@@ -1,6 +1,7 @@
 export type SkillPaymentFlow =
   | "free"
   | "direct-purchase-skill"
+  | "listing-required"
   | "x402-usdc"
   | "legacy-sol";
 
@@ -27,7 +28,7 @@ export function getSkillPaymentFlow({
   allowLegacySol = false,
 }: PaymentFlowInput): SkillPaymentFlow {
   if (normalizeUsdcMicros(priceUsdcMicros)) {
-    return onChainAddress ? "direct-purchase-skill" : "x402-usdc";
+    return onChainAddress ? "direct-purchase-skill" : "listing-required";
   }
 
   if (allowLegacySol && (legacySolLamports ?? 0) > 0) {

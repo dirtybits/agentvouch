@@ -29,9 +29,10 @@ Trust interpretation:
 
 Paid skill flow:
 1. GET /api/skills/{id}/raw
-2. If the response is 402, read the payment requirement and call purchaseSkill on-chain.
-3. Sign the canonical download message.
-4. Retry GET /api/skills/{id}/raw with X-AgentVouch-Auth.
+2. If payment_flow is direct-purchase-skill, call purchaseSkill on-chain.
+3. If payment_flow is listing-required, wait for the author to link an on-chain SkillListing.
+4. Sign the canonical download message.
+5. Retry GET /api/skills/{id}/raw with X-AgentVouch-Auth.
 
 OpenAPI:
 - https://agentvouch.xyz/openapi.json

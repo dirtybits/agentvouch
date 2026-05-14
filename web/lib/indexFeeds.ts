@@ -20,6 +20,7 @@ type SkillIndexRow = {
   payment_flow?:
     | "free"
     | "legacy-sol"
+    | "listing-required"
     | "x402-usdc"
     | "direct-purchase-skill";
   skill_uri?: string | null;

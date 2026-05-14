@@ -114,6 +114,30 @@ function paymentRequired402(body: X402PaymentRequiredBody) {
   });
 }
 
+function listingRequired402(skill: RawSkillContentRow, priceMicros: bigint) {
+  return NextResponse.json(
+    {
+      error: "On-chain listing required",
+      message:
+        "This paid repo skill is not purchasable until the author links an on-chain SkillListing. New repo-only x402 purchases are disabled so voucher rewards and refund/dispute state stay in the protocol path.",
+      payment_flow: "listing-required",
+      amount_micros: priceMicros.toString(),
+      currency_mint: skill.currency_mint ?? getConfiguredUsdcMint(),
+      chain_context: skill.chain_context ?? getAgentVouchChainContext(),
+      on_chain_program_id: skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      protocol_version:
+        skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
+      on_chain_address: null,
+    },
+    {
+      status: 402,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
 function isProtocolListedUsdcSkill(
   skill: RawSkillContentRow,
   priceMicros: bigint
@@ -270,6 +294,27 @@ async function handleUsdcDirect(
       { error: "USDC listing has invalid price_usdc_micros" },
       { status: 500 }
     );
+  }
+
+  if (!skill.on_chain_address) {
+    const authHeader = request.headers.get("x-agentvouch-auth");
+    if (authHeader) {
+      const authResult = validateDownloadAuth(authHeader, skillDbId, null);
+      if ("response" in authResult) {
+        return authResult.response;
+      }
+
+      const entitled = await hasUsdcPurchaseEntitlement(
+        skillDbId,
+        authResult.buyerPubkey
+      ).catch(() => false);
+      if (entitled) {
+        await incrementInstalls(skillDbId);
+        return serveContent(skill.content);
+      }
+    }
+
+    return listingRequired402(skill, priceMicros);
   }
 
   if (isProtocolListedUsdcSkill(skill, priceMicros)) {
@@ -516,7 +561,8 @@ export async function GET(
       }
     }
 
-    if (normalizeUsdcMicros(skill.price_usdc_micros) && skill.currency_mint) {
+    if (normalizeUsdcMicros(skill.price_usdc_micros)) {
+      skill.currency_mint ??= getConfiguredUsdcMint();
       return handleUsdcDirect(request, id, skill);
     }
 

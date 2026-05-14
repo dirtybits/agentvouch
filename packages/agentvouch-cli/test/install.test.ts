@@ -130,4 +130,100 @@ describe("installSkill", () => {
     );
     expect(downloadSpy).toHaveBeenCalledTimes(2);
   });
+
+  it("refuses new listing-required paid installs when no entitlement exists", async () => {
+    const { tempDir, keypairPath } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "SKILL.md");
+    const author = Keypair.generate().publicKey.toBase58();
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: author,
+      name: "Calendar Agent",
+      description: "Paid skill",
+      on_chain_address: null,
+      total_installs: 0,
+      price_usdc_micros: "1000000",
+      currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payment_flow: "listing-required",
+    });
+    vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "On-chain listing required",
+        listingRequired: {
+          amountMicros: "1000000",
+          currencyMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          message: "This paid repo skill is not installable yet.",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "On-chain listing required",
+        listingRequired: {
+          amountMicros: "1000000",
+          currencyMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          message: "This paid repo skill is not installable yet.",
+        },
+      });
+
+    await expect(
+      installSkill({
+        id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+        out: outputPath,
+        keypairPath,
+        baseUrl: "https://agentvouch.xyz",
+        rpcUrl: "https://api.devnet.solana.com",
+      })
+    ).rejects.toThrow("has no linked on-chain SkillListing");
+  });
+
+  it("allows signed re-download for historical unlinked paid entitlements", async () => {
+    const { tempDir, keypairPath } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "SKILL.md");
+    const author = Keypair.generate().publicKey.toBase58();
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: author,
+      name: "Calendar Agent",
+      description: "Paid skill",
+      on_chain_address: null,
+      total_installs: 0,
+      price_usdc_micros: "1000000",
+      currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payment_flow: "listing-required",
+    });
+    vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "On-chain listing required",
+        listingRequired: {
+          amountMicros: "1000000",
+          currencyMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          message: "This paid repo skill is not installable yet.",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        content: "# historical paid skill\n",
+      });
+
+    const result = await installSkill({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      out: outputPath,
+      keypairPath,
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+    });
+
+    expect(result.mode).toBe("signed-entitlement");
+    expect(await readFile(outputPath, "utf8")).toContain(
+      "# historical paid skill"
+    );
+  });
 });
