@@ -11,9 +11,9 @@ Devnet first; anything that needs to flip to mainnet later (faucet vs. real fund
 ## What already ships
 
 - `@phantom/react-sdk` PhantomProvider in `web/components/WalletContextProvider.tsx`, configured with `providers: ["google", "apple"]` and `addressTypes: ["Solana"]`, gated on `NEXT_PUBLIC_PHANTOM_APP_ID`.
-- `ClientWalletButton` shows a "Sign in with" social section (Phantom embedded `<ConnectButton />`) when Phantom is configured, in parallel with extension wallets via `@solana/react-hooks` `autoDiscover()`.
-- x402 USDC flow for repo-backed paid skills (browser + agent paths) — already documented in `web/public/skill.md` and `/docs#paid-skill-download`.
-- AGENTS.md note 26 has guidance: Phantom embedded / send-only wallets must use direct `signAndSendTransaction` checkout rather than the split-signature sponsored x402 flow.
+- `ClientWalletButton` uses ConnectorKit to expose extension wallets and Phantom embedded social sign-in through one wallet surface.
+- The repo-only x402 USDC infrastructure exists for off-chain entitlement experiments and historical compatibility, already documented in `web/public/skill.md` and `/docs#paid-skill-download`; it is not the desired paid marketplace settlement path because it bypasses protocol purchase economics.
+- Protocol-listed paid skills fail closed to direct `purchase_skill` plus signed `X-AgentVouch-Auth` download until an x402 settlement bridge preserves voucher rewards.
 
 ## Gap inventory (verify before scoping each)
 
@@ -197,7 +197,37 @@ Manual purchase smoke continued to fail inside Phantom's hosted signing path eve
 - Paid browser checkout stays available for extension / externally signed Solana wallets that support the required signing path.
 - Surface a clear fallback: embedded Phantom checkout is temporarily unavailable; connect the Phantom extension or another Solana wallet to purchase.
 
-### Phase 1 order from here
+## Paid listing economics update — 2026-05-13
+
+Phase 1 now has two tracks. The shared rule is simple: paid marketplace purchases must preserve protocol economics. Voucher revenue is only created today by `purchase_skill`, which creates the revision-scoped `Purchase` PDA, routes author proceeds through protocol settlement accounts, updates voucher reward state, and keeps refund/dispute semantics intact.
+
+The repo-only x402 path does not do that today. It settles a direct USDC transfer to the author's ATA, stores an off-chain receipt/entitlement, and does not create a `Purchase` PDA, voucher rewards, or protocol refund/dispute state. That path should be treated as deprecated for new paid marketplace purchases. Because the active environment is devnet, unlinked paid repo skills can be cleaned up aggressively: delete/recreate them, or relink through the canonical on-chain listing flow.
+
+### Track A: Collapse paid listings to on-chain economics
+
+1. Paid skills must have an on-chain `SkillListing`.
+2. New repo-only paid x402 purchases are disabled for marketplace listings.
+3. Publish/link flow should become "Publish Must Link": paid publish is not complete until the repo-backed skill is linked to the on-chain listing.
+4. Existing devnet paid skills with `price_usdc_micros > 0` and no `on_chain_address` can be deleted and recreated, or relinked before being offered for purchase.
+
+Free repo-backed skills can remain repo-only. The collapse is about paid settlement economics, not moving all skill content fully on-chain.
+
+### Track B: Restore frictionless x402 through bridge
+
+The agent-facing target is still frictionless x402, but through the protocol settlement bridge rather than direct author payment:
+
+1. Agent requests `/api/skills/{id}/raw`.
+2. Server returns an x402 `402` payment requirement.
+3. Buyer pays via x402 into the protocol settlement vault.
+4. Backend verifies amount, mint, payer, memo, and idempotency.
+5. Backend calls `settle_x402_purchase` as `settlement_authority`.
+6. Program creates purchase state and splits author/voucher proceeds through the same economics as `purchase_skill`.
+
+This bridge must prove payer binding, deterministic memo binding, duplicate-payment protection, and a retry/refund path for the case where x402 settles but `settle_x402_purchase` fails.
+
+### Supporting onboarding work
+
+After the paid economic path is clarified, continue the friction-removal items that make either checkout path usable:
 
 1. Devnet onboarding faucet for signed-in users.
 2. Embedded-wallet-aware preflight copy and funding state, without attempting embedded paid purchase.
