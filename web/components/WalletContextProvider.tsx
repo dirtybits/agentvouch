@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
 } from "react";
 import {
   AppProvider,
@@ -36,6 +37,11 @@ import {
   PHANTOM_EMBEDDED_WALLET_NAME,
   type PhantomEmbeddedWalletHandle,
 } from "@/lib/phantomEmbeddedWalletStandard";
+import {
+  createPhantomLegacyWallet,
+  getPhantomLegacyProvider,
+  type PhantomLegacyWalletHandle,
+} from "@/lib/phantomLegacyWalletStandard";
 
 const PhantomConfiguredContext = createContext(false);
 export const usePhantomConfigured = () => useContext(PhantomConfiguredContext);
@@ -188,6 +194,42 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   const phantomReady = mounted && !!PHANTOM_APP_ID;
 
   const phantomEmbedded = useMemo(() => createPhantomEmbeddedWallet(), []);
+  const [phantomLegacy, setPhantomLegacy] =
+    useState<PhantomLegacyWalletHandle | null>(null);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    let cancelled = false;
+    const detectPhantomLegacy = () => {
+      if (cancelled) return;
+      setPhantomLegacy((current) => {
+        if (current) return current;
+        const provider = getPhantomLegacyProvider();
+        return provider ? createPhantomLegacyWallet(provider) : null;
+      });
+    };
+
+    detectPhantomLegacy();
+    const timeouts = [
+      window.setTimeout(detectPhantomLegacy, 250),
+      window.setTimeout(detectPhantomLegacy, 1000),
+      window.setTimeout(detectPhantomLegacy, 2000),
+    ];
+
+    return () => {
+      cancelled = true;
+      for (const timeout of timeouts) {
+        window.clearTimeout(timeout);
+      }
+    };
+  }, [mounted]);
+
+  useEffect(() => {
+    return () => {
+      phantomLegacy?.destroy();
+    };
+  }, [phantomLegacy]);
 
   const connectorConfig = useMemo(
     () =>
@@ -199,10 +241,16 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
         autoConnect: true,
         enableMobile: false,
         walletConnect: false,
-        additionalWallets: [phantomEmbedded.wallet],
+        additionalWallets: [
+          phantomEmbedded.wallet,
+          ...(phantomLegacy ? [phantomLegacy.wallet] : []),
+        ],
       }),
-    [phantomEmbedded]
+    [phantomEmbedded, phantomLegacy]
   );
+  const connectorConfigKey = phantomLegacy
+    ? "wallets-with-phantom-legacy"
+    : "wallets-base";
 
   const phantomConfig = useMemo<PhantomSDKConfig>(() => {
     const redirectUrl =
@@ -225,14 +273,19 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
       {wantsPhantom ? (
         <PhantomProvider config={phantomConfig}>
           <PhantomDisconnectProvider>
-            <AppProvider connectorConfig={connectorConfig}>
+            <AppProvider
+              key={connectorConfigKey}
+              connectorConfig={connectorConfig}
+            >
               <PhantomEmbeddedBridge handle={phantomEmbedded} />
               {children}
             </AppProvider>
           </PhantomDisconnectProvider>
         </PhantomProvider>
       ) : (
-        <AppProvider connectorConfig={connectorConfig}>{children}</AppProvider>
+        <AppProvider key={connectorConfigKey} connectorConfig={connectorConfig}>
+          {children}
+        </AppProvider>
       )}
     </PhantomConfiguredContext.Provider>
   );

@@ -64,6 +64,20 @@ function isMobile(): boolean {
   );
 }
 
+function dedupeConnectorsByName<T extends { name: string }>(
+  connectors: T[]
+): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const connector of connectors) {
+    const key = connector.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(connector);
+  }
+  return deduped;
+}
+
 export function ClientWalletButton() {
   const mounted = useMounted();
   const phantomConfigured = usePhantomConfigured();
@@ -76,8 +90,8 @@ export function ClientWalletButton() {
   const allConnectors = useWalletConnectors();
   // Phantom embedded appears in this list via additionalWallets; it gets its
   // own "Sign in with" UI entry below, so exclude it from the extension list.
-  const extensionConnectors = allConnectors.filter(
-    (c) => c.name !== PHANTOM_EMBEDDED_WALLET_NAME
+  const extensionConnectors = dedupeConnectorsByName(
+    allConnectors.filter((c) => c.name !== PHANTOM_EMBEDDED_WALLET_NAME)
   );
   const disconnectPhantomEmbedded = usePhantomDisconnect();
 
