@@ -47,16 +47,73 @@ vi.mock("@/lib/x402", () => ({
 }));
 
 vi.mock("@/lib/usdcPurchases", () => ({
+  X402_BRIDGE_PURCHASE_PAYMENT_FLOW: "x402-bridge-purchase-skill",
   hasUsdcPurchaseEntitlement: vi.fn(),
   recordUsdcPurchaseReceipt: vi.fn(),
+}));
+
+vi.mock("@/lib/x402BridgePoc", () => ({
+  isProtocolX402BridgeEnabled: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/lib/x402ProtocolBridge", () => ({
+  X402_BRIDGE_PURCHASE_PAYMENT_FLOW: "x402-bridge-purchase-skill",
+  buildProtocolX402BridgeRequirement: vi.fn().mockResolvedValue({
+    requirement: {
+      scheme: "exact",
+      network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+      amount: "1000000",
+      asset: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payTo: "3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj",
+      maxTimeoutSeconds: 300,
+      extra: {
+        memo: "avx4021|memo",
+        agentvouch_nonce: "nonce-1",
+        agentvouch_payment_ref_hash: "payment-ref-hash",
+      },
+    },
+    memo: "avx4021|memo",
+    nonce: "nonce-1",
+    paymentRefHashBytes: new Uint8Array(32),
+    paymentRefHashHex: "payment-ref-hash",
+    x402SettlementVaultAuthority:
+      "3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj",
+  }),
+  createProtocolX402BridgeNonce: vi.fn().mockReturnValue("nonce-1"),
+  extractProtocolX402BridgeNonce: vi.fn().mockReturnValue("nonce-1"),
+  settleProtocolX402Purchase: vi.fn().mockResolvedValue({
+    programSettlementSignature: "program-settlement-tx",
+    purchasePda: "PurchasePda1111111111111111111111111111111",
+    listingRevision: "0",
+    listingSettlementPda: "SettlementPda1111111111111111111111111111",
+    authorProceedsVault: "AuthorProceeds111111111111111111111111111",
+    x402SettlementReceiptPda: "ReceiptPda111111111111111111111111111111",
+    x402SettlementVault: "SettlementVault111111111111111111111111111",
+    x402SettlementSignatureHashHex: "settlement-signature-hash",
+  }),
+  validateProtocolX402PaymentPayload: vi.fn().mockReturnValue(null),
 }));
 
 import { GET } from "@/app/api/skills/[id]/raw/route";
 import { sql } from "@/lib/db";
 import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import { verifyWalletSignature, buildDownloadRawMessage } from "@/lib/auth";
-import { hasOnChainPurchase } from "@/lib/x402";
-import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import {
+  decodeX402PaymentSignatureHeader,
+  hasOnChainPurchase,
+  settleX402Payment,
+  verifySettledUsdcTransfer,
+  verifyX402Payment,
+} from "@/lib/x402";
+import {
+  hasUsdcPurchaseEntitlement,
+  recordUsdcPurchaseReceipt,
+} from "@/lib/usdcPurchases";
+import { isProtocolX402BridgeEnabled } from "@/lib/x402BridgePoc";
+import {
+  buildProtocolX402BridgeRequirement,
+  settleProtocolX402Purchase,
+} from "@/lib/x402ProtocolBridge";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockFetchOnChainSkillListing =
@@ -74,6 +131,26 @@ const mockHasPurchase = hasOnChainPurchase as unknown as ReturnType<
 const mockHasUsdcEntitlement = hasUsdcPurchaseEntitlement as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockRecordUsdcReceipt = recordUsdcPurchaseReceipt as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockBridgeEnabled = isProtocolX402BridgeEnabled as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockBuildBridgeRequirement =
+  buildProtocolX402BridgeRequirement as unknown as ReturnType<typeof vi.fn>;
+const mockSettleProtocolBridge =
+  settleProtocolX402Purchase as unknown as ReturnType<typeof vi.fn>;
+const mockDecodePaymentHeader =
+  decodeX402PaymentSignatureHeader as unknown as ReturnType<typeof vi.fn>;
+const mockVerifyX402Payment = verifyX402Payment as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockSettleX402Payment = settleX402Payment as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockVerifySettledTransfer =
+  verifySettledUsdcTransfer as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string, headers: Record<string, string> = {}) {
   const url = new URL(`http://localhost/api/skills/${id}/raw`);
@@ -126,6 +203,8 @@ function validAuthHeader(
 describe("GET /api/skills/[id]/raw", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockBridgeEnabled.mockReturnValue(false);
+    mockHasPurchase.mockResolvedValue(false);
   });
 
   it("proxies chain-only signed downloads through the raw API", async () => {
@@ -500,6 +579,199 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(body.payment_flow).toBe("direct-purchase-skill");
     expect(body.on_chain_address).toBe("ListingAddr1");
     expect(mockHasUsdcEntitlement).not.toHaveBeenCalled();
+  });
+
+  it("requires signed auth before returning protocol x402 bridge requirements", async () => {
+    mockBridgeEnabled.mockReturnValue(true);
+    const dbQuery = vi.fn().mockResolvedValueOnce([PROTOCOL_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-direct-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.payment_flow).toBe("x402-bridge-purchase-skill");
+    expect(body.error).toContain("Signed wallet auth required");
+    expect(mockBuildBridgeRequirement).not.toHaveBeenCalled();
+  });
+
+  it("returns protocol x402 bridge payment requirements after signed auth", async () => {
+    mockBridgeEnabled.mockReturnValue(true);
+    const dbQuery = vi.fn().mockResolvedValueOnce([PROTOCOL_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifySig.mockReturnValue({ valid: true, pubkey: "BuyerPubkey1" });
+    mockBuildMsg.mockReturnValue("correct-message");
+    mockHasUsdcEntitlement.mockResolvedValue(false);
+    mockHasPurchase.mockResolvedValue(false);
+
+    const auth = JSON.stringify({
+      pubkey: "BuyerPubkey1",
+      signature: "sig",
+      message: "correct-message",
+      timestamp: 1709234567890,
+    });
+    const { req, params } = makeRequest("uuid-direct-usdc", {
+      "x-agentvouch-auth": auth,
+    });
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("PAYMENT-REQUIRED")).toBe(
+      "encoded-payment-required"
+    );
+    const body = await res.json();
+    expect(body.extensions.payment_flow).toBe("x402-bridge-purchase-skill");
+    expect(mockBuildBridgeRequirement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skillDbId: "uuid-direct-usdc",
+        skillListingAddress: "ListingAddr1",
+        buyerPubkey: "BuyerPubkey1",
+        priceUsdcMicros: 1000000n,
+      })
+    );
+  });
+
+  it("records protocol bridge entitlement only after x402 and on-chain settlement", async () => {
+    mockBridgeEnabled.mockReturnValue(true);
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([PROTOCOL_USDC_SKILL])
+      .mockResolvedValueOnce([]);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifySig.mockReturnValue({ valid: true, pubkey: "BuyerPubkey1" });
+    mockBuildMsg.mockReturnValue("correct-message");
+    mockHasUsdcEntitlement.mockResolvedValue(false);
+    mockHasPurchase.mockResolvedValue(false);
+    mockDecodePaymentHeader.mockReturnValue({
+      x402Version: 2,
+      resource: {},
+      accepted: {
+        scheme: "exact",
+        network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+        amount: "1000000",
+        asset: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        payTo: "3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj",
+        maxTimeoutSeconds: 300,
+        extra: { agentvouch_nonce: "nonce-1" },
+      },
+      payload: {},
+    });
+    mockVerifyX402Payment.mockResolvedValue({
+      isValid: true,
+      payer: "BuyerPubkey1",
+    });
+    mockSettleX402Payment.mockResolvedValue({
+      success: true,
+      transaction: "x402-settlement-tx",
+      network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+      payer: "BuyerPubkey1",
+      amount: "1000000",
+    });
+    mockVerifySettledTransfer.mockResolvedValue({
+      settledAmountMicros: 1000000n,
+    });
+
+    const auth = JSON.stringify({
+      pubkey: "BuyerPubkey1",
+      signature: "sig",
+      message: "correct-message",
+      timestamp: 1709234567890,
+    });
+    const { req, params } = makeRequest("uuid-direct-usdc", {
+      "x-agentvouch-auth": auth,
+      "payment-signature": "payment-header",
+    });
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SKILL_CONTENT);
+    expect(mockVerifySettledTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signature: "x402-settlement-tx",
+        exactAmountMicros: 1000000n,
+        expectedPayer: "BuyerPubkey1",
+        expectedMemo: "avx4021|memo",
+      })
+    );
+    expect(mockSettleProtocolBridge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skillDbId: "uuid-direct-usdc",
+        skillListingAddress: "ListingAddr1",
+        buyerPubkey: "BuyerPubkey1",
+        settlementTxSignature: "x402-settlement-tx",
+      })
+    );
+    expect(mockRecordUsdcReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skillDbId: "uuid-direct-usdc",
+        buyerPubkey: "BuyerPubkey1",
+        paymentTxSignature: "x402-settlement-tx",
+        recipientAta: "SettlementVault111111111111111111111111111",
+        paymentFlow: "x402-bridge-purchase-skill",
+        purchasePda: "PurchasePda1111111111111111111111111111111",
+        x402PaymentRefHash: "payment-ref-hash",
+        x402SettlementReceiptPda: "ReceiptPda111111111111111111111111111111",
+      })
+    );
+  });
+
+  it("does not grant entitlement when x402 settles but protocol settlement fails", async () => {
+    mockBridgeEnabled.mockReturnValue(true);
+    const dbQuery = vi.fn().mockResolvedValueOnce([PROTOCOL_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifySig.mockReturnValue({ valid: true, pubkey: "BuyerPubkey1" });
+    mockBuildMsg.mockReturnValue("correct-message");
+    mockHasUsdcEntitlement.mockResolvedValue(false);
+    mockHasPurchase.mockResolvedValue(false);
+    mockDecodePaymentHeader.mockReturnValue({
+      x402Version: 2,
+      resource: {},
+      accepted: {
+        scheme: "exact",
+        network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+        amount: "1000000",
+        asset: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        payTo: "3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj",
+        maxTimeoutSeconds: 300,
+        extra: { agentvouch_nonce: "nonce-1" },
+      },
+      payload: {},
+    });
+    mockVerifyX402Payment.mockResolvedValue({
+      isValid: true,
+      payer: "BuyerPubkey1",
+    });
+    mockSettleX402Payment.mockResolvedValue({
+      success: true,
+      transaction: "x402-settlement-tx",
+      network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+      payer: "BuyerPubkey1",
+    });
+    mockVerifySettledTransfer.mockResolvedValue({
+      settledAmountMicros: 1000000n,
+    });
+    mockSettleProtocolBridge.mockRejectedValueOnce(
+      new Error("settle_x402_purchase simulation failed")
+    );
+
+    const auth = JSON.stringify({
+      pubkey: "BuyerPubkey1",
+      signature: "sig",
+      message: "correct-message",
+      timestamp: 1709234567890,
+    });
+    const { req, params } = makeRequest("uuid-direct-usdc", {
+      "x-agentvouch-auth": auth,
+      "payment-signature": "payment-header",
+    });
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.retryable).toBe(true);
+    expect(body.settlement_tx_signature).toBe("x402-settlement-tx");
+    expect(mockRecordUsdcReceipt).not.toHaveBeenCalled();
   });
 
   it("serves protocol-listed USDC skills when a direct entitlement exists", async () => {

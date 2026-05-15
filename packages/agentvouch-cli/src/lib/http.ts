@@ -54,6 +54,7 @@ export interface SkillRecord {
     | "legacy-sol"
     | "listing-required"
     | "x402-usdc"
+    | "x402-bridge-purchase-skill"
     | "direct-purchase-skill";
   total_installs: number;
   total_downloads?: number | null;
@@ -88,6 +89,7 @@ export interface SkillUpdateCheckResponse {
     | "legacy-sol"
     | "listing-required"
     | "x402-usdc"
+    | "x402-bridge-purchase-skill"
     | "direct-purchase-skill";
   requires_purchase: boolean;
   listing_changed: boolean;

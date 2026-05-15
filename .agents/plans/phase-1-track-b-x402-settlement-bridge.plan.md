@@ -16,13 +16,13 @@ todos:
     status: completed
   - id: wire-bridge-api
     content: Add the /api/skills/{id}/raw x402 bridge path behind AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED.
-    status: pending
+    status: completed
   - id: record-bridge-entitlements
     content: Persist bridge receipts and entitlements only after both x402 settlement and on-chain settlement succeed.
-    status: pending
+    status: completed
   - id: update-agent-facing-surfaces
     content: Update /api/x402/supported, public docs, CLI, and web behavior for bridge-enabled protocol-listed skills.
-    status: pending
+    status: completed
   - id: verify-track-b
     content: Run Anchor, generated client, web, CLI, build, and devnet bridge smoke checks.
     status: pending
@@ -107,6 +107,17 @@ The fresh devnet reset is complete:
 - x402 settlement vault ATA: `3Z7VPVVA4ehG7hcsdGbKJcZgvAfPNbSSbFGJCyEFbzdr`.
 
 `npm run x402:bridge-poc --workspace @agentvouch/web -- --strict` now reports the configured x402 settlement vault is compatible with stock `@x402/svm` exact settlement (`currentVaultCompatible: true`). A direct devnet USDC smoke also passed against the new Program ID, including listing creation, vouching, `purchase_skill`, and voucher revenue claim. The API bridge is still intentionally disabled.
+
+## API bridge implementation result — 2026-05-15
+
+Steps 5-7 are implemented behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=false` by default:
+
+- `/api/skills/{id}/raw` requires initial `X-AgentVouch-Auth` for bridge requirements, then binds buyer/listing/skill/amount/nonce into the x402 requirement memo and payment-ref hash.
+- x402 settlement is verified for destination ATA, mint, exact amount, payer signer, and memo before on-chain settlement is attempted.
+- The backend calls `settle_x402_purchase` as `settlement_authority`; idempotent receipt/signature guards let retries recover after x402 settlement.
+- DB receipts/entitlements are granted only after x402 settlement, on-chain settlement, and DB recording all succeed. Bridge records use `payment_flow = "x402-bridge-purchase-skill"` and store payment ref, settlement signature hash, settlement receipt PDA, purchase PDA, listing revision, listing settlement PDA, author proceeds vault, and x402 settlement vault metadata.
+- If x402 settles but program settlement or DB recording fails, the route returns retryable `409` and does not grant entitlement.
+- `/api/x402/supported`, CLI install, `web/public/skill.md`, and architecture/friction docs now describe the bridge as feature-flagged rather than repo-only direct x402.
 
 ## Files To Change
 

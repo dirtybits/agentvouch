@@ -225,6 +225,19 @@ The agent-facing target is still frictionless x402, but through the protocol set
 
 This bridge must prove payer binding, deterministic memo binding, duplicate-payment protection, and a retry/refund path for the case where x402 settles but `settle_x402_purchase` fails.
 
+### Track B implementation update — 2026-05-15
+
+Track B is now implemented in code behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=false` by default:
+
+1. `/api/skills/{id}/raw` requires initial `X-AgentVouch-Auth` before returning bridge x402 requirements for protocol-listed paid skills.
+2. The bridge requirement pays the stock-compatible protocol settlement vault ATA owned by `x402_settlement_vault_authority`.
+3. The server verifies x402 amount, mint, payer, memo, and destination after facilitator settlement.
+4. The backend calls `settle_x402_purchase` as `settlement_authority`; the program creates the normal `Purchase` PDA and routes author/voucher proceeds through the same economics as direct `purchase_skill`.
+5. `usdc_purchase_receipts` and `usdc_purchase_entitlements` store `payment_flow: "x402-bridge-purchase-skill"` plus payment ref, settlement signature hash, settlement receipt PDA, purchase PDA, listing revision, settlement PDA, and x402 vault metadata.
+6. If x402 settles but on-chain or DB recording fails, the route returns a retryable `409` and does not grant entitlement.
+
+Devnet DB cleanup is dry-run-first. The current dry run found stale links to the previous Program ID and old purchase entitlement rows, but no destructive cleanup has been applied.
+
 ### Supporting onboarding work
 
 After the paid economic path is clarified, continue the friction-removal items that make either checkout path usable:

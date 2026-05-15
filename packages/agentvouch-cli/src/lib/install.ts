@@ -112,7 +112,18 @@ export async function installSkill(input: InstallSkillInput) {
     };
   }
 
-  const initialDownload = await api.downloadRaw(input.id);
+  const signedInitialAuth =
+    input.keypairPath && BigInt(skill.price_usdc_micros ?? "0") > 0n
+      ? createDownloadAuthPayload(
+          loadKeypair(input.keypairPath),
+          input.id,
+          skill.on_chain_address ?? undefined
+        )
+      : undefined;
+  const initialDownload = await api.downloadRaw(
+    input.id,
+    signedInitialAuth ? { auth: signedInitialAuth } : undefined
+  );
   if (initialDownload.ok && initialDownload.content !== undefined) {
     if (!input.dryRun) {
       await writeUtf8File(outputPath, initialDownload.content);
@@ -130,6 +141,12 @@ export async function installSkill(input: InstallSkillInput) {
       priceUsdcMicros: skill.price_usdc_micros ?? null,
       dryRun: !!input.dryRun,
     };
+  }
+
+  if (!input.dryRun && initialDownload.status === 401 && !input.keypairPath) {
+    throw new CliError(
+      "Paid installs require --keypair so the CLI can sign X-AgentVouch-Auth before receiving x402 bridge requirements."
+    );
   }
 
   if (

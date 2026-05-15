@@ -35,7 +35,9 @@ export async function GET() {
     program: {
       id: getAgentVouchProgramId(),
       protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
-      instructions: ["purchaseSkill"],
+      instructions: bridgeEnabled
+        ? ["purchaseSkill", "settleX402Purchase"]
+        : ["purchaseSkill"],
     },
     capabilities: {
       repo_x402_usdc: false,

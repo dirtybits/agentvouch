@@ -18,6 +18,14 @@ describe("usdc purchase schema source", () => {
     expect(source).toContain("purchase_pda");
   });
 
+  it("keeps x402 bridge settlement provenance in receipts and entitlements", () => {
+    expect(source).toContain("X402_BRIDGE_PURCHASE_PAYMENT_FLOW");
+    expect(source).toContain("x402_payment_ref_hash");
+    expect(source).toContain("x402_settlement_signature_hash");
+    expect(source).toContain("x402_settlement_receipt_pda");
+    expect(source).toContain("x402_settlement_vault");
+  });
+
   it("does not allow one payment signature to unlock a different buyer or skill", () => {
     expect(source).toContain("ON CONFLICT (payment_tx_signature)");
     expect(source).toContain(

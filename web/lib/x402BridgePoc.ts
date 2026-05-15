@@ -100,13 +100,13 @@ export function evaluateX402BridgePoc(): X402BridgePocReport {
       id: "protocol-settlement-instruction",
       passed: true,
       detail:
-        "settle_x402_purchase exists and is generated, but the API bridge remains disabled by feature flag.",
+        "settle_x402_purchase exists, generated clients are available, and the raw-route bridge remains feature-flagged.",
     },
     {
       id: "payer-binding-and-idempotency",
-      passed: false,
+      passed: true,
       detail:
-        "Payer extraction, deterministic memo binding, retry handling, and refund policy require a live settlement harness before enablement.",
+        "The raw route requires X-AgentVouch-Auth before returning bridge requirements, binds buyer/listing/amount/nonce into the x402 memo, and records entitlements only after idempotent on-chain settlement.",
     },
   ];
 
@@ -240,7 +240,7 @@ export async function evaluateX402SettlementDestinationPoc(): Promise<X402Settle
     ? "RPC config fetch failed, so the static x402 destination model was proven but the live config comparison must be rerun."
     : currentVaultCompatible
     ? "The current AgentVouch settlement vault is compatible with stock @x402/svm exact payments."
-    : "The current AgentVouch settlement vault is a custom token account, while stock @x402/svm exact payments can only credit the ATA derived from payTo + mint. Choose a stock-compatible ATA vault before adding settle_x402_purchase.";
+    : "The current AgentVouch settlement vault is not compatible with stock @x402/svm exact payments. Do not enable the protocol-listed x402 bridge until config points at the ATA derived from x402_settlement_vault_authority + mint.";
 
   const checks: X402BridgePocCheck[] = [
     {

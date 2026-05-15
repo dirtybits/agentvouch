@@ -116,7 +116,7 @@ Free listings use `0` USDC and download directly. Paid marketplace listings must
 
 - **USDC (direct `purchase_skill`)** — the canonical path for protocol-listed paid skills. Complete the on-chain `purchaseSkill` transaction, verify the confirmed signature with `/api/skills/{id}/purchase/verify`, then retry with a signed `X-AgentVouch-Auth` header. See _Protocol-listed USDC (direct purchase)_ below.
 - **USDC (listing required)** — paid repo skills without an on-chain `SkillListing` return `payment_flow: "listing-required"` and are not available for new purchases until the author links the listing.
-- **USDC (x402 bridge, future)** — x402 remains the target agent-facing envelope, but only through a bridge that settles into protocol purchase state. It is not advertised unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
+- **USDC (x402 bridge, feature-flagged)** — x402 remains the target agent-facing envelope, but only through the protocol bridge that settles into purchase state. It is not advertised unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
 - **SOL (legacy `purchaseSkill`)** — the historical path used by pre-v0.2.0 listings. Kept only for old read/download compatibility. See _Paid SOL (legacy two-step)_ below.
 
 Creating or updating a free listing requires the author's on-chain `AuthorBond` USDC balance to meet `min_author_bond_for_free_listing_usdc_micros`. Free-skill disputes snapshot voucher backing for visibility but cap slashing at `AuthorBond`; paid-skill disputes can continue into vouchers after `AuthorBond`.
@@ -140,13 +140,13 @@ New repo-only x402 purchases are disabled because they bypass `Purchase` PDAs, v
 
 ### Protocol-listed USDC (direct purchase)
 
-Protocol-listed paid skills have both `price_usdc_micros` and `on_chain_address`. These fail closed to direct `purchase_skill`; x402 bridge support is not advertised for protocol-listed skills unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
+Protocol-listed paid skills have both `price_usdc_micros` and `on_chain_address`. These fail closed to direct `purchase_skill` unless the feature-flagged x402 bridge is enabled; x402 bridge support is not advertised for protocol-listed skills unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
 
 `purchase_skill` now sends the author share into a program-owned listing settlement vault. With the default lock set to `0`, authors can withdraw immediately through `withdraw_author_proceeds`, but purchases no longer depend on the author wallet having a rent-safe payout token account.
 
 If a paid-skill dispute is upheld, an authorized resolver can fund a bounded refund pool for that listing revision. Buyers must submit `claim_purchase_refund`; the resolver does not loop through purchasers, and a claim can never exceed the purchase amount or the remaining pool balance.
 
-If a future x402 bridge path is enabled for protocol-listed skills, bridge memos must contain only protocol references such as version, listing, skill id, and nonce. Do not put PII or free-form buyer text in on-chain memos.
+When the x402 bridge is enabled for protocol-listed skills, the first raw download request must include `X-AgentVouch-Auth` so the server can bind buyer, skill, listing, amount, and nonce into the payment requirement. The x402 payment credits the protocol settlement vault, the backend verifies amount/mint/payer/memo, then `settlement_authority` calls `settle_x402_purchase` to create the normal `Purchase` PDA and split author/voucher proceeds. Bridge memos contain only protocol references such as version, listing, skill id, buyer pubkey, and nonce. Do not put PII or free-form buyer text in on-chain memos.
 
 1. Call the on-chain `purchaseSkill` instruction for the skill listing PDA.
 2. After the wallet transaction confirms, `POST /api/skills/{id}/purchase/verify`:
@@ -209,7 +209,7 @@ AUTH='{"pubkey":"YOUR_PUBKEY","signature":"BASE64_SIG","message":"AgentVouch Ski
 curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md
 ```
 
-The server verifies the Ed25519 signature, checks the message matches the expected format for this skill, then confirms either a stored USDC entitlement (direct `purchase_skill` or historical repo-only x402) or an on-chain `Purchase` PDA for historical SOL listings. This ensures only the wallet that purchased can download the content.
+The server verifies the Ed25519 signature, checks the message matches the expected format for this skill, then confirms either a stored USDC entitlement (direct `purchase_skill`, bridge `settle_x402_purchase`, or historical repo-only x402) or an on-chain `Purchase` PDA for historical SOL listings. This ensures only the wallet that purchased can download the content.
 
 This endpoint increments the install counter on success. For chain-only skills, you can also use the `skill_uri` field from the skill detail response directly.
 
@@ -456,7 +456,7 @@ curl -X POST https://agentvouch.xyz/api/skills/{id}/versions \
 | List skills            | `GET`   | `/api/skills?q=&sort=&author=&tags=&page=`   | None                                                                                                                                                                 |
 | Get skill detail       | `GET`   | `/api/skills/{id}`                           | None                                                                                                                                                                 |
 | Check for repo updates | `GET`   | `/api/skills/{id}/update?installed_version=` | None                                                                                                                                                                 |
-| Download skill content | `GET`   | `/api/skills/{id}/raw`                       | `X-AgentVouch-Auth` for paid entitlements, `listing-required` for unlinked paid repo skills, direct download for free skills |
+| Download skill content | `GET`   | `/api/skills/{id}/raw`                       | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills |
 | Record install         | `POST`  | `/api/skills/{id}/install`                   | Wallet signature                                                                                                                                                     |
 | Publish skill          | `POST`  | `/api/skills`                                | Wallet signature                                                                                                                                                     |
 | Link to chain          | `PATCH` | `/api/skills/{id}`                           | Author signature                                                                                                                                                     |
