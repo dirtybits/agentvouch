@@ -83,7 +83,28 @@ Post-state confirms the 60/40 split:
 - Voucher cumulative revenue: `400_000` micro-USDC (40%)
 - Listing total downloads: `1`, total revenue: `1_000_000` micro-USDC
 
-`resolve_author_dispute` was skipped in this run because `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR` was not set; the dispute path is exercised by `anchor test`. The smoke currently verifies direct `purchase_skill`; the x402 bridge remains API-disabled until the raw route is wired.
+`resolve_author_dispute` was skipped in this run because `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR` was not set; the dispute path is exercised by `anchor test`. The canonical smoke fixture verifies direct `purchase_skill`; the local bridge-enabled smoke below verifies `settle_x402_purchase` through `/api/skills/{id}/raw`.
+
+## Track B x402 bridge smoke
+
+Latest local bridge-enabled smoke against the active devnet program:
+
+| Field | Value |
+| --- | --- |
+| Local feature flag | `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=true` |
+| Repo skill id | `2f2f0656-0f92-4938-bb2e-6c4433c9ba28` |
+| `skill_id` | `tbx402-mp7i3ti6` |
+| Listing PDA | `4ctei7obzastUX5Z4dMBoyLSjvj2X5gKXD51QVFKuGdQ` |
+| Buyer | `F6vv6SiX1bv3DNDDHv5LwekGyz81nqMoK9PsUqSNYr2u` |
+| Author | `7bnztynmPtsrPVdcgNrrPAccHv8rp8ub5f98mGHqU56Z` |
+| Price | `10_000` micro-USDC (`0.01 USDC`) |
+| x402 settlement tx | `4VkC1s9dKxoBCSGQC5B5mAAr7ykXzLLTkbCjg9KF2cxxU92in5v9dyGkWFo9Kh2WccVPDijp5A3J9f5CihveTLUz` |
+| Program settlement tx | `5iyHDc5nZRvZxuCaoobcGemhEgPWEqqwrkFLbp7bVUEzfkGsF8Z6eCPMAvnADaYKmqDJ5nvUxW9gsXzdtRjFZfPL` |
+| Purchase PDA | `FiVat41bAwSf8o82bgwPyT72SZQzqYGXnRhkB1oyuvR7` |
+| x402 receipt PDA | `AvwDfdRGpf1doZd7yxGW2sG66hLhnYhohnxkdQLyFz1U` |
+| Voucher claim tx | `5fdFjBA5Z9DqDsWpza4davEsFLbWcNyb5vDthnBT88utFndMej3YqCDM5BdwEddZBYdew4YqxJmvWjFbh2MYKBPe` |
+
+This proves `/api/skills/{id}/raw` can return an x402 requirement for a protocol-listed paid repo skill, receive a stock exact-SVM USDC payment into the protocol settlement vault ATA, call `settle_x402_purchase`, create normal purchase state, persist a bridge receipt/entitlement, serve the signed raw download, and fund claimable voucher revenue.
 
 ## Reusing or rotating the smoke fixture
 

@@ -19,16 +19,23 @@ vi.mock("@/lib/ipfs", () => ({
   pinSkillContent: vi.fn(),
 }));
 
+vi.mock("@/lib/onchain", () => ({
+  fetchOnChainSkillListing: vi.fn(),
+  getOnChainUsdcPrice: vi.fn(),
+}));
+
 vi.mock("@/lib/agentIdentity", () => ({
   resolveManyAgentIdentitiesByWallet: vi.fn(),
   upsertLocalAgentIdentity: vi.fn(),
 }));
 
 import { POST } from "@/app/api/skills/route";
+import { PATCH } from "@/app/api/skills/[id]/route";
 import { verifyWalletSignature } from "@/lib/auth";
 import { initializeDatabase, sql } from "@/lib/db";
 import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
+import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { MAX_SKILL_DESCRIPTION_LENGTH } from "@/lib/skillDraft";
 import { verifyAuthorTrust } from "@/lib/trust";
 
@@ -46,6 +53,9 @@ const mockPinSkillContent = pinSkillContent as unknown as ReturnType<
 >;
 const mockUpsertLocalAgentIdentity =
   upsertLocalAgentIdentity as unknown as ReturnType<typeof vi.fn>;
+const mockGetOnChainUsdcPrice = getOnChainUsdcPrice as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost/api/skills", {
@@ -180,5 +190,76 @@ describe("POST /api/skills", () => {
     expect(body.error).toContain(String(MAX_SKILL_DESCRIPTION_LENGTH));
     // No DB write should have happened.
     expect(dbQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/skills/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVerifyWalletSignature.mockReturnValue({
+      valid: true,
+      pubkey: "AuthorWallet1111111111111111111111111111111",
+    });
+    mockGetOnChainUsdcPrice.mockResolvedValue({
+      priceUsdcMicros: "10000",
+      author: "AuthorWallet1111111111111111111111111111111",
+    });
+  });
+
+  it("bypasses stale on-chain lookup cache when linking a fresh listing", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          skill_id: "my-skill",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+          name: "My Skill",
+          description: "Test description",
+          tags: [],
+          current_version: 1,
+          ipfs_cid: "bafy-test-cid",
+          on_chain_address: "Listing1111111111111111111111111111111111",
+          chain_context: "solana:devnet",
+          total_installs: 0,
+          price_usdc_micros: "10000",
+          currency_mint: "UsdcMint1111111111111111111111111111111111",
+          on_chain_protocol_version: "v0.2.0",
+          on_chain_program_id: "Program1111111111111111111111111111111111",
+          contact: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: {
+            pubkey: "AuthorWallet1111111111111111111111111111111",
+            signature: "sig",
+            message: "msg",
+            timestamp: Date.now(),
+          },
+          on_chain_address: "Listing1111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockGetOnChainUsdcPrice).toHaveBeenCalledWith(
+      "Listing1111111111111111111111111111111111",
+      { useCache: false }
+    );
   });
 });

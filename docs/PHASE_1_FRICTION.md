@@ -236,7 +236,7 @@ Track B is now implemented in code behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABL
 5. `usdc_purchase_receipts` and `usdc_purchase_entitlements` store `payment_flow: "x402-bridge-purchase-skill"` plus payment ref, settlement signature hash, settlement receipt PDA, purchase PDA, listing revision, settlement PDA, and x402 vault metadata.
 6. If x402 settles but on-chain or DB recording fails, the route returns a retryable `409` and does not grant entitlement.
 
-Devnet DB cleanup is dry-run-first. The current dry run found stale links to the previous Program ID and old purchase entitlement rows, but no destructive cleanup has been applied.
+Devnet DB cleanup remains dry-run-first; the 2026-05-15 cleanup cleared stale links to the previous Program ID plus old purchase receipt/entitlement rows. A local bridge-enabled devnet smoke also passed on 2026-05-15: x402 paid `0.01 USDC` into the protocol settlement vault, the backend called `settle_x402_purchase`, a normal `Purchase` PDA and bridge entitlement were recorded, raw download succeeded, and voucher revenue was claimable.
 
 ### Supporting onboarding work
 

@@ -404,7 +404,9 @@ export async function PATCH(
       );
     }
 
-    const listing = await getOnChainUsdcPrice(on_chain_address);
+    const listing = await getOnChainUsdcPrice(on_chain_address, {
+      useCache: false,
+    });
     if (!listing) {
       return NextResponse.json(
         { error: "On-chain listing not found or unreadable" },

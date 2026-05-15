@@ -180,7 +180,7 @@ x402 bridge POC pass/fail criteria:
 
 - Gate decision: `settle_x402_purchase` and receipt/signature-guard PDAs are implemented on the fresh devnet Program ID, but the API bridge remains disabled by default until devnet bridge smoke passes.
 - Pass requires proof that `@x402/svm` and the selected facilitator can settle an exact USDC transfer into the intended protocol settlement vault pattern. The selected design is the stock-compatible ATA owned by `x402_settlement_vault_authority`.
-- Pass requires deterministic memo binding to `protocol_version`, chain context, listing address, skill database id, buyer, and nonce without storing PII or free-form user text on-chain.
+- Pass requires deterministic payment-ref binding to `protocol_version`, chain context, listing address, skill database id, buyer, and nonce without storing PII or free-form user text on-chain. The SVM memo carries a compact payment-ref hash prefix; full references live in signed x402 `extra` fields and the hash preimage.
 - Pass requires reliable buyer extraction (`settle.payer` or transaction authority) so the on-chain `Purchase` PDA is derived from the paying wallet, not the facilitator fee payer.
 - Pass requires idempotency: the same payment reference or transaction signature cannot create more than one `X402SettlementReceipt`, `Purchase`, entitlement, or reward split.
 - Pass requires a retry/refund path for the case where x402 settles but `settle_x402_purchase` fails after USDC lands in the settlement vault.
@@ -525,7 +525,7 @@ Goal: resolve design questions that would be expensive to rewrite after the Anch
 
 Required gates:
 
-- x402 bridge POC pass/fail decision, including PDA settlement vault compatibility, memo binding, payer extraction, idempotency, retry, and refund behavior.
+- x402 bridge POC pass/fail decision, including PDA settlement vault compatibility, compact payment-ref memo binding, payer extraction, idempotency, retry, and refund behavior.
 - Governance and authority model for devnet and mainnet, including upgrade authority custody and config authority rotation.
 - Treasury policy: `treasury_authority` is reserved, and no arbitrary treasury-withdrawal instruction ships in Milestone 3.
 - Exact economic floors:
@@ -742,7 +742,7 @@ Tasks:
 - Require every protocol-listed paid purchase path to preserve voucher rewards when active external voucher stake exists; otherwise route the full payment to author proceeds.
 - Keep the x402 settlement bridge feature-flagged until devnet smoke proves:
   - x402 exact payment credits a protocol settlement vault
-  - `extra.memo` binds payment to skill, listing, chain context, and nonce
+  - `extra.memo` carries a compact payment-ref hash prefix, while signed x402 `extra` fields and the hash preimage bind payment to skill, listing, chain context, buyer, amount, and nonce
   - server verifies settled token delta, memo, payer, mint, and amount
   - backend calls `settle_x402_purchase` as `settlement_authority`
   - program creates an idempotent `X402SettlementReceipt` PDA and the normal `Purchase` PDA
@@ -839,7 +839,7 @@ Tasks:
 - Update `packages/agentvouch-cli` for USDC-native publish/list/install flows. CLI keeps read of v0.1.0 listings during the transition but writes only v0.2.0.
 - Remove claims that new listings require a SOL minimum price.
 - Document the first-time author cost shift: USDC author bond plus SOL for rent/fees/ATA creation, even though protocol accounting is USDC-native.
-- Document that x402 bridge memos must contain only protocol references (version, listing, skill id, nonce) and no PII or free-form buyer text.
+- Document that x402 bridge memos carry only a compact protocol payment-ref hash prefix and no PII or free-form buyer text.
 - Update `AGENTS.md` learned-facts to reflect USDC-native protocol, new program ID, vault model, and CAIP-2 conventions.
 - Defer pitch deck co-versioning to Milestone 16, including `pitch/AgentVouch_walkthrough.pptx`, its paper sibling, account/instruction counts, vault-per-primitive diagrams, and USDC-native architecture slides.
 - After every `anchor build`, copy `target/idl/agentvouch.json` to `web/agentvouch.json` and rerun `npm run generate:client` so the web client stays deploy-safe.

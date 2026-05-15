@@ -25,7 +25,7 @@ todos:
     status: completed
   - id: verify-track-b
     content: Run Anchor, generated client, web, CLI, build, and devnet bridge smoke checks.
-    status: pending
+    status: completed
 isProject: true
 ---
 
@@ -112,12 +112,35 @@ The fresh devnet reset is complete:
 
 Steps 5-7 are implemented behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=false` by default:
 
-- `/api/skills/{id}/raw` requires initial `X-AgentVouch-Auth` for bridge requirements, then binds buyer/listing/skill/amount/nonce into the x402 requirement memo and payment-ref hash.
+- `/api/skills/{id}/raw` requires initial `X-AgentVouch-Auth` for bridge requirements, then binds buyer/listing/skill/amount/nonce into the x402 requirement and payment-ref hash. The SVM memo carries a compact payment-ref hash prefix to stay inside the stock exact-SVM memo compute budget.
 - x402 settlement is verified for destination ATA, mint, exact amount, payer signer, and memo before on-chain settlement is attempted.
 - The backend calls `settle_x402_purchase` as `settlement_authority`; idempotent receipt/signature guards let retries recover after x402 settlement.
 - DB receipts/entitlements are granted only after x402 settlement, on-chain settlement, and DB recording all succeed. Bridge records use `payment_flow = "x402-bridge-purchase-skill"` and store payment ref, settlement signature hash, settlement receipt PDA, purchase PDA, listing revision, listing settlement PDA, author proceeds vault, and x402 settlement vault metadata.
 - If x402 settles but program settlement or DB recording fails, the route returns retryable `409` and does not grant entitlement.
 - `/api/x402/supported`, CLI install, `web/public/skill.md`, and architecture/friction docs now describe the bridge as feature-flagged rather than repo-only direct x402.
+
+## Live devnet bridge smoke result — 2026-05-15
+
+Track B bridge smoke passed locally against the active devnet program with `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=true`.
+
+- Repo skill: `2f2f0656-0f92-4938-bb2e-6c4433c9ba28`.
+- Skill id: `tbx402-mp7i3ti6`.
+- Listing PDA: `4ctei7obzastUX5Z4dMBoyLSjvj2X5gKXD51QVFKuGdQ`.
+- Buyer: `F6vv6SiX1bv3DNDDHv5LwekGyz81nqMoK9PsUqSNYr2u`.
+- Author: `7bnztynmPtsrPVdcgNrrPAccHv8rp8ub5f98mGHqU56Z`.
+- Price: `10_000` micro-USDC (`0.01 USDC`).
+- x402 settlement tx: `4VkC1s9dKxoBCSGQC5B5mAAr7ykXzLLTkbCjg9KF2cxxU92in5v9dyGkWFo9Kh2WccVPDijp5A3J9f5CihveTLUz`.
+- Program settlement tx: `5iyHDc5nZRvZxuCaoobcGemhEgPWEqqwrkFLbp7bVUEzfkGsF8Z6eCPMAvnADaYKmqDJ5nvUxW9gsXzdtRjFZfPL`.
+- Purchase PDA: `FiVat41bAwSf8o82bgwPyT72SZQzqYGXnRhkB1oyuvR7`.
+- x402 settlement receipt PDA: `AvwDfdRGpf1doZd7yxGW2sG66hLhnYhohnxkdQLyFz1U`.
+- Voucher revenue claim tx: `5fdFjBA5Z9DqDsWpza4davEsFLbWcNyb5vDthnBT88utFndMej3YqCDM5BdwEddZBYdew4YqxJmvWjFbh2MYKBPe`.
+
+Smoke fixes discovered and applied:
+
+- The repo listing link endpoint must bypass stale negative on-chain cache when retrying immediately after `create_skill_listing`.
+- CLI x402 paid retry must carry the same `X-AgentVouch-Auth` header used to request the bridge payment requirement.
+- Stock exact-SVM uses a low fixed compute limit for the memo instruction, so the bridge memo now carries a compact payment-ref hash prefix while full buyer/listing/skill/amount/nonce binding remains in signed x402 `extra` fields and the payment-ref hash preimage.
+- The settlement authority key loader now accepts `base64:<json-secret>` as well as raw JSON, comma-delimited bytes, and base64 raw bytes.
 
 ## Files To Change
 
@@ -165,8 +188,8 @@ Steps 5-7 are implemented behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=false`
    - Use `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=true` only in local/devnet preview after the POC passes.
    - Add `AGENTVOUCH_X402_SETTLEMENT_AUTHORITY_SECRET_KEY` for the backend signer; it must match `config.settlement_authority`.
    - Keep `FACILITATOR_URL`, `FACILITATOR_AUTH_HEADER`, `SOLANA_RPC_URL`, and `NEXT_PUBLIC_SOLANA_RPC_URL` aligned with the target cluster.
-   - Require initial `X-AgentVouch-Auth` so the server can bind buyer, skill id, listing, chain context, and nonce into the x402 memo.
-   - Memo format should contain only protocol references: protocol version, chain context, program id, listing PDA, skill DB id, buyer pubkey, and nonce.
+   - Require initial `X-AgentVouch-Auth` so the server can bind buyer, skill id, listing, chain context, amount, and nonce into the x402 requirement and deterministic payment-ref hash.
+   - Memo format should stay compact for stock exact-SVM compute limits: store a payment-ref hash prefix on-chain, and keep the full protocol references in signed x402 `extra` fields plus the hash preimage.
    - After facilitator `/verify` and `/settle`, verify settled amount, mint, payer, memo, transaction success, and destination token account before calling `settle_x402_purchase`.
    - If x402 settles but program settlement fails, return a retryable error and persist enough metadata to retry. Do not grant entitlement yet.
 

@@ -106,7 +106,7 @@ export function evaluateX402BridgePoc(): X402BridgePocReport {
       id: "payer-binding-and-idempotency",
       passed: true,
       detail:
-        "The raw route requires X-AgentVouch-Auth before returning bridge requirements, binds buyer/listing/amount/nonce into the x402 memo, and records entitlements only after idempotent on-chain settlement.",
+        "The raw route requires X-AgentVouch-Auth before returning bridge requirements, binds buyer/listing/amount/nonce into signed x402 extra fields and the payment-ref hash, and records entitlements only after idempotent on-chain settlement.",
     },
   ];
 

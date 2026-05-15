@@ -226,4 +226,82 @@ describe("installSkill", () => {
       "# historical paid skill"
     );
   });
+
+  it("keeps signed auth on the paid x402 bridge retry", async () => {
+    const { tempDir, keypairPath } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "SKILL.md");
+    const author = Keypair.generate().publicKey.toBase58();
+    const downloadSpy = vi
+      .spyOn(AgentVouchApiClient.prototype, "downloadRaw")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "Payment required",
+        x402PaymentRequired: {
+          x402Version: 2,
+          error: "Payment required",
+          resource: {
+            url: "https://agentvouch.xyz/api/skills/skill-id/raw",
+            description: "AgentVouch skill",
+            mimeType: "text/markdown; charset=utf-8",
+          },
+          accepts: [
+            {
+              scheme: "exact",
+              network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+              amount: "10000",
+              payTo: "PayTo111111111111111111111111111111111111",
+              maxTimeoutSeconds: 300,
+              asset: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              extra: {},
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        content: "# bridge paid skill\n",
+        paymentResponse: {
+          success: true,
+          transaction: "x402-settlement-tx",
+          network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          amount: "10000",
+        },
+      });
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: author,
+      name: "Calendar Agent",
+      description: "Paid skill",
+      on_chain_address: "37Mm4DzMockListing",
+      total_installs: 0,
+      price_usdc_micros: "10000",
+      currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payment_flow: "x402-bridge-purchase-skill",
+    });
+
+    const result = await installSkill({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      out: outputPath,
+      keypairPath,
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+    });
+
+    expect(result.mode).toBe("x402-usdc");
+    expect(downloadSpy).toHaveBeenCalledTimes(2);
+    expect(downloadSpy.mock.calls[0]?.[1]).toMatchObject({
+      auth: expect.objectContaining({
+        pubkey: expect.any(String),
+      }),
+    });
+    expect(downloadSpy.mock.calls[1]?.[1]).toMatchObject({
+      auth: expect.objectContaining({
+        pubkey: expect.any(String),
+      }),
+      fetchImpl: expect.any(Function),
+    });
+  });
 });

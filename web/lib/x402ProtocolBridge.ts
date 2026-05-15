@@ -113,23 +113,9 @@ function buildPaymentRef(input: {
 }
 
 function buildBridgeMemo(input: {
-  chainContext: string;
-  programId: string;
-  skillDbId: string;
-  skillListingAddress: string;
-  buyerPubkey: string;
-  nonce: string;
+  paymentRefHashHex: string;
 }) {
-  const compactChain = input.chainContext.replace(/^solana:/, "");
-  const memo = [
-    "avx4021",
-    `c=${compactChain}`,
-    `p=${input.programId}`,
-    `l=${input.skillListingAddress}`,
-    `s=${input.skillDbId}`,
-    `b=${input.buyerPubkey}`,
-    `n=${input.nonce}`,
-  ].join("|");
+  const memo = input.paymentRefHashHex.slice(0, 32);
 
   if (new TextEncoder().encode(memo).byteLength > MAX_MEMO_BYTES) {
     throw new Error("x402 bridge memo exceeds the SVM memo byte limit");
@@ -158,14 +144,6 @@ export async function buildProtocolX402BridgeRequirement(input: {
   const x402SettlementVaultAuthority = pda(
     "x402_settlement_vault_authority"
   ).toBase58();
-  const memo = buildBridgeMemo({
-    chainContext,
-    programId,
-    skillDbId: input.skillDbId,
-    skillListingAddress: input.skillListingAddress,
-    buyerPubkey: input.buyerPubkey,
-    nonce: input.nonce,
-  });
   const paymentRef = buildPaymentRef({
     network: chainContext,
     programId,
@@ -178,6 +156,7 @@ export async function buildProtocolX402BridgeRequirement(input: {
   });
   const paymentRefHashBytes = hashBytes(paymentRef);
   const paymentRefHashHex = hex(paymentRefHashBytes);
+  const memo = buildBridgeMemo({ paymentRefHashHex });
   const requirement = await generateX402UsdcRequirement({
     priceUsdcMicros: input.priceUsdcMicros,
     payTo: x402SettlementVaultAuthority,
@@ -252,12 +231,16 @@ function loadSettlementAuthority(): Keypair {
   if (trimmed.startsWith("[")) {
     bytes = JSON.parse(trimmed) as number[];
   } else if (trimmed.startsWith("base64:")) {
-    bytes = Array.from(Buffer.from(trimmed.slice("base64:".length), "base64"));
+    const decoded = Buffer.from(trimmed.slice("base64:".length), "base64");
+    const decodedText = decoded.toString("utf8").trim();
+    bytes = decodedText.startsWith("[")
+      ? (JSON.parse(decodedText) as number[])
+      : Array.from(decoded);
   } else if (/^\d+(,\d+)+$/.test(trimmed)) {
     bytes = trimmed.split(",").map((value) => Number(value.trim()));
   } else {
     throw new Error(
-      "AGENTVOUCH_X402_SETTLEMENT_AUTHORITY_SECRET_KEY must be a JSON byte array, comma-delimited byte list, or base64:<secret>"
+      "AGENTVOUCH_X402_SETTLEMENT_AUTHORITY_SECRET_KEY must be a JSON byte array, comma-delimited byte list, base64:<raw-secret>, or base64:<json-secret>"
     );
   }
 

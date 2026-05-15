@@ -438,14 +438,22 @@ export class AgentVouchApiClient {
     }
 
     const body = getJsonContentType(response)
-      ? ((await response.json().catch(() => null)) as { error?: string } | null)
+      ? ((await response.json().catch(() => null)) as {
+          error?: string;
+          message?: string;
+        } | null)
       : null;
+
+    const errorMessage =
+      body?.error && body.message
+        ? `${body.error}: ${body.message}`
+        : body?.error || body?.message;
 
     return {
       ok: false,
       status: response.status,
       error:
-        body?.error ||
+        errorMessage ||
         (await response.text().catch(() => response.statusText)) ||
         response.statusText,
       requirement: parsePaymentRequirement(response, body),
