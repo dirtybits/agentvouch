@@ -13,6 +13,7 @@ import {
   createVouch,
   depositAuthorBond,
   expectFailure,
+  fundX402SettlementVault,
   getTestContext,
   linkVouchToListing,
   openAuthorDispute,
@@ -20,6 +21,7 @@ import {
   purchaseSkill,
   registerAgent,
   resolveAuthorDispute,
+  settleX402Purchase,
   setupPaidListingWithVouch,
   tokenAmount,
   u64,
@@ -28,6 +30,152 @@ import {
 } from "./helpers/agentvouchUsdc";
 
 describe("agentvouch usdc marketplace rewards", () => {
+  it("settles x402 purchases through the protocol vault and preserves voucher economics", async () => {
+    const ctx = await getTestContext();
+    const { author, buyer, listing } = await setupPaidListingWithVouch(
+      ctx,
+      5 * ONE_USDC
+    );
+
+    await fundX402SettlementVault(ctx, 5 * ONE_USDC);
+
+    const settlementBefore = await tokenAmount(ctx, ctx.x402SettlementVault);
+    const proceedsBefore = await tokenAmount(ctx, listing.proceedsVault);
+    const rewardVaultBefore = await tokenAmount(ctx, listing.vault);
+    const paymentRefHash = Buffer.alloc(32, 1);
+    const settlementTxSignatureHash = Buffer.alloc(32, 2);
+    const { purchase, receipt, signatureGuard } = await settleX402Purchase(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      paymentRefHash,
+      settlementTxSignatureHash,
+      5 * ONE_USDC,
+      "settle_x402_purchase split accounting"
+    );
+
+    await assertTokenDelta(
+      ctx,
+      ctx.x402SettlementVault,
+      settlementBefore,
+      -5 * ONE_USDC
+    );
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      3 * ONE_USDC
+    );
+    await assertTokenDelta(ctx, listing.vault, rewardVaultBefore, 2 * ONE_USDC);
+
+    const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
+    const receiptAccount =
+      await ctx.program.account.x402SettlementReceipt.fetch(receipt);
+    const signatureGuardAccount =
+      await ctx.program.account.x402SettlementSignatureGuard.fetch(
+        signatureGuard
+      );
+
+    assert.equal(
+      purchaseAccount.buyer.toBase58(),
+      buyer.keypair.publicKey.toBase58()
+    );
+    assert.equal(Number(purchaseAccount.pricePaidUsdcMicros), 5 * ONE_USDC);
+    assert.equal(Number(purchaseAccount.authorShareUsdcMicros), 3 * ONE_USDC);
+    assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 2 * ONE_USDC);
+    assert.equal(receiptAccount.purchase.toBase58(), purchase.toBase58());
+    assert.deepEqual(Buffer.from(receiptAccount.paymentRefHash), paymentRefHash);
+    assert.deepEqual(
+      Buffer.from(receiptAccount.settlementTxSignatureHash),
+      settlementTxSignatureHash
+    );
+    assert.equal(signatureGuardAccount.receipt.toBase58(), receipt.toBase58());
+  });
+
+  it("rejects x402 settlement amount mismatches", async () => {
+    const ctx = await getTestContext();
+    const { author, buyer, listing } = await setupPaidListingWithVouch(
+      ctx,
+      ONE_USDC
+    );
+
+    await fundX402SettlementVault(ctx, ONE_USDC);
+
+    await expectFailure(
+      settleX402Purchase(
+        ctx,
+        buyer,
+        author,
+        listing.skillListing,
+        Buffer.alloc(32, 3),
+        Buffer.alloc(32, 4),
+        ONE_USDC + 1
+      ),
+      "x402 settlement amount must match the listing price"
+    );
+  });
+
+  it("rejects duplicate x402 payment refs and settlement signatures", async () => {
+    const ctx = await getTestContext();
+    const author = await createActor(ctx);
+    const buyer = await createActor(ctx);
+    const secondBuyer = await createActor(ctx);
+    await registerAgent(ctx, author);
+
+    const listing = await createSkillListing(
+      ctx,
+      author,
+      uniqueSkillId("x402dupa"),
+      ONE_USDC
+    );
+    const secondListing = await createSkillListing(
+      ctx,
+      author,
+      uniqueSkillId("x402dupb"),
+      ONE_USDC
+    );
+    await fundX402SettlementVault(ctx, 3 * ONE_USDC);
+
+    const paymentRefHash = Buffer.alloc(32, 5);
+    const settlementTxSignatureHash = Buffer.alloc(32, 6);
+    await settleX402Purchase(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      paymentRefHash,
+      settlementTxSignatureHash,
+      ONE_USDC
+    );
+
+    await expectFailure(
+      settleX402Purchase(
+        ctx,
+        secondBuyer,
+        author,
+        secondListing.skillListing,
+        paymentRefHash,
+        Buffer.alloc(32, 7),
+        ONE_USDC
+      ),
+      "already in use"
+    );
+
+    await expectFailure(
+      settleX402Purchase(
+        ctx,
+        secondBuyer,
+        author,
+        secondListing.skillListing,
+        Buffer.alloc(32, 8),
+        settlementTxSignatureHash,
+        ONE_USDC
+      ),
+      "already in use"
+    );
+  });
+
   it("records purchase splits and reward index accounting", async () => {
     const ctx = await getTestContext();
     const { author, buyer, listing } = await setupPaidListingWithVouch(

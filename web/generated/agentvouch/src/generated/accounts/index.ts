@@ -17,3 +17,5 @@ export * from "./refundPool";
 export * from "./reputationConfig";
 export * from "./skillListing";
 export * from "./vouch";
+export * from "./x402SettlementReceipt";
+export * from "./x402SettlementSignatureGuard";

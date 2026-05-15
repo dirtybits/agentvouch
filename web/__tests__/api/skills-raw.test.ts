@@ -106,7 +106,7 @@ const PROTOCOL_USDC_SKILL = {
   id: "uuid-direct-usdc",
   on_chain_address: "ListingAddr1",
   on_chain_protocol_version: "v0.2.0",
-  on_chain_program_id: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
+  on_chain_program_id: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
   chain_context: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 };
 

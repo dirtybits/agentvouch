@@ -1,5 +1,5 @@
 {
-  "address": "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
+  "address": "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
   "metadata": {
     "name": "agentvouch",
     "version": "0.1.0",
@@ -1260,32 +1260,55 @@
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  120,
-                  52,
-                  48,
-                  50,
-                  95,
-                  115,
-                  101,
-                  116,
-                  116,
-                  108,
-                  101,
-                  109,
-                  101,
-                  110,
-                  116,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "kind": "account",
+                "path": "x402_settlement_vault_authority"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
           }
         },
         {
@@ -1299,6 +1322,10 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
           "name": "system_program",
@@ -2804,6 +2831,448 @@
       "args": []
     },
     {
+      "name": "settle_x402_purchase",
+      "discriminator": [
+        33,
+        34,
+        100,
+        136,
+        204,
+        68,
+        180,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "skill_listing",
+          "writable": true
+        },
+        {
+          "name": "purchase",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  117,
+                  114,
+                  99,
+                  104,
+                  97,
+                  115,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing.current_revision",
+                "account": "SkillListing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author"
+        },
+        {
+          "name": "author_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing.author",
+                "account": "SkillListing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "x402_settlement_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  120,
+                  52,
+                  48,
+                  50,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "x402_settlement_vault",
+          "writable": true
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing"
+              },
+              {
+                "kind": "account",
+                "path": "skill_listing.current_revision",
+                "account": "SkillListing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  101,
+                  100,
+                  115,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing_settlement"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true
+        },
+        {
+          "name": "author_reward_vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "author_profile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author_reward_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "author_profile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "x402_settlement_receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  120,
+                  52,
+                  48,
+                  50,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "payment_ref_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "x402_settlement_signature_guard",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  120,
+                  52,
+                  48,
+                  50,
+                  95,
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  105,
+                  103,
+                  110,
+                  97,
+                  116,
+                  117,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "settlement_tx_signature_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "payment_ref_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "settlement_tx_signature_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey"
+        },
+        {
+          "name": "amount_usdc_micros",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "unlink_vouch_from_listing",
       "discriminator": [
         28,
@@ -3796,6 +4265,32 @@
         175,
         210
       ]
+    },
+    {
+      "name": "X402SettlementReceipt",
+      "discriminator": [
+        110,
+        6,
+        154,
+        54,
+        214,
+        71,
+        138,
+        246
+      ]
+    },
+    {
+      "name": "X402SettlementSignatureGuard",
+      "discriminator": [
+        100,
+        135,
+        137,
+        55,
+        214,
+        211,
+        155,
+        149
+      ]
     }
   ],
   "events": [
@@ -4031,6 +4526,19 @@
         95,
         120,
         64
+      ]
+    },
+    {
+      "name": "X402PurchaseSettled",
+      "discriminator": [
+        41,
+        241,
+        34,
+        116,
+        76,
+        3,
+        68,
+        193
       ]
     }
   ],
@@ -5657,6 +6165,179 @@
           },
           {
             "name": "Slashed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "X402PurchaseSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "signature_guard",
+            "type": "pubkey"
+          },
+          {
+            "name": "purchase",
+            "type": "pubkey"
+          },
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_ref_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "settlement_tx_signature_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "price_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "author_share_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "voucher_pool_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "listing_revision",
+            "type": "u64"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "x402_settlement_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "author_proceeds_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "X402SettlementReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "payment_ref_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "settlement_tx_signature_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "skill_listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "purchase",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing_revision",
+            "type": "u64"
+          },
+          {
+            "name": "listing_settlement",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "author_share_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "voucher_pool_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "X402SettlementSignatureGuard",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "settlement_tx_signature_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

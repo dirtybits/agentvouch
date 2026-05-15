@@ -260,7 +260,7 @@ Current note:
 - `target/deploy/reputation_oracle_v01-keypair.json` is the archived `v0.1.0` keypair copy.
 - `target/deploy/agentvouch-keypair.json` was generated for the fresh `v0.2.0` program identity.
 - `target/deploy/agentvouch_v02-keypair.json` is the archived `v0.2.0` keypair copy.
-- `v0.2.0` program pubkey: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`.
+- `v0.2.0` program pubkey: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`.
 
 ## Production Cutover Guardrail
 
@@ -275,7 +275,7 @@ Cutover rules:
 - `web/public/skill.md` must be internally consistent at cutover: USDC-native copy, v0.2.0 program ID, current paid download contract, x402 capability status, and no stale SOL/lamport publish or purchase claims except explicit legacy notes.
 - Phantom app acceptance should remain tied mostly to the domain, app ID, allowlisted URLs, and wallet UX. A program ID change is acceptable only after the new on-chain flow is live and verified.
 - Do not expose new program ID-dependent wallet flows in production until Phantom connect, direct checkout, and embedded/send-only wallet fallback behavior are verified.
-- Do not expose a half-cutover state where public docs or manifests point at `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` before the program has been deployed and initialized on the intended cluster.
+- Do not expose a half-cutover state where public docs or manifests point at `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` before the program has been deployed and initialized on the intended cluster.
 - During transition, APIs and trust surfaces may dual-read `v0.1.0` and `v0.2.0`, but new writes hard-cut to `v0.2.0` only after direct purchase indexing, entitlement repair/backfill, and smoke tests pass.
 - Rollback path: keep `main` deploy-safe for the current v0.1 flow until Milestone 11 passes. If cutover smoke fails after a preview deploy, roll production metadata and write flags back to the current v0.1 flow; do not partially roll forward public manifests.
 - `/api/x402/supported` remains fail-closed for protocol-listed paid skills until the x402 bridge POC passes; repo-only/off-chain x402 support must be labeled as not protocol-visible.
@@ -509,14 +509,14 @@ Tasks:
 
 Acceptance criteria:
 
-- `solana-keygen pubkey target/deploy/agentvouch-keypair.json` returns `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`, distinct from the legacy `v0.1.0` program ID.
+- `solana-keygen pubkey target/deploy/agentvouch-keypair.json` returns `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`, distinct from the legacy `v0.1.0` program ID.
 - `programs/agentvouch/src/lib.rs` and `Anchor.toml` agree on the `v0.2.0` program ID.
 
 Verification:
 
 ```bash
 solana-keygen pubkey target/deploy/agentvouch-keypair.json
-rg "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" Anchor.toml programs/agentvouch/src/lib.rs
+rg "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg" Anchor.toml programs/agentvouch/src/lib.rs
 ```
 
 ### Pre-Milestone 3 Gates
@@ -1075,8 +1075,8 @@ Acceptance criteria:
 Verification:
 
 ```bash
-anchor idl fetch AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ --provider.cluster devnet
-solana program dump AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ /tmp/agentvouch-devnet.so --url https://api.devnet.solana.com
+anchor idl fetch AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg --provider.cluster devnet
+solana program dump AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg /tmp/agentvouch-devnet.so --url https://api.devnet.solana.com
 shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch-devnet.so
 npm run migrate:config
 npm run generate:client

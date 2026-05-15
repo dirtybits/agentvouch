@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
 use crate::state::{
@@ -48,11 +49,9 @@ pub struct InitializeConfig<'info> {
     #[account(
         init,
         payer = payer,
-        token::mint = usdc_mint,
-        token::authority = x402_settlement_vault_authority,
-        token::token_program = token_program,
-        seeds = [b"x402_settlement_vault"],
-        bump
+        associated_token::mint = usdc_mint,
+        associated_token::authority = x402_settlement_vault_authority,
+        associated_token::token_program = token_program
     )]
     pub x402_settlement_vault: Box<Account<'info, TokenAccount>>,
 
@@ -63,6 +62,7 @@ pub struct InitializeConfig<'info> {
     pub payer: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 

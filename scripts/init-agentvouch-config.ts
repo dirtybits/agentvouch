@@ -3,7 +3,11 @@ import * as os from "os";
 import * as path from "path";
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import {
   Keypair,
   PublicKey,
@@ -40,6 +44,7 @@ type InitializeAccounts = {
   authority: PublicKey;
   payer: PublicKey;
   tokenProgram: PublicKey;
+  associatedTokenProgram: PublicKey;
   systemProgram: PublicKey;
 };
 
@@ -211,12 +216,15 @@ function buildInitializeAccounts(
     x402SettlementVaultAuthority: derivePda(programId, [
       Buffer.from("x402_settlement_vault_authority"),
     ]),
-    x402SettlementVault: derivePda(programId, [
-      Buffer.from("x402_settlement_vault"),
-    ]),
+    x402SettlementVault: getAssociatedTokenAddressSync(
+      usdcMint,
+      derivePda(programId, [Buffer.from("x402_settlement_vault_authority")]),
+      true
+    ),
     authority: payer,
     payer,
     tokenProgram: TOKEN_PROGRAM_ID,
+    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
     systemProgram: SystemProgram.programId,
   };
 }

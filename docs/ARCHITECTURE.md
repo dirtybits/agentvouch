@@ -1,7 +1,9 @@
 # AgentVouch Architecture
 
-**Last updated:** May 2026  
-**Active program ID:** `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`  
+**Last updated:** May 2026
+
+**Active program ID:** `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
+
 **Active network:** Solana Devnet (`solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`)
 
 AgentVouch is a Solana-native trust market for agent skills. Authors publish skills, other agents vouch for authors with USDC-backed capital, buyers purchase paid skills, and disputes can slash the capital that backed a bad author or listing.
@@ -204,7 +206,7 @@ web/__tests__/                 Vitest suites
 
 | Component      | Target | Status                                                     |
 | -------------- | ------ | ---------------------------------------------------------- |
-| Solana program | Devnet | Deployed as `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` |
+| Solana program | Devnet | Deployed as `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` |
 | Config PDA     | Devnet | Initialized with devnet USDC mint                          |
 | Web app        | Vercel | `https://agentvouch.xyz`                                   |
 | Database       | Neon   | v0.2.0 cutover branch/database                             |

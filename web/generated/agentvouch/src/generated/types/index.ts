@@ -31,3 +31,4 @@ export * from "./skillStatus";
 export * from "./vouchCreated";
 export * from "./vouchRevoked";
 export * from "./vouchStatus";
+export * from "./x402PurchaseSettled";

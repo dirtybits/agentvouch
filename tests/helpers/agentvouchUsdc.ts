@@ -2,9 +2,11 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createMint,
   getAccount,
+  getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
@@ -271,6 +273,26 @@ export function refundClaimPda(
   ]);
 }
 
+export function x402SettlementReceiptPda(
+  program: Program<Agentvouch>,
+  paymentRefHash: Buffer
+) {
+  return pda(program, [
+    Buffer.from("x402_settlement_receipt"),
+    paymentRefHash,
+  ]);
+}
+
+export function x402SettlementSignatureGuardPda(
+  program: Program<Agentvouch>,
+  settlementTxSignatureHash: Buffer
+) {
+  return pda(program, [
+    Buffer.from("x402_settlement_signature"),
+    settlementTxSignatureHash,
+  ]);
+}
+
 export function disputeBondVaultAuthority(
   program: Program<Agentvouch>,
   author: PublicKey,
@@ -345,9 +367,11 @@ export async function getTestContext(): Promise<TestContext> {
     const x402SettlementVaultAuthority = pda(program, [
       Buffer.from("x402_settlement_vault_authority"),
     ]);
-    const x402SettlementVault = pda(program, [
-      Buffer.from("x402_settlement_vault"),
-    ]);
+    const x402SettlementVault = getAssociatedTokenAddressSync(
+      usdcMint,
+      x402SettlementVaultAuthority,
+      true
+    );
 
     await program.methods
       .initializeConfig(
@@ -369,6 +393,7 @@ export async function getTestContext(): Promise<TestContext> {
         authority: configAdmin.publicKey,
         payer: payer.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
@@ -455,6 +480,20 @@ export async function mintToActor(
     ctx.payer,
     ctx.usdcMint,
     actor.usdc,
+    ctx.payer,
+    amountUsdcMicros
+  );
+}
+
+export async function fundX402SettlementVault(
+  ctx: TestContext,
+  amountUsdcMicros: number
+) {
+  await mintTo(
+    ctx.provider.connection,
+    ctx.payer,
+    ctx.usdcMint,
+    ctx.x402SettlementVault,
     ctx.payer,
     amountUsdcMicros
   );
@@ -801,6 +840,72 @@ export async function purchaseSkill(
   if (label) await sendWithMetrics(ctx, label, builder);
   else await builder.rpc();
   return purchase;
+}
+
+export async function settleX402Purchase(
+  ctx: TestContext,
+  buyer: TestActor,
+  author: TestActor,
+  skillListing: PublicKey,
+  paymentRefHash: Buffer,
+  settlementTxSignatureHash: Buffer,
+  amountUsdcMicros: number,
+  label?: string
+) {
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    skillListing
+  );
+  const revision = Number(listingAccount.currentRevision);
+  const settlement = listingAccount.currentSettlement;
+  const proceedsVault = listingAccount.currentAuthorProceedsVault;
+  const purchase = purchasePda(
+    ctx.program,
+    buyer.keypair.publicKey,
+    skillListing,
+    revision
+  );
+  const receipt = x402SettlementReceiptPda(ctx.program, paymentRefHash);
+  const signatureGuard = x402SettlementSignatureGuardPda(
+    ctx.program,
+    settlementTxSignatureHash
+  );
+  const builder = ctx.program.methods
+    .settleX402Purchase(
+      Array.from(paymentRefHash),
+      Array.from(settlementTxSignatureHash),
+      buyer.keypair.publicKey,
+      u64(amountUsdcMicros)
+    )
+    .accountsStrict({
+      skillListing,
+      purchase,
+      author: author.keypair.publicKey,
+      authorProfile: author.profile,
+      config: ctx.config,
+      usdcMint: ctx.usdcMint,
+      x402SettlementVaultAuthority: ctx.x402SettlementVaultAuthority,
+      x402SettlementVault: ctx.x402SettlementVault,
+      listingSettlement: settlement,
+      authorProceedsVaultAuthority: authorProceedsVaultAuthority(
+        ctx.program,
+        settlement
+      ),
+      authorProceedsVault: proceedsVault,
+      authorRewardVaultAuthority: authorRewardVaultAuthority(
+        ctx.program,
+        author.profile
+      ),
+      authorRewardVault: authorRewardVault(ctx.program, author.profile),
+      x402SettlementReceipt: receipt,
+      x402SettlementSignatureGuard: signatureGuard,
+      settlementAuthority: ctx.configAdmin.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([ctx.configAdmin]);
+  if (label) await sendWithMetrics(ctx, label, builder);
+  else await builder.rpc();
+  return { purchase, receipt, signatureGuard };
 }
 
 export async function withdrawAuthorProceeds(

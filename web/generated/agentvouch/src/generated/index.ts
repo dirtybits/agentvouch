@@ -20,6 +20,7 @@ export * from "./instructions/registerAgent";
 export * from "./instructions/removeSkillListing";
 export * from "./instructions/resolveAuthorDispute";
 export * from "./instructions/revokeVouch";
+export * from "./instructions/settleX402Purchase";
 export * from "./instructions/unlinkVouchFromListing";
 export * from "./instructions/updateSkillListing";
 export * from "./instructions/withdrawAuthorBond";

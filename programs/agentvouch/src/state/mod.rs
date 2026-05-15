@@ -7,6 +7,7 @@ pub mod purchase;
 pub mod settlement;
 pub mod skill_listing;
 pub mod vouch;
+pub mod x402_settlement;
 
 pub use agent::*;
 pub use author_bond::*;
@@ -17,3 +18,4 @@ pub use purchase::*;
 pub use settlement::*;
 pub use skill_listing::*;
 pub use vouch::*;
+pub use x402_settlement::*;

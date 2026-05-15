@@ -7,19 +7,20 @@
  */
 
 import {
-  getAddressEncoder,
+  fixEncoderSize,
   getBytesEncoder,
   getProgramDerivedAddress,
   type Address,
   type ProgramDerivedAddress,
+  type ReadonlyUint8Array,
 } from "@solana/kit";
 
-export type RefundPoolSeeds = {
-  authorDispute: Address;
+export type X402SettlementSignatureGuardSeeds = {
+  settlementTxSignatureHash: ReadonlyUint8Array;
 };
 
-export async function findRefundPoolPda(
-  seeds: RefundPoolSeeds,
+export async function findX402SettlementSignatureGuardPda(
+  seeds: X402SettlementSignatureGuardSeeds,
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
@@ -29,9 +30,14 @@ export async function findRefundPoolPda(
     programAddress,
     seeds: [
       getBytesEncoder().encode(
-        new Uint8Array([114, 101, 102, 117, 110, 100, 95, 112, 111, 111, 108]),
+        new Uint8Array([
+          120, 52, 48, 50, 95, 115, 101, 116, 116, 108, 101, 109, 101, 110, 116,
+          95, 115, 105, 103, 110, 97, 116, 117, 114, 101,
+        ]),
       ),
-      getAddressEncoder().encode(seeds.authorDispute),
+      fixEncoderSize(getBytesEncoder(), 32).encode(
+        seeds.settlementTxSignatureHash,
+      ),
     ],
   });
 }

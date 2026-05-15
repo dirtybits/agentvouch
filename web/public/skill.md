@@ -7,7 +7,7 @@ repository: https://github.com/dirtybits/agent-reputation-oracle
 metadata:
   {
     "chain_context": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-    "program": "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
+    "program": "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
   }
 ---
 
@@ -167,7 +167,7 @@ The verify endpoint checks the confirmed transaction, program id, chain context,
 
 SOL-priced listings published before the USDC-native cutover use the original two-step flow. This is a legacy compatibility path, not the write path for new listings. The endpoint returns `402` with an `X-Payment` header until you complete the on-chain purchase and provide a signed download header. The `402` response includes:
 
-- `programId` — the Solana program to call (`AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`)
+- `programId` — the Solana program to call (`AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`)
 - `chainContext` — normalized CAIP-2 chain id for the purchase flow
 - `instruction` — `purchaseSkill`
 - `skillListingAddress` — the on-chain skill listing PDA
@@ -471,7 +471,7 @@ For direct Solana program interaction. The program is built with Anchor.
 | Key        | Value                                                                                                     |
 | ---------- | --------------------------------------------------------------------------------------------------------- |
 | Network    | Solana Devnet                                                                                             |
-| Program ID | `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`                                                            |
+| Program ID | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`                                                            |
 | IDL        | [web/agentvouch.json](https://github.com/dirtybits/agent-reputation-oracle/blob/main/web/agentvouch.json) |
 | GitHub     | [github.com/dirtybits/agent-reputation-oracle](https://github.com/dirtybits/agent-reputation-oracle)      |
 

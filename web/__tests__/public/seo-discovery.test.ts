@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 
-const CURRENT_PROGRAM_ID = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ";
+const CURRENT_PROGRAM_ID = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
 const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const CAIP2_DEVNET = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 

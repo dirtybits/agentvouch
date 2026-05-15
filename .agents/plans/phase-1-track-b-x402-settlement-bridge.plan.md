@@ -4,13 +4,16 @@ overview: "Restore frictionless x402 for protocol-listed paid skills through a s
 todos:
   - id: prove-settlement-destination
     content: Prove whether stock @x402/svm exact payments can credit the intended protocol settlement destination.
-    status: pending
+    status: completed
   - id: choose-vault-design
     content: Choose the bridge settlement account design before adding program or API implementation.
-    status: pending
+    status: completed
   - id: add-settlement-instruction
     content: Add settle_x402_purchase, receipt state, events, and generated client support after the destination POC passes.
-    status: pending
+    status: completed
+  - id: fresh-devnet-reset
+    content: Deploy the fresh Track B devnet Program ID and initialize config with the stock-compatible x402 settlement vault ATA.
+    status: completed
   - id: wire-bridge-api
     content: Add the /api/skills/{id}/raw x402 bridge path behind AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED.
     status: pending
@@ -42,9 +45,68 @@ Keep x402 as the frictionless agent-facing payment envelope while preserving Age
 
 - `purchase_skill` is the only current path that creates `Purchase` PDA state, author proceeds accounting, voucher rewards, and refund/dispute semantics.
 - `ReputationConfig` already stores `settlement_authority` and `x402_settlement_vault`.
-- `programs/agentvouch/src/instructions/initialize_config.rs` initializes `x402_settlement_vault` as a custom PDA token account with a PDA authority.
-- There is no `settle_x402_purchase` instruction.
-- Important POC risk: stock `@x402/svm` exact payments derive the destination ATA from `payTo`; the current custom PDA token account may not be directly payable by that facilitator path.
+- The local Track B implementation changes `initialize_config` so `x402_settlement_vault` is the USDC ATA owned by `x402_settlement_vault_authority`.
+- The local Track B implementation adds `settle_x402_purchase`, `X402SettlementReceipt`, and `X402SettlementSignatureGuard`.
+- Fresh devnet is now on Program ID `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` with config `8RQ1ySTxbmsYwcnucZZ4VgYg5pzwEbmBreEKJHLfdgha`.
+- The bridge remains API-disabled until `/api/skills/{id}/raw`, DB receipt persistence, and retry behavior are wired.
+
+## Settlement destination POC result — 2026-05-15
+
+`npm run x402:bridge-poc --workspace @agentvouch/web` completed against devnet.
+
+- `@x402/svm` package version: `2.10.0`.
+- Stock exact SVM client destination rule: `TransferChecked.destination = ATA(owner: paymentRequirements.payTo, mint: paymentRequirements.asset)`.
+- Stock exact SVM facilitator validation rule: reject payloads whose `TransferChecked.destination` is not the ATA for `requirements.payTo`.
+- Pre-reset AgentVouch config PDA: `BWcLtsDEaLfBhHweJo6u9kgNn47xJDpz22Q3Q8BhQFVS`.
+- Configured `x402_settlement_vault`: `EQvu7FMSuzdBDtJ1HUNxn7F4RBg6wENgaXJKkfC9ENYF`.
+- Custom x402 vault PDA: `EQvu7FMSuzdBDtJ1HUNxn7F4RBg6wENgaXJKkfC9ENYF`.
+- x402 vault authority PDA: `FFPzNBnZgL4ncznfJMgneEPAkAvDagMcPLRGRHfHUX5Q`.
+- `payTo = configured x402 vault` derives destination ATA `HWoqGSy9sb2JLQQJgJXnSSTwNW4mrwkpS423XRWBNgzq`.
+- `payTo = x402 vault authority` derives destination ATA `HZfsgqBPcfgtMM7GayuFiLPfHym1i4mW3kXdgWe7xN1C`.
+- `payTo = backend settlement authority` derives destination ATA `5ZkdpGwowBDyDVjBZBAZ6TuBsLNH3ae8jvdYe3cKXCsQ`.
+- None of the stock x402 destinations credit the configured custom vault.
+
+Decision: the current custom PDA token-account vault is not compatible with stock `@x402/svm` exact settlement. Track B should use a stock-compatible ATA settlement vault, preferably the ATA owned by `x402_settlement_vault_authority` for the configured USDC mint. Because this changes config/vault shape, keep the bridge disabled and use a fresh devnet Program ID/config rather than migrating stale PDAs.
+
+Step 3 and 4 implementation details are split into `.agents/plans/phase-1-track-b-stock-ata-vault-settlement-instruction.plan.md`.
+
+## Settlement instruction implementation result — 2026-05-15
+
+The step 3/4 child plan has been implemented locally:
+
+- `initialize_config` now stores a stock-compatible x402 settlement vault: the USDC ATA owned by `x402_settlement_vault_authority`.
+- `settle_x402_purchase` creates the normal `Purchase` PDA for the x402 buyer and routes USDC through the same author/voucher economics as `purchase_skill`.
+- `X402SettlementReceipt` and `X402SettlementSignatureGuard` PDAs provide payment-ref and settlement-signature idempotency guards.
+- Generated Anchor/Web clients include the new instruction and account types.
+- The bridge remains API-disabled until the fresh devnet Program ID/config and raw-route bridge are wired.
+
+Verification completed:
+
+```bash
+NO_DNA=1 anchor build
+NO_DNA=1 anchor test --skip-build
+npm run generate:client
+npm run x402:bridge-poc --workspace @agentvouch/web
+npm run test --workspace @agentvouch/web
+npm run test --workspace @agentvouch/cli
+npm run lint --workspace @agentvouch/web
+npm run build
+git diff --check
+```
+
+## Fresh devnet Program ID/config reset — 2026-05-15
+
+The fresh devnet reset is complete:
+
+- Program ID: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`.
+- ProgramData: `KzkKz12Jbv8EYQ3iLkZepW3xpB7UwGD1r83XKYxVFQs`.
+- Deploy tx: `4YgndRgBoqmBZ4jWcVc6rhomZWcjr9Td7Yg2Vh18SDQS2mUZ5kqJnFznTa5G2cwL9Ns59HJBNNku435L9cnZuoGo`.
+- Config PDA: `8RQ1ySTxbmsYwcnucZZ4VgYg5pzwEbmBreEKJHLfdgha`.
+- Config init tx: `4sabP2jqmF8dNqnCxrdL25NMUijSx5f6TBLcMs7qu6spwcJj5rJkPP9TJ8rjNQ6vkaZ5w24EAk2tdteAMj4sgJJp`.
+- x402 settlement vault authority: `3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj`.
+- x402 settlement vault ATA: `3Z7VPVVA4ehG7hcsdGbKJcZgvAfPNbSSbFGJCyEFbzdr`.
+
+`npm run x402:bridge-poc --workspace @agentvouch/web -- --strict` now reports the configured x402 settlement vault is compatible with stock `@x402/svm` exact settlement (`currentVaultCompatible: true`). A direct devnet USDC smoke also passed against the new Program ID, including listing creation, vouching, `purchase_skill`, and voucher revenue claim. The API bridge is still intentionally disabled.
 
 ## Files To Change
 

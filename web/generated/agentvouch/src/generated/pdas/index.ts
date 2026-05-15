@@ -32,5 +32,6 @@ export * from "./vouchAuthorRewardVaultAuthority";
 export * from "./voucherProfile";
 export * from "./vouchVault";
 export * from "./vouchVaultAuthority";
-export * from "./x402SettlementVault";
+export * from "./x402SettlementReceipt";
+export * from "./x402SettlementSignatureGuard";
 export * from "./x402SettlementVaultAuthority";
