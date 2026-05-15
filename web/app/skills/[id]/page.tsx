@@ -22,11 +22,7 @@ import {
   navButtonSecondaryInlineClass,
   navButtonSizeClass,
 } from "@/lib/buttonStyles";
-import {
-  useWallet,
-  useTransactionSigner,
-  useWalletInfo,
-} from "@solana/connector/react";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
@@ -272,18 +268,17 @@ export default function SkillDetailPage({
 }) {
   const { id } = use(params);
   const searchParams = useSearchParams();
-  const { status, account } = useWallet();
-  const walletInfo = useWalletInfo();
-  const { signer, capabilities } = useTransactionSigner();
+  const { status, account, walletName } = useAgentVouchWallet();
   const {
     signer: protocolTransactionSigner,
     partialSigner: kitSigner,
+    capabilities,
+    signMessage,
   } = useAgentVouchTransactionSigner();
   const connected = status === "connected" && !!account;
   const walletAddress = account ?? null;
   const isPhantomEmbeddedWallet =
-    connected && walletInfo.name === PHANTOM_EMBEDDED_WALLET_NAME;
-  const signMessage = signer?.signMessage ?? null;
+    connected && walletName === PHANTOM_EMBEDDED_WALLET_NAME;
   const oracle = useReputationOracle();
 
   const [skill, setSkill] = useState<SkillDetail | null>(null);

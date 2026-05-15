@@ -3,18 +3,17 @@
 import { useEffect, useState, useRef } from "react";
 import Image, { type ImageLoader } from "next/image";
 import {
-  useWallet,
   useConnectWallet,
-  useDisconnectWallet,
   useWalletConnectors,
 } from "@solana/connector/react";
 import { ConnectButton } from "@phantom/react-sdk";
 import {
+  useAgentVouchWallet,
   usePhantomConfigured,
-  usePhantomDisconnect,
 } from "./WalletContextProvider";
 import { useMounted } from "@/hooks/useMounted";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
+import { PHANTOM_LEGACY_WALLET_NAME } from "@/lib/phantomLegacyWalletStandard";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
@@ -84,16 +83,18 @@ export function ClientWalletButton() {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const wallet = useWallet();
+  const wallet = useAgentVouchWallet();
   const { connect } = useConnectWallet();
-  const { disconnect } = useDisconnectWallet();
   const allConnectors = useWalletConnectors();
   // Phantom embedded appears in this list via additionalWallets; it gets its
   // own "Sign in with" UI entry below, so exclude it from the extension list.
   const extensionConnectors = dedupeConnectorsByName(
-    allConnectors.filter((c) => c.name !== PHANTOM_EMBEDDED_WALLET_NAME)
+    allConnectors.filter(
+      (c) =>
+        c.name !== PHANTOM_EMBEDDED_WALLET_NAME &&
+        c.name !== PHANTOM_LEGACY_WALLET_NAME
+    )
   );
-  const disconnectPhantomEmbedded = usePhantomDisconnect();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -117,22 +118,9 @@ export function ClientWalletButton() {
   if (wallet.status === "connected" && wallet.account) {
     const addr = wallet.account;
     const short = `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-    const isEmbedded =
-      allConnectors.find((c) => c.id === wallet.connectorId)?.name ===
-      PHANTOM_EMBEDDED_WALLET_NAME;
+    const isEmbedded = wallet.source === "phantom-embedded";
     const handleDisconnect = async () => {
-      try {
-        await disconnect();
-      } catch {
-        // ConnectorKit surfaces its own errors; ignore here.
-      }
-      if (isEmbedded && disconnectPhantomEmbedded) {
-        try {
-          await disconnectPhantomEmbedded();
-        } catch {
-          // Phantom session may already be cleared; safe to ignore.
-        }
-      }
+      await wallet.disconnect().catch(() => {});
       setShowMenu(false);
     };
     return (
@@ -189,11 +177,30 @@ export function ClientWalletButton() {
             </div>
           )}
 
-          {extensionConnectors.length > 0 && (
+          {(wallet.phantomInstalled || extensionConnectors.length > 0) && (
             <div className="px-4 py-2.5">
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
                 Browser Extension
               </p>
+              {wallet.phantomInstalled && (
+                <button
+                  onClick={() => {
+                    void wallet.connectPhantomExtension().catch((error) => {
+                      console.error("Failed to connect Phantom:", error);
+                    });
+                    setShowMenu(false);
+                  }}
+                  className={`${walletMenuButtonClass} flex items-center gap-3`}
+                >
+                  <WalletIconImage
+                    src={PHANTOM_ICON}
+                    alt=""
+                    size={20}
+                    className="w-5 h-5 rounded"
+                  />
+                  {PHANTOM_LEGACY_WALLET_NAME}
+                </button>
+              )}
               {extensionConnectors.map((connector) => (
                 <button
                   key={connector.id}
@@ -217,7 +224,7 @@ export function ClientWalletButton() {
             </div>
           )}
 
-          {extensionConnectors.length === 0 && (
+          {!wallet.phantomInstalled && extensionConnectors.length === 0 && (
             <div className="px-4 py-2.5">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 {isMobile()

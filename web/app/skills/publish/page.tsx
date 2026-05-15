@@ -1,10 +1,10 @@
 "use client";
 
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
-import { useWallet, useTransactionSigner } from "@solana/connector/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { encodeBase64 } from "@/lib/base64";
@@ -21,6 +21,7 @@ import {
   slugify,
 } from "@/lib/skillDraft";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
+import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import { formatMinPrice, isValidListingPriceMicros } from "@/lib/pricing";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -133,11 +134,10 @@ export default function PublishSkillPage() {
 }
 
 function PublishSkillPageInner() {
-  const { status, account } = useWallet();
-  const { signer } = useTransactionSigner();
+  const { status, account } = useAgentVouchWallet();
+  const { signMessage } = useAgentVouchTransactionSigner();
   const connected = status === "connected" && !!account;
   const publicKey = account ?? null;
-  const signMessage = signer?.signMessage ?? null;
   const router = useRouter();
   const searchParams = useSearchParams();
   const oracle = useReputationOracle();

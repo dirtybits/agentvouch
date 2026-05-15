@@ -60,6 +60,7 @@ type SignAndSendInput = SignTransactionInput & {
 };
 
 export type PhantomLegacyWalletHandle = {
+  provider: PhantomLegacyProvider;
   wallet: Wallet;
   destroy: () => void;
 };
@@ -408,6 +409,7 @@ export function createPhantomLegacyWallet(
   };
 
   return {
+    provider,
     wallet,
     destroy: () => {
       provider.off?.("connect", onConnect);

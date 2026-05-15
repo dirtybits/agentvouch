@@ -15,6 +15,10 @@ describe("wallet detection source", () => {
     join(process.cwd(), "lib", "phantomLegacyWalletStandard.ts"),
     "utf8"
   );
+  const transactionSignerSource = readFileSync(
+    join(process.cwd(), "hooks", "useAgentVouchTransactionSigner.ts"),
+    "utf8"
+  );
 
   it("adds Phantom legacy injection as a Wallet Standard fallback", () => {
     expect(providerSource).toContain("getPhantomLegacyProvider");
@@ -25,11 +29,38 @@ describe("wallet detection source", () => {
     expect(legacySource).toContain("window as PhantomWindow");
     expect(legacySource).toContain("phantom?.solana");
     expect(legacySource).toContain("provider.isPhantom === true");
+    expect(legacySource).toContain("provider,");
   });
 
   it("remounts ConnectorKit when late Phantom detection changes config", () => {
     expect(providerSource).toContain("connectorConfigKey");
     expect(providerSource).toContain("key={connectorConfigKey}");
+  });
+
+  it("owns silent reconnect for the previously selected wallet", () => {
+    expect(providerSource).toContain("StoredWalletAutoConnectBridge");
+    expect(providerSource).toContain("autoConnect: false");
+    expect(providerSource).toContain("agentvouch:v1:wallet");
+    expect(providerSource).toContain("connector-kit:v1:wallet");
+    expect(providerSource).toContain("const [initialWalletName]");
+    expect(providerSource).toContain("initialWalletName={initialWalletName}");
+    expect(providerSource).toContain("wasConnectedRef");
+    expect(providerSource).toContain("connectors.find((c) => c.name === storedWalletName)");
+    expect(providerSource).toContain("silent: true");
+    expect(providerSource).toContain("allowInteractiveFallback: false");
+  });
+
+  it("prefers an app-owned Phantom extension session for critical flows", () => {
+    expect(providerSource).toContain("AgentVouchWalletBridge");
+    expect(providerSource).toContain("connectPhantomExtension");
+    expect(providerSource).toContain("PHANTOM_LEGACY_WALLET_NAME");
+    expect(providerSource).toContain("connectFeature.connect(");
+    expect(providerSource).toContain("silent: true");
+    expect(providerSource).toContain("source === \"phantom-extension\"");
+    expect(buttonSource).toContain("useAgentVouchWallet");
+    expect(buttonSource).toContain("wallet.connectPhantomExtension()");
+    expect(transactionSignerSource).toContain("useAgentVouchWalletSigner");
+    expect(transactionSignerSource).toContain("direct.kitSigner");
   });
 
   it("deduplicates extension wallet entries by display name", () => {

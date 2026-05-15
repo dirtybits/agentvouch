@@ -3,6 +3,7 @@ import {
   useKitTransactionSigner,
   useTransactionSigner,
 } from "@solana/connector/react";
+import { useAgentVouchWalletSigner } from "@/components/WalletContextProvider";
 import {
   address,
   getBase58Encoder,
@@ -13,17 +14,27 @@ import {
 } from "@solana/kit";
 
 export function useAgentVouchTransactionSigner() {
+  const direct = useAgentVouchWalletSigner();
   const { signer: kitSigner } = useKitTransactionSigner();
   const { signer: connectorSigner, capabilities } = useTransactionSigner();
+  const activeConnectorSigner = direct.connectorSigner ?? connectorSigner;
+  const activeCapabilities = direct.connectorSigner
+    ? direct.capabilities
+    : capabilities;
 
-  const partialSigner = capabilities.canSign ? kitSigner : null;
+  const partialSigner =
+    direct.kitSigner ?? (activeCapabilities.canSign ? kitSigner : null);
 
   const sendingSigner = useMemo<TransactionSigner | null>(() => {
-    if (!connectorSigner || !capabilities.canSend || capabilities.canSign) {
+    if (
+      !activeConnectorSigner ||
+      !activeCapabilities.canSend ||
+      activeCapabilities.canSign
+    ) {
       return null;
     }
 
-    const signerAddress = address(connectorSigner.address);
+    const signerAddress = address(activeConnectorSigner.address);
     const base58Encoder = getBase58Encoder();
     const transactionEncoder = getTransactionEncoder();
     const signer: TransactionSendingSigner = {
@@ -33,9 +44,9 @@ export function useAgentVouchTransactionSigner() {
         for (const transaction of transactions) {
           config?.abortSignal?.throwIfAborted();
           const transactionBytes = transactionEncoder.encode(transaction);
-          const txSignature = await connectorSigner.signAndSendTransaction(
+          const txSignature = await activeConnectorSigner.signAndSendTransaction(
             transactionBytes as unknown as Parameters<
-              typeof connectorSigner.signAndSendTransaction
+              typeof activeConnectorSigner.signAndSendTransaction
             >[0]
           );
           signatures.push(signatureBytes(base58Encoder.encode(txSignature)));
@@ -46,16 +57,29 @@ export function useAgentVouchTransactionSigner() {
     };
 
     return signer;
-  }, [capabilities.canSend, capabilities.canSign, connectorSigner]);
+  }, [
+    activeCapabilities.canSend,
+    activeCapabilities.canSign,
+    activeConnectorSigner,
+  ]);
 
   return useMemo(
     () => ({
       signer: sendingSigner ?? partialSigner,
       partialSigner,
-      connectorSigner,
-      capabilities,
+      connectorSigner: activeConnectorSigner,
+      capabilities: activeCapabilities,
+      signMessage: direct.signMessage ?? activeConnectorSigner?.signMessage ?? null,
+      source: direct.source,
       ready: Boolean(sendingSigner ?? partialSigner),
     }),
-    [capabilities, connectorSigner, partialSigner, sendingSigner]
+    [
+      activeCapabilities,
+      activeConnectorSigner,
+      direct.signMessage,
+      direct.source,
+      partialSigner,
+      sendingSigner,
+    ]
   );
 }

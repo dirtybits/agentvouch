@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useWallet } from "@solana/connector/react";
 import {
   address,
   createSolanaRpc,
@@ -40,6 +39,7 @@ import {
 } from "@/lib/agentvouchUsdc";
 import { getClientTransactionHelper } from "@/lib/solanaTransactionHelper";
 import { useAgentVouchTransactionSigner } from "./useAgentVouchTransactionSigner";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import {
   fetchAllMaybePurchase,
   fetchMaybePurchase,
@@ -253,7 +253,7 @@ async function waitForConfirmedSignature(
 }
 
 export function useMarketplaceOracle() {
-  const { status, account } = useWallet();
+  const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
   const { signer: activeSigner } = useAgentVouchTransactionSigner();
 

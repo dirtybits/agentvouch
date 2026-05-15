@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { useWallet } from "@solana/connector/react";
 import { address } from "@solana/kit";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import {
   navButtonInlineClass,
   navButtonPrimaryFlexClass,
@@ -81,7 +81,7 @@ function getAuthorActionHref(
 }
 
 export default function DashboardPage() {
-  const { status: walletStatus, account } = useWallet();
+  const { status: walletStatus, account } = useAgentVouchWallet();
   const connected = walletStatus === "connected" && !!account;
   const publicKey = account ?? null;
   const oracle = useReputationOracle();

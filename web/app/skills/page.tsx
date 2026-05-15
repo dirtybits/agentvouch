@@ -8,9 +8,9 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useWallet } from "@solana/connector/react";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
 import { getConfiguredSolanaExplorerTxUrl } from "@/lib/chains";
 import { UsdcIcon } from "@/components/UsdcIcon";
@@ -190,7 +190,7 @@ function getAuthorActionHref(
 }
 
 export default function MarketplacePage() {
-  const { status, account } = useWallet();
+  const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
   const publicKey = account ?? null;
   const oracle = useMarketplaceOracle();

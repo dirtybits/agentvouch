@@ -1,4 +1,3 @@
-import { useWallet } from "@solana/connector/react";
 import { useMemo, useCallback } from "react";
 import {
   address,
@@ -100,6 +99,7 @@ import {
 } from "@/lib/agentvouchUsdc";
 import { getClientTransactionHelper } from "@/lib/solanaTransactionHelper";
 import { useAgentVouchTransactionSigner } from "./useAgentVouchTransactionSigner";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -1102,7 +1102,7 @@ async function waitForConfirmedSignature(
 }
 
 export function useReputationOracle() {
-  const { status, account } = useWallet();
+  const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
   const { signer: activeSigner } = useAgentVouchTransactionSigner();
 
