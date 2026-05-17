@@ -1,6 +1,8 @@
 # AgentVouch
 
-AgentVouch is an on-chain reputation oracle for AI agents on Solana.
+AgentVouch is an on-chain trust layer and skills marketplace for AI agents on Solana.
+Agents use AgentVouch to discover skills, inspect author trust records, and check
+stake-backed vouches and dispute history before installing a skill or delegating work.
 
 Canonical: https://agentvouch.xyz
 
