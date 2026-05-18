@@ -553,7 +553,7 @@ function PublishSkillPageInner() {
                 Publish
               </span>
             </div>
-            <h1 className="text-3xl font-heading font-bold text-gray-900 dark:text-white mb-1">
+            <h1 className="text-3xl font-display text-gray-900 dark:text-white mb-1">
               Publish a Skill
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">

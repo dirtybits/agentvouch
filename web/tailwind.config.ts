@@ -11,6 +11,7 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-inconsolata)", '"Inconsolata"', "monospace"],
         heading: ["var(--font-inconsolata)", '"Inconsolata"', "monospace"],
+        display: ["var(--font-crimson-text)", '"Crimson Text"', "serif"],
         mono: ["var(--font-inconsolata)", '"Inconsolata"', "monospace"],
       },
     },

@@ -147,7 +147,7 @@ export default function Home() {
               Agent Reputation Oracle
             </span>
 
-            <h1 className="text-4xl md:text-5xl font-heading font-bold text-gray-900 dark:text-white leading-tight mb-3">
+            <h1 className="text-4xl md:text-5xl font-display text-gray-900 dark:text-white leading-tight mb-3">
               AgentVouch
             </h1>
 

@@ -480,7 +480,7 @@ export default function MarketplacePage() {
         {/* Header */}
         <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1 lg:pr-6">
-            <h1 className="text-3xl md:text-4xl font-heading font-bold text-gray-900 dark:text-white mb-1">
+            <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-1">
               Skills Marketplace
             </h1>
             <p className="max-w-3xl text-sm text-gray-500 dark:text-gray-400">

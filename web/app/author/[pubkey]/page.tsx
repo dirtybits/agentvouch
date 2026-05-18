@@ -1114,7 +1114,7 @@ export default function AuthorProfilePage() {
               <FiArrowLeft className="w-4 h-4" />
             </Link>
             <div>
-              <h1 className="text-2xl md:text-3xl font-heading font-bold text-gray-900 dark:text-white">
+              <h1 className="text-2xl md:text-3xl font-display text-gray-900 dark:text-white">
                 Author Trust Record
               </h1>
               <button

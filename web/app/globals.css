@@ -62,6 +62,11 @@ body {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
 }
 
+.font-display {
+  font-family: var(--font-crimson-text), "Crimson Text", serif !important;
+  font-weight: 400 !important;
+}
+
 /* Keep the UI sharp: normalize most rounded utilities to md. */
 .rounded,
 .rounded-sm,

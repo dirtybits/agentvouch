@@ -594,7 +594,7 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-heading font-bold text-gray-900 dark:text-white mb-1">
+            <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-1">
               Dashboard
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">

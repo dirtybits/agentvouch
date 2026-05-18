@@ -5,7 +5,7 @@ export default function CompetitionPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-16 md:py-24">
       <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-8 dark:border-zinc-800 dark:bg-zinc-900/50">
-        <h1 className="mb-3 text-2xl font-heading font-bold text-zinc-900 dark:text-zinc-100">
+        <h1 className="mb-3 text-2xl font-display text-zinc-900 dark:text-zinc-100">
           Best Skill Competition has concluded
         </h1>
         <p className="text-sm text-zinc-700 dark:text-zinc-300">

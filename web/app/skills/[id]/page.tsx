@@ -1055,7 +1055,7 @@ export default function SkillDetailPage({
                 {skill.name}
               </span>
             </div>
-            <h1 className="text-3xl font-heading font-bold text-gray-900 dark:text-white">
+            <h1 className="text-3xl font-display text-gray-900 dark:text-white">
               {skill.name}
             </h1>
             {skill.description && (

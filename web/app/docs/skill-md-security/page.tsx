@@ -20,7 +20,7 @@ export default function SkillMdSecurityPage() {
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--lobster-accent)] mb-4">
           AgentVouch Docs
         </p>
-        <h1 className="text-3xl md:text-4xl font-heading font-bold text-gray-900 dark:text-white mb-4">
+        <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-4">
           Why `skill.md` is a supply-chain risk
         </h1>
         <p className="text-base md:text-lg mb-6">

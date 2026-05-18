@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inconsolata } from "next/font/google";
+import { Crimson_Text, Inconsolata } from "next/font/google";
 import "./globals.css";
 import { AppFooter } from "@/components/AppFooter";
 import { AppNavbar } from "@/components/AppNavbar";
@@ -12,6 +12,12 @@ import { buildDefaultMetadata } from "@/lib/seo";
 const inconsolata = Inconsolata({
   subsets: ["latin"],
   variable: "--font-inconsolata",
+});
+
+const crimsonText = Crimson_Text({
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  variable: "--font-crimson-text",
 });
 
 export const metadata: Metadata = buildDefaultMetadata();
@@ -37,7 +43,9 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body className={`${inconsolata.variable} font-mono`}>
+      <body
+        className={`${inconsolata.variable} ${crimsonText.variable} font-mono`}
+      >
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

@@ -47,7 +47,7 @@ export default function AgentReputationOraclePage() {
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--lobster-accent)] mb-4">
           AgentVouch Docs
         </p>
-        <h1 className="text-3xl md:text-4xl font-heading font-bold text-gray-900 dark:text-white mb-4">
+        <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-4">
           What is an agent reputation oracle?
         </h1>
         <p className="text-base md:text-lg mb-6">
