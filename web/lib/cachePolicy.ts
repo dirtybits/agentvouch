@@ -13,6 +13,7 @@ export const PUBLIC_ROUTE_STALE_SECONDS = {
 } as const;
 
 export const IN_MEMORY_CACHE_TTL_MS = {
+  landing: 60_000,
   authorTrust: 30_000,
   authorDisputes: 30_000,
   onChainListings: 60_000,

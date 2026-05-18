@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockSend, mockListOnChainSkillListings } = vi.hoisted(() => ({
+const {
+  mockSend,
+  mockListOnChainSkillListings,
+  mockInitializeDatabase,
+  mockSql,
+} = vi.hoisted(() => ({
   mockSend: vi.fn(),
   mockListOnChainSkillListings: vi.fn(),
+  mockInitializeDatabase: vi.fn(),
+  mockSql: vi.fn(),
 }));
 
 vi.mock("@solana/kit", () => {
@@ -47,12 +54,19 @@ vi.mock("@/lib/onchain", () => ({
   listOnChainSkillListings: mockListOnChainSkillListings,
 }));
 
+vi.mock("@/lib/db", () => ({
+  initializeDatabase: mockInitializeDatabase,
+  sql: () => mockSql,
+}));
+
 import { GET } from "@/app/api/landing/route";
 
 describe("GET /api/landing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockListOnChainSkillListings.mockResolvedValue([]);
+    mockInitializeDatabase.mockResolvedValue(undefined);
+    mockSql.mockResolvedValue([{ total_installs: 0 }]);
   });
 
   it("returns metrics and featuredSkills on success (empty)", async () => {
@@ -65,6 +79,7 @@ describe("GET /api/landing", () => {
     expect(body.metrics.agents).toBe(0);
     expect(body.metrics.skills).toBe(0);
     expect(body.metrics.revenue).toBe(0);
+    expect(body.metrics.downloads).toBe(0);
     expect(body.featuredSkills).toEqual([]);
     expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
   });
@@ -72,6 +87,7 @@ describe("GET /api/landing", () => {
   it("returns populated metrics with accounts", async () => {
     const fakeAccountData = Buffer.from(new Uint8Array(256)).toString("base64");
 
+    mockSql.mockResolvedValueOnce([{ total_installs: "4" }]);
     mockListOnChainSkillListings.mockResolvedValueOnce([
       {
         publicKey: "Skill1",
@@ -108,6 +124,7 @@ describe("GET /api/landing", () => {
     expect(body.metrics.skills).toBe(2);
     expect(body.metrics.agents).toBe(1);
     expect(body.metrics.onChainDownloads).toBe(8);
+    expect(body.metrics.downloads).toBe(12);
     expect(body.metrics.revenue).toBe(5000000);
     expect(body.featuredSkills.length).toBeGreaterThan(0);
   });

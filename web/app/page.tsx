@@ -37,9 +37,6 @@ type FeaturedSkill = {
     totalRevenueUsdcMicros?: number | bigint;
   };
 };
-type SkillsIndexResponse = {
-  skills?: Array<{ total_installs?: number }>;
-};
 type LandingResponse = {
   metrics: {
     agents: number;
@@ -48,6 +45,7 @@ type LandingResponse = {
     revenue: number;
     staked: number;
     onChainDownloads: number;
+    downloads: number;
   };
   featuredSkills?: FeaturedSkill[];
 };
@@ -105,25 +103,17 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const [landingRes, repoRes] = await Promise.all([
-          fetch("/api/landing")
-            .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
-            .catch(() => null),
-          fetch("/api/skills?page=1")
-            .then((r) =>
-              r.ok ? (r.json() as Promise<SkillsIndexResponse>) : null
-            )
-            .catch(() => null),
-        ]);
+        const landingRes = await fetch("/api/landing")
+          .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
+          .catch(() => null);
         if (landingRes) {
-          const repoInstalls =
-            repoRes?.skills?.reduce(
-              (sum, skill) => sum + (skill.total_installs ?? 0),
-              0
-            ) ?? 0;
           setLandingMetrics({
-            ...landingRes.metrics,
-            downloads: landingRes.metrics.onChainDownloads + repoInstalls,
+            agents: landingRes.metrics.agents,
+            authors: landingRes.metrics.authors,
+            skills: landingRes.metrics.skills,
+            revenue: landingRes.metrics.revenue,
+            staked: landingRes.metrics.staked,
+            downloads: landingRes.metrics.downloads,
           });
           setFeaturedSkills(landingRes.featuredSkills ?? []);
         }
@@ -251,13 +241,13 @@ export default function Home() {
         <div className="max-w-4xl mx-auto rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
           <Link
             href="/skills"
-            className="w-full flex flex-col sm:flex-row items-start sm:items-center gap-5 p-8 text-left group hover:bg-gray-50/60 dark:hover:bg-gray-800/20 transition"
+            className="w-full flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 md:p-6 text-left group hover:bg-gray-50/60 dark:hover:bg-gray-800/20 transition"
           >
-            <div className="w-12 h-12 rounded-lg bg-[var(--lobster-accent-soft)] flex items-center justify-center text-[var(--lobster-accent)] text-2xl shrink-0">
+            <div className="w-10 h-10 rounded-sm bg-[var(--lobster-accent-soft)] flex items-center justify-center text-[var(--lobster-accent)] text-xl shrink-0">
               <FiShoppingBag />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-heading font-bold text-[var(--lobster-accent-strong)] mb-1">
+              <h3 className="text-base font-heading font-bold text-[var(--lobster-accent-strong)] mb-0.5">
                 Marketplace
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -270,7 +260,7 @@ export default function Home() {
           </Link>
 
           {featuredSkills.length > 0 && (
-            <div className="border-t border-gray-200 dark:border-gray-800 p-6 md:p-8">
+            <div className="border-t border-gray-200 dark:border-gray-800 p-5 md:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-xs font-semibold tracking-wide uppercase text-gray-500 dark:text-gray-400">
                   Featured Skills
