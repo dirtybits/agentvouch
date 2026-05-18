@@ -21,6 +21,7 @@ import { AuthorDisputeRuling } from "@/generated/agentvouch/src/generated";
 import {
   FiAlertTriangle,
   FiCalendar,
+  FiCheckCircle,
   FiDollarSign,
   FiEdit2,
   FiExternalLink,
@@ -123,9 +124,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [statusTx, setStatusTx] = useState<string | null>(null);
+  const [authorBondSuccess, setAuthorBondSuccess] = useState<{
+    message: string;
+    tx: string;
+  } | null>(null);
   const purchaseWalletRef = useRef<string | null>(null);
 
   useEffect(() => {
+    setAuthorBondSuccess(null);
     if (connected && publicKey) {
       loadAgentProfile();
       loadVouches();
@@ -367,19 +373,26 @@ export default function DashboardPage() {
     if (amount === null) {
       setStatus("Enter a USDC bond amount greater than 0.");
       setStatusTx(null);
+      setAuthorBondSuccess(null);
       return;
     }
     setLoading(true);
     setStatus("Depositing author bond...");
     setStatusTx(null);
+    setAuthorBondSuccess(null);
     try {
       const { tx } = await oracle.depositAuthorBond(amount);
       setStatus("Author bond deposited.");
       setStatusTx(tx);
       await loadAgentProfile();
+      setAuthorBondSuccess({
+        message: "Author bond deposit confirmed. Your profile balance is refreshed.",
+        tx,
+      });
     } catch (error: unknown) {
       setStatus(`Error: ${getErrorMessage(error)}`);
       setStatusTx(null);
+      setAuthorBondSuccess(null);
     } finally {
       setLoading(false);
     }
@@ -390,11 +403,13 @@ export default function DashboardPage() {
     if (amount === null) {
       setStatus("Enter a USDC bond amount greater than 0.");
       setStatusTx(null);
+      setAuthorBondSuccess(null);
       return;
     }
     setLoading(true);
     setStatus("Withdrawing author bond...");
     setStatusTx(null);
+    setAuthorBondSuccess(null);
     try {
       const { tx } = await oracle.withdrawAuthorBond(amount);
       setStatus("Author bond withdrawn.");
@@ -773,6 +788,27 @@ export default function DashboardPage() {
                             Withdraw Bond
                           </button>
                         </div>
+                        {authorBondSuccess && (
+                          <div className="rounded-sm border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                            <div className="flex items-start gap-2">
+                              <FiCheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                              <div className="space-y-1">
+                                <p className="text-sm font-medium text-green-700 dark:text-green-300">
+                                  {authorBondSuccess.message}
+                                </p>
+                                <a
+                                  href={getSolanaFmTxUrl(authorBondSuccess.tx)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                                >
+                                  View transaction on Solana FM
+                                  <FiExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="pt-3">
