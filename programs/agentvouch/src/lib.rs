@@ -7,7 +7,7 @@ pub mod state;
 use instructions::*;
 use state::{AuthorDisputeReason, AuthorDisputeRuling};
 
-declare_id!("AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ");
+declare_id!("AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg");
 
 #[program]
 pub mod agentvouch {
@@ -136,6 +136,22 @@ pub mod agentvouch {
 
     pub fn purchase_skill(ctx: Context<PurchaseSkill>) -> Result<()> {
         instructions::purchase_skill::handler(ctx)
+    }
+
+    pub fn settle_x402_purchase(
+        ctx: Context<SettleX402Purchase>,
+        payment_ref_hash: [u8; 32],
+        settlement_tx_signature_hash: [u8; 32],
+        buyer: Pubkey,
+        amount_usdc_micros: u64,
+    ) -> Result<()> {
+        instructions::settle_x402_purchase::handler(
+            ctx,
+            payment_ref_hash,
+            settlement_tx_signature_hash,
+            buyer,
+            amount_usdc_micros,
+        )
     }
 
     pub fn claim_voucher_revenue(ctx: Context<ClaimVoucherRevenue>) -> Result<()> {

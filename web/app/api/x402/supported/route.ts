@@ -27,23 +27,28 @@ export async function GET() {
         symbol: "USDC",
         decimals: 6,
         name: "USD Coin",
-        flow: "repo-x402-usdc",
+        flow: bridgeEnabled
+          ? "x402-bridge-or-direct-purchase-skill"
+          : "direct-purchase-skill",
       },
     ],
     program: {
       id: getAgentVouchProgramId(),
       protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
-      instructions: ["purchaseSkill"],
+      instructions: bridgeEnabled
+        ? ["purchaseSkill", "settleX402Purchase"]
+        : ["purchaseSkill"],
     },
     capabilities: {
-      repo_x402_usdc: true,
+      repo_x402_usdc: false,
+      repo_x402_usdc_legacy_entitlements: true,
       protocol_listed_x402_bridge: bridgeEnabled,
       protocol_listed_purchase_flow: bridgeEnabled
         ? "x402-bridge-or-direct-purchase-skill"
         : "direct-purchase-skill",
       protocol_listed_message: bridgeEnabled
         ? "Protocol-listed x402 bridge support is explicitly enabled."
-        : "Protocol-listed paid skills require direct purchase_skill verification; x402 is limited to repo-only/off-chain entitlement flows.",
+        : "Paid marketplace skills require direct purchase_skill verification unless the protocol x402 bridge is enabled. New repo-only x402 purchases are disabled; historical entitlements can still re-download with X-AgentVouch-Auth.",
     },
     bridge: {
       status: bridgeEnabled ? "enabled" : "disabled",

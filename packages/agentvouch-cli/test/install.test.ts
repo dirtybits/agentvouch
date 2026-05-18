@@ -74,7 +74,7 @@ describe("installSkill", () => {
         requirement: {
           scheme: "exact",
           network: "solana",
-          programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
+          programId: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
           instruction: "purchaseSkill",
           skillListingAddress: "37Mm4DzMockListing",
           mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
@@ -129,5 +129,179 @@ describe("installSkill", () => {
       })
     );
     expect(downloadSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses new listing-required paid installs when no entitlement exists", async () => {
+    const { tempDir, keypairPath } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "SKILL.md");
+    const author = Keypair.generate().publicKey.toBase58();
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: author,
+      name: "Calendar Agent",
+      description: "Paid skill",
+      on_chain_address: null,
+      total_installs: 0,
+      price_usdc_micros: "1000000",
+      currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payment_flow: "listing-required",
+    });
+    vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "On-chain listing required",
+        listingRequired: {
+          amountMicros: "1000000",
+          currencyMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          message: "This paid repo skill is not installable yet.",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "On-chain listing required",
+        listingRequired: {
+          amountMicros: "1000000",
+          currencyMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          message: "This paid repo skill is not installable yet.",
+        },
+      });
+
+    await expect(
+      installSkill({
+        id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+        out: outputPath,
+        keypairPath,
+        baseUrl: "https://agentvouch.xyz",
+        rpcUrl: "https://api.devnet.solana.com",
+      })
+    ).rejects.toThrow("has no linked on-chain SkillListing");
+  });
+
+  it("allows signed re-download for historical unlinked paid entitlements", async () => {
+    const { tempDir, keypairPath } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "SKILL.md");
+    const author = Keypair.generate().publicKey.toBase58();
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: author,
+      name: "Calendar Agent",
+      description: "Paid skill",
+      on_chain_address: null,
+      total_installs: 0,
+      price_usdc_micros: "1000000",
+      currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payment_flow: "listing-required",
+    });
+    vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "On-chain listing required",
+        listingRequired: {
+          amountMicros: "1000000",
+          currencyMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          message: "This paid repo skill is not installable yet.",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        content: "# historical paid skill\n",
+      });
+
+    const result = await installSkill({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      out: outputPath,
+      keypairPath,
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+    });
+
+    expect(result.mode).toBe("signed-entitlement");
+    expect(await readFile(outputPath, "utf8")).toContain(
+      "# historical paid skill"
+    );
+  });
+
+  it("keeps signed auth on the paid x402 bridge retry", async () => {
+    const { tempDir, keypairPath } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "SKILL.md");
+    const author = Keypair.generate().publicKey.toBase58();
+    const downloadSpy = vi
+      .spyOn(AgentVouchApiClient.prototype, "downloadRaw")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 402,
+        error: "Payment required",
+        x402PaymentRequired: {
+          x402Version: 2,
+          error: "Payment required",
+          resource: {
+            url: "https://agentvouch.xyz/api/skills/skill-id/raw",
+            description: "AgentVouch skill",
+            mimeType: "text/markdown; charset=utf-8",
+          },
+          accepts: [
+            {
+              scheme: "exact",
+              network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+              amount: "10000",
+              payTo: "PayTo111111111111111111111111111111111111",
+              maxTimeoutSeconds: 300,
+              asset: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              extra: {},
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        content: "# bridge paid skill\n",
+        paymentResponse: {
+          success: true,
+          transaction: "x402-settlement-tx",
+          network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          amount: "10000",
+        },
+      });
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: author,
+      name: "Calendar Agent",
+      description: "Paid skill",
+      on_chain_address: "37Mm4DzMockListing",
+      total_installs: 0,
+      price_usdc_micros: "10000",
+      currency_mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      payment_flow: "x402-bridge-purchase-skill",
+    });
+
+    const result = await installSkill({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      out: outputPath,
+      keypairPath,
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+    });
+
+    expect(result.mode).toBe("x402-usdc");
+    expect(downloadSpy).toHaveBeenCalledTimes(2);
+    expect(downloadSpy.mock.calls[0]?.[1]).toMatchObject({
+      auth: expect.objectContaining({
+        pubkey: expect.any(String),
+      }),
+    });
+    expect(downloadSpy.mock.calls[1]?.[1]).toMatchObject({
+      auth: expect.objectContaining({
+        pubkey: expect.any(String),
+      }),
+      fetchImpl: expect.any(Function),
+    });
   });
 });

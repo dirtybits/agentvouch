@@ -35,7 +35,7 @@ export function formatSkillSummary(skill: SkillRecord): string[] {
     (skill.price_usdc_micros
       ? skill.on_chain_address
         ? "direct-purchase-skill"
-        : "x402-usdc"
+        : "listing-required"
       : "free");
 
   return [

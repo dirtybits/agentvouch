@@ -10,8 +10,10 @@ describe("SkillPreviewCard source", () => {
     );
 
     expect(source).toContain("price_usdc_micros");
+    expect(source).toContain('skill.payment_flow === "listing-required"');
     expect(source).toContain('skill.payment_flow === "x402-usdc"');
     expect(source).toContain("UsdcIcon");
+    expect(source).toContain("Listing Required");
     expect(source).toContain("Pay with USDC");
     expect(source).toContain("Connect Wallet to Pay");
     expect(source).toContain("USDC");

@@ -7,12 +7,12 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { useWalletConnection } from "@solana/react-hooks";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import type { AuthPayload } from "@/lib/auth";
 import type { AuthorDisputeRecord } from "@/lib/authorDisputes";
 import {
@@ -21,6 +21,7 @@ import {
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
+import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { encodeBase64 } from "@/lib/base64";
 import { getConfiguredSolanaFmTxUrl } from "@/lib/chains";
@@ -121,10 +122,10 @@ export default function AuthorProfilePage() {
   const searchParams = useSearchParams();
   const pubkey = params.pubkey as string;
 
-  const { wallet, status: walletStatus } = useWalletConnection();
-  const connected = walletStatus === "connected" && !!wallet;
-  const myPubkey = wallet?.account.address ?? null;
-  const signMessage = wallet?.signMessage ?? null;
+  const { status: walletStatus, account } = useAgentVouchWallet();
+  const { signMessage } = useAgentVouchTransactionSigner();
+  const connected = walletStatus === "connected" && !!account;
+  const myPubkey = account ?? null;
   const oracle = useReputationOracle();
 
   const [profile, setProfile] = useState<AgentProfileData | null>(null);

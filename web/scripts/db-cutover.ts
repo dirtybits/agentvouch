@@ -8,6 +8,9 @@ import {
 import { getConfiguredSolanaChainContext } from "../lib/chains";
 import { getConfiguredUsdcMint } from "../lib/x402";
 
+const TRACK_B_PREVIOUS_DEVNET_PROGRAM_ID =
+  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ";
+
 type Db = ReturnType<typeof neon<false, false>>;
 
 type SkillExportRow = {
@@ -723,6 +726,185 @@ async function sanity() {
   }
 }
 
+async function cleanupDevnet() {
+  const db = getDbFromEnv("DATABASE_URL");
+  const currentProgramId = getAgentVouchProgramId();
+  const previousProgramId =
+    getArg("old-program-id") ?? TRACK_B_PREVIOUS_DEVNET_PROGRAM_ID;
+  const apply = hasFlag("apply");
+  const deleteUnlinkedPaid = hasFlag("delete-unlinked-paid");
+  const clearPurchaseState = !hasFlag("keep-purchase-state");
+  const clearAgentProfileBindings = !hasFlag("keep-agent-profile-bindings");
+
+  const skillsExists = await tableExists(db, "skills");
+  const receiptsExists = await tableExists(db, "usdc_purchase_receipts");
+  const entitlementsExists = await tableExists(db, "usdc_purchase_entitlements");
+  const bindingsExists = await tableExists(db, "agent_identity_bindings");
+
+  const staleLinkedSkills = skillsExists
+    ? ((await db`
+        SELECT
+          id::text,
+          skill_id,
+          author_pubkey,
+          on_chain_address,
+          on_chain_program_id,
+          price_usdc_micros::text,
+          updated_at::text
+        FROM skills
+        WHERE on_chain_address IS NOT NULL
+          AND (
+            on_chain_program_id IS NULL
+            OR on_chain_program_id <> ${currentProgramId}
+          )
+        ORDER BY updated_at DESC
+        LIMIT 100
+      `) as Array<{
+        id: string;
+        skill_id: string;
+        author_pubkey: string;
+        on_chain_address: string | null;
+        on_chain_program_id: string | null;
+        price_usdc_micros: string | null;
+        updated_at: string;
+      }>)
+    : [];
+
+  const previousProgramLinkedSkills = skillsExists
+    ? ((await db`
+        SELECT COUNT(*)::text AS count
+        FROM skills
+        WHERE on_chain_address IS NOT NULL
+          AND on_chain_program_id = ${previousProgramId}
+      `) as { count: string }[])
+    : [{ count: "0" }];
+
+  const unlinkedPaidSkills = skillsExists
+    ? ((await db`
+        SELECT
+          id::text,
+          skill_id,
+          author_pubkey,
+          price_usdc_micros::text,
+          updated_at::text
+        FROM skills
+        WHERE on_chain_address IS NULL
+          AND COALESCE(price_usdc_micros, 0) > 0
+        ORDER BY updated_at DESC
+        LIMIT 100
+      `) as Array<{
+        id: string;
+        skill_id: string;
+        author_pubkey: string;
+        price_usdc_micros: string | null;
+        updated_at: string;
+      }>)
+    : [];
+
+  const receiptCount = receiptsExists
+    ? ((await db`
+        SELECT COUNT(*)::text AS count
+        FROM usdc_purchase_receipts
+      `) as { count: string }[])
+    : [{ count: "0" }];
+  const entitlementCount = entitlementsExists
+    ? ((await db`
+        SELECT COUNT(*)::text AS count
+        FROM usdc_purchase_entitlements
+      `) as { count: string }[])
+    : [{ count: "0" }];
+  const agentProfileBindingCount = bindingsExists
+    ? ((await db`
+        SELECT COUNT(*)::text AS count
+        FROM agent_identity_bindings
+        WHERE binding_type = 'agent_profile_pda'
+      `) as { count: string }[])
+    : [{ count: "0" }];
+
+  const report = {
+    generatedAt: new Date().toISOString(),
+    mode: apply ? "apply" : "dry-run",
+    currentProgramId,
+    previousProgramId,
+    actions: {
+      clearStaleLinkedSkillProgramFields: staleLinkedSkills.length,
+      deleteUnlinkedPaidSkills: deleteUnlinkedPaid
+        ? unlinkedPaidSkills.length
+        : 0,
+      unlinkedPaidSkillsReportedOnly: deleteUnlinkedPaid
+        ? 0
+        : unlinkedPaidSkills.length,
+      clearAllPurchaseReceipts: clearPurchaseState
+        ? Number(receiptCount[0]?.count ?? 0)
+        : 0,
+      clearAllPurchaseEntitlements: clearPurchaseState
+        ? Number(entitlementCount[0]?.count ?? 0)
+        : 0,
+      clearAgentProfilePdaBindings: clearAgentProfileBindings
+        ? Number(agentProfileBindingCount[0]?.count ?? 0)
+        : 0,
+    },
+    counts: {
+      previousProgramLinkedSkills: Number(
+        previousProgramLinkedSkills[0]?.count ?? 0
+      ),
+      staleLinkedSkills: staleLinkedSkills.length,
+      unlinkedPaidSkills: unlinkedPaidSkills.length,
+      usdcPurchaseReceipts: Number(receiptCount[0]?.count ?? 0),
+      usdcPurchaseEntitlements: Number(entitlementCount[0]?.count ?? 0),
+      agentProfilePdaBindings: Number(agentProfileBindingCount[0]?.count ?? 0),
+    },
+    sampledStaleLinkedSkills: staleLinkedSkills,
+    sampledUnlinkedPaidSkills: unlinkedPaidSkills,
+  };
+
+  if (!apply) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  await db.transaction((txn) => {
+    const queries: ReturnType<typeof txn>[] = [];
+    if (clearPurchaseState && entitlementsExists) {
+      queries.push(txn`DELETE FROM usdc_purchase_entitlements`);
+    }
+    if (clearPurchaseState && receiptsExists) {
+      queries.push(txn`DELETE FROM usdc_purchase_receipts`);
+    }
+    if (clearAgentProfileBindings && bindingsExists) {
+      queries.push(txn`
+        DELETE FROM agent_identity_bindings
+        WHERE binding_type = 'agent_profile_pda'
+      `);
+    }
+    if (skillsExists) {
+      if (deleteUnlinkedPaid) {
+        queries.push(txn`
+          DELETE FROM skills
+          WHERE on_chain_address IS NULL
+            AND COALESCE(price_usdc_micros, 0) > 0
+        `);
+      }
+      queries.push(txn`
+        UPDATE skills
+        SET
+          on_chain_address = NULL,
+          on_chain_program_id = NULL,
+          on_chain_protocol_version = NULL,
+          updated_at = NOW()
+        WHERE on_chain_address IS NOT NULL
+          AND (
+            on_chain_program_id IS NULL
+            OR on_chain_program_id <> ${currentProgramId}
+          )
+      `);
+    }
+    return queries;
+  });
+
+  console.log(JSON.stringify(report, null, 2));
+}
+
 function printHelp() {
   console.log(`AgentVouch DB cutover helper
 
@@ -733,6 +915,8 @@ Commands:
                                            Export durable rows; receipts/entitlements are excluded
   import --file file                      Import export file into TARGET_DATABASE_URL
   sanity                                  Read-only sanity checks against DATABASE_URL
+  cleanup-devnet [--old-program-id id] [--apply] [--delete-unlinked-paid]
+                                           Dry-run/apply cleanup after fresh devnet Program ID cutover
 
 Examples:
   DATABASE_URL="$OLD_DB" npm run db:cutover --workspace @agentvouch/web -- inventory --out db-inventory.json
@@ -741,6 +925,7 @@ Examples:
   TARGET_DATABASE_URL="$NEW_DB" npm run db:cutover --workspace @agentvouch/web -- import --file db-cutover-export.json
   DATABASE_URL="$NEW_DB" npm run db:cutover --workspace @agentvouch/web -- sanity
   DATABASE_URL="$NEW_DB" npm run db:cutover --workspace @agentvouch/web -- sanity --expect-clean-purchases
+  DATABASE_URL="$NEW_DB" npm run db:cutover --workspace @agentvouch/web -- cleanup-devnet
 `);
 }
 
@@ -750,6 +935,7 @@ async function main() {
   if (command === "export") return exportData();
   if (command === "import") return importData();
   if (command === "sanity") return sanity();
+  if (command === "cleanup-devnet") return cleanupDevnet();
   printHelp();
 }
 

@@ -3,11 +3,11 @@ import { AGENTVOUCH_PROGRAM_ADDRESS } from "../generated/agentvouch/src/generate
 
 export const SITE_NAME = "AgentVouch";
 export const SITE_URL =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+  process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
   "https://agentvouch.xyz";
 export const SITE_DESCRIPTION =
-  "AgentVouch is an on-chain reputation oracle for AI agents. Query stake-backed trust records, peer vouches, and dispute history before giving an agent work, access, or payment.";
-export const SITE_TAGLINE = "On-Chain Reputation Oracle for AI Agents";
+  "AgentVouch is an on-chain trust layer and skills marketplace for AI agents. Query stake-backed reputation, peer vouches, and dispute history before installing skills or delegating work.";
+export const SITE_TAGLINE = "On-Chain Trust Layer for AI Agent Skills";
 export const SITE_OG_IMAGE_PATH = "/opengraph-image";
 export const SITE_TWITTER_IMAGE_PATH = "/twitter-image";
 export const SITE_PROGRAM_ID = AGENTVOUCH_PROGRAM_ADDRESS;

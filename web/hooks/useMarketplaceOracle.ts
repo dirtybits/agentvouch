@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useWalletConnection, useSendTransaction } from "@solana/react-hooks";
 import {
   address,
   createSolanaRpc,
@@ -16,10 +15,7 @@ import {
   type ReadonlyUint8Array,
   type TransactionSigner,
 } from "@solana/kit";
-import {
-  createWalletTransactionSigner,
-  type TransactionPrepareAndSendRequest,
-} from "@solana/client";
+import { type TransactionPrepareAndSendRequest } from "@solana/client";
 import type { Base58EncodedBytes, Base64EncodedBytes } from "@solana/rpc-types";
 import { decodeBase64, encodeBase64 } from "@/lib/base64";
 import {
@@ -41,6 +37,9 @@ import {
   logTransactionSummary,
   type AgentVouchTransactionSummary,
 } from "@/lib/agentvouchUsdc";
+import { getClientTransactionHelper } from "@/lib/solanaTransactionHelper";
+import { useAgentVouchTransactionSigner } from "./useAgentVouchTransactionSigner";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import {
   fetchAllMaybePurchase,
   fetchMaybePurchase,
@@ -57,7 +56,7 @@ import {
 import { getPurchaseSkillInstructionAsync } from "../generated/agentvouch/src/generated/instructions/purchaseSkill";
 
 const AGENTVOUCH_PROGRAM_ADDRESS = address(
-  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ"
+  "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg"
 );
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -254,18 +253,15 @@ async function waitForConfirmedSignature(
 }
 
 export function useMarketplaceOracle() {
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && wallet;
-  const { send: frameworkSend } = useSendTransaction();
+  const { status, account } = useAgentVouchWallet();
+  const connected = status === "connected" && !!account;
+  const { signer: activeSigner } = useAgentVouchTransactionSigner();
 
   const walletAddress: Address | null = connected
-    ? (wallet.account.address as Address)
+    ? (account as Address)
     : null;
 
-  const signer: TransactionSigner | null = useMemo(() => {
-    if (!connected || !wallet) return null;
-    return createWalletTransactionSigner(wallet).signer;
-  }, [connected, wallet]);
+  const signer: TransactionSigner | null = activeSigner ?? null;
 
   const sendIx = useCallback(
     async (
@@ -276,7 +272,7 @@ export function useMarketplaceOracle() {
       const request = buildTransactionSendRequest(ix, signer);
       try {
         if (summary) logTransactionSummary(summary);
-        const sig = await frameworkSend(request);
+        const sig = await getClientTransactionHelper().prepareAndSend(request);
         const txSignature = signature(String(sig));
         await waitForConfirmedSignature(txSignature);
         return txSignature;
@@ -308,7 +304,7 @@ export function useMarketplaceOracle() {
         throw new Error(getErrorMessage(error));
       }
     },
-    [walletAddress, signer, frameworkSend]
+    [walletAddress, signer]
   );
 
   const getAllSkillListings = useCallback(async () => {

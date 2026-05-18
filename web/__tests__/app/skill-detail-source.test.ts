@@ -26,6 +26,7 @@ describe("skill detail source", () => {
     expect(source).toContain('href="#author-actions"');
     expect(source).toContain("Manage Listing");
     expect(source).toContain("X-AgentVouch-Auth");
+    expect(source).toContain("listing-required");
     expect(source).toContain("/docs#paid-skill-download");
     expect(source).toContain("purchase_skill");
     expect(source).toContain("buyerHasPurchased");

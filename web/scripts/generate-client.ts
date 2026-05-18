@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const idlPath = path.join(__dirname, "../agentvouch.json");
 const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+const programAddress = idl.address;
 
 const codama = createFromRoot(rootNodeFromAnchor(idl));
 
@@ -42,6 +43,7 @@ async function main() {
     'export * from "./instructions/removeSkillListing";',
     'export * from "./instructions/resolveAuthorDispute";',
     'export * from "./instructions/revokeVouch";',
+    'export * from "./instructions/settleX402Purchase";',
     'export * from "./instructions/unlinkVouchFromListing";',
     'export * from "./instructions/updateSkillListing";',
     'export * from "./instructions/withdrawAuthorBond";',
@@ -74,7 +76,7 @@ async function main() {
       'import type { Address } from "@solana/kit";',
       "",
       'export const AGENTVOUCH_PROGRAM_ADDRESS =',
-      '  "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">;',
+      `  "${programAddress}" as Address<"${programAddress}">;`,
       "",
     ].join("\n")
   );

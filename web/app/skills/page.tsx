@@ -8,9 +8,9 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useWalletConnection } from "@solana/react-hooks";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
 import { getConfiguredSolanaExplorerTxUrl } from "@/lib/chains";
 import { UsdcIcon } from "@/components/UsdcIcon";
@@ -65,7 +65,12 @@ interface SkillRow {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
+  payment_flow?:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
   on_chain_address?: string;
   skill_uri?: string | null;
   source?: "repo" | "chain";
@@ -100,7 +105,12 @@ type ActivityRepoListing = {
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
-  payment_flow: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
+  payment_flow:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
   created_at: string;
 };
 type ActivityUsdcPurchase = {
@@ -180,9 +190,9 @@ function getAuthorActionHref(
 }
 
 export default function MarketplacePage() {
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && !!wallet;
-  const publicKey = wallet?.account.address ?? null;
+  const { status, account } = useAgentVouchWallet();
+  const connected = status === "connected" && !!account;
+  const publicKey = account ?? null;
   const oracle = useMarketplaceOracle();
 
   const [activeTab, setActiveTab] = useState<PageTab>("browse");

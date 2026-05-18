@@ -41,10 +41,16 @@ type RpcParsedTransaction = {
     err?: unknown;
     preTokenBalances?: RpcTokenBalance[];
     postTokenBalances?: RpcTokenBalance[];
+    logMessages?: string[];
   };
   transaction?: {
     message?: {
-      accountKeys?: Array<string | { pubkey?: string }>;
+      accountKeys?: Array<string | { pubkey?: string; signer?: boolean }>;
+      instructions?: Array<{
+        programId?: string;
+        parsed?: unknown;
+        data?: string;
+      }>;
     };
   };
 };
@@ -599,6 +605,9 @@ export async function verifySettledUsdcTransfer(opts: {
   destinationAta: string;
   currencyMint: string;
   minimumAmountMicros: bigint;
+  expectedPayer?: string;
+  expectedMemo?: string;
+  exactAmountMicros?: bigint;
 }): Promise<{ settledAmountMicros: bigint }> {
   const transaction = await getConfirmedParsedTransaction(opts.signature);
 
@@ -618,6 +627,53 @@ export async function verifySettledUsdcTransfer(opts: {
   const accountKeys = messageAccountKeys.map((key) =>
     typeof key === "string" ? key : key.pubkey ?? ""
   );
+  if (opts.expectedPayer) {
+    const hasSignerMetadata = messageAccountKeys.some(
+      (key) => typeof key !== "string" && "signer" in key
+    );
+    if (!hasSignerMetadata) {
+      throw new Error(
+        "Settled transaction is missing signer metadata for payer verification"
+      );
+    }
+    const payerSigned = messageAccountKeys.some((key) => {
+      if (typeof key === "string") return false;
+      return key.pubkey === opts.expectedPayer && key.signer === true;
+    });
+    if (!payerSigned) {
+      throw new Error("Settled transaction was not signed by the expected payer");
+    }
+  }
+
+  if (opts.expectedMemo) {
+    const memoProgramId = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+    const memoMatchedInstruction =
+      transaction.transaction?.message?.instructions?.some((instruction) => {
+        if (instruction.programId !== memoProgramId) return false;
+        if (instruction.parsed === opts.expectedMemo) return true;
+        if (
+          instruction.parsed &&
+          typeof instruction.parsed === "object" &&
+          "memo" in instruction.parsed
+        ) {
+          return (
+            (instruction.parsed as { memo?: unknown }).memo ===
+            opts.expectedMemo
+          );
+        }
+        return false;
+      }) ?? false;
+    const memoMatchedLog =
+      transaction.meta.logMessages?.some(
+        (line) =>
+          line.includes(`"${opts.expectedMemo}"`) ||
+          line.endsWith(opts.expectedMemo as string)
+      ) ?? false;
+
+    if (!memoMatchedInstruction && !memoMatchedLog) {
+      throw new Error("Settled transaction memo does not match x402 requirement");
+    }
+  }
   const destinationIndex = accountKeys.findIndex(
     (accountKey) => accountKey === opts.destinationAta
   );
@@ -651,6 +707,15 @@ export async function verifySettledUsdcTransfer(opts: {
   if (settledAmountMicros < opts.minimumAmountMicros) {
     throw new Error(
       `Settled amount ${settledAmountMicros.toString()} is below required ${opts.minimumAmountMicros.toString()}`
+    );
+  }
+
+  if (
+    opts.exactAmountMicros !== undefined &&
+    settledAmountMicros !== opts.exactAmountMicros
+  ) {
+    throw new Error(
+      `Settled amount ${settledAmountMicros.toString()} does not match required ${opts.exactAmountMicros.toString()}`
     );
   }
 

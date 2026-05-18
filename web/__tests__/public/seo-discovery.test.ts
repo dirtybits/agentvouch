@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 
-const CURRENT_PROGRAM_ID = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ";
+const CURRENT_PROGRAM_ID = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
 const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const CAIP2_DEVNET = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 
@@ -37,13 +37,20 @@ describe(".well-known/agentvouch.json", () => {
   it("points discovery and docs at agentvouch.xyz", () => {
     // All advertised URLs must live on the canonical public base.
     const allUrls = [
+      parsed.base_url,
       ...Object.values(parsed.docs ?? {}),
       ...Object.values(parsed.discovery ?? {}),
-    ];
+    ].filter(Boolean);
     expect(allUrls.length).toBeGreaterThan(0);
     for (const url of allUrls) {
-      expect(url).toMatch(/^https:\/\/agentvouch\.xyz\//);
+      expect(url).not.toMatch(/\s/);
+      expect(url).toMatch(/^https:\/\/agentvouch\.xyz(?:\/|$)/);
     }
+  });
+
+  it("describes AgentVouch as a trust layer and skills marketplace", () => {
+    expect(parsed.positioning).toMatch(/trust layer/i);
+    expect(parsed.positioning).toMatch(/skills marketplace/i);
   });
 });
 
@@ -92,5 +99,11 @@ describe("llms.txt", () => {
 
   it("does not advertise the retired competition", () => {
     expect(txt).not.toMatch(/Best Skill Competition/i);
+  });
+
+  it("leads with trust layer and skills marketplace positioning", () => {
+    expect(txt).toMatch(/trust layer/i);
+    expect(txt).toMatch(/skills marketplace/i);
+    expect(txt).toMatch(/discover skills/i);
   });
 });

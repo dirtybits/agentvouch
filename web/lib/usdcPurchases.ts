@@ -4,6 +4,8 @@ let schemaReady: Promise<void> | null = null;
 
 export const REPO_X402_PAYMENT_FLOW = "repo-x402-usdc";
 export const DIRECT_PURCHASE_PAYMENT_FLOW = "direct-purchase-skill";
+export const X402_BRIDGE_PURCHASE_PAYMENT_FLOW =
+  "x402-bridge-purchase-skill";
 
 export async function ensureUsdcPurchaseSchema() {
   if (schemaReady) {
@@ -31,6 +33,10 @@ export async function ensureUsdcPurchaseSchema() {
         listing_revision BIGINT,
         settlement_pda VARCHAR(44),
         author_proceeds_vault VARCHAR(44),
+        x402_payment_ref_hash VARCHAR(64),
+        x402_settlement_signature_hash VARCHAR(64),
+        x402_settlement_receipt_pda VARCHAR(44),
+        x402_settlement_vault VARCHAR(44),
         refund_status VARCHAR(32) DEFAULT 'none',
         legacy_refund_eligible BOOLEAN DEFAULT FALSE,
         verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -86,6 +92,26 @@ export async function ensureUsdcPurchaseSchema() {
 
     await db`
       ALTER TABLE usdc_purchase_receipts
+      ADD COLUMN IF NOT EXISTS x402_payment_ref_hash VARCHAR(64)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_receipts
+      ADD COLUMN IF NOT EXISTS x402_settlement_signature_hash VARCHAR(64)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_receipts
+      ADD COLUMN IF NOT EXISTS x402_settlement_receipt_pda VARCHAR(44)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_receipts
+      ADD COLUMN IF NOT EXISTS x402_settlement_vault VARCHAR(44)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_receipts
       ADD COLUMN IF NOT EXISTS refund_status VARCHAR(32) DEFAULT 'none'
     `;
 
@@ -128,6 +154,10 @@ export async function ensureUsdcPurchaseSchema() {
         listing_revision BIGINT,
         settlement_pda VARCHAR(44),
         author_proceeds_vault VARCHAR(44),
+        x402_payment_ref_hash VARCHAR(64),
+        x402_settlement_signature_hash VARCHAR(64),
+        x402_settlement_receipt_pda VARCHAR(44),
+        x402_settlement_vault VARCHAR(44),
         refund_status VARCHAR(32) DEFAULT 'none',
         legacy_refund_eligible BOOLEAN DEFAULT FALSE,
         first_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -181,6 +211,26 @@ export async function ensureUsdcPurchaseSchema() {
     await db`
       ALTER TABLE usdc_purchase_entitlements
       ADD COLUMN IF NOT EXISTS author_proceeds_vault VARCHAR(44)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS x402_payment_ref_hash VARCHAR(64)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS x402_settlement_signature_hash VARCHAR(64)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS x402_settlement_receipt_pda VARCHAR(44)
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS x402_settlement_vault VARCHAR(44)
     `;
 
     await db`
@@ -239,6 +289,10 @@ export async function ensureUsdcPurchaseSchema() {
         listing_revision,
         settlement_pda,
         author_proceeds_vault,
+        x402_payment_ref_hash,
+        x402_settlement_signature_hash,
+        x402_settlement_receipt_pda,
+        x402_settlement_vault,
         refund_status,
         legacy_refund_eligible,
         first_verified_at,
@@ -263,6 +317,10 @@ export async function ensureUsdcPurchaseSchema() {
         r.listing_revision,
         r.settlement_pda,
         r.author_proceeds_vault,
+        r.x402_payment_ref_hash,
+        r.x402_settlement_signature_hash,
+        r.x402_settlement_receipt_pda,
+        r.x402_settlement_vault,
         COALESCE(r.refund_status, 'none'),
         COALESCE(r.legacy_refund_eligible, FALSE),
         r.verified_at,
@@ -347,6 +405,26 @@ export async function ensureUsdcPurchaseSchema() {
           WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
             THEN EXCLUDED.author_proceeds_vault
           ELSE usdc_purchase_entitlements.author_proceeds_vault
+        END,
+        x402_payment_ref_hash = CASE
+          WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+            THEN EXCLUDED.x402_payment_ref_hash
+          ELSE usdc_purchase_entitlements.x402_payment_ref_hash
+        END,
+        x402_settlement_signature_hash = CASE
+          WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+            THEN EXCLUDED.x402_settlement_signature_hash
+          ELSE usdc_purchase_entitlements.x402_settlement_signature_hash
+        END,
+        x402_settlement_receipt_pda = CASE
+          WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+            THEN EXCLUDED.x402_settlement_receipt_pda
+          ELSE usdc_purchase_entitlements.x402_settlement_receipt_pda
+        END,
+        x402_settlement_vault = CASE
+          WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+            THEN EXCLUDED.x402_settlement_vault
+          ELSE usdc_purchase_entitlements.x402_settlement_vault
         END,
         refund_status = CASE
           WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
@@ -454,6 +532,10 @@ export async function recordUsdcPurchaseReceipt(input: {
   listingRevision?: string | null;
   settlementPda?: string | null;
   authorProceedsVault?: string | null;
+  x402PaymentRefHash?: string | null;
+  x402SettlementSignatureHash?: string | null;
+  x402SettlementReceiptPda?: string | null;
+  x402SettlementVault?: string | null;
   refundStatus?: string | null;
   legacyRefundEligible?: boolean;
 }) {
@@ -469,6 +551,11 @@ export async function recordUsdcPurchaseReceipt(input: {
   const listingRevision = input.listingRevision ?? null;
   const settlementPda = input.settlementPda ?? null;
   const authorProceedsVault = input.authorProceedsVault ?? null;
+  const x402PaymentRefHash = input.x402PaymentRefHash ?? null;
+  const x402SettlementSignatureHash =
+    input.x402SettlementSignatureHash ?? null;
+  const x402SettlementReceiptPda = input.x402SettlementReceiptPda ?? null;
+  const x402SettlementVault = input.x402SettlementVault ?? null;
   const refundStatus = input.refundStatus ?? "none";
   const legacyRefundEligible = input.legacyRefundEligible ?? false;
   const [receipt] = await db<{
@@ -491,6 +578,10 @@ export async function recordUsdcPurchaseReceipt(input: {
       listing_revision,
       settlement_pda,
       author_proceeds_vault,
+      x402_payment_ref_hash,
+      x402_settlement_signature_hash,
+      x402_settlement_receipt_pda,
+      x402_settlement_vault,
       refund_status,
       legacy_refund_eligible,
       verified_at,
@@ -512,6 +603,10 @@ export async function recordUsdcPurchaseReceipt(input: {
       ${listingRevision},
       ${settlementPda},
       ${authorProceedsVault},
+      ${x402PaymentRefHash},
+      ${x402SettlementSignatureHash},
+      ${x402SettlementReceiptPda},
+      ${x402SettlementVault},
       ${refundStatus},
       ${legacyRefundEligible},
       NOW(),
@@ -531,6 +626,10 @@ export async function recordUsdcPurchaseReceipt(input: {
       listing_revision = EXCLUDED.listing_revision,
       settlement_pda = EXCLUDED.settlement_pda,
       author_proceeds_vault = EXCLUDED.author_proceeds_vault,
+      x402_payment_ref_hash = EXCLUDED.x402_payment_ref_hash,
+      x402_settlement_signature_hash = EXCLUDED.x402_settlement_signature_hash,
+      x402_settlement_receipt_pda = EXCLUDED.x402_settlement_receipt_pda,
+      x402_settlement_vault = EXCLUDED.x402_settlement_vault,
       refund_status = EXCLUDED.refund_status,
       legacy_refund_eligible = EXCLUDED.legacy_refund_eligible,
       verified_at = GREATEST(
@@ -567,6 +666,10 @@ export async function recordUsdcPurchaseReceipt(input: {
       listing_revision,
       settlement_pda,
       author_proceeds_vault,
+      x402_payment_ref_hash,
+      x402_settlement_signature_hash,
+      x402_settlement_receipt_pda,
+      x402_settlement_vault,
       refund_status,
       legacy_refund_eligible,
       first_verified_at,
@@ -591,6 +694,10 @@ export async function recordUsdcPurchaseReceipt(input: {
       ${listingRevision},
       ${settlementPda},
       ${authorProceedsVault},
+      ${x402PaymentRefHash},
+      ${x402SettlementSignatureHash},
+      ${x402SettlementReceiptPda},
+      ${x402SettlementVault},
       ${refundStatus},
       ${legacyRefundEligible},
       ${receipt.verified_at}::timestamptz,
@@ -669,6 +776,26 @@ export async function recordUsdcPurchaseReceipt(input: {
         WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
           THEN EXCLUDED.author_proceeds_vault
         ELSE usdc_purchase_entitlements.author_proceeds_vault
+      END,
+      x402_payment_ref_hash = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN EXCLUDED.x402_payment_ref_hash
+        ELSE usdc_purchase_entitlements.x402_payment_ref_hash
+      END,
+      x402_settlement_signature_hash = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN EXCLUDED.x402_settlement_signature_hash
+        ELSE usdc_purchase_entitlements.x402_settlement_signature_hash
+      END,
+      x402_settlement_receipt_pda = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN EXCLUDED.x402_settlement_receipt_pda
+        ELSE usdc_purchase_entitlements.x402_settlement_receipt_pda
+      END,
+      x402_settlement_vault = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN EXCLUDED.x402_settlement_vault
+        ELSE usdc_purchase_entitlements.x402_settlement_vault
       END,
       refund_status = CASE
         WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at

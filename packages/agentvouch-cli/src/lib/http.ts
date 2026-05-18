@@ -52,7 +52,9 @@ export interface SkillRecord {
   payment_flow?:
     | "free"
     | "legacy-sol"
+    | "listing-required"
     | "x402-usdc"
+    | "x402-bridge-purchase-skill"
     | "direct-purchase-skill";
   total_installs: number;
   total_downloads?: number | null;
@@ -85,7 +87,9 @@ export interface SkillUpdateCheckResponse {
   payment_flow?:
     | "free"
     | "legacy-sol"
+    | "listing-required"
     | "x402-usdc"
+    | "x402-bridge-purchase-skill"
     | "direct-purchase-skill";
   requires_purchase: boolean;
   listing_changed: boolean;
@@ -166,6 +170,11 @@ export interface DownloadResponse {
     currencyMint: string | null;
     skillListingAddress: string;
   };
+  listingRequired?: {
+    amountMicros: string;
+    currencyMint: string | null;
+    message: string | null;
+  };
   x402PaymentRequired?: X402PaymentRequired;
   paymentResponse?: X402SettleResponse;
 }
@@ -238,6 +247,34 @@ function parseDirectPurchaseRequired(body?: unknown):
     currencyMint:
       typeof payload.currency_mint === "string" ? payload.currency_mint : null,
     skillListingAddress: payload.on_chain_address,
+  };
+}
+
+function parseListingRequired(body?: unknown):
+  | {
+      amountMicros: string;
+      currencyMint: string | null;
+      message: string | null;
+    }
+  | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const payload = body as {
+    payment_flow?: unknown;
+    amount_micros?: unknown;
+    currency_mint?: unknown;
+    message?: unknown;
+  };
+  if (
+    payload.payment_flow !== "listing-required" ||
+    typeof payload.amount_micros !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    amountMicros: payload.amount_micros,
+    currencyMint:
+      typeof payload.currency_mint === "string" ? payload.currency_mint : null,
+    message: typeof payload.message === "string" ? payload.message : null,
   };
 }
 
@@ -401,18 +438,27 @@ export class AgentVouchApiClient {
     }
 
     const body = getJsonContentType(response)
-      ? ((await response.json().catch(() => null)) as { error?: string } | null)
+      ? ((await response.json().catch(() => null)) as {
+          error?: string;
+          message?: string;
+        } | null)
       : null;
+
+    const errorMessage =
+      body?.error && body.message
+        ? `${body.error}: ${body.message}`
+        : body?.error || body?.message;
 
     return {
       ok: false,
       status: response.status,
       error:
-        body?.error ||
+        errorMessage ||
         (await response.text().catch(() => response.statusText)) ||
         response.statusText,
       requirement: parsePaymentRequirement(response, body),
       directPurchaseRequired: parseDirectPurchaseRequired(body),
+      listingRequired: parseListingRequired(body),
       x402PaymentRequired: parseX402PaymentRequired(body),
       paymentResponse,
     };

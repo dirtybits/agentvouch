@@ -135,10 +135,11 @@ export async function fetchOnChainSkillListing(
 }
 
 export async function getOnChainUsdcPrice(
-  onChainAddress: string
+  onChainAddress: string,
+  options?: { useCache?: boolean }
 ): Promise<{ priceUsdcMicros: string; author: string } | null> {
   try {
-    const listing = await fetchOnChainSkillListing(onChainAddress);
+    const listing = await fetchOnChainSkillListing(onChainAddress, options);
     if (!listing) return null;
 
     return {

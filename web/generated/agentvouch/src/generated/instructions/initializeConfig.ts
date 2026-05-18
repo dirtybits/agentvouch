@@ -18,6 +18,7 @@ import {
   getBytesEncoder,
   getI64Decoder,
   getI64Encoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   getU32Decoder,
@@ -46,6 +47,7 @@ import {
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
+  getAddressFromResolvedInstructionAccount,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
 import {
@@ -53,7 +55,6 @@ import {
   findProtocolTreasuryVaultAuthorityPda,
   findProtocolTreasuryVaultPda,
   findX402SettlementVaultAuthorityPda,
-  findX402SettlementVaultPda,
 } from "../pdas";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
@@ -81,6 +82,8 @@ export type InitializeConfigInstruction<
   TAccountPayer extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> =
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -116,6 +119,9 @@ export type InitializeConfigInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -193,6 +199,7 @@ export type InitializeConfigAsyncInput<
   TAccountAuthority extends string = string,
   TAccountPayer extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   config?: Address<TAccountConfig>;
@@ -204,6 +211,7 @@ export type InitializeConfigAsyncInput<
   authority: Address<TAccountAuthority>;
   payer: TransactionSigner<TAccountPayer>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
   chainContext: InitializeConfigInstructionDataArgs["chainContext"];
   configAuthority: InitializeConfigInstructionDataArgs["configAuthority"];
@@ -224,6 +232,7 @@ export async function getInitializeConfigInstructionAsync<
   TAccountAuthority extends string,
   TAccountPayer extends string,
   TAccountTokenProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
@@ -237,6 +246,7 @@ export async function getInitializeConfigInstructionAsync<
     TAccountAuthority,
     TAccountPayer,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -252,6 +262,7 @@ export async function getInitializeConfigInstructionAsync<
     TAccountAuthority,
     TAccountPayer,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >
 > {
@@ -281,6 +292,10 @@ export async function getInitializeConfigInstructionAsync<
     authority: { value: input.authority ?? null, isWritable: false },
     payer: { value: input.payer ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -306,12 +321,39 @@ export async function getInitializeConfigInstructionAsync<
     accounts.x402SettlementVaultAuthority.value =
       await findX402SettlementVaultAuthorityPda();
   }
-  if (!accounts.x402SettlementVault.value) {
-    accounts.x402SettlementVault.value = await findX402SettlementVaultPda();
-  }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
+  if (!accounts.x402SettlementVault.value) {
+    accounts.x402SettlementVault.value = await getProgramDerivedAddress({
+      programAddress:
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">,
+      seeds: [
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "x402SettlementVaultAuthority",
+            accounts.x402SettlementVaultAuthority.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "tokenProgram",
+            accounts.tokenProgram.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "usdcMint",
+            accounts.usdcMint.value,
+          ),
+        ),
+      ],
+    });
+  }
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
@@ -336,6 +378,7 @@ export async function getInitializeConfigInstructionAsync<
       getAccountMeta("authority", accounts.authority),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getInitializeConfigInstructionDataEncoder().encode(
@@ -353,6 +396,7 @@ export async function getInitializeConfigInstructionAsync<
     TAccountAuthority,
     TAccountPayer,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >);
 }
@@ -367,6 +411,7 @@ export type InitializeConfigInput<
   TAccountAuthority extends string = string,
   TAccountPayer extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   config: Address<TAccountConfig>;
@@ -378,6 +423,7 @@ export type InitializeConfigInput<
   authority: Address<TAccountAuthority>;
   payer: TransactionSigner<TAccountPayer>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
   chainContext: InitializeConfigInstructionDataArgs["chainContext"];
   configAuthority: InitializeConfigInstructionDataArgs["configAuthority"];
@@ -398,6 +444,7 @@ export function getInitializeConfigInstruction<
   TAccountAuthority extends string,
   TAccountPayer extends string,
   TAccountTokenProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
@@ -411,6 +458,7 @@ export function getInitializeConfigInstruction<
     TAccountAuthority,
     TAccountPayer,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -425,6 +473,7 @@ export function getInitializeConfigInstruction<
   TAccountAuthority,
   TAccountPayer,
   TAccountTokenProgram,
+  TAccountAssociatedTokenProgram,
   TAccountSystemProgram
 > {
   // Program address.
@@ -453,6 +502,10 @@ export function getInitializeConfigInstruction<
     authority: { value: input.authority ?? null, isWritable: false },
     payer: { value: input.payer ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -467,6 +520,10 @@ export function getInitializeConfigInstruction<
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
@@ -491,6 +548,7 @@ export function getInitializeConfigInstruction<
       getAccountMeta("authority", accounts.authority),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getInitializeConfigInstructionDataEncoder().encode(
@@ -508,6 +566,7 @@ export function getInitializeConfigInstruction<
     TAccountAuthority,
     TAccountPayer,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >);
 }
@@ -527,7 +586,8 @@ export type ParsedInitializeConfigInstruction<
     authority: TAccountMetas[6];
     payer: TAccountMetas[7];
     tokenProgram: TAccountMetas[8];
-    systemProgram: TAccountMetas[9];
+    associatedTokenProgram: TAccountMetas[9];
+    systemProgram: TAccountMetas[10];
   };
   data: InitializeConfigInstructionData;
 };
@@ -540,12 +600,12 @@ export function parseInitializeConfigInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitializeConfigInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 11) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 11,
       },
     );
   }
@@ -567,6 +627,7 @@ export function parseInitializeConfigInstruction<
       authority: getNextAccount(),
       payer: getNextAccount(),
       tokenProgram: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
     },
     data: getInitializeConfigInstructionDataDecoder().decode(instruction.data),

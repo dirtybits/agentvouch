@@ -183,7 +183,7 @@ describe("updateSkill", () => {
         requirement: {
           scheme: "exact",
           network: "solana",
-          programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
+          programId: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
           instruction: "purchaseSkill",
           skillListingAddress: "ListingAddr1",
           mint: "So11111111111111111111111111111111111111112",
@@ -268,7 +268,7 @@ describe("updateSkill", () => {
         requirement: {
           scheme: "exact",
           network: "solana",
-          programId: "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
+          programId: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
           instruction: "purchaseSkill",
           skillListingAddress: "ListingAddr1",
           mint: "So11111111111111111111111111111111111111112",

@@ -1,7 +1,9 @@
 # AgentVouch Architecture
 
-**Last updated:** May 2026  
-**Active program ID:** `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`  
+**Last updated:** May 2026
+
+**Active program ID:** `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
+
 **Active network:** Solana Devnet (`solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`)
 
 AgentVouch is a Solana-native trust market for agent skills. Authors publish skills, other agents vouch for authors with USDC-backed capital, buyers purchase paid skills, and disputes can slash the capital that backed a bad author or listing.
@@ -137,12 +139,13 @@ Use `Report` for user-facing issue actions and `Dispute` for protocol/admin obje
 
 ## Paid Downloads
 
-AgentVouch supports two USDC entitlement paths:
+AgentVouch supports protocol-visible USDC paid downloads and historical entitlement compatibility:
 
-1. **Protocol-listed on-chain purchase**: buyers call `purchase_skill`, then present an `X-AgentVouch-Auth` Ed25519 signature over the canonical download message. The API verifies the revision-scoped on-chain `Purchase` PDA before serving raw content.
-2. **Repo-backed x402 USDC purchase**: `/api/skills/{id}/raw` can return an x402 payment requirement for repo-backed USDC listings. Successful facilitator settlement is verified and stored in `usdc_purchase_receipts` and `usdc_purchase_entitlements`.
+1. **Protocol-listed direct purchase**: buyers call `purchase_skill`, then present an `X-AgentVouch-Auth` Ed25519 signature over the canonical download message. The API verifies/records the revision-scoped on-chain `Purchase` PDA before serving raw content.
+2. **Protocol-listed x402 bridge**: when `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=true`, `/api/skills/{id}/raw` requires initial `X-AgentVouch-Auth`, returns an x402 exact USDC requirement that pays the protocol settlement vault, verifies amount/mint/payer/memo after facilitator settlement, calls `settle_x402_purchase`, and records the entitlement only after on-chain settlement succeeds.
+3. **Historical repo-only x402 entitlements**: older direct-author x402 receipts can still re-download with signed auth, but new repo-only paid x402 purchases are disabled because they bypass `Purchase` PDAs, voucher rewards, and refund/dispute state.
 
-The x402 bridge path for protocol-listed skills is fail-closed unless the app has verified support for a flow that preserves the 60/40 on-chain revenue split. Bridge memos must contain only protocol references such as version, listing, skill id, and nonce; do not put PII or free-form buyer text in memos.
+The x402 bridge path for protocol-listed skills is fail-closed behind the feature flag. Bridge memos carry a deterministic payment-ref hash prefix so they stay inside the stock exact-SVM memo compute budget; buyer/listing/skill/amount/nonce are bound in signed x402 `extra` fields and the full payment-ref hash preimage. Do not put PII or free-form buyer text in memos.
 
 Legacy SOL purchase rows may still appear in historical data, but new v0.2.0 writes should use USDC-native fields and instructions.
 
@@ -204,7 +207,7 @@ web/__tests__/                 Vitest suites
 
 | Component      | Target | Status                                                     |
 | -------------- | ------ | ---------------------------------------------------------- |
-| Solana program | Devnet | Deployed as `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` |
+| Solana program | Devnet | Deployed as `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` |
 | Config PDA     | Devnet | Initialized with devnet USDC mint                          |
 | Web app        | Vercel | `https://agentvouch.xyz`                                   |
 | Database       | Neon   | v0.2.0 cutover branch/database                             |

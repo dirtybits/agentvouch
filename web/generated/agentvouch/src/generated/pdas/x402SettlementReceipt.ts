@@ -7,17 +7,24 @@
  */
 
 import {
+  fixEncoderSize,
   getBytesEncoder,
   getProgramDerivedAddress,
   type Address,
   type ProgramDerivedAddress,
+  type ReadonlyUint8Array,
 } from "@solana/kit";
 
-export async function findX402SettlementVaultPda(
+export type X402SettlementReceiptSeeds = {
+  paymentRefHash: ReadonlyUint8Array;
+};
+
+export async function findX402SettlementReceiptPda(
+  seeds: X402SettlementReceiptSeeds,
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">,
+    programAddress = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg" as Address<"AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,
@@ -25,9 +32,10 @@ export async function findX402SettlementVaultPda(
       getBytesEncoder().encode(
         new Uint8Array([
           120, 52, 48, 50, 95, 115, 101, 116, 116, 108, 101, 109, 101, 110, 116,
-          95, 118, 97, 117, 108, 116,
+          95, 114, 101, 99, 101, 105, 112, 116,
         ]),
       ),
+      fixEncoderSize(getBytesEncoder(), 32).encode(seeds.paymentRefHash),
     ],
   });
 }

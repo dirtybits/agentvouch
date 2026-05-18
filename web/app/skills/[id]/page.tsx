@@ -22,8 +22,10 @@ import {
   navButtonSecondaryInlineClass,
   navButtonSizeClass,
 } from "@/lib/buttonStyles";
-import { useWalletConnection } from "@solana/react-hooks";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
+import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
+import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { address, type Address } from "@solana/kit";
 import {
@@ -94,7 +96,12 @@ interface SkillDetail {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
-  payment_flow?: "free" | "legacy-sol" | "x402-usdc" | "direct-purchase-skill";
+  payment_flow?:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
   contact: string | null;
   created_at: string;
   updated_at: string;
@@ -261,10 +268,17 @@ export default function SkillDetailPage({
 }) {
   const { id } = use(params);
   const searchParams = useSearchParams();
-  const { wallet, status } = useWalletConnection();
-  const connected = status === "connected" && !!wallet;
-  const walletAddress = wallet?.account.address ?? null;
-  const signMessage = wallet?.signMessage ?? null;
+  const { status, account, walletName } = useAgentVouchWallet();
+  const {
+    signer: protocolTransactionSigner,
+    partialSigner: kitSigner,
+    capabilities,
+    signMessage,
+  } = useAgentVouchTransactionSigner();
+  const connected = status === "connected" && !!account;
+  const walletAddress = account ?? null;
+  const isPhantomEmbeddedWallet =
+    connected && walletName === PHANTOM_EMBEDDED_WALLET_NAME;
   const oracle = useReputationOracle();
 
   const [skill, setSkill] = useState<SkillDetail | null>(null);
@@ -499,7 +513,29 @@ export default function SkillDetailPage({
   };
 
   const handleUsdcPurchase = async () => {
-    if (!connected || !wallet || !walletAddress || !signMessage || !skill) {
+    if (!skill) {
+      return;
+    }
+    if (!connected || !walletAddress) {
+      setInstallResult({
+        success: false,
+        message: "Connect a wallet to pay with USDC.",
+      });
+      return;
+    }
+    if (!signMessage) {
+      setInstallResult({
+        success: false,
+        message: "This wallet cannot sign the download authorization message.",
+      });
+      return;
+    }
+    if (isPhantomEmbeddedWallet) {
+      setInstallResult({
+        success: false,
+        message:
+          "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase.",
+      });
       return;
     }
 
@@ -510,6 +546,14 @@ export default function SkillDetailPage({
 
     try {
       if (skill.on_chain_address) {
+        if (!protocolTransactionSigner) {
+          setInstallResult({
+            success: false,
+            message: "This wallet cannot send the USDC purchase transaction.",
+          });
+          return;
+        }
+
         const purchaseResult = await oracle.purchaseSkill(
           address(skill.on_chain_address),
           address(skill.author_pubkey)
@@ -558,8 +602,16 @@ export default function SkillDetailPage({
         return;
       }
 
+      if (!kitSigner) {
+        setInstallResult({
+          success: false,
+          message: "This wallet cannot sign the USDC payment transaction.",
+        });
+        return;
+      }
+
       const purchaseResult = await fetchSkillWithBrowserX402({
-        wallet,
+        signer: kitSigner,
         walletAddress,
         signMessage,
         skillId: skill.id,
@@ -885,10 +937,12 @@ export default function SkillDetailPage({
     (skill.price_usdc_micros
       ? skill.on_chain_address
         ? "direct-purchase-skill"
-        : "x402-usdc"
+        : "listing-required"
       : "free");
+  const isListingRequired = paymentFlow === "listing-required";
   const hasUsdcPrimary =
     Boolean(primaryUsdcPrice) ||
+    isListingRequired ||
     paymentFlow === "x402-usdc" ||
     paymentFlow === "direct-purchase-skill";
   const hasLegacySolPrice = legacySolLamports > 0;
@@ -896,15 +950,30 @@ export default function SkillDetailPage({
     skill.purchasePreflightStatus ??
     (hasUsdcPrimary ? "estimateUnavailable" : "ok");
   const purchaseBlocked =
-    hasUsdcPrimary && isBlockingPurchaseStatus(purchasePreflightStatus);
-  const isPaidSkill = hasUsdcPrimary;
-  const browserCanUseUsdc =
+    !isListingRequired &&
     hasUsdcPrimary &&
-    (paymentFlow === "direct-purchase-skill" ||
-      walletSupportsBrowserX402(wallet));
+    isBlockingPurchaseStatus(purchasePreflightStatus);
+  const isPaidSkill = hasUsdcPrimary;
+  const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
+  const walletCanAuthorizeDirectUsdc = Boolean(
+    protocolTransactionSigner && signMessage && !isPhantomEmbeddedWallet
+  );
+  const walletCanAuthorizeBrowserX402 = Boolean(
+    kitSigner &&
+      signMessage &&
+      !isPhantomEmbeddedWallet &&
+      walletSupportsBrowserX402(capabilities)
+  );
+  const embeddedWalletCheckoutBlocked =
+    isPaidSkill && isPhantomEmbeddedWallet && !buyerHasPurchased;
+  const browserCanUseUsdc =
+    !isListingRequired &&
+    hasUsdcPrimary &&
+    (paymentFlow === "direct-purchase-skill"
+      ? walletCanAuthorizeDirectUsdc
+      : walletCanAuthorizeBrowserX402);
   const signedRedownloadAvailable =
     hasUsdcPrimary || Boolean(skill.on_chain_address);
-  const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
     isChainOnly && skill?.skill_uri
@@ -923,17 +992,25 @@ export default function SkillDetailPage({
   "timestamp": 1709234567890
 }`;
   const installCommand = hasUsdcPrimary
-    ? paymentFlow === "direct-purchase-skill"
+    ? isListingRequired
+      ? `# Primary price: ${usdcPriceLabel}\n# This paid repo skill is not purchasable until the author links an on-chain SkillListing.\ncurl -sL ${installUrl}`
+      : paymentFlow === "direct-purchase-skill"
       ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
       : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
   const purchaseTitle = primaryUsdcPrice
-    ? "USDC primary pricing"
+    ? isListingRequired
+      ? "On-chain listing required"
+      : "USDC primary pricing"
     : isPaidSkill
     ? "Paid Skill"
     : "Free Skill";
   const purchaseDescription = !isPaidSkill
     ? "Install with a wallet signature — no transaction fee."
+    : isListingRequired
+    ? isAuthor
+      ? `This paid skill is priced at ${usdcPriceLabel}, but it is not purchasable until you create and link its on-chain SkillListing.`
+      : `This paid skill is priced at ${usdcPriceLabel}, but purchases are unavailable while the author links the on-chain listing.`
     : isAuthor
     ? primaryUsdcPrice
       ? `This listing is priced at ${usdcPriceLabel}.`
@@ -942,6 +1019,8 @@ export default function SkillDetailPage({
     ? signedRedownloadAvailable
       ? "This skill is already purchased for your connected wallet. Sign to download the file."
       : "This skill is already purchased for your connected wallet. The file is delivered at checkout."
+    : embeddedWalletCheckoutBlocked
+    ? "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase."
     : primaryUsdcPrice
     ? browserCanUseUsdc
       ? `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
@@ -950,7 +1029,9 @@ export default function SkillDetailPage({
     ? "This historical SOL-priced listing is not available for new USDC checkout."
     : "Install with a wallet signature.";
   const connectWalletLabel = primaryUsdcPrice
-    ? "Connect wallet to pay with USDC"
+    ? isListingRequired
+      ? "Listing setup required before purchase"
+      : "Connect wallet to pay with USDC"
     : isPaidSkill
     ? "Connect wallet to buy and unlock"
     : "Connect wallet to install";
@@ -1261,6 +1342,16 @@ export default function SkillDetailPage({
                         Purchased. Signed re-downloads require an on-chain link.
                       </span>
                     )
+                  ) : embeddedWalletCheckoutBlocked ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
+                      <FiAlertTriangle className="w-3.5 h-3.5" />
+                      Use an extension wallet
+                    </span>
+                  ) : isListingRequired ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                      <FiAlertTriangle className="w-3.5 h-3.5" />
+                      Listing setup required
+                    </span>
                   ) : primaryUsdcPrice && browserCanUseUsdc ? (
                     <button
                       onClick={handleUsdcPurchase}
@@ -1355,13 +1446,14 @@ export default function SkillDetailPage({
             )}
             {primaryUsdcPrice && (
               <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
-                USDC is the default app-layer price. The button above settles
-                the x402 flow directly and signed re-downloads stay
-                wallet-bound.
+                {isListingRequired
+                  ? "New paid purchases are disabled until this repo skill is linked to an on-chain listing."
+                  : "USDC is the default app-layer price. Protocol-listed purchases settle through purchase_skill and signed re-downloads stay wallet-bound."}
               </p>
             )}
             {skill.purchaseRiskWarning &&
               hasUsdcPrimary &&
+              !isListingRequired &&
               !buyerHasPurchased &&
               !isAuthor && (
                 <div className="mt-3 rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
@@ -1372,7 +1464,9 @@ export default function SkillDetailPage({
                   <p>{skill.purchaseRiskWarning}</p>
                 </div>
               )}
-            {skill.purchasePreflightMessage && hasUsdcPrimary && (
+            {skill.purchasePreflightMessage &&
+              hasUsdcPrimary &&
+              !isListingRequired && (
               <p
                 className={`text-xs mt-2 ${
                   purchaseBlocked
@@ -1452,6 +1546,16 @@ export default function SkillDetailPage({
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
             {isPaidSkill ? (
+              isListingRequired ? (
+                <>
+                  This paid repo skill is waiting for its on-chain listing. New
+                  purchases are unavailable until the author links a{" "}
+                  <code className="text-amber-600 dark:text-amber-400">
+                    SkillListing
+                  </code>
+                  .
+                </>
+              ) : (
               primaryUsdcPrice ? (
                 browserCanUseUsdc ? (
                   <>
@@ -1482,6 +1586,7 @@ export default function SkillDetailPage({
                   .
                 </>
               )
+              )
             ) : (
               <>
                 Free skills can be downloaded directly with the command below.
@@ -1497,11 +1602,21 @@ export default function SkillDetailPage({
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Agent API (x402)
+              Agent API
             </span>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
             {isPaidSkill ? (
+              isListingRequired ? (
+                <>
+                  This paid repo skill returns{" "}
+                  <code className="text-amber-600 dark:text-amber-400">
+                    listing-required
+                  </code>{" "}
+                  instead of x402 payment requirements until the author links an
+                  on-chain listing.
+                </>
+              ) : (
               primaryUsdcPrice ? (
                 <>
                   This listing is USDC-primary. Agents should use the x402 raw
@@ -1527,6 +1642,7 @@ export default function SkillDetailPage({
                   </Link>
                   .
                 </>
+              )
               )
             ) : (
               <>

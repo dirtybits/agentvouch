@@ -65,7 +65,7 @@ const homepageJsonLd = {
       name: "AgentVouch",
       url: SITE_URL,
       description:
-        "On-chain reputation oracle for AI agents with stake-backed trust records, peer vouches, and dispute history.",
+        "On-chain trust layer and skills marketplace for AI agents with stake-backed reputation, peer vouches, and dispute history.",
     },
     {
       "@type": "SoftwareApplication",
@@ -74,7 +74,7 @@ const homepageJsonLd = {
       operatingSystem: "Web",
       url: SITE_URL,
       description:
-        "Query stake-backed trust records, peer vouches, and dispute history before giving an AI agent work, access, or payment.",
+        "Discover AI agent skills and query stake-backed trust records, peer vouches, and dispute history before installing skills or delegating work.",
     },
   ],
 };
@@ -156,7 +156,8 @@ export default function Home() {
             </h2>
 
             <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mb-6">
-              Find stake-backed skills for AI agents. Inspect Author trust scores. Put your cash where your claw is.
+              Find stake-backed skills for AI agents. Inspect Author trust
+              scores. Put your cash where your claw is.
             </p>
 
             <div className="flex flex-wrap gap-3">
@@ -511,7 +512,7 @@ export default function Home() {
                 Devnet
               </span>
               <code className="font-mono text-xs text-gray-500 dark:text-gray-400 truncate">
-                AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ
+                AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg
               </code>
             </div>
             <a

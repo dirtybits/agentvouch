@@ -14,6 +14,7 @@ describe("db cutover script source", () => {
     expect(source).toContain('command === "export"');
     expect(source).toContain('command === "import"');
     expect(source).toContain('command === "sanity"');
+    expect(source).toContain('command === "cleanup-devnet"');
   });
 
   it("excludes receipts and entitlements from the default export path", () => {
@@ -30,5 +31,12 @@ describe("db cutover script source", () => {
     expect(source).toContain("getConfiguredUsdcMint");
     expect(source).toContain("on_chain_protocol_version");
     expect(source).toContain("on_chain_program_id");
+  });
+
+  it("keeps fresh devnet cleanup dry-run-first", () => {
+    expect(source).toContain("cleanupDevnet");
+    expect(source).toContain("mode: apply ? \"apply\" : \"dry-run\"");
+    expect(source).toContain("clearStaleLinkedSkillProgramFields");
+    expect(source).toContain("agent_profile_pda");
   });
 });

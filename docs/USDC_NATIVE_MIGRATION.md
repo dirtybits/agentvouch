@@ -36,7 +36,7 @@ Authority and treasury gate decision:
 - `config_authority` controls governance-sensitive config updates and role rotations.
 - `treasury_authority` is reserved in `v0.2.0`; Milestone 3 should not add an arbitrary treasury-withdrawal instruction. Treasury inflows are dismissed dispute bonds and future governed fees.
 - `pause_authority` can only toggle pause state and is rotatable by `config_authority` if separate.
-- `settlement_authority` is reserved for the future x402 bridge, is rotatable and pausable by `config_authority`, and cannot withdraw arbitrary settlement or treasury vault balances.
+- `settlement_authority` is reserved for the feature-flagged x402 bridge, is rotatable and pausable by `config_authority`, and cannot withdraw arbitrary settlement or treasury vault balances.
 - `paused = true` blocks new risk and new purchases: create/update paid listings, direct purchases, new vouches, vouch/listing links, author-bond deposits, and x402 settlement. It allows authority rotation, unpause, dispute open/resolve, voucher reward claims, author-bond withdrawals, vouch revokes, and close flows only when normal dispute/lock invariants already permit them.
 
 Interop decision:
@@ -145,7 +145,7 @@ The v0.2.0 program uses one explicit custody pattern per primitive:
 - Listing reward pool: per-listing PDA-owned token vault, separate from the listing PDA's data account.
 - Dispute bond: per-dispute PDA-owned token vault until resolution.
 - Protocol treasury: PDA-owned token vault that receives dismissed dispute bonds and future governed fees.
-- x402 settlement: PDA-owned token vault reserved for a future bridge path; Milestone 3 does not enable protocol-listed x402 settlement.
+- x402 settlement: stock-compatible USDC ATA owned by the `x402_settlement_vault_authority` PDA. Stock `@x402/svm` exact payments credit `ATA(owner: payTo, mint: asset)`, so the bridge uses the vault authority PDA as `payTo` and stores that authority's ATA on config.
 - Author payout on purchase: direct transfer to the author's canonical USDC ATA for `(author, config.usdc_mint)`.
 - Voucher revenue claim: transfers from the listing reward vault to the voucher's canonical USDC ATA.
 - Slashed funds: preserve v0.1.0 economics in USDC. If a dispute is upheld, the challenger receives their dispute bond plus slashed author/voucher funds. If dismissed, the challenger bond goes to the protocol treasury vault.
@@ -173,19 +173,19 @@ Purchase settlement principle:
 - When external vouch stake is active, direct app purchases call `purchase_skill` and split USDC inside the Anchor program with the configured `60%` author / `40%` voucher split.
 - When no external vouch stake is active, including zero-backing and author-self-stake-only listings, the full payment goes to author proceeds; no voucher reward pool is created because there are no voucher positions that can claim it.
 - With zero backing, an upheld dispute produces a reputation hit only. The protocol has no funds to slash, so no buyer funds are recoverable in that dispute path.
-- x402 purchases for protocol-listed paid skills must not bypass voucher rewards. The intended v0.2.0 path is a POC-gated settlement bridge: x402 pays a protocol settlement vault, the backend verifies the settled transaction and memo, then a configured `settlement_authority` calls `settle_x402_purchase` to create the on-chain purchase and split funds.
-- If the bridge POC fails, x402 remains limited to repo-only/off-chain entitlement flows until a trustless custom x402 scheme or facilitator extension can call the protocol directly.
+- x402 purchases for protocol-listed paid skills must not bypass voucher rewards. The v0.2.0 bridge path is implemented behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`: x402 pays the protocol settlement vault, the backend verifies the settled transaction and memo, then a configured `settlement_authority` calls `settle_x402_purchase` to create the on-chain purchase and split funds.
+- If the bridge is disabled or smoke fails, x402 remains disabled for new paid marketplace purchases. Existing historical repo-only x402 entitlements can still re-download content, but new paid repo skills must link an on-chain `SkillListing`.
 
 x402 bridge POC pass/fail criteria:
 
-- Gate decision before Milestone 3: `settle_x402_purchase` is excluded from the first Anchor USDC rewrite pass. Direct USDC `purchase_skill` is the only protocol-visible paid purchase path until the x402 bridge POC passes.
-- Pass requires proof that `@x402/svm` and the selected facilitator can settle an exact USDC transfer into the intended protocol settlement vault pattern, including the PDA/off-curve owner case if that is the selected design.
-- Pass requires deterministic memo binding to `protocol_version`, chain context, listing address, skill database id, buyer, and nonce without storing PII or free-form user text on-chain.
+- Gate decision: `settle_x402_purchase` and receipt/signature-guard PDAs are implemented on the fresh devnet Program ID, but the API bridge remains disabled by default until devnet bridge smoke passes.
+- Pass requires proof that `@x402/svm` and the selected facilitator can settle an exact USDC transfer into the intended protocol settlement vault pattern. The selected design is the stock-compatible ATA owned by `x402_settlement_vault_authority`.
+- Pass requires deterministic payment-ref binding to `protocol_version`, chain context, listing address, skill database id, buyer, and nonce without storing PII or free-form user text on-chain. The SVM memo carries a compact payment-ref hash prefix; full references live in signed x402 `extra` fields and the hash preimage.
 - Pass requires reliable buyer extraction (`settle.payer` or transaction authority) so the on-chain `Purchase` PDA is derived from the paying wallet, not the facilitator fee payer.
 - Pass requires idempotency: the same payment reference or transaction signature cannot create more than one `X402SettlementReceipt`, `Purchase`, entitlement, or reward split.
 - Pass requires a retry/refund path for the case where x402 settles but `settle_x402_purchase` fails after USDC lands in the settlement vault.
-- Fail means protocol-listed paid skills require direct `purchase_skill`; `/api/x402/supported` must advertise only repo-only/off-chain x402 support and return capability metadata explaining that protocol-listed paid skills require direct on-chain purchase.
-- Allowed x402 flows after bridge failure are: free downloads, existing legacy entitlements, and repo-only/off-chain paid skills that are explicitly marked as not protocol-visible.
+- Disabled or failed bridge smoke means paid skills require direct `purchase_skill`; `/api/x402/supported` must return capability metadata explaining that new repo-only x402 purchases are disabled and protocol-listed paid skills require direct on-chain purchase.
+- Allowed x402-related flows after bridge failure are: free downloads without payment and existing historical entitlements that re-download with `X-AgentVouch-Auth`.
 
 Settlement authority constraints:
 
@@ -260,7 +260,7 @@ Current note:
 - `target/deploy/reputation_oracle_v01-keypair.json` is the archived `v0.1.0` keypair copy.
 - `target/deploy/agentvouch-keypair.json` was generated for the fresh `v0.2.0` program identity.
 - `target/deploy/agentvouch_v02-keypair.json` is the archived `v0.2.0` keypair copy.
-- `v0.2.0` program pubkey: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`.
+- `v0.2.0` program pubkey: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`.
 
 ## Production Cutover Guardrail
 
@@ -275,10 +275,10 @@ Cutover rules:
 - `web/public/skill.md` must be internally consistent at cutover: USDC-native copy, v0.2.0 program ID, current paid download contract, x402 capability status, and no stale SOL/lamport publish or purchase claims except explicit legacy notes.
 - Phantom app acceptance should remain tied mostly to the domain, app ID, allowlisted URLs, and wallet UX. A program ID change is acceptable only after the new on-chain flow is live and verified.
 - Do not expose new program ID-dependent wallet flows in production until Phantom connect, direct checkout, and embedded/send-only wallet fallback behavior are verified.
-- Do not expose a half-cutover state where public docs or manifests point at `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` before the program has been deployed and initialized on the intended cluster.
+- Do not expose a half-cutover state where public docs or manifests point at `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` before the program has been deployed and initialized on the intended cluster.
 - During transition, APIs and trust surfaces may dual-read `v0.1.0` and `v0.2.0`, but new writes hard-cut to `v0.2.0` only after direct purchase indexing, entitlement repair/backfill, and smoke tests pass.
 - Rollback path: keep `main` deploy-safe for the current v0.1 flow until Milestone 11 passes. If cutover smoke fails after a preview deploy, roll production metadata and write flags back to the current v0.1 flow; do not partially roll forward public manifests.
-- `/api/x402/supported` remains fail-closed for protocol-listed paid skills until the x402 bridge POC passes; repo-only/off-chain x402 support must be labeled as not protocol-visible.
+- `/api/x402/supported` remains fail-closed for protocol-listed paid skills unless the x402 bridge feature flag is enabled; repo-only/off-chain x402 support must be labeled as not protocol-visible.
 - Keep private deploy keypairs out of git. Commit only source, docs, generated IDL/client artifacts, and public constants.
 
 Public cutover smoke checklist:
@@ -451,7 +451,7 @@ Compute and account ceiling gate decision:
 - `MAX_DISPUTE_POSITIONS_PER_TX = 8` for any instruction that links, verifies, slashes, or settles dispute-linked voucher positions.
 - Paid-listing upheld disputes use batched settlement when linked positions exceed the per-transaction limit: record ruling, settle author bond, process linked voucher positions in chunks, then finalize after all required positions are settled.
 - Dismissed disputes use a fixed-account path. Direct purchases, voucher claims, link/unlink, revoke, author-bond deposit/withdraw, and listing create/remove/close remain fixed-account flows.
-- Compute targets before devnet cutover: direct purchase below `250_000` CU, voucher claim below `200_000` CU, link/unlink/revoke below `250_000` CU each, open dispute and dismissed dispute resolution below `300_000` CU, dispute link batch of 8 positions below `500_000` CU, upheld voucher settlement batch of 8 positions below `1_200_000` CU, and future `settle_x402_purchase` below `350_000` CU when implemented.
+- Compute targets before devnet cutover: direct purchase below `250_000` CU, voucher claim below `200_000` CU, link/unlink/revoke below `250_000` CU each, open dispute and dismissed dispute resolution below `300_000` CU, dispute link batch of 8 positions below `500_000` CU, upheld voucher settlement batch of 8 positions below `1_200_000` CU, and `settle_x402_purchase` below `350_000` CU.
 - If measured compute exceeds these targets, reduce batch size before devnet cutover instead of relying on larger transactions.
 
 Toolchain and generated artifact gate decision:
@@ -509,14 +509,14 @@ Tasks:
 
 Acceptance criteria:
 
-- `solana-keygen pubkey target/deploy/agentvouch-keypair.json` returns `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`, distinct from the legacy `v0.1.0` program ID.
+- `solana-keygen pubkey target/deploy/agentvouch-keypair.json` returns `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`, distinct from the legacy `v0.1.0` program ID.
 - `programs/agentvouch/src/lib.rs` and `Anchor.toml` agree on the `v0.2.0` program ID.
 
 Verification:
 
 ```bash
 solana-keygen pubkey target/deploy/agentvouch-keypair.json
-rg "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" Anchor.toml programs/agentvouch/src/lib.rs
+rg "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg" Anchor.toml programs/agentvouch/src/lib.rs
 ```
 
 ### Pre-Milestone 3 Gates
@@ -525,7 +525,7 @@ Goal: resolve design questions that would be expensive to rewrite after the Anch
 
 Required gates:
 
-- x402 bridge POC pass/fail decision, including PDA settlement vault compatibility, memo binding, payer extraction, idempotency, retry, and refund behavior.
+- x402 bridge POC pass/fail decision, including PDA settlement vault compatibility, compact payment-ref memo binding, payer extraction, idempotency, retry, and refund behavior.
 - Governance and authority model for devnet and mainnet, including upgrade authority custody and config authority rotation.
 - Treasury policy: `treasury_authority` is reserved, and no arbitrary treasury-withdrawal instruction ships in Milestone 3.
 - Exact economic floors:
@@ -570,7 +570,7 @@ Instruction areas to rewrite:
 - `create_skill_listing`
 - `update_skill_listing`
 - `purchase_skill`
-- `settle_x402_purchase` after the bridge POC passes
+- `settle_x402_purchase`
 - `claim_voucher_revenue`
 - `open_author_dispute`
 - `resolve_author_dispute`
@@ -618,7 +618,7 @@ Tasks:
 - Add tests that author proceeds are paid into the listing settlement vault and withdrawn separately.
 - Add tests for voucher revenue claim.
 - Add tests for dispute open/resolve and slashing (slash routed to challenger ATA).
-- Add bridge POC tests before implementing `settle_x402_purchase`: x402 exact payment to protocol settlement vault, memo binding, payer extraction, duplicate payment ref rejection, and retry/refund behavior.
+- Add bridge tests for `settle_x402_purchase`: x402 exact payment to protocol settlement vault, memo binding, payer extraction, duplicate payment ref rejection, and retry/refund behavior.
 - Add negative tests for: wrong mint, wrong token program, missing recipient ATA, wrong ATA owner, insufficient stake, self-vouch, and reputation overflow.
 
 Acceptance criteria:
@@ -740,15 +740,15 @@ Tasks:
 
 - Treat direct `purchase_skill` as the canonical protocol-visible paid purchase path.
 - Require every protocol-listed paid purchase path to preserve voucher rewards when active external voucher stake exists; otherwise route the full payment to author proceeds.
-- Run the x402 settlement bridge POC before making x402 primary for protocol-listed paid skills:
+- Keep the x402 settlement bridge feature-flagged until devnet smoke proves:
   - x402 exact payment credits a protocol settlement vault
-  - `extra.memo` binds payment to skill, listing, chain context, and nonce
+  - `extra.memo` carries a compact payment-ref hash prefix, while signed x402 `extra` fields and the hash preimage bind payment to skill, listing, chain context, buyer, amount, and nonce
   - server verifies settled token delta, memo, payer, mint, and amount
   - backend calls `settle_x402_purchase` as `settlement_authority`
   - program creates an idempotent `X402SettlementReceipt` PDA and the normal `Purchase` PDA
-  - program splits USDC from the settlement vault to author ATA and listing reward vault
+  - program splits USDC from the settlement vault to author proceeds and voucher reward vaults
 - Browser USDC x402 uses split-signature sponsored flow; gate it to wallets that support `partialSign` (route Phantom embedded/send-only wallets to direct `signAndSendTransaction` or agent fallback). Document this for the settlement bridge POC.
-- If the bridge POC fails, disable x402 for protocol-listed paid skills and require direct `purchase_skill`; keep x402 only for repo-only/off-chain entitlement flows.
+- If bridge smoke fails, disable x402 for new paid marketplace purchases and require direct `purchase_skill`; keep historical repo-only/off-chain entitlements for signed re-downloads only.
 - Keep `usdc_purchase_receipts` and `usdc_purchase_entitlements` for raw download access.
 - Add active protocol metadata to `skills`:
   - `on_chain_protocol_version`
@@ -771,7 +771,7 @@ Tasks:
 Acceptance criteria:
 
 - Protocol-listed paid purchases update the same reputation/reward accounting model.
-- Raw skill downloads still work for agents using allowed x402 flows.
+- Raw skill downloads still work for agents using direct-purchase entitlements and historical x402 entitlements.
 - No duplicate entitlement path creates inconsistent purchase state.
 - Direct on-chain purchases grant download access after API verification, and background reconciliation can repair missed client callbacks.
 
@@ -839,7 +839,7 @@ Tasks:
 - Update `packages/agentvouch-cli` for USDC-native publish/list/install flows. CLI keeps read of v0.1.0 listings during the transition but writes only v0.2.0.
 - Remove claims that new listings require a SOL minimum price.
 - Document the first-time author cost shift: USDC author bond plus SOL for rent/fees/ATA creation, even though protocol accounting is USDC-native.
-- Document that x402 bridge memos must contain only protocol references (version, listing, skill id, nonce) and no PII or free-form buyer text.
+- Document that x402 bridge memos carry only a compact protocol payment-ref hash prefix and no PII or free-form buyer text.
 - Update `AGENTS.md` learned-facts to reflect USDC-native protocol, new program ID, vault model, and CAIP-2 conventions.
 - Defer pitch deck co-versioning to Milestone 16, including `pitch/AgentVouch_walkthrough.pptx`, its paper sibling, account/instruction counts, vault-per-primitive diagrams, and USDC-native architecture slides.
 - After every `anchor build`, copy `target/idl/agentvouch.json` to `web/agentvouch.json` and rerun `npm run generate:client` so the web client stays deploy-safe.
@@ -1075,8 +1075,8 @@ Acceptance criteria:
 Verification:
 
 ```bash
-anchor idl fetch AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ --provider.cluster devnet
-solana program dump AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ /tmp/agentvouch-devnet.so --url https://api.devnet.solana.com
+anchor idl fetch AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg --provider.cluster devnet
+solana program dump AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg /tmp/agentvouch-devnet.so --url https://api.devnet.solana.com
 shasum -a 256 target/deploy/agentvouch.so /tmp/agentvouch-devnet.so
 npm run migrate:config
 npm run generate:client
@@ -1248,8 +1248,8 @@ The migration is complete when:
 - Every USDC-moving instruction has at least one positive and one negative test (wrong mint, wrong token program, missing ATA, wrong owner).
 - Vouching, author bonds, purchases, voucher rewards, disputes, and reputation all use USDC accounting.
 - Web primary flows no longer require `v0.1.0` SOL instructions.
-- Protocol-listed paid purchases preserve the `60%` author / `40%` voucher split only when active external voucher stake exists. If there are no active vouchers, the full payment goes to author proceeds. If the x402 bridge POC passes, x402 purchases do this through `settle_x402_purchase`; if it fails, x402 is disabled for protocol-listed paid skills until a later bridge or custom scheme ships.
-- x402 paid downloads still work for allowed v0.2.0 entitlement flows.
+- Protocol-listed paid purchases preserve the `60%` author / `40%` voucher split only when active external voucher stake exists. If there are no active vouchers, the full payment goes to author proceeds. Feature-flagged x402 bridge purchases do this through `settle_x402_purchase`; when the bridge flag is off or smoke fails, protocol-listed paid skills require direct `purchase_skill`.
+- Repo-only x402 paid downloads remain disabled for new paid marketplace purchases; historical x402 entitlements still re-download through signed auth.
 - Direct on-chain purchases are indexed into download entitlements through verified API submission plus reconciliation.
 - Active-dispute freeze invariants, vault close/refund rules, reward-index math, and listing-removal behavior are covered by tests.
 - Governance, treasury, authority rotation, pause, and mainnet readiness policies are documented even if `v0.2.0` remains devnet-only.

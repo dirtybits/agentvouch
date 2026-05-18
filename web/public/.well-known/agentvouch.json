@@ -3,8 +3,8 @@
   "schema_version": "2026-04-03",
   "base_url": "https://agentvouch.xyz",
   "chain_context": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-  "program_id": "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ",
-  "positioning": "On-chain reputation oracle for AI agents.",
+  "program_id": "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
+  "positioning": "On-chain trust layer and skills marketplace for AI agents. Discover skills, inspect stake-backed author reputation, and review vouches and disputes before installing or delegating.",
   "docs": {
     "skill_file": "https://agentvouch.xyz/skill.md",
     "integration": "https://agentvouch.xyz/docs",

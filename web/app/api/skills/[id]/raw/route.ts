@@ -24,6 +24,7 @@ import {
   settleX402Payment,
   verifySettledUsdcTransfer,
   verifyX402Payment,
+  type X402PaymentPayload,
   type X402PaymentRequiredBody,
   type X402SettleResponse,
 } from "@/lib/x402";
@@ -32,6 +33,17 @@ import {
   hasUsdcPurchaseEntitlement,
   recordUsdcPurchaseReceipt,
 } from "@/lib/usdcPurchases";
+import { isProtocolX402BridgeEnabled } from "@/lib/x402BridgePoc";
+import {
+  buildProtocolX402BridgeRequirement,
+  createProtocolX402BridgeNonce,
+  extractProtocolX402BridgeNonce,
+  settleProtocolX402Purchase,
+  validateProtocolX402PaymentPayload,
+  X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
+  type ProtocolX402BridgeRequirement,
+  type ProtocolX402SettlementResult,
+} from "@/lib/x402ProtocolBridge";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -114,6 +126,30 @@ function paymentRequired402(body: X402PaymentRequiredBody) {
   });
 }
 
+function listingRequired402(skill: RawSkillContentRow, priceMicros: bigint) {
+  return NextResponse.json(
+    {
+      error: "On-chain listing required",
+      message:
+        "This paid repo skill is not purchasable until the author links an on-chain SkillListing. New repo-only x402 purchases are disabled so voucher rewards and refund/dispute state stay in the protocol path.",
+      payment_flow: "listing-required",
+      amount_micros: priceMicros.toString(),
+      currency_mint: skill.currency_mint ?? getConfiguredUsdcMint(),
+      chain_context: skill.chain_context ?? getAgentVouchChainContext(),
+      on_chain_program_id: skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      protocol_version:
+        skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
+      on_chain_address: null,
+    },
+    {
+      status: 402,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
 function isProtocolListedUsdcSkill(
   skill: RawSkillContentRow,
   priceMicros: bigint
@@ -134,6 +170,75 @@ function buildPaymentResponseHeaders(value: X402SettleResponse) {
     "PAYMENT-RESPONSE": encoded,
     "X-PAYMENT-RESPONSE": encoded,
   };
+}
+
+function protocolBridgeAuthRequired402(skill: RawSkillContentRow, priceMicros: bigint) {
+  return NextResponse.json(
+    {
+      error: "Signed wallet auth required",
+      message:
+        "Protocol-listed x402 bridge purchases require X-AgentVouch-Auth before payment so the payment memo can bind buyer, listing, skill, amount, and nonce.",
+      payment_flow: X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
+      amount_micros: priceMicros.toString(),
+      currency_mint: skill.currency_mint,
+      chain_context: skill.chain_context ?? getAgentVouchChainContext(),
+      on_chain_program_id: skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      protocol_version:
+        skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
+      on_chain_address: skill.on_chain_address,
+    },
+    { status: 401 }
+  );
+}
+
+function protocolBridgeRetryable409(input: {
+  message: string;
+  skill: RawSkillContentRow;
+  priceMicros: bigint;
+  settlementTxSignature?: string | null;
+  programSettlementSignature?: string | null;
+  paymentRefHash?: string | null;
+}) {
+  return NextResponse.json(
+    {
+      error: "x402 bridge settlement incomplete",
+      message: input.message,
+      retryable: true,
+      payment_flow: X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
+      amount_micros: input.priceMicros.toString(),
+      currency_mint: input.skill.currency_mint,
+      chain_context: input.skill.chain_context ?? getAgentVouchChainContext(),
+      on_chain_program_id:
+        input.skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      protocol_version:
+        input.skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
+      on_chain_address: input.skill.on_chain_address,
+      settlement_tx_signature: input.settlementTxSignature ?? null,
+      program_settlement_signature: input.programSettlementSignature ?? null,
+      x402_payment_ref_hash: input.paymentRefHash ?? null,
+    },
+    { status: 409 }
+  );
+}
+
+function buildBridgePaymentRequiredBody(opts: {
+  request: NextRequest;
+  skill: RawSkillContentRow;
+  bridge: ProtocolX402BridgeRequirement;
+  error?: string;
+}) {
+  return buildX402PaymentRequiredBody({
+    error: opts.error ?? "Payment required",
+    resource: getResourceInfo(opts.request, opts.skill.name),
+    requirement: opts.bridge.requirement,
+    extensions: {
+      payment_flow: X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
+      on_chain_address: opts.skill.on_chain_address,
+      x402_payment_ref_hash: opts.bridge.paymentRefHashHex,
+      protocol_version:
+        opts.skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
+    },
+  });
 }
 
 function validateDownloadAuth(
@@ -243,6 +348,235 @@ async function handleChainOnlyRaw(request: NextRequest, id: string) {
   );
 }
 
+async function handleProtocolX402Bridge(input: {
+  request: NextRequest;
+  skillDbId: string;
+  skill: RawSkillContentRow;
+  buyerPubkey: string;
+  priceMicros: bigint;
+}) {
+  if (!input.skill.on_chain_address || !input.skill.currency_mint) {
+    return NextResponse.json(
+      { error: "Protocol bridge requires linked USDC listing metadata" },
+      { status: 500 }
+    );
+  }
+
+  const paymentHeader = input.request.headers.get("payment-signature");
+  let nonce = createProtocolX402BridgeNonce();
+  let payload: X402PaymentPayload | null = null;
+  if (paymentHeader) {
+    payload = decodeX402PaymentSignatureHeader(paymentHeader);
+    if (!payload) {
+      const bridge = await buildProtocolX402BridgeRequirement({
+        skillDbId: input.skillDbId,
+        skillListingAddress: input.skill.on_chain_address,
+        buyerPubkey: input.buyerPubkey,
+        priceUsdcMicros: input.priceMicros,
+        usdcMint: input.skill.currency_mint,
+        nonce,
+      });
+      return paymentRequired402(
+        buildBridgePaymentRequiredBody({
+          request: input.request,
+          skill: input.skill,
+          bridge,
+          error: "Malformed PAYMENT-SIGNATURE header",
+        })
+      );
+    }
+
+    const payloadNonce = extractProtocolX402BridgeNonce(payload);
+    if (!payloadNonce) {
+      const bridge = await buildProtocolX402BridgeRequirement({
+        skillDbId: input.skillDbId,
+        skillListingAddress: input.skill.on_chain_address,
+        buyerPubkey: input.buyerPubkey,
+        priceUsdcMicros: input.priceMicros,
+        usdcMint: input.skill.currency_mint,
+        nonce,
+      });
+      return paymentRequired402(
+        buildBridgePaymentRequiredBody({
+          request: input.request,
+          skill: input.skill,
+          bridge,
+          error: "PAYMENT-SIGNATURE is missing the AgentVouch bridge nonce",
+        })
+      );
+    }
+    nonce = payloadNonce;
+  }
+
+  const bridge = await buildProtocolX402BridgeRequirement({
+    skillDbId: input.skillDbId,
+    skillListingAddress: input.skill.on_chain_address,
+    buyerPubkey: input.buyerPubkey,
+    priceUsdcMicros: input.priceMicros,
+    usdcMint: input.skill.currency_mint,
+    nonce,
+  });
+  const paymentRequired = buildBridgePaymentRequiredBody({
+    request: input.request,
+    skill: input.skill,
+    bridge,
+  });
+
+  if (!payload) {
+    return paymentRequired402(paymentRequired);
+  }
+
+  const payloadMismatch = validateProtocolX402PaymentPayload(payload, bridge);
+  if (payloadMismatch) {
+    return paymentRequired402({
+      ...paymentRequired,
+      error: payloadMismatch,
+    });
+  }
+
+  let settle: X402SettleResponse;
+  let payer: string;
+  try {
+    const verify = await verifyX402Payment(payload, bridge.requirement);
+    if (!verify.isValid) {
+      return paymentRequired402({
+        ...paymentRequired,
+        error:
+          verify.invalidMessage ||
+          verify.invalidReason ||
+          "Payment verification failed",
+      });
+    }
+
+    settle = await settleX402Payment(payload, bridge.requirement);
+    if (!settle.success) {
+      return paymentRequired402({
+        ...paymentRequired,
+        error:
+          settle.errorMessage ||
+          settle.errorReason ||
+          "Payment settlement failed",
+      });
+    }
+
+    payer = settle.payer || verify.payer || input.buyerPubkey;
+    if (payer !== input.buyerPubkey) {
+      return paymentRequired402({
+        ...paymentRequired,
+        error: "Facilitator payer does not match X-AgentVouch-Auth wallet",
+      });
+    }
+
+    await verifySettledUsdcTransfer({
+      signature: settle.transaction,
+      destinationAta: await deriveAssociatedTokenAccount(
+        bridge.x402SettlementVaultAuthority,
+        input.skill.currency_mint
+      ),
+      currencyMint: input.skill.currency_mint,
+      minimumAmountMicros: input.priceMicros,
+      exactAmountMicros: input.priceMicros,
+      expectedPayer: input.buyerPubkey,
+      expectedMemo: bridge.memo,
+    });
+  } catch (error: unknown) {
+    return paymentRequired402({
+      ...paymentRequired,
+      error: `Facilitator error: ${getErrorMessage(error)}`,
+    });
+  }
+
+  let protocolSettlement: ProtocolX402SettlementResult | null = null;
+  try {
+    protocolSettlement = await settleProtocolX402Purchase({
+      skillDbId: input.skillDbId,
+      skillListingAddress: input.skill.on_chain_address,
+      authorPubkey: input.skill.author_pubkey,
+      buyerPubkey: input.buyerPubkey,
+      amountUsdcMicros: input.priceMicros,
+      usdcMint: input.skill.currency_mint,
+      paymentRefHashBytes: bridge.paymentRefHashBytes,
+      settlementTxSignature: settle.transaction,
+    });
+
+    await recordUsdcPurchaseReceipt({
+      skillDbId: input.skillDbId,
+      buyerPubkey: input.buyerPubkey,
+      paymentTxSignature: settle.transaction,
+      recipientAta: protocolSettlement.x402SettlementVault,
+      currencyMint: input.skill.currency_mint,
+      amountMicros: input.priceMicros.toString(),
+      paymentFlow: X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
+      protocolVersion:
+        input.skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
+      onChainProgramId:
+        input.skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      chainContext: input.skill.chain_context ?? getAgentVouchChainContext(),
+      onChainAddress: input.skill.on_chain_address,
+      purchasePda: protocolSettlement.purchasePda,
+      listingRevision: protocolSettlement.listingRevision,
+      settlementPda: protocolSettlement.listingSettlementPda,
+      authorProceedsVault: protocolSettlement.authorProceedsVault,
+      x402PaymentRefHash: bridge.paymentRefHashHex,
+      x402SettlementSignatureHash:
+        protocolSettlement.x402SettlementSignatureHashHex,
+      x402SettlementReceiptPda:
+        protocolSettlement.x402SettlementReceiptPda,
+      x402SettlementVault: protocolSettlement.x402SettlementVault,
+      refundStatus: "none",
+      legacyRefundEligible: false,
+    });
+  } catch (error: unknown) {
+    return protocolBridgeRetryable409({
+      message: getErrorMessage(error),
+      skill: input.skill,
+      priceMicros: input.priceMicros,
+      settlementTxSignature: settle.transaction,
+      programSettlementSignature:
+        protocolSettlement?.programSettlementSignature ?? null,
+      paymentRefHash: bridge.paymentRefHashHex,
+    });
+  }
+
+  if (!protocolSettlement) {
+    return protocolBridgeRetryable409({
+      message: "Protocol settlement did not return metadata",
+      skill: input.skill,
+      priceMicros: input.priceMicros,
+      settlementTxSignature: settle.transaction,
+      paymentRefHash: bridge.paymentRefHashHex,
+    });
+  }
+
+  console.info(
+    `[x402-bridge] settled protocol purchase: skill=${input.skillDbId} listing=${input.skill.on_chain_address} buyer=${input.buyerPubkey} x402Tx=${settle.transaction} programTx=${protocolSettlement.programSettlementSignature ?? "existing"}`
+  );
+
+  await incrementInstalls(input.skillDbId);
+
+  const settleResponse: X402SettleResponse = {
+    success: true,
+    transaction: settle.transaction,
+    network: settle.network,
+    payer: input.buyerPubkey,
+    ...(settle.amount ? { amount: settle.amount } : {}),
+    extensions: {
+      ...(settle.extensions ?? {}),
+      payment_flow: X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
+      purchase_pda: protocolSettlement.purchasePda,
+      x402_settlement_receipt_pda:
+        protocolSettlement.x402SettlementReceiptPda,
+      program_settlement_signature:
+        protocolSettlement.programSettlementSignature,
+    },
+  };
+
+  return serveContent(
+    input.skill.content,
+    buildPaymentResponseHeaders(settleResponse)
+  );
+}
+
 async function handleUsdcDirect(
   request: NextRequest,
   skillDbId: string,
@@ -272,14 +606,10 @@ async function handleUsdcDirect(
     );
   }
 
-  if (isProtocolListedUsdcSkill(skill, priceMicros)) {
+  if (!skill.on_chain_address) {
     const authHeader = request.headers.get("x-agentvouch-auth");
     if (authHeader) {
-      const authResult = validateDownloadAuth(
-        authHeader,
-        skillDbId,
-        skill.on_chain_address
-      );
+      const authResult = validateDownloadAuth(authHeader, skillDbId, null);
       if ("response" in authResult) {
         return authResult.response;
       }
@@ -292,6 +622,63 @@ async function handleUsdcDirect(
         await incrementInstalls(skillDbId);
         return serveContent(skill.content);
       }
+    }
+
+    return listingRequired402(skill, priceMicros);
+  }
+
+  if (isProtocolListedUsdcSkill(skill, priceMicros)) {
+    const authHeader = request.headers.get("x-agentvouch-auth");
+    let buyerPubkey: string | null = null;
+    if (authHeader) {
+      const authResult = validateDownloadAuth(
+        authHeader,
+        skillDbId,
+        skill.on_chain_address
+      );
+      if ("response" in authResult) {
+        return authResult.response;
+      }
+      buyerPubkey = authResult.buyerPubkey;
+
+      const entitled = await hasUsdcPurchaseEntitlement(
+        skillDbId,
+        authResult.buyerPubkey
+      ).catch(() => false);
+      if (entitled) {
+        await incrementInstalls(skillDbId);
+        return serveContent(skill.content);
+      }
+
+      let onChainEntitled = false;
+      try {
+        onChainEntitled = Boolean(
+          await hasOnChainPurchase(
+            authResult.buyerPubkey,
+            skill.on_chain_address
+          )
+        );
+      } catch {
+        onChainEntitled = false;
+      }
+      if (onChainEntitled) {
+        await incrementInstalls(skillDbId);
+        return serveContent(skill.content);
+      }
+    }
+
+    if (isProtocolX402BridgeEnabled()) {
+      if (!buyerPubkey) {
+        return protocolBridgeAuthRequired402(skill, priceMicros);
+      }
+
+      return handleProtocolX402Bridge({
+        request,
+        skillDbId,
+        skill,
+        buyerPubkey,
+        priceMicros,
+      });
     }
 
     return NextResponse.json(
@@ -516,7 +903,8 @@ export async function GET(
       }
     }
 
-    if (normalizeUsdcMicros(skill.price_usdc_micros) && skill.currency_mint) {
+    if (normalizeUsdcMicros(skill.price_usdc_micros)) {
+      skill.currency_mint ??= getConfiguredUsdcMint();
       return handleUsdcDirect(request, id, skill);
     }
 

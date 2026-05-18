@@ -128,6 +128,26 @@ pub struct SkillPurchased {
 }
 
 #[event]
+pub struct X402PurchaseSettled {
+    pub receipt: Pubkey,
+    pub signature_guard: Pubkey,
+    pub purchase: Pubkey,
+    pub skill_listing: Pubkey,
+    pub buyer: Pubkey,
+    pub payment_ref_hash: [u8; 32],
+    pub settlement_tx_signature_hash: [u8; 32],
+    pub price_usdc_micros: u64,
+    pub author_share_usdc_micros: u64,
+    pub voucher_pool_usdc_micros: u64,
+    pub listing_revision: u64,
+    pub listing_settlement: Pubkey,
+    pub x402_settlement_vault: Pubkey,
+    pub author_proceeds_vault: Pubkey,
+    pub reward_vault: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct AuthorProceedsWithdrawn {
     pub skill_listing: Pubkey,
     pub listing_settlement: Pubkey,

@@ -91,6 +91,18 @@ function buildAgentTrust(
 }
 
 describe("formatSkillSummary", () => {
+  it("marks paid repo skills without listings as listing-required", () => {
+    const lines = formatSkillSummary(
+      buildSkill({
+        on_chain_address: null,
+        payment_flow: undefined,
+      })
+    );
+
+    expect(lines).toContain("payment_flow: listing-required");
+    expect(lines).toContain("listing: none");
+  });
+
   it("prefers the normalized trust summary when present", () => {
     const lines = formatSkillSummary(
       buildSkill({

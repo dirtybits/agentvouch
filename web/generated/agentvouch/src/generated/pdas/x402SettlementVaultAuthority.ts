@@ -17,7 +17,7 @@ export async function findX402SettlementVaultAuthorityPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ" as Address<"AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ">,
+    programAddress = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg" as Address<"AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

@@ -15,10 +15,16 @@ describe("GET /api/x402/supported", () => {
       "USDC",
     ]);
     expect(body.capabilities.protocol_listed_x402_bridge).toBe(false);
+    expect(body.capabilities.repo_x402_usdc).toBe(false);
+    expect(body.capabilities.repo_x402_usdc_legacy_entitlements).toBe(true);
     expect(body.capabilities.protocol_listed_purchase_flow).toBe(
       "direct-purchase-skill"
     );
+    expect(body.capabilities.protocol_listed_message).toContain(
+      "New repo-only x402 purchases are disabled"
+    );
     expect(body.bridge.status).toBe("disabled");
+    expect(body.program.instructions).toEqual(["purchaseSkill"]);
   });
 
   it("reports bridge enabled only when the explicit feature flag is set", async () => {
@@ -29,5 +35,9 @@ describe("GET /api/x402/supported", () => {
 
     expect(body.capabilities.protocol_listed_x402_bridge).toBe(true);
     expect(body.bridge.status).toBe("enabled");
+    expect(body.program.instructions).toEqual([
+      "purchaseSkill",
+      "settleX402Purchase",
+    ]);
   });
 });
