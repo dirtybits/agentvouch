@@ -243,6 +243,10 @@ export default function MarketplacePage() {
     try {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
+      if (publicKey) {
+        params.set("buyer", String(publicKey));
+        params.set("buyerStatus", "1");
+      }
       params.set("sort", sort);
       params.set("page", String(page));
 
@@ -259,7 +263,7 @@ export default function MarketplacePage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, sort]);
+  }, [page, publicKey, search, sort]);
 
   const loadFeed = useCallback(async () => {
     setFeedLoading(true);

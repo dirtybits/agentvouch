@@ -16,18 +16,19 @@ describe("skills page source", () => {
     expect(source).not.toContain(") : purchaseStatusUnavailable ? (");
   });
 
-  it("does not run broad browser-side marketplace scans on initial browse mount", () => {
+  it("uses server-scoped buyer status without broad browser-side marketplace scans", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/page.tsx"),
       "utf8"
     );
 
     expect(source).toContain("fetch(`/api/skills?${params}`)");
+    expect(source).toContain('params.set("buyer", String(publicKey))');
+    expect(source).toContain('params.set("buyerStatus", "1")');
     expect(source).toContain('fetch("/api/skills/activity")');
     expect(source).not.toContain("oracle.getAllSkillListings");
     expect(source).not.toContain("oracle.getAllPurchases");
     expect(source).not.toContain("oracle.getPurchasedSkillListingKeys");
-    expect(source).not.toContain('params.set("buyer"');
   });
 
   it("shows USDC purchase preflight warnings for paid skills", () => {
