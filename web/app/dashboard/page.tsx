@@ -101,6 +101,9 @@ export default function DashboardPage() {
   );
   const [vouches, setVouches] = useState<VouchRecord[]>([]);
   const [vouchesReceived, setVouchesReceived] = useState<VouchRecord[]>([]);
+  const [profileAuthorityByPda, setProfileAuthorityByPda] = useState<
+    Record<string, string>
+  >({});
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [purchaseListings, setPurchaseListings] = useState<
     Map<string, SkillListingRecord>
@@ -137,6 +140,10 @@ export default function DashboardPage() {
       loadVouches();
       loadPurchases();
     } else {
+      setAgentProfile(null);
+      setVouches([]);
+      setVouchesReceived([]);
+      setProfileAuthorityByPda({});
       setPurchases([]);
       setPurchaseListings(new Map());
       setPurchaseWarning(null);
@@ -167,8 +174,36 @@ export default function DashboardPage() {
       const vouchesReceivedList = await oracle.getAllVouchesReceivedByAgent(
         publicKey
       );
+      const relatedProfileKeys = Array.from(
+        new Set(
+          [
+            ...vouchList.map((vouch) => String(vouch.account.vouchee ?? "")),
+            ...vouchesReceivedList.map((vouch) =>
+              String(vouch.account.voucher ?? "")
+            ),
+          ].filter(Boolean)
+        )
+      );
+      const relatedProfiles = await Promise.all(
+        relatedProfileKeys.map(async (profileKey) => {
+          const relatedProfile = await oracle
+            .getAgentProfileByAddress(address(profileKey))
+            .catch(() => null);
+          return [
+            profileKey,
+            relatedProfile?.authority ? String(relatedProfile.authority) : null,
+          ] as const;
+        })
+      );
+      const nextProfileAuthorityByPda = relatedProfiles.reduce<
+        Record<string, string>
+      >((acc, [profileKey, authority]) => {
+        if (authority) acc[profileKey] = authority;
+        return acc;
+      }, {});
       setVouches(vouchList);
       setVouchesReceived(vouchesReceivedList);
+      setProfileAuthorityByPda(nextProfileAuthorityByPda);
     } catch (error) {
       console.error("Error loading vouches:", error);
     }
@@ -1048,7 +1083,13 @@ export default function DashboardPage() {
                   </p>
                   <div className="space-y-3">
                     {vouchesReceived.map((vouch, idx: number) => {
-                      const voucher = vouch.account.voucher;
+                      const voucherProfile = String(vouch.account.voucher);
+                      const voucherAuthority =
+                        profileAuthorityByPda[voucherProfile];
+                      const voucherHref = `/author/${
+                        voucherAuthority ?? voucherProfile
+                      }`;
+                      const voucherLabel = voucherAuthority ?? voucherProfile;
                       const stakeAmount = vouch.account.stakeUsdcMicros;
                       const createdAt = vouch.account.createdAt;
                       return (
@@ -1067,10 +1108,10 @@ export default function DashboardPage() {
                                 </span>
                               </div>
                               <Link
-                                href={`/author/${voucher}`}
+                                href={voucherHref}
                                 className="font-mono text-xs text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline truncate block mb-2"
                               >
-                                {voucher}
+                                {voucherLabel}
                               </Link>
                               <div className="flex gap-4 text-xs text-gray-400 dark:text-gray-500">
                                 <span className="inline-flex items-center gap-1">
@@ -1079,7 +1120,7 @@ export default function DashboardPage() {
                               </div>
                             </div>
                             <Link
-                              href={`/author/${voucher}`}
+                              href={voucherHref}
                               className={`${navButtonSecondaryInlineClass} whitespace-nowrap`}
                             >
                               View
@@ -1105,7 +1146,13 @@ export default function DashboardPage() {
                   </p>
                   <div className="space-y-3">
                     {vouches.map((vouch, idx: number) => {
-                      const vouchee = vouch.account.vouchee;
+                      const voucheeProfile = String(vouch.account.vouchee);
+                      const voucheeAuthority =
+                        profileAuthorityByPda[voucheeProfile];
+                      const voucheeHref = `/author/${
+                        voucheeAuthority ?? voucheeProfile
+                      }`;
+                      const voucheeLabel = voucheeAuthority ?? voucheeProfile;
                       const stakeAmount = vouch.account.stakeUsdcMicros;
                       const createdAt = vouch.account.createdAt;
                       return (
@@ -1124,10 +1171,10 @@ export default function DashboardPage() {
                                 </span>
                               </div>
                               <Link
-                                href={`/author/${vouchee}`}
+                                href={voucheeHref}
                                 className="font-mono text-xs text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline truncate block mb-2"
                               >
-                                {vouchee}
+                                {voucheeLabel}
                               </Link>
                               <div className="flex gap-4 text-xs text-gray-400 dark:text-gray-500">
                                 <span className="inline-flex items-center gap-1">
@@ -1136,7 +1183,7 @@ export default function DashboardPage() {
                               </div>
                             </div>
                             <Link
-                              href={`/author/${vouchee}`}
+                              href={voucheeHref}
                               className={`${navButtonSecondaryInlineClass} whitespace-nowrap`}
                             >
                               View

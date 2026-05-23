@@ -30,4 +30,20 @@ describe("dashboard profile source", () => {
     expect(source).toContain("Edit Listing");
     expect(source).toContain("Publish New Version");
   });
+
+  it("links vouch dashboard rows through author wallets instead of AgentProfile PDAs", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/dashboard/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("profileAuthorityByPda");
+    expect(source).toContain("getAgentProfileByAddress(address(profileKey))");
+    expect(source).toContain("const voucherHref");
+    expect(source).toContain("const voucheeHref");
+    expect(source).toContain("voucherAuthority ?? voucherProfile");
+    expect(source).toContain("voucheeAuthority ?? voucheeProfile");
+    expect(source).not.toContain("href={`/author/${voucher}`}");
+    expect(source).not.toContain("href={`/author/${vouchee}`}");
+  });
 });
