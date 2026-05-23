@@ -2429,7 +2429,7 @@ export function useReputationOracle() {
   );
 
   const claimVoucherRevenue = useCallback(
-    async (_skillListingKey: Address, authorKey: Address) => {
+    async (authorKey: Address) => {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
       const voucherAddress = getConnectedAuthorAddress(walletAddress, signer);
       const usdcMint = await getProtocolUsdcMint();

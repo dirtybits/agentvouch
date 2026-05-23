@@ -64,8 +64,16 @@ function shortAddr(addr: string): string {
   return addr.slice(0, 6) + "..." + addr.slice(-4);
 }
 
+const REWARD_INDEX_SCALE = 1_000_000_000_000n;
+const AUTHOR_REWARD_POOL_CLAIM_ID = "author-reward-pool";
+
 function formatUsdc(micros: number | bigint | string | null | undefined): string {
   return formatUsdcMicros(micros) ?? "0";
+}
+
+function toBigInt(value: number | bigint | string | null | undefined): bigint {
+  if (value === null || value === undefined || value === "") return 0n;
+  return BigInt(value);
 }
 
 function formatDate(isoOrTimestamp: string | number): string {
@@ -614,57 +622,37 @@ export default function AuthorProfilePage() {
     if (!myPubkey) return null;
     return (
       vouchesReceived.find(
-        (vouch) => profileAuthorityByPda[String(vouch.account.voucher)] === myPubkey
+        (vouch) =>
+          profileAuthorityByPda[String(vouch.account.voucher)] === myPubkey
       ) ?? null
     );
   }, [myPubkey, profileAuthorityByPda, vouchesReceived]);
   const viewerVouchIsActive =
     viewerVouch?.account.status === VouchStatus.Active;
-  const claimableVoucherRevenue = useMemo(() => {
-    if (!viewerVouch || !viewerVouchIsActive || !profile) {
-      return [];
+  const authorUnclaimedVoucherRevenueUsdcMicros = toBigInt(
+    profile?.unclaimedVoucherRevenueUsdcMicros
+  );
+  const viewerEstimatedClaimableUsdcMicros = useMemo(() => {
+    if (!viewerVouch || !profile) {
+      return 0n;
     }
 
-    const totalStaked = BigInt(profile.totalVouchStakeUsdcMicros ?? 0);
-    const voucherStake = BigInt(viewerVouch.account.stakeUsdcMicros ?? 0);
+    const rewardIndex = toBigInt(profile.rewardIndexUsdcMicrosX1e12);
+    const entryIndex = toBigInt(
+      viewerVouch.account.entryAuthorRewardIndexX1e12
+    );
+    const indexDelta = rewardIndex > entryIndex ? rewardIndex - entryIndex : 0n;
+    const accruedSinceLastTouch =
+      (toBigInt(viewerVouch.account.stakeUsdcMicros) * indexDelta) /
+      REWARD_INDEX_SCALE;
 
-    return authorSkillListings
-      .map((listing) => {
-        const listingAddress = String(listing.publicKey);
-        const unclaimedRevenueUsdcMicros = BigInt(
-          listing.account.unclaimedVoucherRevenueUsdcMicros ?? 0
-        );
-        const estimatedShareUsdcMicros =
-          totalStaked > 0n
-            ? (unclaimedRevenueUsdcMicros * voucherStake) / totalStaked
-            : 0n;
-        const matchedSkill =
-          repoSkills.find(
-            (skill) => skill.on_chain_address === listingAddress
-          ) ??
-          chainSkills.find((skill) => skill.on_chain_address === listingAddress);
-
-        return {
-          listingAddress,
-          name:
-            matchedSkill?.name ??
-            listing.account.name ??
-            `Skill ${shortAddr(listingAddress)}`,
-          listingLamports: listing.lamports,
-          unclaimedRevenueUsdcMicros: Number(unclaimedRevenueUsdcMicros),
-          estimatedShareUsdcMicros: Number(estimatedShareUsdcMicros),
-          accountingMismatch: false,
-        };
-      })
-      .filter((listing) => listing.unclaimedRevenueUsdcMicros > 0);
-  }, [
-    authorSkillListings,
-    chainSkills,
-    profile,
-    repoSkills,
-    viewerVouch,
-    viewerVouchIsActive,
-  ]);
+    return (
+      toBigInt(viewerVouch.account.pendingRewardsUsdcMicros) +
+      accruedSinceLastTouch
+    );
+  }, [profile, viewerVouch]);
+  const viewerCanClaimVoucherRevenue =
+    viewerEstimatedClaimableUsdcMicros > 0n;
   const claimSkillOptions = useMemo(
     () => [
       ...repoSkills
@@ -739,7 +727,7 @@ export default function AuthorProfilePage() {
   }, [claiming, clearClaimRouteParams]);
 
   const handleClaimVoucherRevenue = useCallback(
-    async (skillListingAddress: string) => {
+    async () => {
       if (!connected) {
         setClaimRevenueStatus({
           success: false,
@@ -749,15 +737,12 @@ export default function AuthorProfilePage() {
         return;
       }
 
-      setClaimingRevenueListing(skillListingAddress);
+      setClaimingRevenueListing(AUTHOR_REWARD_POOL_CLAIM_ID);
       setClaimRevenueStatus(null);
       setClaimRevenueTx(null);
 
       try {
-        const { tx } = await oracle.claimVoucherRevenue(
-          address(skillListingAddress),
-          address(pubkey)
-        );
+        const { tx } = await oracle.claimVoucherRevenue(address(pubkey));
         setClaimRevenueStatus({
           success: true,
           message: "Voucher revenue claimed.",
@@ -768,8 +753,8 @@ export default function AuthorProfilePage() {
         const message = getErrorMessage(error, "Failed to claim voucher revenue.");
         setClaimRevenueStatus({
           success: false,
-          message: /Insufficient funds in skill listing/i.test(message)
-            ? "This listing's recorded voucher revenue is higher than its actual on-chain balance, so the claim would fail. This looks like stale devnet accounting on an older listing."
+          message: /Insufficient funds in author reward pool/i.test(message)
+            ? "This author's recorded voucher revenue is higher than its actual on-chain reward vault balance, so the claim would fail. This looks like stale devnet accounting on an older author profile."
             : message,
         });
         setClaimRevenueTx(null);
@@ -1446,6 +1431,52 @@ export default function AuthorProfilePage() {
           ))}
         </div>
 
+        {!isOwnProfile && connected && viewerVouch && (
+          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-2">
+                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <FiShield className="text-[var(--sea-accent)]" /> Your
+                  Backing
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  This connected wallet is staking behind this author&apos;s
+                  reputation.
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 font-mono break-all">
+                  Vouch account: {viewerVouch.publicKey}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:min-w-[28rem]">
+                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Stake
+                  </div>
+                  <div className="font-mono text-sm font-bold text-gray-900 dark:text-white">
+                    {formatUsdc(viewerVouch.account.stakeUsdcMicros)} USDC
+                  </div>
+                </div>
+                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Status
+                  </div>
+                  <div className="font-mono text-sm font-bold text-gray-900 dark:text-white">
+                    {getVouchStatusLabel(viewerVouch.account.status)}
+                  </div>
+                </div>
+                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Claimable
+                  </div>
+                  <div className="font-mono text-sm font-bold text-gray-900 dark:text-white">
+                    {formatUsdc(viewerEstimatedClaimableUsdcMicros)} USDC
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Vouch for this author */}
         {!isOwnProfile && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
@@ -1560,80 +1591,66 @@ export default function AuthorProfilePage() {
               Revenue
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              You are backing this author with{" "}
-              {formatUsdc(viewerVouch.account.stakeUsdcMicros)} USDC.
-              Claiming uses the existing on-chain `claim_voucher_revenue`
-              instruction.
+              Rewards accrue author-wide as paid purchases settle through this
+              author&apos;s listings. Claiming uses the existing on-chain
+              `claim_voucher_revenue` instruction.
             </p>
 
-            {!viewerVouchIsActive ? (
+            {!viewerVouchIsActive && (
               <div className="rounded-sm border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/20 p-4">
                 <p className="text-sm text-amber-700 dark:text-amber-300">
-                  This backing vouch is not active, so it is not eligible to
-                  claim voucher revenue.
+                  This backing vouch is not active, so it is not earning future
+                  voucher revenue. Any previously accrued rewards still appear
+                  below.
                 </p>
               </div>
-            ) : claimableVoucherRevenue.length === 0 ? (
+            )}
+
+            {viewerEstimatedClaimableUsdcMicros === 0n ? (
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  No claimable USDC voucher revenue is available for this
-                  author&apos;s listings right now.
+                  {authorUnclaimedVoucherRevenueUsdcMicros > 0n
+                    ? `This author reward pool currently has ${formatUsdc(
+                        authorUnclaimedVoucherRevenueUsdcMicros
+                      )} USDC, but this wallet has no claimable share right now.`
+                    : "No claimable USDC voucher revenue is available for this author right now."}
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {claimableVoucherRevenue.map((listing) => (
-                  <div
-                    key={listing.listingAddress}
-                    className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="space-y-1">
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {listing.name}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">
-                          Listing: {listing.listingAddress}
-                        </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          Unclaimed pool:{" "}
-                          <span className="font-mono text-gray-900 dark:text-white">
-                            {formatUsdc(listing.unclaimedRevenueUsdcMicros)} USDC
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          Your estimated share:{" "}
-                          <span className="font-mono text-gray-900 dark:text-white">
-                            {formatUsdc(listing.estimatedShareUsdcMicros)} USDC
-                          </span>
-                        </div>
-                        {listing.accountingMismatch && (
-                          <div className="text-xs text-amber-700 dark:text-amber-300">
-                            This listing&apos;s stored voucher revenue exceeds its
-                            actual on-chain balance. Claiming would fail until
-                            the devnet listing accounting is repaired.
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={() =>
-                          handleClaimVoucherRevenue(listing.listingAddress)
-                        }
-                        disabled={
-                          claimingRevenueListing === listing.listingAddress ||
-                          listing.estimatedShareUsdcMicros <= 0 ||
-                          listing.accountingMismatch
-                        }
-                        className={navButtonPrimaryInlineClass}
-                      >
-                        {claimingRevenueListing === listing.listingAddress
-                          ? "Claiming..."
-                          : "Claim revenue"}
-                      </button>
+              <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Author-wide reward pool
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Unclaimed pool:{" "}
+                      <span className="font-mono text-gray-900 dark:text-white">
+                        {formatUsdc(authorUnclaimedVoucherRevenueUsdcMicros)}{" "}
+                        USDC
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Your claimable share:{" "}
+                      <span className="font-mono text-gray-900 dark:text-white">
+                        {formatUsdc(viewerEstimatedClaimableUsdcMicros)} USDC
+                      </span>
                     </div>
                   </div>
-                ))}
+
+                  <button
+                    onClick={() => handleClaimVoucherRevenue()}
+                    disabled={
+                      claimingRevenueListing === AUTHOR_REWARD_POOL_CLAIM_ID ||
+                      !viewerCanClaimVoucherRevenue
+                    }
+                    className={navButtonPrimaryInlineClass}
+                  >
+                    {claimingRevenueListing === AUTHOR_REWARD_POOL_CLAIM_ID
+                      ? "Claiming..."
+                      : "Claim revenue"}
+                  </button>
+                </div>
               </div>
             )}
 
