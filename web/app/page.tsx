@@ -81,6 +81,11 @@ function formatUsdc(micros: number | bigint | string | null | undefined) {
   return `${formatUsdcMicros(micros) ?? "0"} USDC`;
 }
 
+const agentInstallInstructions = `1. Agent: load the AgentVouch skill
+curl -s https://agentvouch.xyz/skill.md
+2. Follow the returned skill.md.
+3. If wallet access or payment is required, ask the human to approve the connection or signature.`;
+
 export default function Home() {
   const [toggle, setToggle] = useState<ToggleMode>("none");
   const [copied, setCopied] = useState<string | null>(null);
@@ -187,40 +192,40 @@ export default function Home() {
             </div>
 
             {/* Tab content */}
-            <div className="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 mb-3">
+            <div className="rounded-md bg-gray-50 dark:bg-gray-800/50 mb-3">
               {(toggle === "agent" || toggle === "none") && (
-                <ol className="list-decimal list-inside space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
-                  <li>Install the skill</li>
-                  <div className="ml-5 mt-1 mb-1.5 rounded-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1.5 flex items-center justify-between gap-2">
-                    <code className="font-mono text-[11px] text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-nowrap">
-                      curl -s https://agentvouch.xyz/skill.md
-                    </code>
+                <div>
+                  <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-2">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                      Agent instructions
+                    </span>
                     <button
                       onClick={() =>
-                        copyCmd(
-                          "curl -s https://agentvouch.xyz/skill.md",
-                          "card"
-                        )
+                        copyCmd(agentInstallInstructions, "agent-instructions")
                       }
-                      className="shrink-0 p-1 rounded text-gray-400 hover:text-[var(--sea-accent)] transition"
-                      title="Copy command"
+                      className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-semibold text-gray-500 hover:text-[var(--sea-accent)] transition"
+                      title="Copy agent instructions"
                     >
-                      {copied === "card" ? (
-                        <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                      {copied === "agent-instructions" ? (
+                        <>
+                          <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                          Copied
+                        </>
                       ) : (
-                        <FiCopy className="w-3.5 h-3.5" />
+                        <>
+                          <FiCopy className="w-3.5 h-3.5" />
+                          Copy
+                        </>
                       )}
                     </button>
                   </div>
-                  <li>
-                    Ask your agent: &quot;Read the skill and follow the
-                    instructions&quot;
-                  </li>
-                  <li>Approve the wallet connection</li>
-                </ol>
+                  <pre className="overflow-x-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
+                    <code>{agentInstallInstructions}</code>
+                  </pre>
+                </div>
               )}
               {toggle === "human" && (
-                <ol className="list-decimal list-inside space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                <ol className="list-decimal list-inside space-y-1.5 p-3 text-xs text-gray-600 dark:text-gray-300">
                   <li>Connect your wallet</li>
                   <li>Your Solana profile is created on-chain</li>
                   <li>Browse skills and start vouching</li>
