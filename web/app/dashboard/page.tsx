@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { address } from "@solana/kit";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
@@ -17,7 +17,10 @@ import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getConfiguredSolanaFmTxUrl } from "@/lib/chains";
 import { getAuthorDisputeLiabilityScopeLabel } from "@/lib/authorDisputes";
 import Link from "next/link";
-import { AuthorDisputeRuling } from "@/generated/agentvouch/src/generated";
+import {
+  AuthorDisputeRuling,
+  VouchStatus,
+} from "@/generated/agentvouch/src/generated";
 import {
   FiAlertTriangle,
   FiCalendar,
@@ -69,6 +72,28 @@ type AgentListingRecord = Awaited<
 type OracleAuthorDisputeRow = Awaited<
   ReturnType<ReputationOracle["getAllAuthorDisputes"]>
 >[number];
+type VoucherRevenueRow = {
+  vouchPublicKey: string;
+  authorProfile: string;
+  authorAuthority: string | null;
+  status: VouchRecord["account"]["status"];
+  stakeUsdcMicros: bigint;
+  lifetimeClaimedUsdcMicros: bigint;
+  pendingUsdcMicros: bigint;
+  estimatedClaimableUsdcMicros: bigint;
+  isActive: boolean;
+};
+
+const REWARD_INDEX_SCALE = 1_000_000_000_000n;
+const VOUCHER_REVENUE_CLAIM_TIMEOUT_MS = 90_000;
+const VOUCHER_REVENUE_AWAITING_WALLET_DELAY_MS = 1_500;
+const VOUCHER_REVENUE_REFRESH_DELAY_MS = 2_000;
+
+type VoucherRevenueClaimStage =
+  | "preparing"
+  | "awaiting-wallet"
+  | "confirming"
+  | null;
 
 function getSolanaFmTxUrl(tx: string): string {
   return getConfiguredSolanaFmTxUrl(tx);
@@ -79,6 +104,32 @@ function getAuthorActionHref(
   action: "edit-listing" | "publish-version"
 ): string {
   return `/skills/${detailId}?authorAction=${action}#author-actions`;
+}
+
+function toBigInt(value: unknown): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? BigInt(Math.trunc(value)) : 0n;
+  }
+  if (typeof value === "string" && /^-?\d+$/.test(value)) return BigInt(value);
+  return 0n;
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }
 
 export default function DashboardPage() {
@@ -103,6 +154,9 @@ export default function DashboardPage() {
   const [vouchesReceived, setVouchesReceived] = useState<VouchRecord[]>([]);
   const [profileAuthorityByPda, setProfileAuthorityByPda] = useState<
     Record<string, string>
+  >({});
+  const [profileByPda, setProfileByPda] = useState<
+    Record<string, AgentProfileData>
   >({});
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [purchaseListings, setPurchaseListings] = useState<
@@ -131,7 +185,71 @@ export default function DashboardPage() {
     message: string;
     tx: string;
   } | null>(null);
+  const [claimingVoucherRevenue, setClaimingVoucherRevenue] = useState<
+    string | null
+  >(null);
+  const [claimVoucherStage, setClaimVoucherStage] =
+    useState<VoucherRevenueClaimStage>(null);
+  const [voucherRevenueStatus, setVoucherRevenueStatus] = useState<{
+    success: boolean;
+    message: string;
+    tx?: string | null;
+  } | null>(null);
   const purchaseWalletRef = useRef<string | null>(null);
+
+  const voucherRevenueRows = useMemo<VoucherRevenueRow[]>(() => {
+    return vouches.map((vouch) => {
+      const authorProfile = String(vouch.account.vouchee);
+      const authorProfileData = profileByPda[authorProfile] ?? null;
+      const rewardIndex = toBigInt(
+        authorProfileData?.rewardIndexUsdcMicrosX1e12
+      );
+      const entryIndex = toBigInt(
+        vouch.account.entryAuthorRewardIndexX1e12
+      );
+      const indexDelta = rewardIndex > entryIndex ? rewardIndex - entryIndex : 0n;
+      const stakeUsdcMicros = toBigInt(vouch.account.stakeUsdcMicros);
+      const accruedSinceLastTouch =
+        (stakeUsdcMicros * indexDelta) / REWARD_INDEX_SCALE;
+      const pendingUsdcMicros = toBigInt(vouch.account.pendingRewardsUsdcMicros);
+      const estimatedClaimableUsdcMicros =
+        pendingUsdcMicros + accruedSinceLastTouch;
+
+      return {
+        vouchPublicKey: String(vouch.publicKey),
+        authorProfile,
+        authorAuthority: profileAuthorityByPda[authorProfile] ?? null,
+        status: vouch.account.status,
+        stakeUsdcMicros,
+        lifetimeClaimedUsdcMicros: toBigInt(
+          vouch.account.cumulativeRevenueUsdcMicros
+        ),
+        pendingUsdcMicros,
+        estimatedClaimableUsdcMicros,
+        isActive: vouch.account.status === VouchStatus.Active,
+      };
+    });
+  }, [profileAuthorityByPda, profileByPda, vouches]);
+
+  const voucherRevenueTotals = useMemo(
+    () =>
+      voucherRevenueRows.reduce(
+        (acc, row) => {
+          if (row.isActive) {
+            acc.activeBackingUsdcMicros += row.stakeUsdcMicros;
+          }
+          acc.lifetimeClaimedUsdcMicros += row.lifetimeClaimedUsdcMicros;
+          acc.claimableUsdcMicros += row.estimatedClaimableUsdcMicros;
+          return acc;
+        },
+        {
+          activeBackingUsdcMicros: 0n,
+          lifetimeClaimedUsdcMicros: 0n,
+          claimableUsdcMicros: 0n,
+        }
+      ),
+    [voucherRevenueRows]
+  );
 
   useEffect(() => {
     setAuthorBondSuccess(null);
@@ -144,6 +262,10 @@ export default function DashboardPage() {
       setVouches([]);
       setVouchesReceived([]);
       setProfileAuthorityByPda({});
+      setProfileByPda({});
+      setVoucherRevenueStatus(null);
+      setClaimingVoucherRevenue(null);
+      setClaimVoucherStage(null);
       setPurchases([]);
       setPurchaseListings(new Map());
       setPurchaseWarning(null);
@@ -192,6 +314,7 @@ export default function DashboardPage() {
           return [
             profileKey,
             relatedProfile?.authority ? String(relatedProfile.authority) : null,
+            relatedProfile,
           ] as const;
         })
       );
@@ -201,9 +324,16 @@ export default function DashboardPage() {
         if (authority) acc[profileKey] = authority;
         return acc;
       }, {});
+      const nextProfileByPda = relatedProfiles.reduce<
+        Record<string, AgentProfileData>
+      >((acc, [profileKey, , profile]) => {
+        if (profile) acc[profileKey] = profile;
+        return acc;
+      }, {});
       setVouches(vouchList);
       setVouchesReceived(vouchesReceivedList);
       setProfileAuthorityByPda(nextProfileAuthorityByPda);
+      setProfileByPda(nextProfileByPda);
     } catch (error) {
       console.error("Error loading vouches:", error);
     }
@@ -455,6 +585,86 @@ export default function DashboardPage() {
       setStatusTx(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleClaimVoucherRevenue = async (row: VoucherRevenueRow) => {
+    if (!row.authorAuthority) {
+      setVoucherRevenueStatus({
+        success: false,
+        message:
+          "This author profile is missing an authority wallet, so revenue cannot be claimed from the dashboard yet.",
+      });
+      return;
+    }
+
+    console.info(
+      "[voucher-revenue-claim] start",
+      JSON.stringify({
+        vouchPublicKey: row.vouchPublicKey,
+        authorAuthority: row.authorAuthority,
+        authorProfile: row.authorProfile,
+        estimatedClaimableUsdcMicros:
+          row.estimatedClaimableUsdcMicros.toString(),
+      })
+    );
+
+    setClaimingVoucherRevenue(row.vouchPublicKey);
+    setClaimVoucherStage("preparing");
+    setVoucherRevenueStatus(null);
+
+    let awaitingWalletTimer: ReturnType<typeof setTimeout> | null = setTimeout(
+      () => {
+        console.info("[voucher-revenue-claim] awaiting wallet approval");
+        setClaimVoucherStage("awaiting-wallet");
+      },
+      VOUCHER_REVENUE_AWAITING_WALLET_DELAY_MS
+    );
+
+    try {
+      const claimPromise = oracle
+        .claimVoucherRevenue(address(row.authorAuthority))
+        .then((result) => {
+          if (awaitingWalletTimer) {
+            clearTimeout(awaitingWalletTimer);
+            awaitingWalletTimer = null;
+          }
+          setClaimVoucherStage("confirming");
+          console.info("[voucher-revenue-claim] sent", {
+            tx: result?.tx ? String(result.tx) : null,
+          });
+          return result;
+        });
+      const { tx } = await withTimeout(
+        claimPromise,
+        VOUCHER_REVENUE_CLAIM_TIMEOUT_MS,
+        "Claim is still waiting after 90 seconds. Open your wallet to approve or reject the request, check the browser console for `[voucher-revenue-claim]` logs, and retry."
+      );
+      console.info("[voucher-revenue-claim] confirmed", { tx: String(tx) });
+      setVoucherRevenueStatus({
+        success: true,
+        message: "Voucher revenue claimed.",
+        tx,
+      });
+      setTimeout(() => {
+        void loadVouches();
+      }, VOUCHER_REVENUE_REFRESH_DELAY_MS);
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, "Failed to claim voucher revenue.");
+      console.error("[voucher-revenue-claim] failed", error);
+      setVoucherRevenueStatus({
+        success: false,
+        message: /Insufficient funds in author reward pool/i.test(message)
+          ? "This author's recorded voucher revenue is higher than its actual on-chain reward vault balance, so the claim would fail. This looks like stale devnet accounting on an older author profile."
+          : message,
+      });
+    } finally {
+      if (awaitingWalletTimer) {
+        clearTimeout(awaitingWalletTimer);
+        awaitingWalletTimer = null;
+      }
+      setClaimingVoucherRevenue(null);
+      setClaimVoucherStage(null);
     }
   };
 
@@ -1069,6 +1279,185 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+
+              {agentProfile && (
+                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+                  <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                    <FiDollarSign className="text-[var(--sea-accent)]" /> Voucher
+                    Revenue
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    Revenue earned from paid purchases routed through authors you
+                    vouch for.
+                  </p>
+
+                  <div className="grid gap-3 md:grid-cols-3 mb-4">
+                    <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Active Backing
+                      </p>
+                      <p className="mt-1 font-mono text-base font-bold text-gray-900 dark:text-white">
+                        {formatUsdc(voucherRevenueTotals.activeBackingUsdcMicros)}
+                      </p>
+                    </div>
+                    <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Lifetime Claimed
+                      </p>
+                      <p className="mt-1 font-mono text-base font-bold text-gray-900 dark:text-white">
+                        {formatUsdc(
+                          voucherRevenueTotals.lifetimeClaimedUsdcMicros
+                        )}
+                      </p>
+                    </div>
+                    <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Claimable Revenue
+                      </p>
+                      <p className="mt-1 font-mono text-base font-bold text-green-600 dark:text-green-400">
+                        {formatUsdc(voucherRevenueTotals.claimableUsdcMicros)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {voucherRevenueStatus && (
+                    <div
+                      className={`mb-4 rounded-sm border p-3 text-sm ${
+                        voucherRevenueStatus.success
+                          ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300"
+                          : "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {voucherRevenueStatus.success ? (
+                          <FiCheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <div className="space-y-1">
+                          <p>{voucherRevenueStatus.message}</p>
+                          {voucherRevenueStatus.tx && (
+                            <a
+                              href={getSolanaFmTxUrl(voucherRevenueStatus.tx)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                            >
+                              View transaction on Solana FM
+                              <FiExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {voucherRevenueRows.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      No voucher revenue yet. Revenue appears here after you vouch
+                      for authors and their paid listings generate voucher-share
+                      rewards.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {voucherRevenueRows.map((row) => {
+                        const authorHref = `/author/${
+                          row.authorAuthority ?? row.authorProfile
+                        }`;
+                        const authorLabel =
+                          row.authorAuthority ?? row.authorProfile;
+                        const isClaiming =
+                          claimingVoucherRevenue === row.vouchPublicKey;
+                        const canClaim =
+                          row.estimatedClaimableUsdcMicros > 0n &&
+                          !!row.authorAuthority &&
+                          !claimingVoucherRevenue;
+
+                        return (
+                          <div
+                            key={row.vouchPublicKey}
+                            className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4"
+                          >
+                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-2 flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-base font-bold text-green-600 dark:text-green-400">
+                                    {formatUsdc(row.estimatedClaimableUsdcMicros)}
+                                  </span>
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                                    claimable
+                                  </span>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                      row.isActive
+                                        ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+                                        : "bg-gray-200/70 text-gray-700 border border-gray-300 dark:bg-gray-700/70 dark:text-gray-300 dark:border-gray-700"
+                                    }`}
+                                  >
+                                    {row.isActive ? "Active" : "Inactive"}
+                                  </span>
+                                </div>
+                                <Link
+                                  href={authorHref}
+                                  className="font-mono text-xs text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline truncate block mb-3"
+                                >
+                                  {authorLabel}
+                                </Link>
+                                <div className="grid gap-2 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-3">
+                                  <span>
+                                    Stake:{" "}
+                                    <span className="font-mono text-gray-900 dark:text-white">
+                                      {formatUsdc(row.stakeUsdcMicros)}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    Claimed:{" "}
+                                    <span className="font-mono text-gray-900 dark:text-white">
+                                      {formatUsdc(row.lifetimeClaimedUsdcMicros)}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    Pending:{" "}
+                                    <span className="font-mono text-gray-900 dark:text-white">
+                                      {formatUsdc(row.pendingUsdcMicros)}
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2 md:justify-end">
+                                <button
+                                  onClick={() => handleClaimVoucherRevenue(row)}
+                                  disabled={!canClaim}
+                                  className={navButtonPrimaryInlineClass}
+                                  title={
+                                    row.authorAuthority
+                                      ? undefined
+                                      : "Author authority could not be loaded"
+                                  }
+                                >
+                                  {isClaiming
+                                    ? claimVoucherStage === "awaiting-wallet"
+                                      ? "Approve in wallet..."
+                                      : claimVoucherStage === "confirming"
+                                      ? "Confirming..."
+                                      : "Preparing..."
+                                    : "Claim"}
+                                </button>
+                                <Link
+                                  href={authorHref}
+                                  className={navButtonSecondaryInlineClass}
+                                >
+                                  View
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {agentProfile && vouchesReceived.length > 0 && (
                 <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
