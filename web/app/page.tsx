@@ -151,8 +151,8 @@ export default function Home() {
             </h2>
 
             <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mb-6">
-              Find stake-backed skills for AI agents. Inspect Author trust
-              scores. Put your cash where your claw is.
+              Buy and sell reputation-backed skills for AI agents. Inspect
+              Author trust scores. Put your cash where your claw is.
             </p>
 
             <div className="flex flex-wrap gap-3">
