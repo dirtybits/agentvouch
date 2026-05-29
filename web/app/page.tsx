@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import TypewriterText from "@/components/TypewriterText";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
+import SkillPreviewCard from "@/components/SkillPreviewCard";
+import type { TrustData } from "@/components/TrustBadge";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
@@ -14,7 +16,6 @@ import {
   FiCheck,
   FiCheckCircle,
   FiCopy,
-  FiDownload,
   FiExternalLink,
   FiGitBranch,
   FiLayers,
@@ -28,14 +29,27 @@ import { SITE_URL } from "@/lib/site";
 
 type ToggleMode = "none" | "human" | "agent";
 type FeaturedSkill = {
-  publicKey: string;
-  account: {
-    name?: string;
-    description?: string | null;
-    priceUsdcMicros?: number | bigint;
-    totalDownloads?: number | bigint;
-    totalRevenueUsdcMicros?: number | bigint;
-  };
+  id: string;
+  author_pubkey: string;
+  name: string;
+  description: string | null;
+  tags: string[];
+  current_version: number;
+  source?: "repo" | "chain";
+  author_trust: TrustData | null;
+  price_usdc_micros?: string | null;
+  payment_flow?:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
+  on_chain_address?: string;
+  price_lamports?: number;
+  total_installs?: number;
+  total_downloads?: number;
+  purchaseRiskWarning?: string | null;
+  buyerHasPurchased?: boolean;
 };
 type LandingResponse = {
   metrics: {
@@ -47,7 +61,9 @@ type LandingResponse = {
     onChainDownloads: number;
     downloads: number;
   };
-  featuredSkills?: FeaturedSkill[];
+};
+type SkillsListResponse = {
+  skills?: FeaturedSkill[];
 };
 
 const homepageJsonLd = {
@@ -120,7 +136,15 @@ export default function Home() {
             staked: landingRes.metrics.staked,
             downloads: landingRes.metrics.downloads,
           });
-          setFeaturedSkills(landingRes.featuredSkills ?? []);
+        }
+
+        const skillsRes = await fetch("/api/skills?sort=trusted")
+          .then((r) =>
+            r.ok ? (r.json() as Promise<SkillsListResponse>) : null
+          )
+          .catch(() => null);
+        if (skillsRes?.skills) {
+          setFeaturedSkills(skillsRes.skills.slice(0, 3));
         }
       } catch (error: unknown) {
         console.error("Failed to load landing metrics:", error);
@@ -277,39 +301,31 @@ export default function Home() {
                   See all <FiArrowRight />
                 </Link>
               </div>
-              <div className="grid md:grid-cols-3 gap-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {featuredSkills.map((skill) => {
-                  const price = skill.account.priceUsdcMicros ?? 0;
-                  const downloads = Number(skill.account.totalDownloads ?? 0);
-                  const revenue = skill.account.totalRevenueUsdcMicros ?? 0;
+                  const downloads =
+                    (skill.total_installs ?? 0) + (skill.total_downloads ?? 0);
+                  const listingPubkey = skill.on_chain_address ?? null;
+                  const legacySolLamports =
+                    skill.price_usdc_micros || listingPubkey
+                      ? 0
+                      : skill.price_lamports ?? 0;
+                  const hasAccessPath =
+                    skill.source === "repo" || Boolean(listingPubkey);
                   return (
-                    <Link
-                      key={skill.publicKey}
-                      href={`/skills/chain-${skill.publicKey}`}
-                      className="rounded-sm border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/30 p-5 flex flex-col hover:border-[var(--lobster-accent)] transition group"
-                    >
-                      <h4 className="font-heading font-bold text-gray-900 dark:text-white text-sm mb-1 truncate group-hover:text-[var(--lobster-accent)] transition">
-                        {skill.account.name || "Untitled Skill"}
-                      </h4>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 line-clamp-2">
-                        {skill.account.description || "No description"}
-                      </p>
-                      <div className="mt-auto flex items-center justify-between text-xs">
-                        <span className="font-semibold text-gray-900 dark:text-white">
-                          {formatUsdc(price)}
-                        </span>
-                        <div className="flex items-center gap-3 text-gray-400 dark:text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <FiDownload className="w-3 h-3" />
-                            {downloads}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <FiTrendingUp className="w-3 h-3" />
-                            {formatUsdc(revenue)}
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
+                    <SkillPreviewCard
+                      key={skill.id}
+                      skill={skill}
+                      hasAccessPath={hasAccessPath}
+                      legacySolLamports={legacySolLamports}
+                      downloads={downloads}
+                      connected={false}
+                      isOwn={false}
+                      hasPurchased={Boolean(skill.buyerHasPurchased)}
+                      isPurchasing={false}
+                      purchaseBlocked={false}
+                      onPurchase={() => {}}
+                    />
                   );
                 })}
               </div>

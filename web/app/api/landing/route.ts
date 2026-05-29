@@ -4,7 +4,6 @@ import type { Base64EncodedBytes } from "@solana/rpc-types";
 import {
   getAgentProfileDecoder,
   AGENT_PROFILE_DISCRIMINATOR,
-  SkillStatus,
 } from "../../../generated/agentvouch/src/generated";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../../../generated/agentvouch/src/generated/programs";
 import { resolveManyAgentIdentitiesByWallet } from "@/lib/agentIdentity";
@@ -34,7 +33,6 @@ type LandingPayload = {
     onChainDownloads: number;
     downloads: number;
   };
-  featuredSkills: unknown[];
 };
 
 const landingCache = new Map<
@@ -101,22 +99,13 @@ async function loadLandingPayload(): Promise<LandingPayload> {
 
   const agentDecoder = getAgentProfileDecoder();
 
-  const skills = skillAccounts.map(({ publicKey, data }) => {
-    return {
-      publicKey,
-      account: {
-        author: data.author,
-        name: data.name,
-        description: data.description,
-        priceUsdcMicros: toSafeMetricNumber(data.priceUsdcMicros),
-        totalDownloads: toSafeMetricNumber(data.totalDownloads),
-        totalRevenueUsdcMicros: toSafeMetricNumber(
-          data.totalRevenueUsdcMicros
-        ),
-        status: data.status,
-      },
-    };
-  });
+  const skills = skillAccounts.map(({ data }) => ({
+    account: {
+      author: data.author,
+      totalDownloads: toSafeMetricNumber(data.totalDownloads),
+      totalRevenueUsdcMicros: toSafeMetricNumber(data.totalRevenueUsdcMicros),
+    },
+  }));
 
   const agents = agentAccounts.map((a) => {
     const data = agentDecoder.decode(
@@ -169,15 +158,6 @@ async function loadLandingPayload(): Promise<LandingPayload> {
     0
   );
 
-  const featuredSkills = [...skills]
-    .filter((skill) => skill.account.status === SkillStatus.Active)
-    .sort((a, b) => b.account.totalDownloads - a.account.totalDownloads)
-    .slice(0, 3)
-    .map((skill) => ({
-      ...skill,
-      authorIdentity: identityMap.get(skill.account.author) ?? null,
-    }));
-
   return {
     metrics: {
       agents: agents.length,
@@ -188,7 +168,6 @@ async function loadLandingPayload(): Promise<LandingPayload> {
       onChainDownloads,
       downloads: onChainDownloads + repoInstalls,
     },
-    featuredSkills,
   };
 }
 
