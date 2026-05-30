@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
+import { generateSummarySafe } from "@/lib/ai/summarize";
 import { verifyAuthorTrust, resolveMultipleAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
@@ -73,6 +74,9 @@ type RepoSkillRow = {
   on_chain_protocol_version?: string | null;
   on_chain_program_id?: string | null;
   contact?: string | null;
+  summary?: string | null;
+  summary_model?: string | null;
+  summary_sha256?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -605,6 +609,9 @@ export async function POST(request: NextRequest) {
         'Initial release'
       )
     `;
+
+    // Auto-generate the AI summary after the response — publishers never write one.
+    after(() => generateSummarySafe(skill.id, content));
 
     return NextResponse.json(
       {

@@ -139,6 +139,23 @@ export async function initializeDatabase() {
     ADD COLUMN IF NOT EXISTS on_chain_program_id VARCHAR(44)
   `;
 
+  // AI-generated one-liner for the current version's content. Cache key is
+  // (summary_sha256, summary_model): regenerate only when content or model change.
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS summary TEXT
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS summary_model VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS summary_sha256 VARCHAR(64)
+  `;
+
   await db`
     UPDATE skills
     SET

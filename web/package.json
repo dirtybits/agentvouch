@@ -30,6 +30,7 @@
     "@x402/fetch": "^2.10.0",
     "@x402/svm": "^2.10.0",
     "8004-solana": "^0.8.3",
+    "ai": "^6.0.191",
     "codama": "^1.5.1",
     "highlight.js": "^11.11.1",
     "next": "16.1.6",
@@ -41,7 +42,8 @@
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

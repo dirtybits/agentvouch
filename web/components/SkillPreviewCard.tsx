@@ -26,6 +26,7 @@ interface SkillPreviewCardSkill {
   current_version: number;
   source?: "repo" | "chain";
   author_trust: TrustData | null;
+  summary?: string | null;
   price_usdc_micros?: string | null;
   payment_flow?:
     | "free"
@@ -229,7 +230,11 @@ export default function SkillPreviewCard({
   isOwn,
   descriptionFallback,
 }: SkillPreviewCardProps) {
-  const description = skill.description ?? descriptionFallback ?? "";
+  // AI summary is the canonical card subtitle — publishers don't have to write
+  // copy. Fall back to the author description, then tag-based capabilities. The
+  // full author description still shows on the skill detail page.
+  const description =
+    skill.summary ?? skill.description ?? descriptionFallback ?? "";
   const displayDescription = description
     ? truncateAtWord(description, 80)
     : null;

@@ -76,6 +76,7 @@ interface SkillRow {
   source?: "repo" | "chain";
   created_at: string;
   author_trust: TrustData | null;
+  summary?: string | null;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
   estimatedBuyerTotalLamports?: number;

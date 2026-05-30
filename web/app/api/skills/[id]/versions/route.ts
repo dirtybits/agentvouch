@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { sql } from "@/lib/db";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
+import { generateSummarySafe } from "@/lib/ai/summarize";
 import { getErrorMessage } from "@/lib/errors";
 
 type VersionedSkillRow = {
@@ -83,6 +84,9 @@ export async function POST(
           updated_at = NOW()
       WHERE id = ${id}::uuid
     `;
+
+    // Regenerate the AI summary for the new content after the response.
+    after(() => generateSummarySafe(id, content));
 
     return NextResponse.json(
       {
