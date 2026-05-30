@@ -13,12 +13,12 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain('skill.payment_flow === "listing-required"');
     expect(source).toContain('skill.payment_flow === "x402-usdc"');
     expect(source).toContain("UsdcIcon");
-    expect(source).toContain("Listing Required");
-    expect(source).toContain("Pay with USDC");
-    expect(source).toContain("Connect Wallet to Pay");
+    expect(source).toContain("Setup");
+    expect(source).toContain("primaryUsdcPrice");
+    expect(source).toContain("Installed");
     expect(source).toContain("USDC");
-    expect(source.indexOf(") : hasPurchased ? (")).toBeLessThan(
-      source.indexOf(") : hasUsdcPrimary ? (")
+    expect(source.indexOf("if (params.hasPurchased)")).toBeLessThan(
+      source.indexOf("if (params.hasUsdcPrimary)")
     );
   });
 });

@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: vi.fn(),
+  };
+});
+
 vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
 }));
@@ -76,6 +84,40 @@ describe("POST /api/skills/[id]/versions", () => {
     );
 
     expect(res.status).toBe(403);
+  });
+
+  it("rejects wallet-signed version publishes for unverified publishers", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        id: "uuid-skill",
+        skill_id: "calendar-agent",
+        author_pubkey: null,
+        current_version: 2,
+        ipfs_cid: "bafy-existing",
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifyWalletSignature.mockReturnValue({
+      valid: true,
+      pubkey: "AuthorWallet1111111111111111111111111111111",
+    });
+
+    const res = await POST(
+      makeRequest({
+        auth: {
+          pubkey: "AuthorWallet1111111111111111111111111111111",
+          signature: "sig",
+          message: "msg",
+          timestamp: Date.now(),
+        },
+        content: "# Updated\n",
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/has not linked a wallet/i);
   });
 
   it("pins content and increments the repo version", async () => {

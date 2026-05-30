@@ -14,7 +14,11 @@ const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
 type SkillRow = {
   id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind: string | null;
+  author_handle: string | null;
+  author_display_name: string | null;
+  publisher_tier: string | null;
   skill_id: string;
   name: string;
   description: string | null;
@@ -56,7 +60,19 @@ export async function getSkillMetadataSummary(id: string) {
   }
 
   const rows = await sql()<SkillRow>`
-    SELECT id, author_pubkey, skill_id, name, description, chain_context, on_chain_address, price_usdc_micros
+    SELECT
+      id,
+      author_pubkey,
+      author_kind,
+      author_handle,
+      author_display_name,
+      publisher_tier,
+      skill_id,
+      name,
+      description,
+      chain_context,
+      on_chain_address,
+      price_usdc_micros
     FROM skills
     WHERE id = ${id}::uuid
     LIMIT 1
@@ -64,15 +80,23 @@ export async function getSkillMetadataSummary(id: string) {
   const skill = rows[0];
   if (!skill) return null;
 
-  const trust = await resolveAuthorTrust(skill.author_pubkey);
-  const identity = await resolveAgentIdentityByWallet(skill.author_pubkey, {
-    hasAgentProfile: trust.isRegistered,
-  }).catch(() => null);
-  const trustSummary = buildAgentTrustSummary({
-    walletPubkey: skill.author_pubkey,
-    trust,
-    identity,
-  });
+  const trust = skill.author_pubkey
+    ? await resolveAuthorTrust(skill.author_pubkey)
+    : null;
+  const identity =
+    skill.author_pubkey && trust
+      ? await resolveAgentIdentityByWallet(skill.author_pubkey, {
+          hasAgentProfile: trust.isRegistered,
+        }).catch(() => null)
+      : null;
+  const trustSummary =
+    skill.author_pubkey && trust
+      ? buildAgentTrustSummary({
+          walletPubkey: skill.author_pubkey,
+          trust,
+          identity,
+        })
+      : null;
 
   let priceUsdcMicros = skill.price_usdc_micros ?? null;
   if (skill.on_chain_address) {
@@ -89,6 +113,10 @@ export async function getSkillMetadataSummary(id: string) {
       skill.description ||
       "Inspect the author trust record, stake-backed vouches, and dispute history behind this AI agent skill.",
     authorPubkey: skill.author_pubkey,
+    authorKind: skill.author_kind,
+    authorHandle: skill.author_handle,
+    authorDisplayName: skill.author_display_name,
+    publisherTier: skill.publisher_tier,
     chainContext: normalizePersistedChainContext(skill.chain_context),
     priceUsdcMicros,
     trustSummary,

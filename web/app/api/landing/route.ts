@@ -33,6 +33,13 @@ type LandingPayload = {
     onChainDownloads: number;
     downloads: number;
   };
+  featuredSkills: Array<{
+    account: {
+      author: string;
+      totalDownloads: number;
+      totalRevenueUsdcMicros: number;
+    };
+  }>;
 };
 
 const landingCache = new Map<
@@ -168,6 +175,7 @@ async function loadLandingPayload(): Promise<LandingPayload> {
       onChainDownloads,
       downloads: onChainDownloads + repoInstalls,
     },
+    featuredSkills: skills.slice(0, 3),
   };
 }
 

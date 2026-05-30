@@ -56,7 +56,7 @@ const CHAIN_PREFIX = "chain-";
 type RawSkillContentRow = {
   id: string;
   on_chain_address: string | null;
-  author_pubkey: string;
+  author_pubkey: string | null;
   skill_id: string;
   name: string;
   content: string;
@@ -65,6 +65,15 @@ type RawSkillContentRow = {
   chain_context: string | null;
   on_chain_protocol_version: string | null;
   on_chain_program_id: string | null;
+};
+
+type WalletBackedRawSkillContentRow = RawSkillContentRow & {
+  author_pubkey: string;
+  currency_mint: string;
+};
+
+type ProtocolListedRawSkillContentRow = WalletBackedRawSkillContentRow & {
+  on_chain_address: string;
 };
 
 const TOKEN_PROGRAM_ID = address(
@@ -351,17 +360,10 @@ async function handleChainOnlyRaw(request: NextRequest, id: string) {
 async function handleProtocolX402Bridge(input: {
   request: NextRequest;
   skillDbId: string;
-  skill: RawSkillContentRow;
+  skill: ProtocolListedRawSkillContentRow;
   buyerPubkey: string;
   priceMicros: bigint;
 }) {
-  if (!input.skill.on_chain_address || !input.skill.currency_mint) {
-    return NextResponse.json(
-      { error: "Protocol bridge requires linked USDC listing metadata" },
-      { status: 500 }
-    );
-  }
-
   const paymentHeader = input.request.headers.get("payment-signature");
   let nonce = createProtocolX402BridgeNonce();
   let payload: X402PaymentPayload | null = null;
@@ -589,6 +591,17 @@ async function handleUsdcDirect(
     );
   }
 
+  if (!skill.author_pubkey) {
+    return NextResponse.json(
+      {
+        error: "Paid skill is missing an author wallet",
+        message:
+          "Unverified repo-only publishers can publish free skills, but paid marketplace purchases require a linked author wallet and on-chain SkillListing.",
+      },
+      { status: 409 }
+    );
+  }
+
   let priceMicros: bigint;
   try {
     priceMicros = BigInt(skill.price_usdc_micros);
@@ -605,6 +618,12 @@ async function handleUsdcDirect(
       { status: 500 }
     );
   }
+
+  const walletBackedSkill: WalletBackedRawSkillContentRow = {
+    ...skill,
+    author_pubkey: skill.author_pubkey,
+    currency_mint: skill.currency_mint,
+  };
 
   if (!skill.on_chain_address) {
     const authHeader = request.headers.get("x-agentvouch-auth");
@@ -628,6 +647,10 @@ async function handleUsdcDirect(
   }
 
   if (isProtocolListedUsdcSkill(skill, priceMicros)) {
+    const protocolSkill: ProtocolListedRawSkillContentRow = {
+      ...walletBackedSkill,
+      on_chain_address: skill.on_chain_address,
+    };
     const authHeader = request.headers.get("x-agentvouch-auth");
     let buyerPubkey: string | null = null;
     if (authHeader) {
@@ -655,7 +678,7 @@ async function handleUsdcDirect(
         onChainEntitled = Boolean(
           await hasOnChainPurchase(
             authResult.buyerPubkey,
-            skill.on_chain_address
+            protocolSkill.on_chain_address
           )
         );
       } catch {
@@ -675,7 +698,7 @@ async function handleUsdcDirect(
       return handleProtocolX402Bridge({
         request,
         skillDbId,
-        skill,
+        skill: protocolSkill,
         buyerPubkey,
         priceMicros,
       });
@@ -701,13 +724,13 @@ async function handleUsdcDirect(
   }
 
   const authorUsdcAta = await deriveAssociatedTokenAccount(
-    skill.author_pubkey,
-    skill.currency_mint
+    walletBackedSkill.author_pubkey,
+    walletBackedSkill.currency_mint
   );
   const requirement = await generateX402UsdcRequirement({
     priceUsdcMicros: priceMicros,
-    payTo: skill.author_pubkey,
-    usdcMint: skill.currency_mint,
+    payTo: walletBackedSkill.author_pubkey,
+    usdcMint: walletBackedSkill.currency_mint,
     extra: {
       agentvouch_skill_id: skill.skill_id,
       agentvouch_skill_db_id: skillDbId,
@@ -789,7 +812,7 @@ async function handleUsdcDirect(
     const transferCheck = await verifySettledUsdcTransfer({
       signature: settle.transaction,
       destinationAta: authorUsdcAta,
-      currencyMint: skill.currency_mint,
+      currencyMint: walletBackedSkill.currency_mint,
       minimumAmountMicros: priceMicros,
     });
 
@@ -798,7 +821,7 @@ async function handleUsdcDirect(
       buyerPubkey: payer,
       paymentTxSignature: settle.transaction,
       recipientAta: authorUsdcAta,
-      currencyMint: skill.currency_mint,
+      currencyMint: walletBackedSkill.currency_mint,
       amountMicros: transferCheck.settledAmountMicros.toString(),
       paymentFlow: "repo-x402-usdc",
     });

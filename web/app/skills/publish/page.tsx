@@ -34,6 +34,7 @@ import {
   FiXCircle,
   FiX,
   FiDollarSign,
+  FiGithub,
 } from "react-icons/fi";
 import type { Address } from "@solana/kit";
 
@@ -41,6 +42,16 @@ type ReputationOracle = ReturnType<typeof useReputationOracle>;
 type AgentProfileData = NonNullable<
   Awaited<ReturnType<ReputationOracle["getAgentProfile"]>>
 >;
+type GithubPublisherSession = {
+  authenticated: boolean;
+  user: {
+    provider: "github";
+    id: string;
+    login: string;
+    name: string | null;
+    avatarUrl: string | null;
+  } | null;
+};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -69,8 +80,17 @@ function parseUsdcPriceToMicros(value: string): string | null {
   return micros;
 }
 
+function isValidFreeOrPaidUsdcPrice(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return true;
+  if (!/^\d+(\.\d{1,6})?$/.test(normalized)) return false;
+  return true;
+}
+
 function PublishReadiness({
   connected,
+  githubConnected,
+  isPaidPublish,
   profileLoading,
   hasProfile,
   hasContent,
@@ -78,22 +98,33 @@ function PublishReadiness({
   hasSkillId,
 }: {
   connected: boolean;
+  githubConnected: boolean;
+  isPaidPublish: boolean;
   profileLoading: boolean;
   hasProfile: boolean;
   hasContent: boolean;
   hasName: boolean;
   hasSkillId: boolean;
 }) {
-  if (!connected) {
+  if (isPaidPublish && !connected) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
         <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
-        Connect wallet to publish
+        Connect wallet for paid publishing
       </span>
     );
   }
 
-  if (profileLoading) {
+  if (!isPaidPublish && !connected && !githubConnected) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
+        Sign in with GitHub or connect wallet
+      </span>
+    );
+  }
+
+  if (isPaidPublish && profileLoading) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
         <FiLoader className="w-3 h-3 animate-spin" />
@@ -106,7 +137,7 @@ function PublishReadiness({
   if (!hasContent) issues.push("skill content");
   if (!hasName) issues.push("name");
   if (!hasSkillId) issues.push("skill ID");
-  if (!hasProfile) issues.push("author profile");
+  if (isPaidPublish && !hasProfile) issues.push("author profile");
 
   if (issues.length > 0) {
     return (
@@ -152,7 +183,7 @@ function PublishSkillPageInner() {
   });
   const [tagInput, setTagInput] = useState("");
   const [contact, setContact] = useState("");
-  const [usdcPrice, setUsdcPrice] = useState("1");
+  const [usdcPrice, setUsdcPrice] = useState("0");
   const [showPreview, setShowPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishStep, setPublishStep] = useState<"idle" | "repo" | "chain">(
@@ -167,6 +198,9 @@ function PublishSkillPageInner() {
   const [agentProfile, setAgentProfile] = useState<AgentProfileData | null>(
     null
   );
+  const [githubSession, setGithubSession] =
+    useState<GithubPublisherSession | null>(null);
+  const [githubLoading, setGithubLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileChecked, setProfileChecked] = useState(false);
   const [registering, setRegistering] = useState(false);
@@ -182,6 +216,12 @@ function PublishSkillPageInner() {
   const profileFetchId = useRef(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const parsedUsdcPriceMicros = parseUsdcPriceToMicros(usdcPrice);
+  const priceIsValid = isValidFreeOrPaidUsdcPrice(usdcPrice);
+  const isPaidPublish = Boolean(parsedUsdcPriceMicros);
+  const githubUser = githubSession?.user ?? null;
+  const githubConnected = Boolean(githubSession?.authenticated && githubUser);
+  const hasPublisherAuth = connected || githubConnected;
   const showInlineResult =
     !!result &&
     !(
@@ -222,6 +262,25 @@ function PublishSkillPageInner() {
       });
   }, [connected, oracle, publicKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setGithubLoading(true);
+    fetch("/api/auth/github/session", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: GithubPublisherSession | null) => {
+        if (!cancelled) setGithubSession(data);
+      })
+      .catch(() => {
+        if (!cancelled) setGithubSession(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGithubLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function publishSkill(skipProfileCheck = false) {
     const cleanId = finalizeSlug(skillId);
     const cleanName = normalizeSkillName(name);
@@ -239,26 +298,28 @@ function PublishSkillPageInner() {
       return;
     }
 
-    if (!connected || !publicKey || !signMessage) {
+    if (!hasPublisherAuth) {
       setResult({
         success: false,
         message:
-          "Connect your wallet to publish. Use the button in the top right.",
+          "Sign in with GitHub or connect a wallet to publish this free skill.",
       });
       return;
     }
 
-    const usdcPriceMicros = parseUsdcPriceToMicros(usdcPrice);
-    if (!usdcPriceMicros) {
+    if (!priceIsValid) {
       setResult({
         success: false,
-        message: "USDC price must be a positive amount with up to 6 decimals.",
+        message: "USDC price must be 0 or a paid amount with up to 6 decimals.",
       });
       return;
     }
-    const onChainPriceUsdcMicros = Number(usdcPriceMicros);
+    const usdcPriceMicros = parsedUsdcPriceMicros;
+    const onChainPriceUsdcMicros = usdcPriceMicros
+      ? Number(usdcPriceMicros)
+      : 0;
 
-    if (!isValidListingPriceMicros(onChainPriceUsdcMicros)) {
+    if (usdcPriceMicros && !isValidListingPriceMicros(onChainPriceUsdcMicros)) {
       setResult({
         success: false,
         message: `On-chain USDC price must be 0 for a free listing or at least ${formatMinPrice()}.`,
@@ -266,12 +327,20 @@ function PublishSkillPageInner() {
       return;
     }
 
-    if (!skipProfileCheck && (!profileChecked || profileLoading)) {
+    if (usdcPriceMicros && (!connected || !publicKey || !signMessage)) {
+      setResult({
+        success: false,
+        message: "Connect a wallet to publish a paid marketplace listing.",
+      });
+      return;
+    }
+
+    if (usdcPriceMicros && !skipProfileCheck && (!profileChecked || profileLoading)) {
       setResult(null);
       return;
     }
 
-    if (!skipProfileCheck && !agentProfile) {
+    if (usdcPriceMicros && !skipProfileCheck && !agentProfile) {
       setPendingPublishAfterRegister(true);
       setShowProfileGate(true);
       setResult(null);
@@ -283,25 +352,30 @@ function PublishSkillPageInner() {
     setResult(null);
 
     try {
-      const timestamp = Date.now();
-      const message = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${timestamp}`;
-      const messageBytes = new TextEncoder().encode(message);
-      const signatureBytes = await signMessage(messageBytes);
-      const signature = encodeBase64(signatureBytes);
-      const auth = { pubkey: publicKey!, signature, message, timestamp };
+      let auth:
+        | { pubkey: string; signature: string; message: string; timestamp: number }
+        | undefined;
+      if (connected && publicKey && signMessage) {
+        const timestamp = Date.now();
+        const message = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${timestamp}`;
+        const messageBytes = new TextEncoder().encode(message);
+        const signatureBytes = await signMessage(messageBytes);
+        const signature = encodeBase64(signatureBytes);
+        auth = { pubkey: publicKey, signature, message, timestamp };
+      }
 
       const res = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth,
+          ...(auth ? { auth } : {}),
           skill_id: cleanId,
           name: cleanName,
           description: cleanDescription,
           tags,
           content,
           contact: cleanContact || undefined,
-          price_usdc_micros: usdcPriceMicros,
+          price_usdc_micros: usdcPriceMicros ?? "0",
         }),
       });
 
@@ -321,7 +395,20 @@ function PublishSkillPageInner() {
         ? `${window.location.origin}/api/skills/${skillDbId}/raw`
         : "";
 
+      if (!usdcPriceMicros) {
+        setResult({
+          success: true,
+          message:
+            "Free skill published. It will appear as unverified until you link a wallet or add protocol backing.",
+          id: skillDbId,
+        });
+        setTimeout(() => router.push(`/skills/${skillDbId}`), 1500);
+        return;
+      }
+
       setPublishStep("chain");
+      const paidAuthorPubkey = publicKey!;
+      const paidSignMessage = signMessage!;
       try {
         await oracle.createSkillListing(
           cleanId,
@@ -332,14 +419,14 @@ function PublishSkillPageInner() {
         );
 
         const onChainAddress = await oracle.getSkillListingPDA(
-          publicKey as Address,
+          paidAuthorPubkey as Address,
           cleanId
         );
 
         const patchTimestamp = Date.now();
         const patchMessage = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${patchTimestamp}`;
         const patchMsgBytes = new TextEncoder().encode(patchMessage);
-        const patchSigBytes = await signMessage(patchMsgBytes);
+        const patchSigBytes = await paidSignMessage(patchMsgBytes);
         const patchSignature = encodeBase64(patchSigBytes);
 
         const patchRes = await fetch(`/api/skills/${skillDbId}`, {
@@ -347,7 +434,7 @@ function PublishSkillPageInner() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             auth: {
-              pubkey: publicKey!,
+              pubkey: paidAuthorPubkey,
               signature: patchSignature,
               message: patchMessage,
               timestamp: patchTimestamp,
@@ -535,6 +622,16 @@ function PublishSkillPageInner() {
     await publishSkill();
   };
 
+  const handleGithubLogout = async () => {
+    setGithubLoading(true);
+    try {
+      await fetch("/api/auth/github/logout", { method: "POST" });
+      setGithubSession({ authenticated: false, user: null });
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-8">
@@ -557,15 +654,15 @@ function PublishSkillPageInner() {
               Publish a Skill
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Upload a SKILL.md file. New buyers will pay in USDC through x402
-              by default, while the on-chain SOL listing remains available as a
-              legacy fallback during migration.
+              Upload a SKILL.md file. Free skills can start as unverified
+              GitHub-attributed listings; paid marketplace listings require a
+              wallet and on-chain protocol economics.
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
             {!connected && (
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                Fill in your skill — you&apos;ll connect a wallet to publish.
+                Use GitHub for free listings or a wallet for paid listings.
               </p>
             )}
           </div>
@@ -864,19 +961,55 @@ function PublishSkillPageInner() {
 
           {/* Price + publish */}
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <div className="mb-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <UsdcIcon className="w-4 h-4 text-[var(--lobster-accent)]" />
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Payment Mode
-                </span>
+            <div className="mb-4 grid gap-4 md:grid-cols-[1.1fr_0.9fr] md:items-start">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <UsdcIcon className="w-4 h-4 text-[var(--lobster-accent)]" />
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Listing Mode
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Set price to 0 for a free Unverified listing. Any paid price
+                  becomes a protocol-listed marketplace skill and requires a
+                  registered wallet author.
+                </p>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                AgentVouch is moving to USDC as the default marketplace
-                currency. New agents should buy through x402 USDC. The SOL
-                price below stays as a legacy fallback for older clients and
-                direct on-chain compatibility.
-              </p>
+              <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <FiGithub className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        GitHub publisher
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {githubConnected && githubUser
+                        ? `Signed in as @${githubUser.login}`
+                        : "Free skills can be attributed to your GitHub handle."}
+                    </p>
+                  </div>
+                  {githubLoading ? (
+                    <FiLoader className="mt-0.5 h-4 w-4 animate-spin text-gray-400" />
+                  ) : githubConnected ? (
+                    <button
+                      type="button"
+                      onClick={handleGithubLogout}
+                      className="shrink-0 text-xs font-medium text-gray-500 transition hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    >
+                      Sign out
+                    </button>
+                  ) : (
+                    <a
+                      href="/api/auth/github/start?returnTo=/skills/publish"
+                      className="shrink-0 text-xs font-medium text-[var(--lobster-accent)] transition hover:text-[var(--lobster-accent-strong)]"
+                    >
+                      Sign in
+                    </a>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -888,16 +1021,17 @@ function PublishSkillPageInner() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Used for the x402 USDC flow on the raw download endpoint.
+                  0 publishes a free skill. Paid listings settle through
+                  USDC-native purchase_skill economics.
                 </p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
-                    min="0.000001"
+                    min="0"
                     step="0.000001"
                     value={usdcPrice}
                     onChange={(e) => setUsdcPrice(e.target.value)}
-                    placeholder="1"
+                    placeholder="0"
                     className="w-32 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
                   />
                   <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -907,7 +1041,9 @@ function PublishSkillPageInner() {
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
                   Stored as{" "}
                   <span className="font-mono">
-                    {parseUsdcPriceToMicros(usdcPrice) ?? "invalid"}
+                    {!priceIsValid
+                      ? "invalid"
+                      : parsedUsdcPriceMicros ?? "0 (free)"}
                   </span>{" "}
                   micros.
                 </p>
@@ -934,7 +1070,9 @@ function PublishSkillPageInner() {
           <div className="flex items-center justify-between gap-4">
             <PublishReadiness
               connected={connected}
-              profileLoading={profileLoading || !profileChecked}
+              githubConnected={githubConnected}
+              isPaidPublish={isPaidPublish}
+              profileLoading={isPaidPublish && (profileLoading || !profileChecked)}
               hasProfile={!!agentProfile}
               hasContent={!!content}
               hasName={!!name}
@@ -947,7 +1085,10 @@ function PublishSkillPageInner() {
                 !content ||
                 !name ||
                 !skillId ||
-                (connected && (!profileChecked || profileLoading))
+                !priceIsValid ||
+                githubLoading ||
+                !hasPublisherAuth ||
+                (isPaidPublish && (!connected || !profileChecked || profileLoading))
               }
               className={`${navButtonPrimaryInlineClass} shrink-0`}
             >

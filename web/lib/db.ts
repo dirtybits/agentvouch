@@ -57,6 +57,12 @@ export async function initializeDatabase() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       skill_id VARCHAR(64) NOT NULL,
       author_pubkey VARCHAR(44) NOT NULL,
+      author_kind VARCHAR(24) NOT NULL DEFAULT 'wallet',
+      author_external_id VARCHAR(128),
+      author_handle VARCHAR(128),
+      author_display_name VARCHAR(128),
+      publisher_identity_key VARCHAR(192),
+      publisher_tier VARCHAR(24) NOT NULL DEFAULT 'registered',
       name VARCHAR(64) NOT NULL,
       description VARCHAR(256),
       tags TEXT[] DEFAULT '{}',
@@ -68,9 +74,95 @@ export async function initializeDatabase() {
       contact VARCHAR(128),
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(author_pubkey, skill_id)
+      -- Uniqueness is per-publisher identity (wallet:<pk> or github:<id>), not the
+      -- now-nullable author_pubkey (NULLs are distinct in a UNIQUE, which would let
+      -- OAuth publishers duplicate skill_ids). publisher_identity_key is always set
+      -- on insert. For wallet rows this also subsumes (author_pubkey, skill_id).
+      UNIQUE(publisher_identity_key, skill_id)
     )
   `;
+
+  await db`
+    ALTER TABLE skills
+    ALTER COLUMN author_pubkey DROP NOT NULL
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS author_kind VARCHAR(24) NOT NULL DEFAULT 'wallet'
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS author_external_id VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS author_handle VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS author_display_name VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS publisher_identity_key VARCHAR(192)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS publisher_tier VARCHAR(24) NOT NULL DEFAULT 'registered'
+  `;
+
+  await db`
+    UPDATE skills
+    SET
+      author_kind = CASE
+        WHEN author_pubkey IS NULL AND (author_kind IS NULL OR author_kind = '' OR author_kind = 'wallet') THEN 'unknown'
+        ELSE COALESCE(NULLIF(author_kind, ''), 'wallet')
+      END,
+      publisher_identity_key = COALESCE(
+        NULLIF(publisher_identity_key, ''),
+        CASE
+          WHEN author_pubkey IS NULL THEN CONCAT('unknown:', id::text)
+          ELSE CONCAT('wallet:', author_pubkey)
+        END
+      ),
+      publisher_tier = CASE
+        WHEN author_pubkey IS NULL AND (publisher_tier IS NULL OR publisher_tier = '' OR publisher_tier = 'registered') THEN 'unverified'
+        ELSE COALESCE(NULLIF(publisher_tier, ''), 'registered')
+      END
+    WHERE publisher_identity_key IS NULL
+      OR publisher_identity_key = ''
+      OR author_kind IS NULL
+      OR author_kind = ''
+      OR publisher_tier IS NULL
+      OR publisher_tier = ''
+      OR (
+        author_pubkey IS NULL
+        AND (author_kind = 'wallet' OR publisher_tier = 'registered')
+      )
+  `;
+
+  // Existing tables created before the publisher-identity era still carry the old
+  // UNIQUE(author_pubkey, skill_id). Add the correct per-identity uniqueness here.
+  // Wrapped so pre-existing duplicates can't break boot (they must be cleaned up
+  // before the index can build — logged, not fatal).
+  try {
+    await db`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_publisher_identity_skill
+      ON skills (publisher_identity_key, skill_id)
+    `;
+  } catch (error) {
+    console.error(
+      "Could not create unique index on (publisher_identity_key, skill_id) — " +
+        "likely pre-existing duplicate (publisher, skill_id) rows that need cleanup:",
+      error
+    );
+  }
 
   await db`
     ALTER TABLE skills
@@ -237,6 +329,16 @@ export async function initializeDatabase() {
 
   await db`
     CREATE INDEX IF NOT EXISTS idx_skills_author ON skills(author_pubkey)
+  `;
+
+  await db`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_publisher_identity_skill_id
+    ON skills(publisher_identity_key, skill_id)
+    WHERE publisher_identity_key IS NOT NULL
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_author_handle ON skills(author_kind, author_handle)
   `;
 
   await db`

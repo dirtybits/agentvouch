@@ -3,7 +3,13 @@ import { PUBLIC_ROUTE_CACHE_SECONDS } from "@/lib/cachePolicy";
 type SkillIndexRow = {
   id: string;
   skill_id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_external_id?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
   name: string;
   description: string | null;
   tags: string[];

@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
       ...new Map(
         skills
           .filter(
-            (skill) =>
+            (skill): skill is (typeof skills)[number] & { author_pubkey: string } =>
+              Boolean(skill.author_pubkey) &&
               skill.author_trust_summary?.recommended_action === "allow"
           )
           .map((skill) => [

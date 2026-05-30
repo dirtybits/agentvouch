@@ -11,7 +11,7 @@ import { getSkillPaymentFlow } from "@/lib/listingContract";
 type RepoListingActivityRow = {
   id: string;
   name: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
@@ -29,7 +29,7 @@ type UsdcPurchaseActivityRow = {
   verified_at: string;
   skill_db_id: string;
   skill_name: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   payment_flow: string | null;

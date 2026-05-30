@@ -30,7 +30,12 @@ import { SITE_URL } from "@/lib/site";
 type ToggleMode = "none" | "human" | "agent";
 type FeaturedSkill = {
   id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
   name: string;
   description: string | null;
   tags: string[];

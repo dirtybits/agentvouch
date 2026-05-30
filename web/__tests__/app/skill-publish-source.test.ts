@@ -10,8 +10,10 @@ describe("skill publish source", () => {
     );
 
     expect(source).toContain("UsdcIcon");
-    expect(source).toContain("Payment Mode");
+    expect(source).toContain("Listing Mode");
+    expect(source).toContain("GitHub publisher");
     expect(source).toContain("Primary price");
+    expect(source).toContain("purchase_skill");
     expect(source).toContain("USDC");
   });
 });

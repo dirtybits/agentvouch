@@ -43,7 +43,13 @@ const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
 type SkillRow = {
   id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_external_id?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
   skill_id: string;
   name: string;
   description: string | null;
@@ -237,19 +243,18 @@ export async function GET(
     const latestContent = versions[0]?.content ?? null;
 
     let author_trust = null;
-    if (includeTrust) {
+    if (includeTrust && skill.author_pubkey) {
       author_trust = await resolveAuthorTrust(skill.author_pubkey);
     }
     let author_identity = null;
-    try {
-      author_identity = await resolveAgentIdentityByWallet(
-        skill.author_pubkey,
-        {
+    if (skill.author_pubkey) {
+      try {
+        author_identity = await resolveAgentIdentityByWallet(skill.author_pubkey, {
           hasAgentProfile: author_trust?.isRegistered ?? false,
-        }
-      );
-    } catch (error) {
-      console.error("Failed to resolve author identity for repo skill:", error);
+        });
+      } catch (error) {
+        console.error("Failed to resolve author identity for repo skill:", error);
+      }
     }
 
     const latestVersion = versions[0];
@@ -275,14 +280,20 @@ export async function GET(
       rpc,
       buyer: buyerAddress,
       usdcMint: address(getConfiguredUsdcMint()),
-      authors: [address(skill.author_pubkey)],
+      authors:
+        skill.author_pubkey && isAddress(skill.author_pubkey)
+          ? [address(skill.author_pubkey)]
+          : [],
     });
     const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
     const preflight = serializePurchasePreflight(
       assessPurchasePreflight({
         context: preflightContext,
         priceUsdcMicros: priceUsdcMicros ? BigInt(priceUsdcMicros) : 0n,
-        author: address(skill.author_pubkey),
+        author:
+          skill.author_pubkey && isAddress(skill.author_pubkey)
+            ? address(skill.author_pubkey)
+            : null,
         authorBackingUsdcMicros:
           skill.on_chain_address && priceUsdcMicros
             ? BigInt(author_trust?.totalStakeAtRisk ?? 0)
@@ -318,7 +329,7 @@ export async function GET(
         : null;
     const author_trust_summary = author_trust
       ? buildAgentTrustSummary({
-          walletPubkey: skill.author_pubkey,
+          walletPubkey: skill.author_pubkey!,
           trust: author_trust,
           identity: author_identity,
         })
@@ -397,7 +408,7 @@ export async function PATCH(
     if (rows.length === 0) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
-    if (rows[0].author_pubkey !== verification.pubkey) {
+    if (!rows[0].author_pubkey || rows[0].author_pubkey !== verification.pubkey) {
       return NextResponse.json(
         { error: "Not the skill author" },
         { status: 403 }

@@ -109,6 +109,6 @@ A Solana keypair is free to mint, so wallet-signing is as sybil-cheap as anonymo
 
 Reprioritized in favor of this adoption wedge. State at pause:
 
-- **Landed (uncommitted):** the `revoke_vouch` open-dispute lock (`programs/agentvouch/src/instructions/revoke_vouch.rs`) — blocks a voucher from pulling stake while the backed author has an open dispute. Standalone-correct hardening; safe to keep or revert.
+- **Landed (committed source-only):** the `revoke_vouch` open-dispute lock (`programs/agentvouch/src/instructions/revoke_vouch.rs`) — blocks a voucher from pulling stake while the backed author has an open dispute. It will not affect devnet until the program is rebuilt and redeployed.
 - **Designed, not built:** the `resolve_author_dispute` slash loop. Decisions captured: slash = `slash_percentage` (partial, residual stays staked); slashed funds **deposited into the author proceeds vault** so they ride the existing `create_refund_pool` split (challenger_reward_bps capped → challenger, remainder → buyer pool) — no new config/vault, no change to `create_refund_pool`. Iterate backing vouchers via `remaining_accounts` (vouch, vault) pairs; ~24/tx cap for v1.
 - **Why shelved:** slashing only applies to the bonded/paid tier (the small opt-in top of the ladder), is mainnet-gated, and is the least-reversible work in the project. It's the moat, not the wedge — build it once there's a verified tier worth protecting.

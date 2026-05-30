@@ -7,9 +7,13 @@ export async function GET(request: NextRequest) {
   try {
     const baseUrl = request.nextUrl.origin;
     const skills = await fetchAllIndexedSkills(baseUrl);
+    const walletBackedSkills = skills.filter(
+      (skill): skill is (typeof skills)[number] & { author_pubkey: string } =>
+        Boolean(skill.author_pubkey)
+    );
     const authors = [
       ...new Map(
-        skills.map((skill) => [
+        walletBackedSkills.map((skill) => [
           skill.author_pubkey,
           {
             pubkey: skill.author_pubkey,
@@ -20,7 +24,7 @@ export async function GET(request: NextRequest) {
               skill.author_trust_summary?.recommended_action ?? null,
             author_trust_summary: skill.author_trust_summary ?? null,
             author_identity: skill.author_identity ?? null,
-            skill_count: skills.filter(
+            skill_count: walletBackedSkills.filter(
               (candidate) => candidate.author_pubkey === skill.author_pubkey
             ).length,
           },

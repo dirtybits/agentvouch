@@ -5,7 +5,7 @@ import { CONTENT_PAGES } from "@/lib/contentPages";
 
 type SkillSitemapRow = {
   id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
   updated_at: string;
 };
 
@@ -54,15 +54,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const authorPages: MetadataRoute.Sitemap = [
       ...new Map(
-        rows.map((row) => [
-          row.author_pubkey,
-          {
-            url: getCanonicalUrl(`/author/${row.author_pubkey}`),
-            lastModified: new Date(row.updated_at),
-            changeFrequency: "weekly" as const,
-            priority: 0.7,
-          },
-        ])
+        rows
+          .filter(
+            (row): row is SkillSitemapRow & { author_pubkey: string } =>
+              Boolean(row.author_pubkey)
+          )
+          .map((row) => [
+            row.author_pubkey,
+            {
+              url: getCanonicalUrl(`/author/${row.author_pubkey}`),
+              lastModified: new Date(row.updated_at),
+              changeFrequency: "weekly" as const,
+              priority: 0.7,
+            },
+          ])
       ).values(),
     ];
 

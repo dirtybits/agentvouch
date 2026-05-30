@@ -8,7 +8,7 @@ import { getErrorMessage } from "@/lib/errors";
 type VersionedSkillRow = {
   id: string;
   skill_id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
   current_version: number;
   ipfs_cid: string | null;
 };
@@ -50,6 +50,16 @@ export async function POST(
     }
 
     const skill = rows[0];
+
+    if (!skill.author_pubkey) {
+      return NextResponse.json(
+        {
+          error:
+            "This unverified publisher has not linked a wallet yet, so wallet-signed version publishing is unavailable.",
+        },
+        { status: 403 }
+      );
+    }
 
     if (skill.author_pubkey !== verification.pubkey) {
       return NextResponse.json(

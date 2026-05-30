@@ -62,6 +62,7 @@ import {
   FiExternalLink,
   FiFileText,
   FiGitCommit,
+  FiGithub,
   FiEdit2,
   FiTrash2,
 } from "react-icons/fi";
@@ -84,7 +85,12 @@ interface ContentVerification {
 interface SkillDetail {
   id: string;
   skill_id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -546,6 +552,14 @@ export default function SkillDetailPage({
 
     try {
       if (skill.on_chain_address) {
+        if (!skill.author_pubkey) {
+          setInstallResult({
+            success: false,
+            message:
+              "This skill is missing an author wallet, so it cannot be purchased on-chain.",
+          });
+          return;
+        }
         if (!protocolTransactionSigner) {
           setInstallResult({
             success: false,
@@ -848,6 +862,21 @@ export default function SkillDetailPage({
   const isChainOnly = skill?.source === "chain";
   const isAuthor =
     !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
+  const authorLabel = skill?.author_handle
+    ? `@${skill.author_handle}`
+    : skill?.author_pubkey
+    ? shortAddr(skill.author_pubkey)
+    : "Unverified publisher";
+  const authorHref = skill?.author_pubkey
+    ? `/author/${skill.author_pubkey}`
+    : skill?.author_kind === "github" && skill.author_handle
+    ? `https://github.com/${skill.author_handle}`
+    : null;
+  const authorTitle = skill?.author_pubkey
+    ? "Author wallet that published this skill"
+    : skill?.author_kind === "github"
+    ? "GitHub identity that published this unverified skill"
+    : "Unverified publisher identity";
   const CANONICAL_ORIGIN =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://agentvouch.xyz";
   const paidSkillDocsHref = "/docs#paid-skill-download";
@@ -1098,24 +1127,48 @@ export default function SkillDetailPage({
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Author:
             </span>
-            <Link
-              href={`/author/${skill.author_pubkey}`}
-              className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
-            >
-              {shortAddr(skill.author_pubkey)}
-              <FiExternalLink className="w-3.5 h-3.5" />
-            </Link>
-            <button
-              onClick={() => copyToClipboard(skill.author_pubkey, "author")}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-              title="Copy address"
-            >
-              {copied === "author" ? (
-                <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-              ) : (
-                <FiCopy className="w-3.5 h-3.5" />
-              )}
-            </button>
+            {authorHref?.startsWith("http") ? (
+              <a
+                href={authorHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
+                title={authorTitle}
+              >
+                <FiGithub className="w-3.5 h-3.5" />
+                {authorLabel}
+                <FiExternalLink className="w-3.5 h-3.5" />
+              </a>
+            ) : authorHref ? (
+              <Link
+                href={authorHref}
+                className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
+                title={authorTitle}
+              >
+                {authorLabel}
+                <FiExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            ) : (
+              <span
+                className="font-mono text-sm text-gray-500 dark:text-gray-400"
+                title={authorTitle}
+              >
+                {authorLabel}
+              </span>
+            )}
+            {skill.author_pubkey && (
+              <button
+                onClick={() => copyToClipboard(skill.author_pubkey!, "author")}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                title="Copy address"
+              >
+                {copied === "author" ? (
+                  <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                ) : (
+                  <FiCopy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
             {skill.author_trust?.registeredAt ? (
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 Registered{" "}
@@ -1134,27 +1187,35 @@ export default function SkillDetailPage({
             </p>
           )}
           <TrustBadge trust={skill.author_trust} />
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Link
-              href={`/author/${skill.author_pubkey}`}
-              className="inline-flex items-center gap-1 text-sm font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-            >
-              View full author trust history{" "}
-              <FiExternalLink className="w-3.5 h-3.5" />
-            </Link>
-            <Link
-              href={`/author/${skill.author_pubkey}?report=1${
-                skill.on_chain_address
-                  ? `&skill=${encodeURIComponent(
-                      `skill:${skill.on_chain_address}`
-                    )}`
-                  : ""
-              }`}
-              className={navButtonSecondaryInlineClass}
-            >
-              Report Author
-            </Link>
-          </div>
+          {skill.author_pubkey ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Link
+                href={`/author/${skill.author_pubkey}`}
+                className="inline-flex items-center gap-1 text-sm font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+              >
+                View full author trust history{" "}
+                <FiExternalLink className="w-3.5 h-3.5" />
+              </Link>
+              <Link
+                href={`/author/${skill.author_pubkey}?report=1${
+                  skill.on_chain_address
+                    ? `&skill=${encodeURIComponent(
+                        `skill:${skill.on_chain_address}`
+                      )}`
+                    : ""
+                }`}
+                className={navButtonSecondaryInlineClass}
+              >
+                Report Author
+              </Link>
+            </div>
+          ) : (
+            <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+              This free listing is attributed to an unverified publisher. It has
+              no on-chain author wallet yet, so vouching, reports, and paid
+              settlement are unavailable until the publisher links one.
+            </p>
+          )}
         </div>
 
         {skill.author_identity && (

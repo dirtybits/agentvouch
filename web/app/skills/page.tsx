@@ -53,7 +53,12 @@ type PageTab = "browse" | "my-purchases" | "my-listings";
 interface SkillRow {
   id: string;
   skill_id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -102,7 +107,7 @@ type PurchaseData = { publicKey: Address; account: Purchase };
 type ActivityRepoListing = {
   id: string;
   name: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
@@ -122,7 +127,7 @@ type ActivityUsdcPurchase = {
   verified_at: string;
   skill_db_id: string;
   skill_name: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
   on_chain_address: string | null;
   price_usdc_micros: string | null;
   price_lamports: number | null;
@@ -134,7 +139,7 @@ type ActivityResponse = {
 type FeedItem = {
   id: string;
   type: "purchase" | "listing";
-  actor: string;
+  actor: string | null;
   skillListing: string | null;
   skillName: string;
   skillRepoId: string | null;
@@ -154,6 +159,31 @@ function formatUsdc(
 
 function shortAddr(addr: string): string {
   return addr.slice(0, 4) + "..." + addr.slice(-4);
+}
+
+function ActorLink({
+  pubkey,
+  fallback = "Unverified publisher",
+}: {
+  pubkey: string | null;
+  fallback?: string;
+}) {
+  if (!pubkey) {
+    return (
+      <span className="font-mono font-medium text-gray-500 dark:text-gray-400">
+        {fallback}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={`/author/${pubkey}`}
+      className="font-mono font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+    >
+      {shortAddr(pubkey)}
+    </Link>
+  );
 }
 
 function timeAgo(ts: number): string {
@@ -710,6 +740,7 @@ export default function MarketplacePage() {
                           )}
                           onPurchase={() => {
                             if (!listingPubkey) return;
+                            if (!skill.author_pubkey) return;
                             handlePurchase(
                               address(listingPubkey),
                               address(skill.author_pubkey)
@@ -776,12 +807,7 @@ export default function MarketplacePage() {
                         className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition"
                       >
                         <p className="text-xs text-gray-900 dark:text-gray-100 leading-relaxed">
-                          <Link
-                            href={`/author/${item.actor}`}
-                            className="font-mono font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-                          >
-                            {shortAddr(item.actor)}
-                          </Link>{" "}
+                          <ActorLink pubkey={item.actor} />{" "}
                           {item.type === "listing" ? "listed " : "bought "}
                           {item.skillRepoId ? (
                             <Link
@@ -798,12 +824,7 @@ export default function MarketplacePage() {
                           {item.type === "purchase" && item.author ? (
                             <>
                               from{" "}
-                              <Link
-                                href={`/author/${item.author}`}
-                                className="font-mono font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-                              >
-                                {shortAddr(item.author)}
-                              </Link>
+                              <ActorLink pubkey={item.author} />
                             </>
                           ) : null}
                         </p>

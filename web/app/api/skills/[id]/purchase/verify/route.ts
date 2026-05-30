@@ -22,6 +22,13 @@ type VerifyPurchaseBody = {
   listingAddress?: unknown;
 };
 
+type RepoDirectPurchaseSkillRow = Omit<
+  DirectPurchaseSkillRow,
+  "author_pubkey"
+> & {
+  author_pubkey: string | null;
+};
+
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -74,16 +81,31 @@ export async function POST(
     return NextResponse.json({ error: "Skill not found" }, { status: 404 });
   }
 
+  if (!skill.author_pubkey) {
+    return NextResponse.json(
+      {
+        error:
+          "This skill does not have a linked author wallet and cannot verify protocol purchases.",
+      },
+      { status: 409 }
+    );
+  }
+
+  const walletBackedSkill: DirectPurchaseSkillRow = {
+    ...skill,
+    author_pubkey: skill.author_pubkey,
+  };
+
   try {
     const verification = id.startsWith(CHAIN_PREFIX)
       ? await verifyDirectPurchase({
-          skill,
+          skill: walletBackedSkill,
           signature,
           buyerPubkey: buyer,
           listingAddress: listing,
         })
       : await verifyAndRecordDirectPurchase({
-          skill,
+          skill: walletBackedSkill,
           signature,
           buyerPubkey: buyer,
           listingAddress: listing,
@@ -92,7 +114,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       entitlement: {
-        skill_id: skill.id,
+        skill_id: walletBackedSkill.id,
         buyer_pubkey: verification.buyerPubkey,
         payment_tx_signature: verification.signature,
         purchase_pda: verification.purchasePda,
@@ -123,8 +145,8 @@ export async function POST(
 
 async function fetchRepoSkillRow(
   id: string
-): Promise<DirectPurchaseSkillRow | null> {
-  const rows = await sql()<DirectPurchaseSkillRow>`
+): Promise<RepoDirectPurchaseSkillRow | null> {
+  const rows = await sql()<RepoDirectPurchaseSkillRow>`
     SELECT
       id,
       on_chain_address,

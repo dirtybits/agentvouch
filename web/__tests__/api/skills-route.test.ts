@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: vi.fn(),
+  };
+});
+
 vi.mock("@/lib/db", () => ({
   initializeDatabase: vi.fn(),
   sql: vi.fn(),
@@ -29,6 +37,10 @@ vi.mock("@/lib/agentIdentity", () => ({
   upsertLocalAgentIdentity: vi.fn(),
 }));
 
+vi.mock("@/lib/githubOAuth", () => ({
+  getGithubSessionFromRequest: vi.fn(),
+}));
+
 import { POST } from "@/app/api/skills/route";
 import { PATCH } from "@/app/api/skills/[id]/route";
 import { verifyWalletSignature } from "@/lib/auth";
@@ -36,6 +48,7 @@ import { initializeDatabase, sql } from "@/lib/db";
 import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
+import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import { MAX_SKILL_DESCRIPTION_LENGTH } from "@/lib/skillDraft";
 import { verifyAuthorTrust } from "@/lib/trust";
 
@@ -56,6 +69,8 @@ const mockUpsertLocalAgentIdentity =
 const mockGetOnChainUsdcPrice = getOnChainUsdcPrice as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockGetGithubSessionFromRequest =
+  getGithubSessionFromRequest as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost/api/skills", {
@@ -74,6 +89,7 @@ describe("POST /api/skills", () => {
       pubkey: "AuthorWallet1111111111111111111111111111111",
     });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
+    mockGetGithubSessionFromRequest.mockReturnValue(null);
     mockPinSkillContent.mockResolvedValue({
       success: true,
       cid: "bafy-test-cid",
@@ -155,6 +171,66 @@ describe("POST /api/skills", () => {
       success: true,
       cid: "bafy-test-cid",
     });
+  });
+
+  it("allows a GitHub-authenticated publisher to create a free unverified skill", async () => {
+    mockGetGithubSessionFromRequest.mockReturnValue({
+      provider: "github",
+      id: "12345",
+      login: "dirtybits",
+      name: "Dirty Bits",
+      avatarUrl: null,
+      createdAt: Date.now(),
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-2",
+          skill_id: "free-skill",
+          author_pubkey: null,
+          author_kind: "github",
+          author_external_id: "12345",
+          author_handle: "dirtybits",
+          author_display_name: "Dirty Bits",
+          publisher_identity_key: "github:12345",
+          publisher_tier: "unverified",
+          name: "Free Skill",
+          description: "Free unverified skill",
+          tags: [],
+          current_version: 1,
+          ipfs_cid: "bafy-test-cid",
+          on_chain_address: null,
+          chain_context: "solana:devnet",
+          total_installs: 0,
+          contact: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        skill_id: "free-skill",
+        name: "Free Skill",
+        description: "Free unverified skill",
+        tags: [],
+        content: "# Free Skill\n\nHello",
+        price_usdc_micros: "0",
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+    expect(mockUpsertLocalAgentIdentity).not.toHaveBeenCalled();
+
+    const body = await res.json();
+    expect(body.author_kind).toBe("github");
+    expect(body.author_handle).toBe("dirtybits");
+    expect(body.publisher_tier).toBe("unverified");
   });
 
   it("rejects descriptions that exceed the on-chain byte cap", async () => {

@@ -19,10 +19,16 @@ export async function generateMetadata({
     });
   }
 
+  const authorContext = skill.trustSummary
+    ? `Author recommendation: ${skill.trustSummary.recommended_action}. ${skill.trustSummary.totalStakedFor} USDC micros of trust capital behind this author.`
+    : skill.authorHandle
+    ? `Published by unverified @${skill.authorHandle}.`
+    : "Published by an unverified AgentVouch publisher.";
+
   return buildMetadata({
     title: `${skill.name} Trust Record`,
     description: truncateDescription(
-      `${skill.description} Author recommendation: ${skill.trustSummary.recommended_action}. ${skill.trustSummary.totalStakedFor} USDC micros of trust capital behind this author.`
+      `${skill.description} ${authorContext}`
     ),
     path: `/skills/${id}`,
     keywords: [

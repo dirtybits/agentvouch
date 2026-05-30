@@ -18,6 +18,7 @@ import {
   MAX_SKILL_CONTACT_LENGTH,
   MAX_SKILL_DESCRIPTION_LENGTH,
   MAX_SKILL_NAME_LENGTH,
+  MAX_SKILL_CONTENT_BYTES,
   normalizeSkillContact,
   normalizeSkillDescription,
   normalizeSkillName,
@@ -48,6 +49,7 @@ import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
 } from "@/lib/listingContract";
+import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 
 const PAGE_SIZE = 20;
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -56,7 +58,13 @@ const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 type RepoSkillRow = {
   id: string;
   skill_id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: "wallet" | "github" | "api_token" | "unknown" | string;
+  author_external_id?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: "unverified" | "registered" | "bonded" | string;
   name: string;
   description: string | null;
   tags: string[];
@@ -105,6 +113,28 @@ type ChainSkillRow = Omit<
 
 type RepoMergedSkillRow = RepoSkillRow & { source: "repo" };
 type MergedSkillRow = RepoMergedSkillRow | ChainSkillRow;
+
+type PublisherAuth =
+  | {
+      kind: "wallet";
+      authorPubkey: string;
+      externalId: null;
+      handle: null;
+      displayName: null;
+      identityKey: string;
+      tier: "unverified" | "registered";
+      isRegistered: boolean;
+    }
+  | {
+      kind: "github";
+      authorPubkey: null;
+      externalId: string;
+      handle: string;
+      displayName: string | null;
+      identityKey: string;
+      tier: "unverified";
+      isRegistered: false;
+    };
 
 async function fetchOnChainListings(): Promise<ChainSkillRow[]> {
   try {
@@ -179,7 +209,7 @@ function normalizePriceUsdcMicros(value: unknown): string | null {
   }
 
   if (BigInt(normalized) <= 0n) {
-    throw new Error("price_usdc_micros must be greater than zero");
+    return null;
   }
 
   return normalized;
@@ -196,6 +226,95 @@ function normalizeCurrencyMint(value: unknown): string | null {
   }
 
   return normalized;
+}
+
+async function resolvePublisherAuth(input: {
+  request: NextRequest;
+  auth: AuthPayload | undefined;
+  requiresWallet: boolean;
+}): Promise<
+  | { ok: true; publisher: PublisherAuth }
+  | { ok: false; status: number; error: string }
+> {
+  if (input.auth) {
+    const verification = verifyWalletSignature(input.auth);
+    if (!verification.valid || !verification.pubkey) {
+      return {
+        ok: false,
+        status: 401,
+        error: verification.error || "Invalid signature",
+      };
+    }
+
+    let isRegistered = false;
+    try {
+      const trust = await verifyAuthorTrust(verification.pubkey);
+      isRegistered = trust.isRegistered;
+    } catch (error) {
+      if (input.requiresWallet) {
+        return {
+          ok: false,
+          status: 503,
+          error: "Unable to verify on-chain registration. Please try again.",
+        };
+      }
+      console.error("Unable to verify free-publish wallet trust:", error);
+    }
+
+    if (input.requiresWallet && !isRegistered) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Paid marketplace listings require a registered on-chain AgentProfile. Publish for free, or register before setting a price.",
+      };
+    }
+
+    return {
+      ok: true,
+      publisher: {
+        kind: "wallet",
+        authorPubkey: verification.pubkey,
+        externalId: null,
+        handle: null,
+        displayName: null,
+        identityKey: `wallet:${verification.pubkey}`,
+        tier: isRegistered ? "registered" : "unverified",
+        isRegistered,
+      },
+    };
+  }
+
+  if (input.requiresWallet) {
+    return {
+      ok: false,
+      status: 401,
+      error: "Paid marketplace listings require wallet signature auth.",
+    };
+  }
+
+  const githubSession = getGithubSessionFromRequest(input.request);
+  if (!githubSession) {
+    return {
+      ok: false,
+      status: 401,
+      error: "Sign in with GitHub or connect a wallet to publish a free skill.",
+    };
+  }
+
+  return {
+    ok: true,
+    publisher: {
+      kind: "github",
+      authorPubkey: null,
+      externalId: githubSession.id,
+      handle: githubSession.login,
+      displayName: githubSession.name,
+      identityKey: `github:${githubSession.id}`,
+      tier: "unverified",
+      isRegistered: false,
+    },
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -266,7 +385,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const authorPubkeys = [...new Set(allSkills.map((s) => s.author_pubkey))];
+    const authorPubkeys = [
+      ...new Set(
+        allSkills
+          .map((s) => s.author_pubkey)
+          .filter((value): value is string => Boolean(value && isAddress(value)))
+      ),
+    ];
     const trustMap =
       authorPubkeys.length > 0
         ? await resolveMultipleAuthorTrust(authorPubkeys)
@@ -291,8 +416,12 @@ export async function GET(request: NextRequest) {
     }
 
     const enriched = allSkills.map((skill) => {
-      const authorTrust = trustMap.get(skill.author_pubkey) || null;
-      const authorIdentity = identityMap.get(skill.author_pubkey) || null;
+      const authorTrust = skill.author_pubkey
+        ? trustMap.get(skill.author_pubkey) || null
+        : null;
+      const authorIdentity = skill.author_pubkey
+        ? identityMap.get(skill.author_pubkey) || null
+        : null;
       const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
 
       return {
@@ -307,7 +436,7 @@ export async function GET(request: NextRequest) {
         author_trust: authorTrust,
         author_trust_summary: authorTrust
           ? buildAgentTrustSummary({
-              walletPubkey: skill.author_pubkey,
+              walletPubkey: skill.author_pubkey!,
               trust: authorTrust,
               identity: authorIdentity,
             })
@@ -348,7 +477,10 @@ export async function GET(request: NextRequest) {
       rpc,
       buyer: buyerAddress,
       usdcMint,
-      authors: paged.map((skill) => address(skill.author_pubkey)),
+      authors: paged
+        .map((skill) => skill.author_pubkey)
+        .filter((value): value is string => Boolean(value && isAddress(value)))
+        .map((authorPubkey) => address(authorPubkey)),
     });
     const pagedWithPricing = await Promise.all(
       paged.map(async (skill) => {
@@ -361,7 +493,10 @@ export async function GET(request: NextRequest) {
             priceUsdcMicros: creatorPriceUsdcMicros
               ? BigInt(creatorPriceUsdcMicros)
               : 0n,
-            author: address(skill.author_pubkey),
+            author:
+              skill.author_pubkey && isAddress(skill.author_pubkey)
+                ? address(skill.author_pubkey)
+                : null,
             authorBackingUsdcMicros:
               skill.on_chain_address && creatorPriceUsdcMicros
                 ? BigInt(skill.author_trust?.totalStakeAtRisk ?? 0)
@@ -443,7 +578,7 @@ export async function POST(request: NextRequest) {
       price_usdc_micros,
       currency_mint,
     } = body as {
-      auth: AuthPayload;
+      auth?: AuthPayload;
       skill_id: string;
       name: string;
       description?: string;
@@ -455,22 +590,12 @@ export async function POST(request: NextRequest) {
       currency_mint?: string;
     };
 
-    if (!auth || !skill_id || !name || !content) {
+    if (!skill_id || !name || !content) {
       return NextResponse.json(
-        { error: "Missing required fields: auth, skill_id, name, content" },
+        { error: "Missing required fields: skill_id, name, content" },
         { status: 400 }
       );
     }
-
-    const verification = verifyWalletSignature(auth);
-    if (!verification.valid) {
-      return NextResponse.json(
-        { error: verification.error || "Invalid signature" },
-        { status: 401 }
-      );
-    }
-
-    const authorPubkey = verification.pubkey!;
 
     const fieldByteLimits: Array<{
       field: string;
@@ -492,6 +617,16 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+    }
+
+    const contentBytes = Buffer.byteLength(content, "utf8");
+    if (contentBytes > MAX_SKILL_CONTENT_BYTES) {
+      return NextResponse.json(
+        {
+          error: `content is ${contentBytes} bytes, exceeds cap of ${MAX_SKILL_CONTENT_BYTES} bytes`,
+        },
+        { status: 400 }
+      );
     }
 
     const normalizedName = normalizeSkillName(name);
@@ -516,6 +651,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const requiresWalletPublisher = Boolean(normalizedPriceUsdcMicros);
+    const publisherResult = await resolvePublisherAuth({
+      request,
+      auth,
+      requiresWallet: requiresWalletPublisher,
+    });
+    if (!publisherResult.ok) {
+      return NextResponse.json(
+        { error: publisherResult.error },
+        { status: publisherResult.status }
+      );
+    }
+    const publisher = publisherResult.publisher;
+
     if (!normalizedName) {
       return NextResponse.json(
         { error: "Skill name is required" },
@@ -533,35 +682,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let trust;
-    try {
-      trust = await verifyAuthorTrust(authorPubkey);
-    } catch {
-      return NextResponse.json(
-        { error: "Unable to verify on-chain registration. Please try again." },
-        { status: 503 }
-      );
-    }
-
-    if (!trust.isRegistered) {
-      return NextResponse.json(
-        {
-          error:
-            "You must register an on-chain AgentProfile before publishing. Go to your Profile tab to register.",
-        },
-        { status: 403 }
-      );
-    }
-
     await initializeDatabase();
 
     const pinResult = await pinSkillContent(content, skill_id, 1);
     try {
-      await upsertLocalAgentIdentity({
-        walletPubkey: authorPubkey,
-        chainContext: normalizedChainContext,
-        hasAgentProfile: trust.isRegistered,
-      });
+      if (publisher.kind === "wallet") {
+        await upsertLocalAgentIdentity({
+          walletPubkey: publisher.authorPubkey,
+          chainContext: normalizedChainContext,
+          hasAgentProfile: publisher.isRegistered,
+        });
+      }
     } catch (error) {
       console.error(
         "Failed to upsert local agent identity during skill publish:",
@@ -573,6 +704,12 @@ export async function POST(request: NextRequest) {
       INSERT INTO skills (
         skill_id,
         author_pubkey,
+        author_kind,
+        author_external_id,
+        author_handle,
+        author_display_name,
+        publisher_identity_key,
+        publisher_tier,
         name,
         description,
         tags,
@@ -585,7 +722,13 @@ export async function POST(request: NextRequest) {
       )
       VALUES (
         ${skill_id},
-        ${authorPubkey},
+        ${publisher.authorPubkey},
+        ${publisher.kind},
+        ${publisher.externalId},
+        ${publisher.handle},
+        ${publisher.displayName},
+        ${publisher.identityKey},
+        ${publisher.tier},
         ${normalizedName},
         ${normalizedDescription || null},
         ${tags || []}::text[],

@@ -6,6 +6,7 @@ import {
   FiCheck,
   FiCheckCircle,
   FiDownload,
+  FiGithub,
   FiInfo,
   FiShield,
   FiUsers,
@@ -19,7 +20,12 @@ import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 
 interface SkillPreviewCardSkill {
   id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -239,6 +245,26 @@ export default function SkillPreviewCard({
   const trust = skill.author_trust;
   const verdict = getVerdict(trust);
   const verdictMeta = getVerdictMeta(verdict);
+  const authorSeed =
+    skill.author_pubkey ??
+    skill.publisher_identity_key ??
+    skill.author_handle ??
+    skill.id;
+  const authorLabel = skill.author_handle
+    ? `@${skill.author_handle}`
+    : skill.author_pubkey
+    ? shortAddr(skill.author_pubkey)
+    : "Unverified publisher";
+  const authorHref = skill.author_pubkey
+    ? `/author/${skill.author_pubkey}`
+    : skill.author_kind === "github" && skill.author_handle
+    ? `https://github.com/${skill.author_handle}`
+    : null;
+  const authorTitle = skill.author_pubkey
+    ? "Author wallet that published this skill"
+    : skill.author_kind === "github"
+    ? "GitHub identity that published this unverified skill"
+    : "Unverified publisher identity";
   const primaryUsdcPrice = formatUsdcMicros(skill.price_usdc_micros);
   const isListingRequired = skill.payment_flow === "listing-required";
   const hasUsdcPrimary =
@@ -286,7 +312,7 @@ export default function SkillPreviewCard({
             aria-label={skill.name}
           >
             <SkillIcon
-              seed={skill.author_pubkey}
+              seed={authorSeed}
               size={40}
               ringClass={verdictMeta.ring}
               badge={<VerdictDot verdict={verdict} meta={verdictMeta} />}
@@ -317,13 +343,33 @@ export default function SkillPreviewCard({
             {skill.name}
           </Link>
           <div className="mt-1 flex items-center gap-1.5">
-            <Link
-              href={`/author/${skill.author_pubkey}`}
-              className="truncate font-mono text-[11px] text-[var(--sea-accent)] transition hover:text-[var(--sea-accent-strong)] hover:underline"
-              title="Author wallet that published this skill"
-            >
-              {shortAddr(skill.author_pubkey)}
-            </Link>
+            {authorHref?.startsWith("http") ? (
+              <a
+                href={authorHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-w-0 items-center gap-1 truncate font-mono text-[11px] text-[var(--sea-accent)] transition hover:text-[var(--sea-accent-strong)] hover:underline"
+                title={authorTitle}
+              >
+                <FiGithub className="h-3 w-3 shrink-0" />
+                <span className="truncate">{authorLabel}</span>
+              </a>
+            ) : authorHref ? (
+              <Link
+                href={authorHref}
+                className="truncate font-mono text-[11px] text-[var(--sea-accent)] transition hover:text-[var(--sea-accent-strong)] hover:underline"
+                title={authorTitle}
+              >
+                {authorLabel}
+              </Link>
+            ) : (
+              <span
+                className="truncate font-mono text-[11px] text-gray-400 dark:text-gray-500"
+                title={authorTitle}
+              >
+                {authorLabel}
+              </span>
+            )}
             {skill.source !== "chain" && (
               <span
                 className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500"
