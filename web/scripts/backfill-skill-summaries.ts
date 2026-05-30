@@ -45,8 +45,13 @@ async function main() {
   await initializeDatabase();
   const limit = Number(process.argv[2] ?? process.env.LIMIT ?? 1);
 
-  const rows = await sql()<{ id: string; name: string; content: string | null }>`
-    SELECT s.id, s.name, sv.content
+  const rows = await sql()<{
+    id: string;
+    name: string;
+    current_version: number;
+    content: string | null;
+  }>`
+    SELECT s.id, s.name, s.current_version, sv.content
     FROM skills s
     JOIN LATERAL (
       SELECT content
@@ -65,22 +70,31 @@ async function main() {
   );
   let generated = 0;
   let cached = 0;
+  let skipped = 0;
   for (const r of rows) {
     const res = await withRateLimitRetry(
-      () => ensureSkillSummary(r.id, r.content as string),
+      () =>
+        ensureSkillSummary(r.id, r.content as string, {
+          expectedVersion: r.current_version,
+        }),
       r.name
     );
     if (res.generated) generated += 1;
     if (res.cached) cached += 1;
+    if (res.skipped) skipped += 1;
     console.log(
-      `${res.generated ? "GEN " : "HIT "} ${r.name.slice(0, 38).padEnd(38)} → ${
+      `${res.generated ? "GEN " : res.skipped ? "SKIP" : "HIT "} ${r.name
+        .slice(0, 38)
+        .padEnd(38)} → ${
         res.summary?.slice(0, 90) ?? "(none)"
       }`
     );
     // Only pace after a real model call; cache hits fly through.
     if (res.generated) await sleep(DELAY_MS);
   }
-  console.log(`Done. generated=${generated} cached=${cached}`);
+  console.log(
+    `Done. generated=${generated} cached=${cached} skipped=${skipped}`
+  );
   process.exit(0);
 }
 

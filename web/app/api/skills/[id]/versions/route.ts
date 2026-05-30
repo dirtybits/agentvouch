@@ -86,7 +86,9 @@ export async function POST(
     `;
 
     // Regenerate the AI summary for the new content after the response.
-    after(() => generateSummarySafe(id, content));
+    after(() =>
+      generateSummarySafe(id, content, { expectedVersion: newVersion })
+    );
 
     return NextResponse.json(
       {

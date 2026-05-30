@@ -55,6 +55,11 @@ export interface EnsureSummaryResult {
   summary: string | null;
   cached: boolean;
   generated: boolean;
+  skipped: boolean;
+}
+
+interface EnsureSummaryOptions {
+  expectedVersion?: number;
 }
 
 /**
@@ -64,7 +69,8 @@ export interface EnsureSummaryResult {
  */
 export async function ensureSkillSummary(
   skillId: string,
-  content: string
+  content: string,
+  options: EnsureSummaryOptions = {}
 ): Promise<EnsureSummaryResult> {
   const contentHash = hashContent(content);
 
@@ -72,31 +78,64 @@ export async function ensureSkillSummary(
     summary: string | null;
     summary_model: string | null;
     summary_sha256: string | null;
+    current_version: number;
   }>`
-    SELECT summary, summary_model, summary_sha256
+    SELECT summary, summary_model, summary_sha256, current_version
     FROM skills
     WHERE id = ${skillId}::uuid
   `;
   const existing = rows[0];
 
   if (
+    options.expectedVersion !== undefined &&
+    existing?.current_version !== options.expectedVersion
+  ) {
+    return {
+      summary: existing?.summary ?? null,
+      cached: false,
+      generated: false,
+      skipped: true,
+    };
+  }
+
+  if (
     existing?.summary &&
     existing.summary_sha256 === contentHash &&
     existing.summary_model === SUMMARY_MODEL
   ) {
-    return { summary: existing.summary, cached: true, generated: false };
+    return {
+      summary: existing.summary,
+      cached: true,
+      generated: false,
+      skipped: false,
+    };
   }
 
   const result = await summarizeSkill(content);
-  await sql()`
+  const updated = await sql()<{
+    id: string;
+  }>`
     UPDATE skills
     SET summary = ${result.oneLiner},
         summary_model = ${SUMMARY_MODEL},
-        summary_sha256 = ${contentHash},
-        updated_at = NOW()
+        summary_sha256 = ${contentHash}
     WHERE id = ${skillId}::uuid
+    ${
+      options.expectedVersion !== undefined
+        ? sql()`AND current_version = ${options.expectedVersion}`
+        : sql()``
+    }
+    RETURNING id
   `;
-  return { summary: result.oneLiner, cached: false, generated: true };
+  if (updated.length === 0) {
+    return { summary: null, cached: false, generated: false, skipped: true };
+  }
+  return {
+    summary: result.oneLiner,
+    cached: false,
+    generated: true,
+    skipped: false,
+  };
 }
 
 /**
@@ -106,11 +145,15 @@ export async function ensureSkillSummary(
  */
 export async function generateSummarySafe(
   skillId: string,
-  content: string
+  content: string,
+  options: EnsureSummaryOptions = {}
 ): Promise<void> {
   try {
-    const res = await ensureSkillSummary(skillId, content);
+    const res = await ensureSkillSummary(skillId, content, options);
     if (res.generated) console.info(`[ai-summary] generated for ${skillId}`);
+    if (res.skipped) {
+      console.info(`[ai-summary] skipped stale job for ${skillId}`);
+    }
   } catch (e) {
     console.error(
       `[ai-summary] generation failed for ${skillId}:`,

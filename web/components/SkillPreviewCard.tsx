@@ -230,11 +230,9 @@ export default function SkillPreviewCard({
   isOwn,
   descriptionFallback,
 }: SkillPreviewCardProps) {
-  // AI summary is the canonical card subtitle — publishers don't have to write
-  // copy. Fall back to the author description, then tag-based capabilities. The
-  // full author description still shows on the skill detail page.
+  // Author copy stays primary; AI summaries fill gaps for thin listings.
   const description =
-    skill.summary ?? skill.description ?? descriptionFallback ?? "";
+    skill.description ?? skill.summary ?? descriptionFallback ?? "";
   const displayDescription = description
     ? truncateAtWord(description, 80)
     : null;

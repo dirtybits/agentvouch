@@ -611,7 +611,7 @@ export async function POST(request: NextRequest) {
     `;
 
     // Auto-generate the AI summary after the response — publishers never write one.
-    after(() => generateSummarySafe(skill.id, content));
+    after(() => generateSummarySafe(skill.id, content, { expectedVersion: 1 }));
 
     return NextResponse.json(
       {
