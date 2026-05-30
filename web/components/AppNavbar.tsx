@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import favicon from "@/app/favicon.png";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
+import { GithubAuthButton } from "@/components/GithubAuthButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   navButtonSizeClass,
@@ -83,6 +84,7 @@ export function AppNavbar() {
           })}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <GithubAuthButton />
           <ClientWalletButton />
           <ThemeToggle />
         </div>

@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
+import {
+  getGithubOAuthConfig,
+  getGithubSessionFromRequest,
+} from "@/lib/githubOAuth";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 
 export async function GET(request: NextRequest) {
   const session = getGithubSessionFromRequest(request);
   return NextResponse.json(
     {
+      // Lets the UI hide the GitHub control entirely when OAuth isn't wired up
+      // (no env creds), rather than render a button that 503s on click.
+      configured: getGithubOAuthConfig(request).configured,
       authenticated: Boolean(session),
       user: session
         ? {
