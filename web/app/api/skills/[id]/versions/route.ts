@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
 import { generateSummarySafe } from "@/lib/ai/summarize";
+import { MAX_SKILL_CONTENT_BYTES } from "@/lib/skillDraft";
 import { getErrorMessage } from "@/lib/errors";
 
 type VersionedSkillRow = {
@@ -29,6 +30,16 @@ export async function POST(
     if (!auth || !content) {
       return NextResponse.json(
         { error: "Missing required fields: auth, content" },
+        { status: 400 }
+      );
+    }
+
+    const contentBytes = Buffer.byteLength(content, "utf8");
+    if (contentBytes > MAX_SKILL_CONTENT_BYTES) {
+      return NextResponse.json(
+        {
+          error: `content is ${contentBytes} bytes, exceeds cap of ${MAX_SKILL_CONTENT_BYTES} bytes`,
+        },
         { status: 400 }
       );
     }

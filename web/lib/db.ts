@@ -147,22 +147,11 @@ export async function initializeDatabase() {
       )
   `;
 
-  // Existing tables created before the publisher-identity era still carry the old
-  // UNIQUE(author_pubkey, skill_id). Add the correct per-identity uniqueness here.
-  // Wrapped so pre-existing duplicates can't break boot (they must be cleaned up
-  // before the index can build — logged, not fatal).
-  try {
-    await db`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_publisher_identity_skill
-      ON skills (publisher_identity_key, skill_id)
-    `;
-  } catch (error) {
-    console.error(
-      "Could not create unique index on (publisher_identity_key, skill_id) — " +
-        "likely pre-existing duplicate (publisher, skill_id) rows that need cleanup:",
-      error
-    );
-  }
+  // Per-identity uniqueness is enforced by the canonical partial index
+  // idx_skills_publisher_identity_skill_id (created further below). Drop the
+  // redundant full-index variant an earlier pass added so there is exactly one
+  // source of truth for the (publisher_identity_key, skill_id) invariant.
+  await db`DROP INDEX IF EXISTS idx_skills_publisher_identity_skill`;
 
   await db`
     ALTER TABLE skills
@@ -331,6 +320,11 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_skills_author ON skills(author_pubkey)
   `;
 
+  // Canonical per-publisher uniqueness (wallet:<pk> / github:<id>). Partial on
+  // NOT NULL so legacy null-key rows are excluded. Intentionally fail-closed: a
+  // build failure here means pre-existing duplicate (publisher_identity_key,
+  // skill_id) rows that must be cleaned up (see runbook) — we do not silently skip
+  // it. Verified 0 duplicates at rollout; IF NOT EXISTS makes steady-state a no-op.
   await db`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_publisher_identity_skill_id
     ON skills(publisher_identity_key, skill_id)
