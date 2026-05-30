@@ -71,6 +71,15 @@ pub struct RevokeVouch<'info> {
 }
 
 pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
+    // Escape-hatch lock: a voucher cannot pull stake while the author they back has
+    // an open dispute, otherwise they could dodge slashing. Mirrors the same guard
+    // on withdraw_author_bond. The dispute resolves atomically (slash happens in
+    // resolve), so there is no window between resolution and slashing.
+    require!(
+        ctx.accounts.vouchee_profile.open_author_disputes == 0,
+        ErrorCode::VoucheeHasOpenDispute
+    );
+
     let vouch = &mut ctx.accounts.vouch;
     accrue_author_rewards(&ctx.accounts.vouchee_profile, vouch)?;
     let stake_usdc_micros = vouch.stake_usdc_micros;
@@ -135,6 +144,8 @@ pub enum ErrorCode {
     UnauthorizedVouchRevocation,
     #[msg("Vouch is not currently revocable")]
     VouchNotRevocable,
+    #[msg("Cannot revoke while the vouched author has an open dispute")]
+    VoucheeHasOpenDispute,
     #[msg("USDC mint does not match config")]
     InvalidUsdcMint,
     #[msg("Vouch vault does not match account state")]

@@ -8,7 +8,33 @@ AgentVouch is close to a mainnet release candidate, but should not be treated as
 
 The core product shape is in place: the USDC-native protocol, marketplace publishing and purchase flows, author trust surfaces, voucher backing, dashboard revenue visibility, and agent-facing install path now fit together. The remaining work is mainly release hardening, not product discovery.
 
+> **Update (2026-05-30): a direct code audit revised this assessment.** See [Code Audit Findings](#code-audit-findings-2026-05-30) below. The remaining work is **not** only release hardening: **voucher slashing — the core economic mechanism of a stake-backed reputation system — is not implemented**, and **dispute adjudication is a single key**. Until those are addressed, a mainnet deploy would put real USDC behind a half-built mechanism with a centralized, perverse-incentive trust root.
+
 The next milestone should be framed as **Mainnet Release Candidate**, not final mainnet launch. The release candidate is ready only when the protocol, wallet UX, production config, docs, and operating runbooks can survive repeated end-to-end devnet smoke tests without manual interpretation.
+
+## Code Audit Findings (2026-05-30)
+
+A direct review of `programs/agentvouch/src` and the test suites downgraded the assessment above. The escrow/accounting plumbing is solid (pinned PDA derivations re-checked in handlers, `transfer_checked` throughout, checked arithmetic, x402 replay guards via payment-ref + tx-sig PDAs, dispute locks that freeze paid-listing purchases/withdrawals). But two load-bearing design choices are **not implemented or are centralized**, so part of the core product and trust model — not just release hardening — is still missing.
+
+### P0 — blocking (product + trust correctness)
+
+1. **Voucher slashing is not implemented.** The `AuthorBondThenVouchers` liability scope is recorded, but no instruction ever slashes voucher stake: `resolve_author_dispute.rs` only calls `slash_author_bond_if_present`; `author_dispute.voucher_slashed_usdc_micros` is set to `0` at open and never recomputed; `VouchStatus::Slashed` (`state/vouch.rs`) is never assigned; `AuthorDisputeVouchLink` (`state/author_dispute_vouch_link.rs`) is defined but never created. Net: **vouching is reward-only with zero downside** — the stake-backed-reputation thesis is not enforced on-chain. Compounding it, `revoke_vouch.rs` has **no open-dispute lock**, so a voucher can withdraw 100% of stake at any time (even if slashing were wired, they could exit first). *Fix:* implement voucher slashing (debit voucher vaults, set `VouchStatus::Slashed`) and add an active-dispute lock to `revoke_vouch`.
+
+   > **Status (2026-05-30): paused** in favor of the free-listings adoption wedge ([free-listings-unverified-tier](../.agents/plans/free-listings-unverified-tier.plan.md)). The `revoke_vouch` active-dispute lock has landed (uncommitted). The `resolve` slash-loop is designed but not built: slash = `slash_percentage` (partial; residual stays staked); slashed funds deposit into the author proceeds vault and ride the existing `create_refund_pool` split (challenger reward capped, remainder → buyers) — no new config/vault. Slashing is a verified/bonded-tier feature, not on the adoption path; resume when there's a verified tier worth protecting.
+
+2. **Dispute adjudication is a single key.** `resolve_author_dispute` and `create_refund_pool` are gated only on `config.config_authority` (`require_keys_eq!(config.config_authority, authority.key())`). One ordinary pubkey unilaterally decides Upheld/Dismissed and sizes refunds — no multisig, timelock, quorum, or appeal; on-chain evidence is a URI string. Slashed author bond is paid **100% to the challenger** (`resolve_author_dispute.rs`), not to harmed buyers, so a compromised or colluding resolver + challenger can drain any author's bond. *Fix:* multisig + timelock on the resolver authority at minimum; route slashed funds to harmed buyers (or explicitly justify otherwise); longer term, the optimistic-oracle / LLM-jury adjudication design.
+
+3. **No pause / emergency stop.** `config.paused` is written only at init (`= false`); no instruction sets it true, so every `require!(!paused)` guard is dead code and `pause_authority` is never read. There is no kill switch.
+
+4. **No refund reserve; refunds frequently unfundable.** Refund pools are funded from the author's own undisbursed proceeds for one revision, first-come-first-served until empty. Free-listing disputes produce no pool at all, and proceeds withdrawn before a dispute opened leave nothing. The slashed bond does not backstop buyers (it goes to the challenger).
+
+### P1 — required before launch
+
+5. **No config setters / authority rotation instructions.** Economic params (`slash_percentage`, bond floors, reward shares/caps) and authorities change only via redeploy or the M13 migration. `treasury_authority` has no withdrawal path — dismissed-dispute bonds accrue in the treasury vault with no in-program sweep.
+6. **External security review** of every USDC-moving instruction (per [Security Review](#security-review)) — not yet done; this is a Go gate.
+7. **Test gaps:** voucher-slashing path (N/A until implemented); listing update/remove/close/settlement-init (implemented, untested); one nose-to-tail upheld → slash → refund test; and API ↔ on-chain integration (the web/API layer is ~100% mocked — no test proves the API's entitlement/refund bookkeeping matches on-chain truth).
+
+Primary files for hardening: `instructions/resolve_author_dispute.rs`, `instructions/create_refund_pool.rs`, `instructions/revoke_vouch.rs`, `state/config.rs`.
 
 ## Release Candidate Gates
 
@@ -144,6 +170,9 @@ Go:
 
 No-go:
 
+- voucher slashing is not implemented (the core economic mechanism is missing — see [Code Audit Findings](#code-audit-findings-2026-05-30) P0.1)
+- dispute resolution depends on a single `config_authority` key, and/or slashed funds route to the challenger rather than harmed buyers (P0.2)
+- no pause / emergency-stop instruction exists (P0.3)
 - any USDC-moving instruction has unreviewed account constraints or arithmetic
 - wallet simulation warnings are unexplained on expected flows
 - Vercel, Neon, RPC, or program config points at mixed devnet/mainnet state
