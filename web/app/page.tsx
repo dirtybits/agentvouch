@@ -43,6 +43,7 @@ type FeaturedSkill = {
   source?: "repo" | "chain";
   author_trust: TrustData | null;
   summary?: string | null;
+  has_executable?: boolean | null;
   price_usdc_micros?: string | null;
   payment_flow?:
     | "free"

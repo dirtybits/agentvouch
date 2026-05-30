@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
+import SkillFileTree, { type SkillFileTreeEntry } from "@/components/SkillFileTree";
 import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
@@ -117,6 +118,10 @@ interface SkillDetail {
   author_trust: TrustData | null;
   author_identity: AgentIdentitySummary | null;
   content_verification: ContentVerification | null;
+  files: SkillFileTreeEntry[] | null;
+  tree_hash: string | null;
+  storage_backend: string | null;
+  has_executable: boolean;
   legacySolLamports?: number;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
@@ -2235,12 +2240,22 @@ export default function SkillDetailPage({
           </div>
         )}
 
-        {/* SKILL.md Content */}
-        {content ? (
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
-              <FiFileText className="w-4 h-4 text-gray-400" />
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        {/* Skill Tree / SKILL.md Content */}
+        {content && skill.files?.length ? (
+          <div className="mb-6">
+            <SkillFileTree
+              skillId={skill.id}
+              files={skill.files}
+              treeHash={skill.tree_hash}
+              hasExecutable={skill.has_executable}
+              initialContent={content}
+            />
+          </div>
+        ) : content ? (
+          <div className="mb-6 rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4 dark:border-gray-800">
+              <FiFileText className="h-4 w-4 text-gray-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 SKILL.md Content
               </span>
             </div>

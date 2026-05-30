@@ -200,6 +200,56 @@ export async function initializeDatabase() {
     )
   `;
 
+  await db`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+
+  await db`
+    ALTER TABLE skill_versions
+    ADD COLUMN IF NOT EXISTS files JSONB
+  `;
+
+  await db`
+    ALTER TABLE skill_versions
+    ADD COLUMN IF NOT EXISTS tree_hash VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE skill_versions
+    ADD COLUMN IF NOT EXISTS storage_backend VARCHAR(16)
+  `;
+
+  await db`
+    ALTER TABLE skill_versions
+    ADD COLUMN IF NOT EXISTS has_executable BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await db`
+    UPDATE skill_versions
+    SET
+      files = jsonb_build_array(
+        jsonb_build_object(
+          'path', 'SKILL.md',
+          'size', octet_length(content),
+          'sha256', encode(digest(convert_to(content, 'UTF8'), 'sha256'), 'hex'),
+          'contentType', 'text/markdown; charset=utf-8',
+          'executable', false
+        )
+      ),
+      tree_hash = encode(
+        digest(
+          convert_to('SKILL.md', 'UTF8')
+            || decode('00', 'hex')
+            || convert_to(encode(digest(convert_to(content, 'UTF8'), 'sha256'), 'hex'), 'UTF8'),
+          'sha256'
+        ),
+        'hex'
+      ),
+      storage_backend = COALESCE(storage_backend, 'inline'),
+      has_executable = COALESCE(has_executable, false)
+    WHERE files IS NULL
+      OR tree_hash IS NULL
+      OR storage_backend IS NULL
+  `;
+
   await db`
     ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS price_usdc_micros BIGINT

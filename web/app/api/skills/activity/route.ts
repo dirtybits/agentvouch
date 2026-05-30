@@ -57,7 +57,6 @@ export async function GET() {
           chain_context,
           created_at::text AS created_at
         FROM skills
-        WHERE on_chain_address IS NOT NULL
         ORDER BY created_at DESC
         LIMIT 20
       `,

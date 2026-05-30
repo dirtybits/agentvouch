@@ -26,6 +26,7 @@
     "@solana/sysvars": "^4.0.0",
     "@solana/web3.js": "^1.98.4",
     "@vercel/analytics": "^1.6.1",
+    "@vercel/blob": "^2.3.0",
     "@walletconnect/universal-provider": "^2.23.9",
     "@x402/fetch": "^2.10.0",
     "@x402/svm": "^2.10.0",

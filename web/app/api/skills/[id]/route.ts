@@ -76,6 +76,10 @@ type SkillVersionRow = {
   content: string;
   ipfs_cid: string | null;
   changelog: string | null;
+  files: unknown;
+  tree_hash: string | null;
+  storage_backend: string | null;
+  has_executable: boolean;
   created_at: string;
 };
 
@@ -187,6 +191,10 @@ export async function GET(
           source: "chain",
           skill_uri: listing.data.skillUri,
           content,
+          files: null,
+          tree_hash: null,
+          storage_backend: null,
+          has_executable: false,
           versions: [],
           author_trust,
           author_trust_summary,
@@ -234,7 +242,17 @@ export async function GET(
     }
 
     const versions = await sql()<SkillVersionRow>`
-      SELECT id, version, content, ipfs_cid, changelog, created_at
+      SELECT
+        id,
+        version,
+        content,
+        ipfs_cid,
+        changelog,
+        files,
+        tree_hash,
+        storage_backend,
+        has_executable,
+        created_at
       FROM skill_versions
       WHERE skill_id = ${id}::uuid
       ORDER BY version DESC
@@ -346,6 +364,10 @@ export async function GET(
           allowLegacySol: true,
         }),
         content: latestContent,
+        files: latestVersion?.files ?? null,
+        tree_hash: latestVersion?.tree_hash ?? null,
+        storage_backend: latestVersion?.storage_backend ?? null,
+        has_executable: latestVersion?.has_executable ?? false,
         versions: versionsWithoutContent,
         author_trust,
         author_trust_summary,

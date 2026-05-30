@@ -37,7 +37,7 @@ function createMockSigner(): TransactionSigner {
 function collectSignerRefs(
   request: ReturnType<typeof buildTransactionSendRequest>
 ) {
-  const instructionSigners = request.instructions[0].accounts
+  const instructionSigners = (request.instructions[0]!.accounts ?? [])
     .map((account) => ("signer" in account ? account.signer : undefined))
     .filter(Boolean);
 
@@ -61,7 +61,7 @@ describe("useReputationOracle send helpers", () => {
     );
 
     expect(voucherAccount).toBeDefined();
-    expect("signer" in voucherAccount && voucherAccount.signer).toBe(signer);
+    expect("signer" in voucherAccount! && voucherAccount!.signer).toBe(signer);
     expect(voucherAccount).not.toBe(ix.accounts[4]);
   });
 
@@ -173,8 +173,9 @@ describe("useReputationOracle send helpers", () => {
       action: "vouch",
       walletAddress: VOUCHER_ADDRESS,
       voucheeProfileExists: true,
-      walletBalanceLamports: 2_000_000_000n,
-      requiredLamports: 1_000_000_000n,
+      walletUsdcBalanceMicros: 2_000_000n,
+      hasUsdcAccount: true,
+      requiredUsdcMicros: 1_000_000n,
       configuredChainLabel: "Solana Devnet",
       configuredRpcTarget: "devnet",
     });
@@ -311,7 +312,9 @@ describe("useReputationOracle send helpers", () => {
       purchaseExists: false,
       purchaseMatchesSkillListing: true,
       walletBalanceLamports: 2_000_000_000n,
-      disputeBondLamports: 500_000_000n,
+      walletUsdcBalanceMicros: 2_000_000n,
+      hasUsdcAccount: true,
+      disputeBondUsdcMicros: 500_000n,
       configuredChainLabel: "Solana",
       configuredRpcTarget: "mainnet",
     });

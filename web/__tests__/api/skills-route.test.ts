@@ -27,6 +27,15 @@ vi.mock("@/lib/ipfs", () => ({
   pinSkillContent: vi.fn(),
 }));
 
+vi.mock("@vercel/blob", () => ({
+  put: vi.fn().mockResolvedValue({
+    url: "https://blob.example/skills/tree.tar",
+    downloadUrl: "https://blob.example/skills/tree.tar?download=1",
+    pathname: "skills/tree.tar",
+  }),
+  get: vi.fn(),
+}));
+
 vi.mock("@/lib/onchain", () => ({
   fetchOnChainSkillListing: vi.fn(),
   getOnChainUsdcPrice: vi.fn(),
@@ -49,7 +58,10 @@ import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
-import { MAX_SKILL_DESCRIPTION_LENGTH } from "@/lib/skillDraft";
+import {
+  MAX_SKILL_DESCRIPTION_LENGTH,
+  MAX_SKILL_UPLOAD_BYTES,
+} from "@/lib/skillDraft";
 import { verifyAuthorTrust } from "@/lib/trust";
 
 const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
@@ -77,6 +89,14 @@ function makeRequest(body: Record<string, unknown>) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+function makeRawRequest(body: string, headers: Record<string, string>) {
+  return new NextRequest("http://localhost/api/skills", {
+    method: "POST",
+    headers,
+    body,
   });
 }
 
@@ -231,6 +251,31 @@ describe("POST /api/skills", () => {
     expect(body.author_kind).toBe("github");
     expect(body.author_handle).toBe("dirtybits");
     expect(body.publisher_tier).toBe("unverified");
+  });
+
+  it("rejects oversized upload Content-Length before parsing the body", async () => {
+    const res = await POST(
+      makeRawRequest("not-json", {
+        "Content-Type": "application/json",
+        "Content-Length": String(MAX_SKILL_UPLOAD_BYTES + 1),
+      })
+    );
+
+    expect(res.status).toBe(413);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized tar_base64 payloads before base64 decoding", async () => {
+    const res = await POST(
+      makeRequest({
+        tar_base64: "a".repeat(MAX_SKILL_UPLOAD_BYTES + 1),
+      })
+    );
+
+    expect(res.status).toBe(413);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
   });
 
   it("rejects descriptions that exceed the on-chain byte cap", async () => {

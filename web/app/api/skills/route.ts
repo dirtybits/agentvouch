@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import { generateSummarySafe } from "@/lib/ai/summarize";
+import { putSkillTree } from "@/lib/skillStorage";
+import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import { verifyAuthorTrust, resolveMultipleAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
@@ -85,6 +87,9 @@ type RepoSkillRow = {
   summary?: string | null;
   summary_model?: string | null;
   summary_sha256?: string | null;
+  files?: unknown;
+  tree_hash?: string | null;
+  has_executable?: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -335,25 +340,39 @@ export async function GET(request: NextRequest) {
     try {
       if (q) {
         pgSkills = await sql()<RepoSkillRow>`
-          SELECT *
-          FROM skills
-          WHERE to_tsvector('english', name || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', ${q})
-          ${author ? sql()`AND author_pubkey = ${author}` : sql()``}
+          SELECT s.*, latest.files, latest.tree_hash, latest.has_executable
+          FROM skills s
+          LEFT JOIN LATERAL (
+            SELECT files, tree_hash, has_executable
+            FROM skill_versions
+            WHERE skill_id = s.id
+            ORDER BY version DESC
+            LIMIT 1
+          ) latest ON true
+          WHERE to_tsvector('english', s.name || ' ' || COALESCE(s.description, '')) @@ plainto_tsquery('english', ${q})
+          ${author ? sql()`AND s.author_pubkey = ${author}` : sql()``}
           ${
             tags
-              ? sql()`AND tags && ${tags.split(",").filter(Boolean)}::text[]`
+              ? sql()`AND s.tags && ${tags.split(",").filter(Boolean)}::text[]`
               : sql()``
           }
         `;
       } else {
         pgSkills = await sql()<RepoSkillRow>`
-          SELECT *
-          FROM skills
+          SELECT s.*, latest.files, latest.tree_hash, latest.has_executable
+          FROM skills s
+          LEFT JOIN LATERAL (
+            SELECT files, tree_hash, has_executable
+            FROM skill_versions
+            WHERE skill_id = s.id
+            ORDER BY version DESC
+            LIMIT 1
+          ) latest ON true
           WHERE 1=1
-          ${author ? sql()`AND author_pubkey = ${author}` : sql()``}
+          ${author ? sql()`AND s.author_pubkey = ${author}` : sql()``}
           ${
             tags
-              ? sql()`AND tags && ${tags.split(",").filter(Boolean)}::text[]`
+              ? sql()`AND s.tags && ${tags.split(",").filter(Boolean)}::text[]`
               : sql()``
           }
         `;
@@ -566,15 +585,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const upload = await parseSkillUploadRequest(request);
+    const body = upload.body;
+    const content = upload.skillContent;
     const {
       auth,
       skill_id,
       name,
       description,
       tags,
-      content,
       contact,
+      chain_context,
       price_usdc_micros,
       currency_mint,
     } = body as {
@@ -583,7 +604,7 @@ export async function POST(request: NextRequest) {
       name: string;
       description?: string;
       tags?: string[];
-      content: string;
+      content?: string;
       contact?: string;
       chain_context?: string;
       price_usdc_micros?: string | number;
@@ -634,8 +655,8 @@ export async function POST(request: NextRequest) {
       ? normalizeSkillDescription(description)
       : "";
     const normalizedContact = contact ? normalizeSkillContact(contact) : "";
-    const normalizedChainContext = body.chain_context
-      ? normalizeInputChainContext(body.chain_context)
+    const normalizedChainContext = chain_context
+      ? normalizeInputChainContext(chain_context)
       : configuredSolanaChainContext;
     let normalizedPriceUsdcMicros: string | null = null;
     let normalizedCurrencyMint: string | null = null;
@@ -672,7 +693,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (body.chain_context && !normalizedChainContext) {
+    if (chain_context && !normalizedChainContext) {
       return NextResponse.json(
         {
           error:
@@ -684,6 +705,7 @@ export async function POST(request: NextRequest) {
 
     await initializeDatabase();
 
+    const tree = await putSkillTree(upload.files);
     const pinResult = await pinSkillContent(content, skill_id, 1);
     try {
       if (publisher.kind === "wallet") {
@@ -743,13 +765,27 @@ export async function POST(request: NextRequest) {
     `;
 
     await sql()`
-      INSERT INTO skill_versions (skill_id, version, content, ipfs_cid, changelog)
+      INSERT INTO skill_versions (
+        skill_id,
+        version,
+        content,
+        ipfs_cid,
+        changelog,
+        files,
+        tree_hash,
+        storage_backend,
+        has_executable
+      )
       VALUES (
         ${skill.id}::uuid,
         1,
         ${content},
         ${pinResult.success ? pinResult.cid : null},
-        'Initial release'
+        'Initial release',
+        ${JSON.stringify(tree.manifest)}::jsonb,
+        ${tree.treeHash},
+        ${tree.backend},
+        ${tree.hasExecutable}
       )
     `;
 
@@ -759,6 +795,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ...skill,
+        files: tree.manifest,
+        tree_hash: tree.treeHash,
+        storage_backend: tree.backend,
+        has_executable: tree.hasExecutable,
         ipfs: pinResult,
       },
       { status: 201 }
@@ -766,6 +806,9 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error("POST /api/skills error:", error);
     const message = getErrorMessage(error);
+    if (error instanceof SkillUploadError) {
+      return NextResponse.json({ error: message }, { status: error.status });
+    }
     if (message.includes("unique")) {
       return NextResponse.json(
         { error: "A skill with this ID already exists for your account" },

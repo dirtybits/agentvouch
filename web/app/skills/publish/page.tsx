@@ -87,6 +87,14 @@ function isValidFreeOrPaidUsdcPrice(value: string): boolean {
   return true;
 }
 
+function getUploadRelativePath(file: File): string {
+  const raw =
+    (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
+    file.name;
+  const parts = raw.split("/").filter(Boolean);
+  return parts.length > 1 ? parts.slice(1).join("/") : raw;
+}
+
 function PublishReadiness({
   connected,
   githubConnected,
@@ -174,6 +182,7 @@ function PublishSkillPageInner() {
   const oracle = useReputationOracle();
 
   const [content, setContent] = useState("");
+  const [treeFiles, setTreeFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
   const [skillId, setSkillId] = useState("");
   const [description, setDescription] = useState("");
@@ -216,6 +225,7 @@ function PublishSkillPageInner() {
   const profileFetchId = useRef(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const directoryInputRef = useRef<HTMLInputElement>(null);
   const parsedUsdcPriceMicros = parseUsdcPriceToMicros(usdcPrice);
   const priceIsValid = isValidFreeOrPaidUsdcPrice(usdcPrice);
   const isPaidPublish = Boolean(parsedUsdcPriceMicros);
@@ -364,20 +374,40 @@ function PublishSkillPageInner() {
         auth = { pubkey: publicKey, signature, message, timestamp };
       }
 
-      const res = await fetch("/api/skills", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(auth ? { auth } : {}),
-          skill_id: cleanId,
-          name: cleanName,
-          description: cleanDescription,
-          tags,
-          content,
-          contact: cleanContact || undefined,
-          price_usdc_micros: usdcPriceMicros ?? "0",
-        }),
-      });
+      const payload = {
+        ...(auth ? { auth } : {}),
+        skill_id: cleanId,
+        name: cleanName,
+        description: cleanDescription,
+        tags,
+        content,
+        contact: cleanContact || undefined,
+        price_usdc_micros: usdcPriceMicros ?? "0",
+      };
+      const res =
+        treeFiles.length > 0
+          ? await fetch("/api/skills", {
+              method: "POST",
+              body: (() => {
+                const form = new FormData();
+                for (const [key, value] of Object.entries(payload)) {
+                  if (value === undefined) continue;
+                  form.set(
+                    key,
+                    typeof value === "string" ? value : JSON.stringify(value)
+                  );
+                }
+                for (const file of treeFiles) {
+                  form.append("files", file, getUploadRelativePath(file));
+                }
+                return form;
+              })(),
+            })
+          : await fetch("/api/skills", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
 
       const data = await res.json();
 
@@ -587,7 +617,10 @@ function PublishSkillPageInner() {
         (file.name.endsWith(".md") || file.type === "text/markdown")
       ) {
         const reader = new FileReader();
-        reader.onload = () => handleContentChange(reader.result as string);
+        reader.onload = () => {
+          setTreeFiles([]);
+          handleContentChange(reader.result as string);
+        };
         reader.readAsText(file);
       }
     },
@@ -599,9 +632,31 @@ function PublishSkillPageInner() {
       const file = e.target.files?.[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = () => handleContentChange(reader.result as string);
+        reader.onload = () => {
+          setTreeFiles([]);
+          handleContentChange(reader.result as string);
+        };
         reader.readAsText(file);
       }
+    },
+    [handleContentChange]
+  );
+
+  const handleDirectorySelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      const skillFile = files.find(
+        (file) => getUploadRelativePath(file) === "SKILL.md"
+      );
+      if (!skillFile) {
+        setResult({
+          success: false,
+          message: "Folder upload must include a top-level SKILL.md.",
+        });
+        return;
+      }
+      setTreeFiles(files);
+      handleContentChange(await skillFile.text());
     },
     [handleContentChange]
   );
@@ -752,16 +807,30 @@ function PublishSkillPageInner() {
               onChange={handleFileSelect}
               className="hidden"
             />
+            <input
+              ref={directoryInputRef}
+              type="file"
+              multiple
+              onChange={handleDirectorySelect}
+              className="hidden"
+              {...({ webkitdirectory: "", directory: "" } as Record<
+                string,
+                string
+              >)}
+            />
             {content ? (
               <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
                 <FiCheckCircle className="w-5 h-5" />
                 <span className="text-sm font-medium">
-                  SKILL.md loaded ({content.length} characters)
+                  {treeFiles.length > 0
+                    ? `Folder loaded (${treeFiles.length} files)`
+                    : `SKILL.md loaded (${content.length} characters)`}
                 </span>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setContent("");
+                    setTreeFiles([]);
                     setName("");
                     setSkillId("");
                     setDescription("");
@@ -778,11 +847,22 @@ function PublishSkillPageInner() {
               <>
                 <FiUpload className="w-8 h-8 mx-auto text-gray-400 mb-3" />
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                  Drop your SKILL.md file here, or click to select
+                  Drop SKILL.md here, click to select, or upload a folder
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Or paste content directly below
+                  Folder format: SKILL.md with optional scripts/, references/, assets/
                 </p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    directoryInputRef.current?.click();
+                  }}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                >
+                  <FiUpload className="h-3.5 w-3.5" />
+                  Select folder
+                </button>
               </>
             )}
           </div>

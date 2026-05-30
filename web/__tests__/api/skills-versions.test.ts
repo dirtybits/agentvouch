@@ -21,10 +21,20 @@ vi.mock("@/lib/ipfs", () => ({
   pinSkillContent: vi.fn(),
 }));
 
+vi.mock("@vercel/blob", () => ({
+  put: vi.fn().mockResolvedValue({
+    url: "https://blob.example/skills/tree.tar",
+    downloadUrl: "https://blob.example/skills/tree.tar?download=1",
+    pathname: "skills/tree.tar",
+  }),
+  get: vi.fn(),
+}));
+
 import { POST } from "@/app/api/skills/[id]/versions/route";
 import { verifyWalletSignature } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { pinSkillContent } from "@/lib/ipfs";
+import { MAX_SKILL_UPLOAD_BYTES } from "@/lib/skillDraft";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyWalletSignature =
@@ -41,6 +51,14 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
+function makeRawRequest(body: string, headers: Record<string, string>) {
+  return new NextRequest("http://localhost/api/skills/uuid-skill/versions", {
+    method: "POST",
+    headers,
+    body,
+  });
+}
+
 describe("POST /api/skills/[id]/versions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,6 +70,20 @@ describe("POST /api/skills/[id]/versions", () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  it("rejects oversized upload Content-Length before parsing the body", async () => {
+    const res = await POST(
+      makeRawRequest("not-json", {
+        "Content-Type": "application/json",
+        "Content-Length": String(MAX_SKILL_UPLOAD_BYTES + 1),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(413);
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
   });
 
   it("rejects non-author version publishes", async () => {

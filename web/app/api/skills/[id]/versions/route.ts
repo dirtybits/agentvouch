@@ -3,6 +3,8 @@ import { sql } from "@/lib/db";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
 import { generateSummarySafe } from "@/lib/ai/summarize";
+import { putSkillTree } from "@/lib/skillStorage";
+import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import { MAX_SKILL_CONTENT_BYTES } from "@/lib/skillDraft";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -20,10 +22,12 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { auth, content, changelog } = body as {
+    const upload = await parseSkillUploadRequest(request);
+    const body = upload.body;
+    const content = upload.skillContent;
+    const { auth, changelog } = body as {
       auth: AuthPayload;
-      content: string;
+      content?: string;
       changelog?: string;
     };
 
@@ -81,6 +85,7 @@ export async function POST(
 
     const newVersion = skill.current_version + 1;
 
+    const tree = await putSkillTree(upload.files);
     const pinResult = await pinSkillContent(
       content,
       skill.skill_id,
@@ -88,13 +93,27 @@ export async function POST(
     );
 
     await sql()`
-      INSERT INTO skill_versions (skill_id, version, content, ipfs_cid, changelog)
+      INSERT INTO skill_versions (
+        skill_id,
+        version,
+        content,
+        ipfs_cid,
+        changelog,
+        files,
+        tree_hash,
+        storage_backend,
+        has_executable
+      )
       VALUES (
         ${id}::uuid,
         ${newVersion},
         ${content},
         ${pinResult.success ? pinResult.cid : null},
-        ${changelog || null}
+        ${changelog || null},
+        ${JSON.stringify(tree.manifest)}::jsonb,
+        ${tree.treeHash},
+        ${tree.backend},
+        ${tree.hasExecutable}
       )
     `;
 
@@ -120,9 +139,10 @@ export async function POST(
     );
   } catch (error: unknown) {
     console.error("POST /api/skills/[id]/versions error:", error);
+    const status = error instanceof SkillUploadError ? error.status : 500;
     return NextResponse.json(
       { error: getErrorMessage(error) },
-      { status: 500 }
+      { status }
     );
   }
 }

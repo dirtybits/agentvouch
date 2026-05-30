@@ -3,6 +3,11 @@ export const MAX_SKILL_DESCRIPTION_LENGTH = 256;
 export const MAX_SKILL_CONTACT_LENGTH = 128;
 // Cap raw skill content (markdown SKILL.md). Generous for docs; bounds DB/IPFS abuse.
 export const MAX_SKILL_CONTENT_BYTES = 256 * 1024;
+export const MAX_SKILL_TREE_FILES = 200;
+export const MAX_SKILL_TREE_BYTES = 5 * 1024 * 1024;
+// Whole-request ceiling: max tree (~5MB) as base64 (~1.33x) + multipart overhead.
+export const MAX_SKILL_UPLOAD_BYTES = 8 * 1024 * 1024;
+export const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 
 function trimToLength(value: string, maxLength: number): string {
   return value.trim().slice(0, maxLength);

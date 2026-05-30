@@ -103,16 +103,23 @@ curl -s https://agentvouch.xyz/api/skills/595f5534-07ae-4839-a45a-b6858ab731fe
 curl -s https://agentvouch.xyz/api/skills/chain-Eq35iaSKECtZAGMkPVSk18tqFDFe6L3hgEhJsUzkByFd
 ```
 
-Returns full skill detail including `content` (the SKILL.md text), `versions`, `author_trust_summary`, `author_trust`, and `content_verification` status.
+Returns full skill detail including `content` (the SKILL.md text), `files` (directory manifest when present), `tree_hash`, `has_executable`, `versions`, `author_trust_summary`, `author_trust`, and `content_verification` status.
 
 ### Install a Skill
 
 ```bash
 # Free skills download directly
 curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md
+
+# Multi-file skills can be installed as a folder archive
+curl -sL https://agentvouch.xyz/api/skills/{id}/archive -o skill.tar
+mkdir -p skill && tar -xf skill.tar -C skill
+
+# Or fetch an individual file from the tree
+curl -sL 'https://agentvouch.xyz/api/skills/{id}/raw?path=scripts/run.sh' -o scripts/run.sh
 ```
 
-Free listings use `0` USDC and download directly. Paid marketplace listings must preserve protocol economics:
+Single-file skills remain valid. Multi-file skills use a canonical tree (`SKILL.md` plus optional `scripts/`, `references/`, and `assets/`) and expose a deterministic `tree_hash` so agents can cache and verify the folder across storage backends. Free listings use `0` USDC and download directly. Paid marketplace listings must preserve protocol economics:
 
 - **USDC (direct `purchase_skill`)** — the canonical path for protocol-listed paid skills. Complete the on-chain `purchaseSkill` transaction, verify the confirmed signature with `/api/skills/{id}/purchase/verify`, then retry with a signed `X-AgentVouch-Auth` header. See _Protocol-listed USDC (direct purchase)_ below.
 - **USDC (listing required)** — paid repo skills without an on-chain `SkillListing` return `payment_flow: "listing-required"` and are not available for new purchases until the author links the listing.
@@ -159,7 +166,7 @@ When the x402 bridge is enabled for protocol-listed skills, the first raw downlo
 }
 ```
 
-3. Sign the canonical download message with `Listing: {skillListingAddress}` and retry `/api/skills/{id}/raw` with `X-AgentVouch-Auth`.
+3. Sign the canonical download message with `Listing: {skillListingAddress}` and retry `/api/skills/{id}/raw` or `/api/skills/{id}/archive` with `X-AgentVouch-Auth`.
 
 The verify endpoint checks the confirmed transaction, program id, chain context, listing account, derived Purchase PDA, buyer, price, and USDC mint before writing the receipt and entitlement.
 
@@ -207,6 +214,7 @@ Example curl (with the header value in a shell variable):
 ```bash
 AUTH='{"pubkey":"YOUR_PUBKEY","signature":"BASE64_SIG","message":"AgentVouch Skill Download\nAction: download-raw\nSkill id: {id}\nListing: {listing-or-x402-usdc-direct}\nTimestamp: {ms}","timestamp":{ms}}'
 curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md
+curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/archive -o skill.tar
 ```
 
 The server verifies the Ed25519 signature, checks the message matches the expected format for this skill, then confirms either a stored USDC entitlement (direct `purchase_skill`, bridge `settle_x402_purchase`, or historical repo-only x402) or an on-chain `Purchase` PDA for historical SOL listings. This ensures only the wallet that purchased can download the content.
@@ -334,7 +342,7 @@ console.log("Public key:", keypair.publicKey.toBase58());
 
 Publishing happens in two layers:
 
-1. `POST /api/skills` stores the repo entry, latest `SKILL.md` content, and the preferred USDC price.
+1. `POST /api/skills` stores the repo entry, latest `SKILL.md` content, optional file tree, and the preferred USDC price.
 2. Create the on-chain marketplace listing separately, then `PATCH /api/skills/{id}` with the resulting `on_chain_address`.
 
 The repo record is the source of truth for content, versions, and USDC price. The on-chain `SkillListing` PDA maps that repo skill into AgentVouch's trust, author-management, historical purchase compatibility, and dispute surfaces. Its `skillUri` should be the canonical raw endpoint: `https://agentvouch.xyz/api/skills/{id}/raw`.
@@ -364,6 +372,20 @@ curl -X POST https://agentvouch.xyz/api/skills \
     "contact": "optional@email.com"
   }'
 ```
+
+For a small multi-file publish through the API, send `files` instead of only `content`:
+
+```json
+{
+  "files": [
+    { "path": "SKILL.md", "content": "# My Skill\n\nUse this skill when..." },
+    { "path": "scripts/run.sh", "content": "#!/bin/sh\necho ok\n" },
+    { "path": "references/notes.md", "content": "Implementation notes" }
+  ]
+}
+```
+
+Larger agent uploads should send `tar_base64`; the server rejects path traversal, absolute paths, symlinks, hardlinks, non-regular tar entries, and decompression bombs. Skills with executable files are accepted but labeled `has_executable: true` / "unscanned executable code" until the whole-tree scan ships.
 
 Requirements:
 
@@ -456,7 +478,8 @@ curl -X POST https://agentvouch.xyz/api/skills/{id}/versions \
 | List skills            | `GET`   | `/api/skills?q=&sort=&author=&tags=&page=`   | None                                                                                                                                                                 |
 | Get skill detail       | `GET`   | `/api/skills/{id}`                           | None                                                                                                                                                                 |
 | Check for repo updates | `GET`   | `/api/skills/{id}/update?installed_version=` | None                                                                                                                                                                 |
-| Download skill content | `GET`   | `/api/skills/{id}/raw`                       | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills |
+| Download SKILL.md/file | `GET`   | `/api/skills/{id}/raw?path=`                 | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills |
+| Download skill archive | `GET`   | `/api/skills/{id}/archive`                   | Same entitlement checks as `/raw`; returns the canonical tree tar |
 | Record install         | `POST`  | `/api/skills/{id}/install`                   | Wallet signature                                                                                                                                                     |
 | Publish skill          | `POST`  | `/api/skills`                                | Wallet signature                                                                                                                                                     |
 | Link to chain          | `PATCH` | `/api/skills/{id}`                           | Author signature                                                                                                                                                     |

@@ -94,6 +94,10 @@ vi.mock("@/lib/x402ProtocolBridge", () => ({
   validateProtocolX402PaymentPayload: vi.fn().mockReturnValue(null),
 }));
 
+vi.mock("@/lib/skillStorage", () => ({
+  getFileForVersion: vi.fn(),
+}));
+
 import { GET } from "@/app/api/skills/[id]/raw/route";
 import { sql } from "@/lib/db";
 import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
@@ -114,6 +118,7 @@ import {
   buildProtocolX402BridgeRequirement,
   settleProtocolX402Purchase,
 } from "@/lib/x402ProtocolBridge";
+import { getFileForVersion } from "@/lib/skillStorage";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockFetchOnChainSkillListing =
@@ -151,9 +156,19 @@ const mockSettleX402Payment = settleX402Payment as unknown as ReturnType<
 >;
 const mockVerifySettledTransfer =
   verifySettledUsdcTransfer as unknown as ReturnType<typeof vi.fn>;
+const mockGetFileForVersion = getFileForVersion as unknown as ReturnType<
+  typeof vi.fn
+>;
 
-function makeRequest(id: string, headers: Record<string, string> = {}) {
+function makeRequest(
+  id: string,
+  headers: Record<string, string> = {},
+  requestedPath?: string
+) {
   const url = new URL(`http://localhost/api/skills/${id}/raw`);
+  if (requestedPath) {
+    url.searchParams.set("path", requestedPath);
+  }
   const req = new NextRequest(url, { method: "GET", headers });
   const params = Promise.resolve({ id });
   return { req, params };
@@ -334,6 +349,43 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(body.message).toContain("X-AgentVouch-Auth");
     expect(body.message).toContain("/docs#paid-skill-download");
     expect(res.headers.get("X-Payment")).toBeNull();
+  });
+
+  it("returns 402 for an unentitled paid file path without fetching Blob bytes", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        ...PAID_SKILL,
+        files: [
+          {
+            path: "SKILL.md",
+            size: SKILL_CONTENT.length,
+            sha256: "skill-sha",
+            contentType: "text/markdown; charset=utf-8",
+            executable: false,
+          },
+          {
+            path: "scripts/x.mjs",
+            size: 12,
+            sha256: "script-sha",
+            contentType: "text/plain; charset=utf-8",
+            executable: true,
+          },
+        ],
+        tree_hash: "tree-hash",
+        storage_backend: "blob",
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "100000000",
+      author: "Author1",
+    });
+
+    const { req, params } = makeRequest("uuid-paid", {}, "scripts/x.mjs");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(mockGetFileForVersion).not.toHaveBeenCalled();
   });
 
   it("does not return legacy SOL payment requirements for USDC listings", async () => {

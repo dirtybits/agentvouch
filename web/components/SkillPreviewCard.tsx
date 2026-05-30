@@ -33,6 +33,7 @@ interface SkillPreviewCardSkill {
   source?: "repo" | "chain";
   author_trust: TrustData | null;
   summary?: string | null;
+  has_executable?: boolean | null;
   price_usdc_micros?: string | null;
   payment_flow?:
     | "free"
@@ -394,6 +395,15 @@ export default function SkillPreviewCard({
         {/* One trust line — the App Store rating, translated to skin-in-the-game.
             Full backing/self/aggregate breakdown lives on the skill detail page. */}
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {skill.has_executable && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+              title="This skill contains executable files and has not yet been security-scanned."
+            >
+              <FiAlertTriangle className="h-3 w-3" />
+              Unscanned executable code
+            </span>
+          )}
           <span
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${verdictMeta.chip}`}
             title={verdictMeta.title}

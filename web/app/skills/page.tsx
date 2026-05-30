@@ -82,6 +82,7 @@ interface SkillRow {
   created_at: string;
   author_trust: TrustData | null;
   summary?: string | null;
+  has_executable?: boolean | null;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
   estimatedBuyerTotalLamports?: number;

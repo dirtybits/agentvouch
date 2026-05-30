@@ -34,6 +34,8 @@ describe("agentDiscovery", () => {
         reputationScore: 42,
         totalVouchesReceived: 2,
         totalStakedFor: 1000,
+        authorBondUsdcMicros: 0,
+        totalStakeAtRisk: 1000,
         disputesAgainstAuthor: 1,
         disputesUpheldAgainstAuthor: 0,
         activeDisputesAgainstAuthor: 0,
