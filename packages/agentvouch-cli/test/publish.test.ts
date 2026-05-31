@@ -158,6 +158,52 @@ describe("publish flows", () => {
     );
   });
 
+  it("publishes free repo-backed skills without creating an on-chain listing", async () => {
+    const { keypairPath, skillFile } = await createFixtureFiles();
+    let publishBody: Record<string, unknown> | null = null;
+
+    vi.spyOn(AgentVouchApiClient.prototype, "publishSkill").mockImplementation(
+      async (body) => {
+        publishBody = body;
+        return {
+          id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+          skill_id: "calendar-agent",
+          ipfs_cid: "bafy-test",
+        };
+      }
+    );
+    const linkSpy = vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "linkSkillListing"
+    );
+    const createListingSpy = vi.spyOn(
+      AgentVouchSolanaClient.prototype,
+      "createSkillListing"
+    );
+
+    const result = await publishSkill({
+      file: skillFile,
+      skillId: "calendar-agent",
+      name: "Calendar Agent",
+      description: "Books meetings",
+      tags: ["calendar", "ops"],
+      priceUsdcMicros: "0",
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+      keypairPath,
+    });
+
+    expect(result.mode).toBe("repo-free");
+    expect(result.repoSkillId).toBe("595f5534-07ae-4839-a45a-b6858ab731fe");
+    expect(result.listingAddress).toBeNull();
+    expect(result.skillUri).toBe(
+      "https://agentvouch.xyz/api/skills/595f5534-07ae-4839-a45a-b6858ab731fe/raw"
+    );
+    expect(String(publishBody?.price_usdc_micros)).toBe("0");
+    expect(linkSpy).not.toHaveBeenCalled();
+    expect(createListingSpy).not.toHaveBeenCalled();
+  });
+
   it("links an existing repo skill to its deterministic on-chain listing", async () => {
     const { keypairPath } = await createFixtureFiles();
     const keypair = Keypair.fromSecretKey(

@@ -36,6 +36,10 @@ export interface LinkSkillListingInput {
   dryRun?: boolean;
 }
 
+function isFreePrice(priceUsdcMicros: string): boolean {
+  return BigInt(priceUsdcMicros) === 0n;
+}
+
 async function linkRepoSkillListing(input: {
   api: AgentVouchApiClient;
   solana: AgentVouchSolanaClient;
@@ -120,6 +124,7 @@ export async function publishSkill(input: PublishSkillInput) {
   const keypair = loadKeypair(input.keypairPath);
   const repoAuth = createRepoAuthPayload(keypair, "publish-skill");
   const solana = new AgentVouchSolanaClient(keypair, input.rpcUrl);
+  const isFreeListing = isFreePrice(input.priceUsdcMicros);
   const listingAddress = solana
     .getSkillListingAddress(input.skillId)
     .toBase58();
@@ -138,10 +143,13 @@ export async function publishSkill(input: PublishSkillInput) {
         upload_mode: upload.mode,
         file_count: upload.fileCount,
       },
-      onChainListing: {
-        address: listingAddress,
-        priceUsdcMicros: input.priceUsdcMicros,
-      },
+      onChainListing: isFreeListing
+        ? null
+        : {
+            address: listingAddress,
+            priceUsdcMicros: input.priceUsdcMicros,
+          },
+      repoOnly: isFreeListing,
     };
   }
 
@@ -157,6 +165,21 @@ export async function publishSkill(input: PublishSkillInput) {
     ...(upload.tarBase64 ? { tar_base64: upload.tarBase64 } : {}),
     price_usdc_micros: input.priceUsdcMicros,
   });
+
+  if (isFreeListing) {
+    return {
+      ok: true,
+      mode: "repo-free" as const,
+      repoSkillId: repoSkill.id,
+      skillId: input.skillId,
+      skillUri: `${input.baseUrl}/api/skills/${repoSkill.id}/raw`,
+      listingAddress: null as string | null,
+      priceUsdcMicros: input.priceUsdcMicros,
+      repoIpfsCid: repoSkill.ipfs_cid,
+      createListingTx: null as string | null,
+      listingAlreadyExisted: false,
+    };
+  }
 
   let linkResult: Awaited<ReturnType<typeof linkRepoSkillListing>>;
   try {

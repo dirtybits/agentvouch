@@ -442,7 +442,7 @@ addRpcUrlOption(
       .option("--tags <csv>", "Comma-separated tags", "")
       .option(
         "--price-usdc <amount>",
-        "USDC price for repo metadata and the on-chain v0.2 listing; use 0 for a free listing",
+        "USDC price; 0 publishes a free repo-backed skill, paid values create/link an on-chain listing",
         parseUsdcListingPrice,
         parseUsdcListingPrice("1")
       )
@@ -453,7 +453,7 @@ addRpcUrlOption(
       .option("--json", "Print structured JSON output")
       .addHelpText(
         "after",
-        '\nExamples:\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./calendar-agent --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json --dry-run'
+        '\nExamples:\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./calendar-agent --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json --dry-run'
       )
       .action(
         async (options: {
@@ -494,15 +494,16 @@ addRpcUrlOption(
               ...(result.mode === "dry-run"
                 ? [
                     `repo_skill_id: ${result.repoRequest.skill_id}`,
-                    `listing: ${result.onChainListing.address}`,
+                    `listing: ${result.onChainListing?.address ?? "none"}`,
                     `price_usdc_micros: ${result.repoRequest.price_usdc_micros}`,
                     `upload_mode: ${result.repoRequest.upload_mode}`,
                     `file_count: ${result.repoRequest.file_count}`,
+                    `repo_only: ${result.repoOnly ? "yes" : "no"}`,
                     "dry_run: true",
                   ]
                 : [
                     `repo_id: ${result.repoSkillId}`,
-                    `listing: ${result.listingAddress}`,
+                    `listing: ${result.listingAddress ?? "none"}`,
                     `skill_uri: ${result.skillUri}`,
                     `price_usdc_micros: ${result.priceUsdcMicros}`,
                     `price_ipfs_cid: ${result.repoIpfsCid ?? "none"}`,
