@@ -287,6 +287,86 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE OR REPLACE FUNCTION reserve_ai_scan_budget(
+      daily_limit INTEGER,
+      monthly_limit INTEGER
+    )
+    RETURNS TABLE (
+      ok BOOLEAN,
+      reason TEXT,
+      daily_used INTEGER,
+      monthly_used INTEGER
+    )
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      day_start DATE := CURRENT_DATE;
+      month_start DATE := date_trunc('month', NOW())::date;
+      current_daily INTEGER;
+      current_monthly INTEGER;
+    BEGIN
+      IF daily_limit IS NULL OR daily_limit <= 0 THEN
+        RETURN QUERY SELECT false, 'daily_scan_budget_exhausted'::text, 0, 0;
+        RETURN;
+      END IF;
+
+      IF monthly_limit IS NULL OR monthly_limit <= 0 THEN
+        RETURN QUERY SELECT false, 'monthly_scan_budget_exhausted'::text, 0, 0;
+        RETURN;
+      END IF;
+
+      PERFORM pg_advisory_xact_lock(hashtext('agentvouch:ai_scan_budget')::bigint);
+
+      INSERT INTO ai_scan_budget_counters (bucket, period_start, used)
+      VALUES ('day', day_start, 0)
+      ON CONFLICT (bucket, period_start) DO NOTHING;
+
+      INSERT INTO ai_scan_budget_counters (bucket, period_start, used)
+      VALUES ('month', month_start, 0)
+      ON CONFLICT (bucket, period_start) DO NOTHING;
+
+      SELECT used
+      INTO current_daily
+      FROM ai_scan_budget_counters
+      WHERE bucket = 'day'
+        AND period_start = day_start
+      FOR UPDATE;
+
+      SELECT used
+      INTO current_monthly
+      FROM ai_scan_budget_counters
+      WHERE bucket = 'month'
+        AND period_start = month_start
+      FOR UPDATE;
+
+      IF current_daily >= daily_limit THEN
+        RETURN QUERY SELECT false, 'daily_scan_budget_exhausted'::text, current_daily, current_monthly;
+        RETURN;
+      END IF;
+
+      IF current_monthly >= monthly_limit THEN
+        RETURN QUERY SELECT false, 'monthly_scan_budget_exhausted'::text, current_daily, current_monthly;
+        RETURN;
+      END IF;
+
+      UPDATE ai_scan_budget_counters
+      SET used = used + 1,
+          updated_at = NOW()
+      WHERE bucket = 'day'
+        AND period_start = day_start;
+
+      UPDATE ai_scan_budget_counters
+      SET used = used + 1,
+          updated_at = NOW()
+      WHERE bucket = 'month'
+        AND period_start = month_start;
+
+      RETURN QUERY SELECT true, NULL::text, current_daily + 1, current_monthly + 1;
+    END;
+    $$;
+  `;
+
+  await db`
     CREATE INDEX IF NOT EXISTS idx_skill_versions_tree_hash
     ON skill_versions(tree_hash)
   `;

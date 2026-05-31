@@ -80,7 +80,7 @@ function scan(overrides = {}) {
     findings: [],
     truncated: false,
     scanned_at: "2026-05-30T00:00:00.000Z",
-    model: "alibaba/qwen3.7-max",
+    model: "google/gemini-2.0-flash-lite",
     rubric_version: "v1",
     scan_source: "model",
     generated_by_model: true,
@@ -98,6 +98,8 @@ describe("POST /api/check", () => {
     mockSql.mockReturnValue(
       vi.fn().mockResolvedValue([
         {
+          ok: true,
+          reason: null,
           daily_reserved: true,
           monthly_reserved: true,
           daily_used: 0,
@@ -222,6 +224,8 @@ describe("POST /api/check", () => {
   it("reserves durable budget before model generation", async () => {
     const dbQuery = vi.fn().mockResolvedValue([
       {
+        ok: true,
+        reason: null,
         daily_reserved: true,
         monthly_reserved: true,
         daily_used: 3,
@@ -248,6 +252,8 @@ describe("POST /api/check", () => {
   it("does not generate a model scan when the durable budget is exhausted", async () => {
     const dbQuery = vi.fn().mockResolvedValue([
       {
+        ok: false,
+        reason: "daily_scan_budget_exhausted",
         daily_reserved: false,
         monthly_reserved: true,
         daily_used: 200,
