@@ -25,5 +25,7 @@ describe("db schema bootstrap source", () => {
 
     expect(source).toContain("CREATE TABLE IF NOT EXISTS ai_scan_budget_counters");
     expect(source).toContain("PRIMARY KEY (bucket, period_start)");
+    expect(source).toContain("CREATE OR REPLACE FUNCTION reserve_ai_scan_budget");
+    expect(source).toContain("pg_advisory_xact_lock");
   });
 });

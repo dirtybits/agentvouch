@@ -161,82 +161,31 @@ async function reserveScanBudget(): Promise<
   }
 
   const rows = await sql()<{
+    ok: boolean;
+    reason: string | null;
     daily_reserved: boolean;
     monthly_reserved: boolean;
     daily_used: string | number;
     monthly_used: string | number;
   }>`
-    WITH budget_lock AS (
-      SELECT pg_advisory_xact_lock(hashtext('agentvouch:ai_scan_budget')::bigint) AS locked
-    ),
-    params AS (
-      SELECT
-        CURRENT_DATE::date AS day_start,
-        date_trunc('month', NOW())::date AS month_start,
-        ${DAILY_GENERATION_LIMIT}::integer AS daily_limit,
-        ${MONTHLY_GENERATION_LIMIT}::integer AS monthly_limit
-      FROM budget_lock
-    ),
-    day_insert AS (
-      INSERT INTO ai_scan_budget_counters (bucket, period_start, used)
-      SELECT 'day', day_start, 0
-      FROM params
-      ON CONFLICT (bucket, period_start) DO NOTHING
-      RETURNING 1
-    ),
-    month_insert AS (
-      INSERT INTO ai_scan_budget_counters (bucket, period_start, used)
-      SELECT 'month', month_start, 0
-      FROM params
-      ON CONFLICT (bucket, period_start) DO NOTHING
-      RETURNING 1
-    ),
-    current_counts AS (
-      SELECT
-        (
-          SELECT c.used
-          FROM ai_scan_budget_counters c
-          WHERE c.bucket = 'day'
-            AND c.period_start = params.day_start
-        ) AS daily_used,
-        (
-          SELECT c.used
-          FROM ai_scan_budget_counters c
-          WHERE c.bucket = 'month'
-            AND c.period_start = params.month_start
-        ) AS monthly_used,
-        params.daily_limit,
-        params.monthly_limit
-      FROM params
-      CROSS JOIN (SELECT COUNT(*) FROM day_insert) day_inserted
-      CROSS JOIN (SELECT COUNT(*) FROM month_insert) month_inserted
-    ),
-    reservation AS (
-      UPDATE ai_scan_budget_counters c
-      SET
-        used = c.used + 1,
-        updated_at = NOW()
-      FROM params, current_counts
-      WHERE (
-          (c.bucket = 'day' AND c.period_start = params.day_start)
-          OR (c.bucket = 'month' AND c.period_start = params.month_start)
-        )
-        AND current_counts.daily_used < params.daily_limit
-        AND current_counts.monthly_used < params.monthly_limit
-      RETURNING c.bucket
-    )
     SELECT
-      EXISTS (SELECT 1 FROM reservation WHERE bucket = 'day') AS daily_reserved,
-      EXISTS (SELECT 1 FROM reservation WHERE bucket = 'month') AS monthly_reserved,
-      COALESCE((SELECT daily_used FROM current_counts), 0) AS daily_used,
-      COALESCE((SELECT monthly_used FROM current_counts), 0) AS monthly_used
+      ok,
+      reason,
+      ok AS daily_reserved,
+      ok AS monthly_reserved,
+      daily_used,
+      monthly_used
+    FROM reserve_ai_scan_budget(
+      ${DAILY_GENERATION_LIMIT}::integer,
+      ${MONTHLY_GENERATION_LIMIT}::integer
+    )
   `;
   const row = rows[0];
-  if (row?.daily_reserved && row.monthly_reserved) {
+  if (row?.ok) {
     return { ok: true };
   }
 
-  if (Number(row?.daily_used ?? 0) >= DAILY_GENERATION_LIMIT) {
+  if (row?.reason === "daily_scan_budget_exhausted") {
     return { ok: false, reason: "daily_scan_budget_exhausted" };
   }
 
