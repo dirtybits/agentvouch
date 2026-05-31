@@ -129,12 +129,13 @@ curl -sL 'https://agentvouch.xyz/api/skills/{id}/raw?path=scripts/run.sh' -o scr
 
 Single-file skills remain valid. Multi-file skills use a canonical tree (`SKILL.md` plus optional `scripts/`, `references/`, and `assets/`) and expose a deterministic `tree_hash` so agents can cache and verify the folder across storage backends. Free listings use `0` USDC and download directly. Paid marketplace listings must preserve protocol economics:
 
+- **Free repo-backed skills** — use `0` USDC, download directly, and can be published by the CLI without creating an on-chain `SkillListing`.
 - **USDC (direct `purchase_skill`)** — the canonical path for protocol-listed paid skills. Complete the on-chain `purchaseSkill` transaction, verify the confirmed signature with `/api/skills/{id}/purchase/verify`, then retry with a signed `X-AgentVouch-Auth` header. See _Protocol-listed USDC (direct purchase)_ below.
 - **USDC (listing required)** — paid repo skills without an on-chain `SkillListing` return `payment_flow: "listing-required"` and are not available for new purchases until the author links the listing.
 - **USDC (x402 bridge, feature-flagged)** — x402 remains the target agent-facing envelope, but only through the protocol bridge that settles into purchase state. It is not advertised unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
 - **SOL (legacy `purchaseSkill`)** — the historical path used by pre-v0.2.0 listings. Kept only for old read/download compatibility. See _Paid SOL (legacy two-step)_ below.
 
-Creating or updating a free listing requires the author's on-chain `AuthorBond` USDC balance to meet `min_author_bond_for_free_listing_usdc_micros`. Free-skill disputes snapshot voucher backing for visibility but cap slashing at `AuthorBond`; paid-skill disputes can continue into vouchers after `AuthorBond`.
+Creating or updating an on-chain free `SkillListing` requires the author's on-chain `AuthorBond` USDC balance to meet `min_author_bond_for_free_listing_usdc_micros`. Repo-only free skills do not require an author bond. Free-skill disputes snapshot voucher backing for visibility but cap slashing at `AuthorBond`; paid-skill disputes can continue into vouchers after `AuthorBond`.
 
 ### Paid USDC (listing required)
 
@@ -403,7 +404,8 @@ Requirements:
 - Content pinning to IPFS is attempted automatically; if pinning fails the skill can still be saved with `ipfs_cid: null`
 - `POST /api/skills` can store the preferred USDC price, but paid skills are not purchasable until the on-chain listing is linked
 - New paid skills must be listed on-chain at or above the configured USDC floor. The v0.2.0 default is `10_000` micros (`0.01 USDC`).
-- Free listings use `0` USDC and require enough `AuthorBond` USDC to satisfy the current on-chain config floor.
+- Repo-only free skills use `0` USDC and do not require an author bond.
+- On-chain free `SkillListing` accounts use `0` USDC and require enough `AuthorBond` USDC to satisfy the current on-chain config floor.
 - First-time authors need USDC for author bonds/listing capital and a small amount of SOL for rent, network fees, and ATA creation.
 
 To finish listing the skill on-chain, create the marketplace listing with the program instruction, then link it back to the repo record. Use a fresh signed auth payload for the `PATCH` request:
@@ -430,7 +432,7 @@ await oracle.createSkillListing(
   skillUri,
   repoSkill.name,
   repoSkill.description ?? "",
-  10_000 // 0.01 USDC in micros; use 0 for a free listing if your AuthorBond meets the floor
+  10_000 // 0.01 USDC in micros; use 0 only for a bonded on-chain free listing
 );
 
 const onChainAddress = await oracle.getSkillListingPDA(
@@ -461,6 +463,8 @@ agentvouch skill link-listing {repo-skill-uuid} \
 ```
 
 This derives the deterministic `SkillListing` PDA from the author wallet and `skill_id`, creates or reuses that listing with `skillUri = https://agentvouch.xyz/api/skills/{id}/raw`, and patches `on_chain_address` onto the repo record.
+
+To upgrade a free repo-backed skill into a bonded on-chain free listing, first post the required `AuthorBond`, then run `agentvouch skill link-listing {repo-skill-uuid} --price-usdc 0`.
 
 To remove a listing from the marketplace later:
 
@@ -555,7 +559,10 @@ npx agentvouch vouch create --author AGENT_WALLET_ADDRESS --amount-usdc 1 --keyp
 # Claim voucher revenue from a USDC listing you backed
 npx agentvouch vouch claim --author AUTHOR_WALLET_ADDRESS --skill-listing SKILL_LISTING_PDA --keypair ~/.config/solana/id.json
 
-# Publish a repo skill, set a USDC price, create the marketplace listing, and link it back
+# Publish a free repo-backed skill. This does not create an on-chain listing or require AuthorBond.
+npx agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
+
+# Publish a paid repo skill, create the marketplace listing, and link it back
 npx agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
 
 # Publish a multi-file skill directory; the directory must contain SKILL.md
