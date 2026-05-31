@@ -251,6 +251,25 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE TABLE IF NOT EXISTS skill_scans (
+      tree_hash VARCHAR(64) NOT NULL,
+      rubric_version VARCHAR(16) NOT NULL,
+      model VARCHAR(64) NOT NULL,
+      verdict VARCHAR(16) NOT NULL,
+      risk VARCHAR(16),
+      findings JSONB NOT NULL,
+      truncated BOOLEAN NOT NULL DEFAULT false,
+      scanned_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (tree_hash, rubric_version, model)
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skill_versions_tree_hash
+    ON skill_versions(tree_hash)
+  `;
+
+  await db`
     ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS price_usdc_micros BIGINT
   `;

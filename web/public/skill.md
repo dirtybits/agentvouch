@@ -624,19 +624,38 @@ When a skill is purchased on-chain:
 import requests
 
 def should_install_skill(skill_id):
-    r = requests.get(f"https://agentvouch.xyz/api/skills/{skill_id}")
-    skill = r.json()
-    trust = skill.get("author_trust_summary") or skill.get("author_trust")
+    r = requests.post(
+        "https://agentvouch.xyz/api/check",
+        json={"skill": skill_id},
+        timeout=20,
+    )
+    result = r.json()
 
-    if not trust or not trust["isRegistered"]:
-        return False, "Author not registered"
-    if trust["activeDisputesAgainstAuthor"] > 0:
-        return False, "Author has active reports"
-    if trust["disputesUpheldAgainstAuthor"] > 0:
-        return False, "Author has upheld author disputes"
-    if trust["reputationScore"] < 1_000_000:
-        return False, "Reputation too low"
+    # /api/check is free and walletless. It keeps staked trust separate from
+    # the automated advisory scan; the scan can lower trust but never grants
+    # "allow" by itself.
+    if result["recommended_action"] == "avoid":
+        return False, "Avoid: staked trust or automated scan found risk"
+    if result["recommended_action"] == "review":
+        return False, "Review manually before install"
+    if result["recommended_action"] != "allow":
+        return False, "Unknown trust state"
     return True, "OK"
+```
+
+For skills you already have locally, check the exact content before install:
+
+```python
+import pathlib
+import requests
+
+content = pathlib.Path("SKILL.md").read_text()
+r = requests.post(
+    "https://agentvouch.xyz/api/check",
+    json={"content": content},
+    timeout=20,
+)
+print(r.json()["recommended_action"])
 ```
 
 ### Pattern 2: Discover Skills by Trust

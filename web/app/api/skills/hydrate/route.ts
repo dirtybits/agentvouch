@@ -29,6 +29,13 @@ import {
   resolveMultipleAuthorTrust,
   type AuthorTrust,
 } from "@/lib/trust";
+import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import { SCAN_MODEL } from "@/lib/ai/gateway";
+import {
+  buildSecurityScanFromFields,
+  type SkillScanFieldRow,
+  type SkillSecurityScan,
+} from "@/lib/securityScan";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 
@@ -50,7 +57,7 @@ type SkillPaymentFlow =
   | "x402-usdc"
   | "direct-purchase-skill";
 
-type RepoSkillRow = {
+type RepoSkillRow = SkillScanFieldRow & {
   id: string;
   skill_id: string;
   author_pubkey: string | null;
@@ -80,6 +87,7 @@ type RepoSkillRow = {
   files?: unknown;
   tree_hash?: string | null;
   has_executable?: boolean | null;
+  security_scan?: SkillSecurityScan | null;
   created_at: string;
   updated_at: string;
   source: "repo";
@@ -95,7 +103,18 @@ type HydratedSkillRow = RepoSkillRow & {
 
 async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
   const rows = await sql()<Omit<RepoSkillRow, "source">>`
-    SELECT s.*, latest.files, latest.tree_hash, latest.has_executable
+    SELECT
+      s.*,
+      latest.files,
+      latest.tree_hash,
+      latest.has_executable,
+      scan.verdict AS scan_verdict,
+      scan.risk AS scan_risk,
+      scan.findings AS scan_findings,
+      scan.truncated AS scan_truncated,
+      scan.scanned_at AS scan_scanned_at,
+      scan.model AS scan_model,
+      scan.rubric_version AS scan_rubric_version
     FROM skills s
     LEFT JOIN LATERAL (
       SELECT files, tree_hash, has_executable
@@ -104,10 +123,15 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
       ORDER BY version DESC
       LIMIT 1
     ) latest ON true
+    LEFT JOIN skill_scans scan
+      ON scan.tree_hash = latest.tree_hash
+      AND scan.rubric_version = ${SCAN_RUBRIC_VERSION}
+      AND scan.model = ${SCAN_MODEL}
     WHERE s.id = ANY(${skillIds}::uuid[])
   `;
   return rows.map((skill) => ({
     ...skill,
+    security_scan: buildSecurityScanFromFields(skill),
     chain_context: normalizePersistedChainContext(skill.chain_context),
     source: "repo",
   }));

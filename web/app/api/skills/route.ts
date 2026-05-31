@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import { generateSummarySafe } from "@/lib/ai/summarize";
+import { runScanSafe, SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import { SCAN_MODEL } from "@/lib/ai/gateway";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
+import {
+  buildSecurityScanFromFields,
+  type SkillScanFieldRow,
+  type SkillSecurityScan,
+} from "@/lib/securityScan";
 import {
   verifyAuthorTrust,
   resolveMultipleAuthorTrust,
@@ -72,7 +79,7 @@ type SkillPaymentFlow =
   | "x402-usdc"
   | "direct-purchase-skill";
 
-type RepoSkillRow = {
+type RepoSkillRow = SkillScanFieldRow & {
   id: string;
   skill_id: string;
   author_pubkey: string | null;
@@ -105,6 +112,7 @@ type RepoSkillRow = {
   files?: unknown;
   tree_hash?: string | null;
   has_executable?: boolean | null;
+  security_scan?: SkillSecurityScan | null;
   cached_author_trust?: AuthorTrust | string | null;
   cached_author_trust_summary?: AgentTrustSummary | string | null;
   cached_reputation_score?: number | string | null;
@@ -202,13 +210,18 @@ function getCachedTrustSummary(skill: MergedSkillRow): AgentTrustSummary | null 
 
 function stripCachedSkillFields(skill: MergedSkillRow): MergedSkillRow {
   if (skill.source !== "repo") return skill;
-  const {
-    cached_author_trust: _cachedAuthorTrust,
-    cached_author_trust_summary: _cachedAuthorTrustSummary,
-    cached_reputation_score: _cachedReputationScore,
-    cached_trust_refreshed_at: _cachedTrustRefreshedAt,
-    ...publicSkill
-  } = skill;
+  const publicSkill = { ...skill };
+  delete publicSkill.cached_author_trust;
+  delete publicSkill.cached_author_trust_summary;
+  delete publicSkill.cached_reputation_score;
+  delete publicSkill.cached_trust_refreshed_at;
+  delete publicSkill.scan_verdict;
+  delete publicSkill.scan_risk;
+  delete publicSkill.scan_findings;
+  delete publicSkill.scan_truncated;
+  delete publicSkill.scan_scanned_at;
+  delete publicSkill.scan_model;
+  delete publicSkill.scan_rubric_version;
   return publicSkill;
 }
 
@@ -278,6 +291,7 @@ async function fetchOnChainListings(): Promise<ChainSkillRow[]> {
       on_chain_protocol_version: AGENTVOUCH_PROTOCOL_VERSION,
       on_chain_program_id: getAgentVouchProgramId(),
       total_revenue: Number(listing.data.totalRevenueUsdcMicros),
+      security_scan: null,
       created_at: new Date(Number(listing.data.createdAt) * 1000).toISOString(),
       updated_at: new Date(Number(listing.data.updatedAt) * 1000).toISOString(),
       source: "chain" as const,
@@ -357,12 +371,19 @@ async function loadRepoSkillRows(input: {
   const load = async () => {
     const skillIds = input.ids ?? [];
     if (skillIds.length > 0) {
-      return sql()<RepoSkillRow>`
+      return sql()<RepoSkillRow & Record<string, unknown>>`
         SELECT
           s.*,
           latest.files,
           latest.tree_hash,
           latest.has_executable,
+          scan.verdict AS scan_verdict,
+          scan.risk AS scan_risk,
+          scan.findings AS scan_findings,
+          scan.truncated AS scan_truncated,
+          scan.scanned_at AS scan_scanned_at,
+          scan.model AS scan_model,
+          scan.rubric_version AS scan_rubric_version,
           ats.author_trust AS cached_author_trust,
           ats.author_trust_summary AS cached_author_trust_summary,
           ats.reputation_score AS cached_reputation_score,
@@ -375,6 +396,10 @@ async function loadRepoSkillRows(input: {
           ORDER BY version DESC
           LIMIT 1
         ) latest ON true
+        LEFT JOIN skill_scans scan
+          ON scan.tree_hash = latest.tree_hash
+          AND scan.rubric_version = ${SCAN_RUBRIC_VERSION}
+          AND scan.model = ${SCAN_MODEL}
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
           AND ats.chain_context = ${configuredSolanaChainContext}
@@ -383,12 +408,19 @@ async function loadRepoSkillRows(input: {
     }
 
     if (input.q) {
-      return sql()<RepoSkillRow>`
+      return sql()<RepoSkillRow & Record<string, unknown>>`
         SELECT
           s.*,
           latest.files,
           latest.tree_hash,
           latest.has_executable,
+          scan.verdict AS scan_verdict,
+          scan.risk AS scan_risk,
+          scan.findings AS scan_findings,
+          scan.truncated AS scan_truncated,
+          scan.scanned_at AS scan_scanned_at,
+          scan.model AS scan_model,
+          scan.rubric_version AS scan_rubric_version,
           ats.author_trust AS cached_author_trust,
           ats.author_trust_summary AS cached_author_trust_summary,
           ats.reputation_score AS cached_reputation_score,
@@ -401,6 +433,10 @@ async function loadRepoSkillRows(input: {
           ORDER BY version DESC
           LIMIT 1
         ) latest ON true
+        LEFT JOIN skill_scans scan
+          ON scan.tree_hash = latest.tree_hash
+          AND scan.rubric_version = ${SCAN_RUBRIC_VERSION}
+          AND scan.model = ${SCAN_MODEL}
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
           AND ats.chain_context = ${configuredSolanaChainContext}
@@ -414,12 +450,19 @@ async function loadRepoSkillRows(input: {
       `;
     }
 
-    return sql()<RepoSkillRow>`
+    return sql()<RepoSkillRow & Record<string, unknown>>`
       SELECT
         s.*,
         latest.files,
         latest.tree_hash,
         latest.has_executable,
+        scan.verdict AS scan_verdict,
+        scan.risk AS scan_risk,
+        scan.findings AS scan_findings,
+        scan.truncated AS scan_truncated,
+        scan.scanned_at AS scan_scanned_at,
+        scan.model AS scan_model,
+        scan.rubric_version AS scan_rubric_version,
         ats.author_trust AS cached_author_trust,
         ats.author_trust_summary AS cached_author_trust_summary,
         ats.reputation_score AS cached_reputation_score,
@@ -432,6 +475,10 @@ async function loadRepoSkillRows(input: {
         ORDER BY version DESC
         LIMIT 1
       ) latest ON true
+      LEFT JOIN skill_scans scan
+        ON scan.tree_hash = latest.tree_hash
+        AND scan.rubric_version = ${SCAN_RUBRIC_VERSION}
+        AND scan.model = ${SCAN_MODEL}
       LEFT JOIN author_trust_snapshots ats
         ON ats.wallet_pubkey = s.author_pubkey
         AND ats.chain_context = ${configuredSolanaChainContext}
@@ -454,6 +501,7 @@ async function loadRepoSkillRows(input: {
 function normalizeRepoSkillRows(pgSkills: RepoSkillRow[]): RepoMergedSkillRow[] {
   return pgSkills.map((skill) => ({
     ...skill,
+    security_scan: buildSecurityScanFromFields(skill),
     chain_context: normalizePersistedChainContext(skill.chain_context),
     source: "repo",
   }));
@@ -1035,7 +1083,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [skill] = await sql()<RepoSkillRow>`
+    const [skill] = await sql()<RepoSkillRow & Record<string, unknown>>`
       INSERT INTO skills (
         skill_id,
         author_pubkey,
@@ -1104,6 +1152,7 @@ export async function POST(request: NextRequest) {
 
     // Auto-generate the AI summary after the response — publishers never write one.
     after(() => generateSummarySafe(skill.id, content, { expectedVersion: 1 }));
+    after(() => runScanSafe(tree.treeHash, tree.filesWithBytes));
 
     return NextResponse.json(
       {
@@ -1112,6 +1161,7 @@ export async function POST(request: NextRequest) {
         tree_hash: tree.treeHash,
         storage_backend: tree.backend,
         has_executable: tree.hasExecutable,
+        security_scan: null,
         ipfs: pinResult,
       },
       { status: 201 }

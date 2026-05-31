@@ -7,6 +7,7 @@ import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import SkillFileTree, { type SkillFileTreeEntry } from "@/components/SkillFileTree";
+import type { SkillSecurityScan } from "@/lib/securityScan";
 import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
@@ -122,6 +123,7 @@ interface SkillDetail {
   tree_hash: string | null;
   storage_backend: string | null;
   has_executable: boolean;
+  security_scan: SkillSecurityScan | null;
   legacySolLamports?: number;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
@@ -177,6 +179,28 @@ function stripMarkdown(value: string): string {
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
     .trim();
+}
+
+function getSecurityScanCopy(scan: SkillSecurityScan) {
+  if (scan.verdict === "avoid") {
+    return {
+      label: "Automated security scan: avoid",
+      detail:
+        "The advisory scan found concrete risk in this skill tree. This is not a staked vouch.",
+      className:
+        "border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
+    };
+  }
+  return {
+    label: scan.truncated
+      ? "Automated security scan: review*"
+      : "Automated security scan: review",
+    detail: scan.truncated
+      ? "The advisory scan reviewed this skill tree with truncation. Review before installing."
+      : "The advisory scan completed and did not find a concrete blocker. Review before installing.",
+    className:
+      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
+  };
 }
 
 function extractCapabilityBullets(content: string | null): string[] {
@@ -1014,6 +1038,9 @@ export default function SkillDetailPage({
       ? skill.skill_uri
       : `${CANONICAL_ORIGIN}${apiPath}`;
   const usdcPriceLabel = primaryUsdcPrice ? `${primaryUsdcPrice} USDC` : "USDC";
+  const scanCopy = skill.security_scan
+    ? getSecurityScanCopy(skill.security_scan)
+    : null;
   const signedDownloadMessage = buildDownloadRawMessage(
     skill.id,
     skill.on_chain_address ? "{skillListingAddress}" : undefined,
@@ -1882,6 +1909,30 @@ export default function SkillDetailPage({
           </div>
         )}
 
+        {scanCopy && (
+          <div
+            className={`mb-6 rounded-sm border p-4 ${scanCopy.className}`}
+          >
+            <div className="flex items-start gap-2">
+              <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">{scanCopy.label}</p>
+                <p className="mt-1 text-sm">{scanCopy.detail}</p>
+                {skill.security_scan?.findings.length ? (
+                  <ul className="mt-2 space-y-1 font-mono text-xs">
+                    {skill.security_scan.findings.slice(0, 3).map((finding) => (
+                      <li key={`${finding.file}:${finding.detail}`}>
+                        {finding.severity.toUpperCase()} · {finding.file}:{" "}
+                        {finding.detail}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* On-chain listing section */}
         {skill.on_chain_address ? (
           <div
@@ -2248,6 +2299,7 @@ export default function SkillDetailPage({
               files={skill.files}
               treeHash={skill.tree_hash}
               hasExecutable={skill.has_executable}
+              securityScan={skill.security_scan}
               initialContent={content}
             />
           </div>

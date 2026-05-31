@@ -26,6 +26,7 @@ import {
   FiZap,
 } from "react-icons/fi";
 import { SITE_URL } from "@/lib/site";
+import type { SkillSecurityScan } from "@/lib/securityScan";
 
 type ToggleMode = "none" | "human" | "agent";
 type FeaturedSkill = {
@@ -44,6 +45,7 @@ type FeaturedSkill = {
   author_trust: TrustData | null;
   summary?: string | null;
   has_executable?: boolean | null;
+  security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
   payment_flow?:
     | "free"
