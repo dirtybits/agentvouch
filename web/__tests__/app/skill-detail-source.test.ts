@@ -56,4 +56,13 @@ describe("skill detail source", () => {
     expect(source).toContain('requestedAuthorAction === "publish-version"');
     expect(source).toContain("Listing edits stay on the on-chain path.");
   });
+
+  it("passes the skill title into the multi-file tree", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("skillName={skill.name}");
+  });
 });

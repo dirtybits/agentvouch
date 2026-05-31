@@ -2296,6 +2296,7 @@ export default function SkillDetailPage({
           <div className="mb-6">
             <SkillFileTree
               skillId={skill.id}
+              skillName={skill.name}
               files={skill.files}
               treeHash={skill.tree_hash}
               hasExecutable={skill.has_executable}

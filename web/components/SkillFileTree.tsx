@@ -12,6 +12,7 @@ import {
   FiLoader,
 } from "react-icons/fi";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import { finalizeSlug } from "@/lib/skillDraft";
 
 export interface SkillFileTreeEntry {
   path: string;
@@ -23,6 +24,7 @@ export interface SkillFileTreeEntry {
 
 interface SkillFileTreeProps {
   skillId: string;
+  skillName: string;
   files: SkillFileTreeEntry[];
   treeHash: string | null;
   hasExecutable: boolean;
@@ -59,10 +61,17 @@ function sortTreeNodes(a: TreeNode, b: TreeNode): number {
   return a.name.localeCompare(b.name);
 }
 
-function buildTree(files: SkillFileTreeEntry[]): TreeDirectoryNode {
+function getSkillTreeRootName(skillName: string): string {
+  return finalizeSlug(skillName) || "skill";
+}
+
+function buildTree(
+  files: SkillFileTreeEntry[],
+  rootName: string
+): TreeDirectoryNode {
   const root: TreeDirectoryNode = {
     type: "directory",
-    name: "my-skill",
+    name: rootName,
     path: "",
     children: [],
   };
@@ -139,13 +148,17 @@ function getScanBanner(scan: SkillSecurityScan | null | undefined) {
 
 export default function SkillFileTree({
   skillId,
+  skillName,
   files,
   treeHash,
   hasExecutable,
   securityScan,
   initialContent,
 }: SkillFileTreeProps) {
-  const tree = useMemo(() => buildTree(files), [files]);
+  const tree = useMemo(
+    () => buildTree(files, getSkillTreeRootName(skillName)),
+    [files, skillName]
+  );
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   const [selectedContent, setSelectedContent] = useState(initialContent ?? "");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
