@@ -23,7 +23,7 @@ vi.mock("@/lib/ai/scan", () => ({
 }));
 
 import { POST } from "@/app/api/check/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import {
   ensureSkillScan,
@@ -32,7 +32,11 @@ import {
   recordHeuristicReviewScan,
 } from "@/lib/ai/scan";
 import { resolveAuthorTrust } from "@/lib/trust";
+import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
 
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockEnsureSkillScan = ensureSkillScan as unknown as ReturnType<
   typeof vi.fn
@@ -61,6 +65,14 @@ function makeRequest(body: unknown) {
   });
 }
 
+function makeRawRequest(body: string, headers: Record<string, string>) {
+  return new NextRequest("http://localhost/api/check", {
+    method: "POST",
+    headers,
+    body,
+  });
+}
+
 function scan(overrides = {}) {
   return {
     verdict: "review",
@@ -70,6 +82,8 @@ function scan(overrides = {}) {
     scanned_at: "2026-05-30T00:00:00.000Z",
     model: "alibaba/qwen3.7-max",
     rubric_version: "v1",
+    scan_source: "model",
+    generated_by_model: true,
     advisory: true,
     cached: false,
     generated: true,
@@ -80,11 +94,27 @@ function scan(overrides = {}) {
 describe("POST /api/check", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSql.mockReturnValue(vi.fn().mockResolvedValue([{ count: 0 }]));
+    mockInitializeDatabase.mockResolvedValue(undefined);
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          daily_reserved: true,
+          monthly_reserved: true,
+          daily_used: 0,
+          monthly_used: 0,
+        },
+      ])
+    );
     mockGetCachedSkillScan.mockResolvedValue(null);
     mockHasScanEscalationSignal.mockReturnValue(true);
     mockEnsureSkillScan.mockResolvedValue(scan());
-    mockRecordHeuristicReviewScan.mockResolvedValue(scan({ generated: false }));
+    mockRecordHeuristicReviewScan.mockResolvedValue(
+      scan({
+        generated: false,
+        scan_source: "heuristic_prefilter",
+        generated_by_model: false,
+      })
+    );
     mockResolveAgentIdentityByWallet.mockResolvedValue(null);
     mockResolveAuthorTrust.mockResolvedValue({
       reputationScore: 0,
@@ -132,6 +162,20 @@ describe("POST /api/check", () => {
     expect(body.scan.advisory).toBe(true);
   });
 
+  it("rejects oversized streamed bodies before database or JSON parsing", async () => {
+    const res = await POST(
+      makeRawRequest("x".repeat(MAX_SKILL_TREE_BYTES + 300 * 1024), {
+        "Content-Type": "application/json",
+        "Content-Length": "chunked",
+      })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(413);
+    expect(body.error).toMatch(/size limit/i);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+  });
+
   it("keeps staked trust separate from advisory scan output", async () => {
     mockResolveAuthorTrust.mockResolvedValueOnce({
       reputationScore: 100,
@@ -172,5 +216,59 @@ describe("POST /api/check", () => {
     expect(mockEnsureSkillScan).not.toHaveBeenCalled();
     expect(mockRecordHeuristicReviewScan).toHaveBeenCalled();
     expect(body.scan.source).toBe("heuristic_prefilter");
+    expect(body.scan.generated_by_model).toBe(false);
+  });
+
+  it("reserves durable budget before model generation", async () => {
+    const dbQuery = vi.fn().mockResolvedValue([
+      {
+        daily_reserved: true,
+        monthly_reserved: true,
+        daily_used: 3,
+        monthly_used: 9,
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        content:
+          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(dbQuery).toHaveBeenCalledTimes(1);
+    expect(mockEnsureSkillScan).toHaveBeenCalled();
+    expect(dbQuery.mock.invocationCallOrder[0]).toBeLessThan(
+      mockEnsureSkillScan.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("does not generate a model scan when the durable budget is exhausted", async () => {
+    const dbQuery = vi.fn().mockResolvedValue([
+      {
+        daily_reserved: false,
+        monthly_reserved: true,
+        daily_used: 200,
+        monthly_used: 50,
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        content:
+          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+      })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockEnsureSkillScan).not.toHaveBeenCalled();
+    expect(body.scan.verdict).toBe("unknown");
+    expect(body.scan.unavailable_reason).toBe(
+      "daily_scan_budget_exhausted"
+    );
   });
 });

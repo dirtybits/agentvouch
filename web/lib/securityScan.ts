@@ -17,6 +17,8 @@ export interface SkillSecurityScan {
   scanned_at: string | null;
   model: string;
   rubric_version: string;
+  scan_source: string;
+  generated_by_model: boolean;
   advisory: true;
 }
 
@@ -28,6 +30,8 @@ export interface SkillScanFieldRow {
   scan_scanned_at?: string | Date | null;
   scan_model?: string | null;
   scan_rubric_version?: string | null;
+  scan_source?: string | null;
+  scan_generated_by_model?: boolean | null;
 }
 
 function parseFindings(value: unknown): SkillScanFinding[] {
@@ -84,6 +88,8 @@ export function buildSecurityScanFromFields(
       : null,
     model: row.scan_model ?? "unknown",
     rubric_version: row.scan_rubric_version ?? "unknown",
+    scan_source: row.scan_source ?? "model",
+    generated_by_model: row.scan_generated_by_model ?? true,
     advisory: true,
   };
 }

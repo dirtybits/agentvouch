@@ -59,9 +59,53 @@ const DAILY_GENERATION_LIMIT = Number(
 const MONTHLY_GENERATION_LIMIT = Number(
   process.env.AI_SCAN_MONTHLY_GENERATION_LIMIT ?? 2000
 );
+const MAX_CHECK_BODY_BYTES = MAX_SKILL_TREE_BYTES + 256 * 1024;
 
 const ipWindows = new Map<string, RateWindow>();
 const globalWindow: RateWindow = { resetAt: 0, count: 0 };
+
+class CheckRequestError extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+  }
+}
+
+async function readBoundedJsonBody(
+  request: NextRequest
+): Promise<CheckRequestBody> {
+  const contentLength = request.headers.get("content-length");
+  if (
+    contentLength &&
+    /^\d+$/.test(contentLength) &&
+    Number(contentLength) > MAX_CHECK_BODY_BYTES
+  ) {
+    throw new CheckRequestError("Check payload exceeds size limit", 413);
+  }
+
+  if (!request.body) {
+    throw new CheckRequestError("Missing JSON body", 400);
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const chunk = Buffer.from(value);
+    totalBytes += chunk.byteLength;
+    if (totalBytes > MAX_CHECK_BODY_BYTES) {
+      throw new CheckRequestError("Check payload exceeds size limit", 413);
+    }
+    chunks.push(chunk);
+  }
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as CheckRequestBody;
+  } catch {
+    throw new CheckRequestError("Invalid JSON body", 400);
+  }
+}
 
 function resetWindowIfNeeded(window: RateWindow, now: number) {
   if (now >= window.resetAt) {
@@ -102,7 +146,7 @@ function takeGenerationSlot(request: NextRequest):
   return { ok: true };
 }
 
-async function scanBudgetAvailability(): Promise<
+async function reserveScanBudget(): Promise<
   | { ok: true }
   | { ok: false; reason: "daily_scan_budget_exhausted" | "monthly_scan_budget_exhausted" }
 > {
@@ -116,29 +160,87 @@ async function scanBudgetAvailability(): Promise<
     return { ok: false, reason: "monthly_scan_budget_exhausted" };
   }
 
-  const dailyRows = await sql()<{
-    count: string | number;
+  const rows = await sql()<{
+    daily_reserved: boolean;
+    monthly_reserved: boolean;
+    daily_used: string | number;
+    monthly_used: string | number;
   }>`
-    SELECT COUNT(*) AS count
-    FROM skill_scans
-    WHERE scanned_at >= date_trunc('day', NOW())
+    WITH budget_lock AS (
+      SELECT pg_advisory_xact_lock(hashtext('agentvouch:ai_scan_budget')::bigint) AS locked
+    ),
+    params AS (
+      SELECT
+        CURRENT_DATE::date AS day_start,
+        date_trunc('month', NOW())::date AS month_start,
+        ${DAILY_GENERATION_LIMIT}::integer AS daily_limit,
+        ${MONTHLY_GENERATION_LIMIT}::integer AS monthly_limit
+      FROM budget_lock
+    ),
+    day_insert AS (
+      INSERT INTO ai_scan_budget_counters (bucket, period_start, used)
+      SELECT 'day', day_start, 0
+      FROM params
+      ON CONFLICT (bucket, period_start) DO NOTHING
+      RETURNING 1
+    ),
+    month_insert AS (
+      INSERT INTO ai_scan_budget_counters (bucket, period_start, used)
+      SELECT 'month', month_start, 0
+      FROM params
+      ON CONFLICT (bucket, period_start) DO NOTHING
+      RETURNING 1
+    ),
+    current_counts AS (
+      SELECT
+        (
+          SELECT c.used
+          FROM ai_scan_budget_counters c
+          WHERE c.bucket = 'day'
+            AND c.period_start = params.day_start
+        ) AS daily_used,
+        (
+          SELECT c.used
+          FROM ai_scan_budget_counters c
+          WHERE c.bucket = 'month'
+            AND c.period_start = params.month_start
+        ) AS monthly_used,
+        params.daily_limit,
+        params.monthly_limit
+      FROM params
+      CROSS JOIN (SELECT COUNT(*) FROM day_insert) day_inserted
+      CROSS JOIN (SELECT COUNT(*) FROM month_insert) month_inserted
+    ),
+    reservation AS (
+      UPDATE ai_scan_budget_counters c
+      SET
+        used = c.used + 1,
+        updated_at = NOW()
+      FROM params, current_counts
+      WHERE (
+          (c.bucket = 'day' AND c.period_start = params.day_start)
+          OR (c.bucket = 'month' AND c.period_start = params.month_start)
+        )
+        AND current_counts.daily_used < params.daily_limit
+        AND current_counts.monthly_used < params.monthly_limit
+      RETURNING c.bucket
+    )
+    SELECT
+      EXISTS (SELECT 1 FROM reservation WHERE bucket = 'day') AS daily_reserved,
+      EXISTS (SELECT 1 FROM reservation WHERE bucket = 'month') AS monthly_reserved,
+      COALESCE((SELECT daily_used FROM current_counts), 0) AS daily_used,
+      COALESCE((SELECT monthly_used FROM current_counts), 0) AS monthly_used
   `;
-  if (Number(dailyRows[0]?.count ?? 0) >= DAILY_GENERATION_LIMIT) {
+  const row = rows[0];
+  if (row?.daily_reserved && row.monthly_reserved) {
+    return { ok: true };
+  }
+
+  if (Number(row?.daily_used ?? 0) >= DAILY_GENERATION_LIMIT) {
     return { ok: false, reason: "daily_scan_budget_exhausted" };
   }
 
-  const monthlyRows = await sql()<{
-    count: string | number;
-  }>`
-    SELECT COUNT(*) AS count
-    FROM skill_scans
-    WHERE scanned_at >= date_trunc('month', NOW())
-  `;
-  if (Number(monthlyRows[0]?.count ?? 0) >= MONTHLY_GENERATION_LIMIT) {
-    return { ok: false, reason: "monthly_scan_budget_exhausted" };
-  }
-
-  return { ok: true };
+  return { ok: false, reason: "monthly_scan_budget_exhausted" };
 }
 
 function parseFilesInput(body: CheckRequestBody): SkillTreeInputFile[] | null {
@@ -271,6 +373,8 @@ function scanBlock(scan: SkillSecurityScan | null, extra?: Record<string, unknow
     scanned_at: scan.scanned_at,
     model: scan.model,
     rubric_version: scan.rubric_version,
+    source: scan.scan_source,
+    generated_by_model: scan.generated_by_model,
     advisory: true,
     ...extra,
   };
@@ -316,7 +420,7 @@ async function resolveScanForFiles(input: {
     };
   }
 
-  const budget = await scanBudgetAvailability();
+  const budget = await reserveScanBudget();
   if (!budget.ok) {
     return {
       action: "unknown",
@@ -351,19 +455,8 @@ function fuseActions(input: {
 
 export async function POST(request: NextRequest) {
   try {
-    const contentLength = request.headers.get("content-length");
-    if (
-      contentLength &&
-      /^\d+$/.test(contentLength) &&
-      Number(contentLength) > MAX_SKILL_TREE_BYTES
-    ) {
-      return NextResponse.json(
-        { error: "Check payload exceeds size limit" },
-        { status: 413 }
-      );
-    }
+    const body = await readBoundedJsonBody(request);
     await initializeDatabase();
-    const body = (await request.json()) as CheckRequestBody;
     const treeHash =
       typeof body.tree_hash === "string"
         ? body.tree_hash
@@ -437,7 +530,12 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error("POST /api/check error:", error);
     const message = getErrorMessage(error);
-    const status = message.includes("exceeds cap") ? 413 : 500;
+    const status =
+      error instanceof CheckRequestError
+        ? error.status
+        : message.includes("exceeds cap")
+        ? 413
+        : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

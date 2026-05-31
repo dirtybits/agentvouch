@@ -102,7 +102,9 @@ type HydratedSkillRow = RepoSkillRow & {
 };
 
 async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
-  const rows = await sql()<Omit<RepoSkillRow, "source">>`
+  const rows = await sql()<
+    Omit<RepoSkillRow, "source"> & SkillScanFieldRow & Record<string, unknown>
+  >`
     SELECT
       s.*,
       latest.files,
@@ -114,7 +116,9 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
       scan.truncated AS scan_truncated,
       scan.scanned_at AS scan_scanned_at,
       scan.model AS scan_model,
-      scan.rubric_version AS scan_rubric_version
+      scan.rubric_version AS scan_rubric_version,
+      scan.scan_source AS scan_source,
+      scan.generated_by_model AS scan_generated_by_model
     FROM skills s
     LEFT JOIN LATERAL (
       SELECT files, tree_hash, has_executable
@@ -129,12 +133,25 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
       AND scan.model = ${SCAN_MODEL}
     WHERE s.id = ANY(${skillIds}::uuid[])
   `;
-  return rows.map((skill) => ({
-    ...skill,
-    security_scan: buildSecurityScanFromFields(skill),
-    chain_context: normalizePersistedChainContext(skill.chain_context),
-    source: "repo",
-  }));
+  return rows.map((skill) => {
+    const security_scan = buildSecurityScanFromFields(skill);
+    const publicSkill = { ...skill };
+    delete publicSkill.scan_verdict;
+    delete publicSkill.scan_risk;
+    delete publicSkill.scan_findings;
+    delete publicSkill.scan_truncated;
+    delete publicSkill.scan_scanned_at;
+    delete publicSkill.scan_model;
+    delete publicSkill.scan_rubric_version;
+    delete publicSkill.scan_source;
+    delete publicSkill.scan_generated_by_model;
+    return {
+      ...publicSkill,
+      security_scan,
+      chain_context: normalizePersistedChainContext(skill.chain_context),
+      source: "repo",
+    };
+  });
 }
 
 function getAuthorPubkeys(skills: RepoSkillRow[]): string[] {

@@ -222,6 +222,8 @@ function stripCachedSkillFields(skill: MergedSkillRow): MergedSkillRow {
   delete publicSkill.scan_scanned_at;
   delete publicSkill.scan_model;
   delete publicSkill.scan_rubric_version;
+  delete publicSkill.scan_source;
+  delete publicSkill.scan_generated_by_model;
   return publicSkill;
 }
 
@@ -384,6 +386,8 @@ async function loadRepoSkillRows(input: {
           scan.scanned_at AS scan_scanned_at,
           scan.model AS scan_model,
           scan.rubric_version AS scan_rubric_version,
+          scan.scan_source AS scan_source,
+          scan.generated_by_model AS scan_generated_by_model,
           ats.author_trust AS cached_author_trust,
           ats.author_trust_summary AS cached_author_trust_summary,
           ats.reputation_score AS cached_reputation_score,
@@ -421,6 +425,8 @@ async function loadRepoSkillRows(input: {
           scan.scanned_at AS scan_scanned_at,
           scan.model AS scan_model,
           scan.rubric_version AS scan_rubric_version,
+          scan.scan_source AS scan_source,
+          scan.generated_by_model AS scan_generated_by_model,
           ats.author_trust AS cached_author_trust,
           ats.author_trust_summary AS cached_author_trust_summary,
           ats.reputation_score AS cached_reputation_score,
@@ -463,6 +469,8 @@ async function loadRepoSkillRows(input: {
         scan.scanned_at AS scan_scanned_at,
         scan.model AS scan_model,
         scan.rubric_version AS scan_rubric_version,
+        scan.scan_source AS scan_source,
+        scan.generated_by_model AS scan_generated_by_model,
         ats.author_trust AS cached_author_trust,
         ats.author_trust_summary AS cached_author_trust_summary,
         ats.reputation_score AS cached_reputation_score,

@@ -100,6 +100,8 @@ type SkillScanRow = Required<
     | "scan_scanned_at"
     | "scan_model"
     | "scan_rubric_version"
+    | "scan_source"
+    | "scan_generated_by_model"
   >
 >;
 
@@ -307,7 +309,9 @@ export async function GET(
           truncated AS scan_truncated,
           scanned_at AS scan_scanned_at,
           model AS scan_model,
-          rubric_version AS scan_rubric_version
+          rubric_version AS scan_rubric_version,
+          scan_source AS scan_source,
+          generated_by_model AS scan_generated_by_model
         FROM skill_scans
         WHERE tree_hash = ${latestVersion.tree_hash}
           AND rubric_version = ${SCAN_RUBRIC_VERSION}

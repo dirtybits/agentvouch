@@ -27,6 +27,7 @@ export interface SkillFileWithBytes {
   path: string;
   bytes: Buffer;
   contentType: string;
+  executable?: boolean;
 }
 
 export interface SkillTreeStoreResult {
@@ -332,6 +333,7 @@ export function prepareSkillTree(files: SkillTreeInputFile[]): SkillTreeStoreRes
       path: file.path,
       bytes: file.bytes,
       contentType: contentTypeByPath.get(file.path) ?? contentTypeForPath(file.path),
+      executable: isExecutablePath(file.path, file.bytes),
     })),
   };
 }
@@ -385,6 +387,7 @@ export async function getFilesForVersion(
         path: "SKILL.md",
         bytes: Buffer.from(version.content, "utf8"),
         contentType: "text/markdown; charset=utf-8",
+        executable: false,
       },
     ];
   }
@@ -395,6 +398,7 @@ export async function getFilesForVersion(
     path: file.path,
     bytes: file.bytes,
     contentType: contentTypeForPath(file.path),
+    executable: isExecutablePath(file.path, file.bytes),
   }));
 }
 
