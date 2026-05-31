@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
 import { generateSummarySafe } from "@/lib/ai/summarize";
+import { runScanSafe } from "@/lib/ai/scan";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import { MAX_SKILL_CONTENT_BYTES } from "@/lib/skillDraft";
@@ -129,6 +130,7 @@ export async function POST(
     after(() =>
       generateSummarySafe(id, content, { expectedVersion: newVersion })
     );
+    after(() => runScanSafe(tree.treeHash, tree.filesWithBytes));
 
     return NextResponse.json(
       {

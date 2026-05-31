@@ -17,6 +17,7 @@ import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
+import type { SkillSecurityScan } from "@/lib/securityScan";
 
 interface SkillPreviewCardSkill {
   id: string;
@@ -34,6 +35,7 @@ interface SkillPreviewCardSkill {
   author_trust: TrustData | null;
   summary?: string | null;
   has_executable?: boolean | null;
+  security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
   payment_flow?:
     | "free"
@@ -156,6 +158,29 @@ function getVerdictMeta(verdict: Verdict): VerdictMeta {
   }
 }
 
+function getScanMeta(scan: SkillSecurityScan | null | undefined): {
+  label: string;
+  chip: string;
+  title: string;
+} | null {
+  if (!scan) return null;
+  if (scan.verdict === "avoid") {
+    return {
+      label: "Automated avoid",
+      chip: "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
+      title:
+        "Automated advisory scan found concrete risk. This is not a staked vouch.",
+    };
+  }
+  return {
+    label: scan.truncated ? "Automated review*" : "Automated review",
+    chip: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
+    title: scan.truncated
+      ? "Automated advisory scan was truncated; review before installing. This is not a staked vouch."
+      : "Automated advisory scan did not find a concrete blocker. This is not a staked vouch.",
+  };
+}
+
 function VerdictDot({
   verdict,
   meta,
@@ -246,6 +271,7 @@ export default function SkillPreviewCard({
   const trust = skill.author_trust;
   const verdict = getVerdict(trust);
   const verdictMeta = getVerdictMeta(verdict);
+  const scanMeta = getScanMeta(skill.security_scan);
   const authorSeed =
     skill.author_pubkey ??
     skill.publisher_identity_key ??
@@ -395,7 +421,16 @@ export default function SkillPreviewCard({
         {/* One trust line — the App Store rating, translated to skin-in-the-game.
             Full backing/self/aggregate breakdown lives on the skill detail page. */}
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {skill.has_executable && (
+          {scanMeta && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
+              title={scanMeta.title}
+            >
+              <FiAlertTriangle className="h-3 w-3" />
+              {scanMeta.label}
+            </span>
+          )}
+          {skill.has_executable && !skill.security_scan && (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
               title="This skill contains executable files and has not yet been security-scanned."

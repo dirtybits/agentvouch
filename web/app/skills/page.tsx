@@ -47,6 +47,7 @@ import {
 import { isRpcRateLimitError } from "@/lib/rpcErrors";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getErrorMessage } from "@/lib/errors";
+import type { SkillSecurityScan } from "@/lib/securityScan";
 
 type PageTab = "browse" | "my-purchases" | "my-listings";
 
@@ -83,6 +84,7 @@ interface SkillRow {
   author_trust: TrustData | null;
   summary?: string | null;
   has_executable?: boolean | null;
+  security_scan?: SkillSecurityScan | null;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
   estimatedBuyerTotalLamports?: number;

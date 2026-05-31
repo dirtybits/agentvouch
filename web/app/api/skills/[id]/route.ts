@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
+import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import { SCAN_MODEL } from "@/lib/ai/gateway";
 import { resolveAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
@@ -36,6 +38,11 @@ import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
 } from "@/lib/listingContract";
+import {
+  buildSecurityScanFromFields,
+  type SkillScanFieldRow,
+  type SkillSecurityScan,
+} from "@/lib/securityScan";
 
 const CHAIN_PREFIX = "chain-";
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -82,6 +89,21 @@ type SkillVersionRow = {
   has_executable: boolean;
   created_at: string;
 };
+
+type SkillScanRow = Required<
+  Pick<
+    SkillScanFieldRow,
+    | "scan_verdict"
+    | "scan_risk"
+    | "scan_findings"
+    | "scan_truncated"
+    | "scan_scanned_at"
+    | "scan_model"
+    | "scan_rubric_version"
+    | "scan_source"
+    | "scan_generated_by_model"
+  >
+>;
 
 export async function GET(
   request: NextRequest,
@@ -195,6 +217,7 @@ export async function GET(
           tree_hash: null,
           storage_backend: null,
           has_executable: false,
+          security_scan: null,
           versions: [],
           author_trust,
           author_trust_summary,
@@ -276,6 +299,29 @@ export async function GET(
     }
 
     const latestVersion = versions[0];
+    let security_scan: SkillSecurityScan | null = null;
+    if (latestVersion?.tree_hash) {
+      const scanRows = await sql()<SkillScanRow>`
+        SELECT
+          verdict AS scan_verdict,
+          risk AS scan_risk,
+          findings AS scan_findings,
+          truncated AS scan_truncated,
+          scanned_at AS scan_scanned_at,
+          model AS scan_model,
+          rubric_version AS scan_rubric_version,
+          scan_source AS scan_source,
+          generated_by_model AS scan_generated_by_model
+        FROM skill_scans
+        WHERE tree_hash = ${latestVersion.tree_hash}
+          AND rubric_version = ${SCAN_RUBRIC_VERSION}
+          AND model = ${SCAN_MODEL}
+        LIMIT 1
+      `;
+      security_scan = scanRows[0]
+        ? buildSecurityScanFromFields(scanRows[0])
+        : null;
+    }
     const allPinned = versions.every((version) => !!version.ipfs_cid);
     const currentCidMatch = latestVersion?.ipfs_cid === skill.ipfs_cid;
     const content_verification = {
@@ -368,6 +414,7 @@ export async function GET(
         tree_hash: latestVersion?.tree_hash ?? null,
         storage_backend: latestVersion?.storage_backend ?? null,
         has_executable: latestVersion?.has_executable ?? false,
+        security_scan,
         versions: versionsWithoutContent,
         author_trust,
         author_trust_summary,

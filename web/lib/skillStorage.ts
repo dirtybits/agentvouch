@@ -23,12 +23,20 @@ export interface SkillFileManifestEntry {
   executable: boolean;
 }
 
+export interface SkillFileWithBytes {
+  path: string;
+  bytes: Buffer;
+  contentType: string;
+  executable?: boolean;
+}
+
 export interface SkillTreeStoreResult {
   backend: SkillStorageBackend;
   treeHash: string;
   manifest: SkillFileManifestEntry[];
   hasExecutable: boolean;
   archiveBytes: Buffer;
+  filesWithBytes: SkillFileWithBytes[];
 }
 
 export interface StoredSkillVersionRef extends Record<string, unknown> {
@@ -107,7 +115,7 @@ export function normalizeSkillPath(input: string): string {
   return normalized;
 }
 
-function contentTypeForPath(filePath: string): string {
+export function contentTypeForPath(filePath: string): string {
   const ext = path.posix.extname(filePath).toLowerCase();
   if (filePath === "SKILL.md" || ext === ".md") return "text/markdown; charset=utf-8";
   if ([".json", ".map"].includes(ext)) return "application/json; charset=utf-8";
@@ -312,12 +320,21 @@ export function prepareSkillTree(files: SkillTreeInputFile[]): SkillTreeStoreRes
   const manifest = buildSkillManifest(normalized);
   const treeHash = computeTreeHash(manifest);
   const archiveBytes = buildTarArchive(normalized);
+  const contentTypeByPath = new Map(
+    manifest.map((file) => [file.path, file.contentType])
+  );
   return {
     backend: "blob",
     treeHash,
     manifest,
     hasExecutable: manifest.some((file) => file.executable),
     archiveBytes,
+    filesWithBytes: normalized.map((file) => ({
+      path: file.path,
+      bytes: file.bytes,
+      contentType: contentTypeByPath.get(file.path) ?? contentTypeForPath(file.path),
+      executable: isExecutablePath(file.path, file.bytes),
+    })),
   };
 }
 
@@ -359,6 +376,30 @@ export async function buildArchiveForVersion(
 
   const tree = prepareSkillTree([{ path: "SKILL.md", content: version.content }]);
   return tree.archiveBytes;
+}
+
+export async function getFilesForVersion(
+  version: StoredSkillVersionRef
+): Promise<SkillFileWithBytes[]> {
+  if (version.storage_backend !== "blob") {
+    return [
+      {
+        path: "SKILL.md",
+        bytes: Buffer.from(version.content, "utf8"),
+        contentType: "text/markdown; charset=utf-8",
+        executable: false,
+      },
+    ];
+  }
+
+  const archive = await buildArchiveForVersion(version);
+  const files = normalizeSkillTreeFiles(ingestTarArchive(archive));
+  return files.map((file) => ({
+    path: file.path,
+    bytes: file.bytes,
+    contentType: contentTypeForPath(file.path),
+    executable: isExecutablePath(file.path, file.bytes),
+  }));
 }
 
 export async function getFileForVersion(

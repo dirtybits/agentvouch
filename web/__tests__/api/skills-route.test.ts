@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { after, NextRequest } from "next/server";
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -83,6 +83,7 @@ const mockGetOnChainUsdcPrice = getOnChainUsdcPrice as unknown as ReturnType<
 >;
 const mockGetGithubSessionFromRequest =
   getGithubSessionFromRequest as unknown as ReturnType<typeof vi.fn>;
+const mockAfter = after as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost/api/skills", {
@@ -179,6 +180,7 @@ describe("POST /api/skills", () => {
       "my-skill",
       1
     );
+    expect(mockAfter).toHaveBeenCalledTimes(2);
     expect(mockUpsertLocalAgentIdentity).toHaveBeenCalledWith({
       walletPubkey: "AuthorWallet1111111111111111111111111111111",
       chainContext: expect.any(String),

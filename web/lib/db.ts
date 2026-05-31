@@ -251,6 +251,47 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE TABLE IF NOT EXISTS skill_scans (
+      tree_hash VARCHAR(64) NOT NULL,
+      rubric_version VARCHAR(16) NOT NULL,
+      model VARCHAR(64) NOT NULL,
+      verdict VARCHAR(16) NOT NULL,
+      risk VARCHAR(16),
+      findings JSONB NOT NULL,
+      truncated BOOLEAN NOT NULL DEFAULT false,
+      scan_source VARCHAR(32) NOT NULL DEFAULT 'model',
+      generated_by_model BOOLEAN NOT NULL DEFAULT true,
+      scanned_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (tree_hash, rubric_version, model)
+    )
+  `;
+
+  await db`
+    ALTER TABLE skill_scans
+    ADD COLUMN IF NOT EXISTS scan_source VARCHAR(32) NOT NULL DEFAULT 'model'
+  `;
+
+  await db`
+    ALTER TABLE skill_scans
+    ADD COLUMN IF NOT EXISTS generated_by_model BOOLEAN NOT NULL DEFAULT true
+  `;
+
+  await db`
+    CREATE TABLE IF NOT EXISTS ai_scan_budget_counters (
+      bucket VARCHAR(16) NOT NULL,
+      period_start DATE NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (bucket, period_start)
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skill_versions_tree_hash
+    ON skill_versions(tree_hash)
+  `;
+
+  await db`
     ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS price_usdc_micros BIGINT
   `;

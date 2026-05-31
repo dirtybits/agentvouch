@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { after, NextRequest } from "next/server";
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -42,6 +42,7 @@ const mockVerifyWalletSignature =
 const mockPinSkillContent = pinSkillContent as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockAfter = after as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost/api/skills/uuid-skill/versions", {
@@ -196,6 +197,7 @@ describe("POST /api/skills/[id]/versions", () => {
       "calendar-agent",
       3
     );
+    expect(mockAfter).toHaveBeenCalledTimes(2);
     expect(dbQuery).toHaveBeenCalledTimes(3);
 
     const body = await res.json();
