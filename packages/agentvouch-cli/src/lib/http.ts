@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { AuthPayload, PaymentRequirement } from "@agentvouch/protocol";
 import {
   decodePaymentResponseHeader,
@@ -39,11 +40,26 @@ export interface SkillAuthorTrustSummary {
 export interface SkillRecord {
   id: string;
   skill_id: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: "wallet" | "github" | "api_token" | "unknown" | string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: "unverified" | "registered" | "bonded" | string | null;
   name: string;
   description: string | null;
   tags?: string[];
   current_version?: number;
+  files?: Array<{
+    path: string;
+    size: number;
+    sha256: string;
+    contentType?: string;
+    executable?: boolean;
+  }> | null;
+  tree_hash?: string | null;
+  storage_backend?: string | null;
+  has_executable?: boolean | null;
   chain_context?: string | null;
   on_chain_address: string | null;
   price_lamports?: number | null;
@@ -163,6 +179,7 @@ export interface DownloadResponse {
   ok: boolean;
   status: number;
   content?: string;
+  archive?: Buffer;
   error?: string;
   requirement?: PaymentRequirement;
   directPurchaseRequired?: {
@@ -275,6 +292,37 @@ function parseListingRequired(body?: unknown):
     currencyMint:
       typeof payload.currency_mint === "string" ? payload.currency_mint : null,
     message: typeof payload.message === "string" ? payload.message : null,
+  };
+}
+
+async function parseFailedDownload(
+  response: Response,
+  paymentResponse?: X402SettleResponse
+): Promise<DownloadResponse> {
+  const body = getJsonContentType(response)
+    ? ((await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+      } | null)
+    : null;
+
+  const errorMessage =
+    body?.error && body.message
+      ? `${body.error}: ${body.message}`
+      : body?.error || body?.message;
+
+  return {
+    ok: false,
+    status: response.status,
+    error:
+      errorMessage ||
+      (await response.text().catch(() => response.statusText)) ||
+      response.statusText,
+    requirement: parsePaymentRequirement(response, body),
+    directPurchaseRequired: parseDirectPurchaseRequired(body),
+    listingRequired: parseListingRequired(body),
+    x402PaymentRequired: parseX402PaymentRequired(body),
+    paymentResponse,
   };
 }
 
@@ -437,31 +485,43 @@ export class AgentVouchApiClient {
       };
     }
 
-    const body = getJsonContentType(response)
-      ? ((await response.json().catch(() => null)) as {
-          error?: string;
-          message?: string;
-        } | null)
-      : null;
+    return parseFailedDownload(response, paymentResponse);
+  }
 
-    const errorMessage =
-      body?.error && body.message
-        ? `${body.error}: ${body.message}`
-        : body?.error || body?.message;
+  async downloadArchive(
+    id: string,
+    options?: {
+      auth?: AuthPayload;
+      fetchImpl?: typeof fetch;
+    }
+  ): Promise<DownloadResponse> {
+    const headers: Record<string, string> = {};
+    if (options?.auth) {
+      headers["X-AgentVouch-Auth"] = JSON.stringify(options.auth);
+    }
 
-    return {
-      ok: false,
-      status: response.status,
-      error:
-        errorMessage ||
-        (await response.text().catch(() => response.statusText)) ||
-        response.statusText,
-      requirement: parsePaymentRequirement(response, body),
-      directPurchaseRequired: parseDirectPurchaseRequired(body),
-      listingRequired: parseListingRequired(body),
-      x402PaymentRequired: parseX402PaymentRequired(body),
-      paymentResponse,
-    };
+    const response = await (options?.fetchImpl ?? fetch)(
+      this.url(`/api/skills/${id}/archive`),
+      {
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      }
+    );
+
+    const paymentResponseHeader = response.headers.get("PAYMENT-RESPONSE");
+    const paymentResponse = paymentResponseHeader
+      ? decodePaymentResponseHeader(paymentResponseHeader)
+      : undefined;
+
+    if (response.ok) {
+      return {
+        ok: true,
+        status: response.status,
+        archive: Buffer.from(await response.arrayBuffer()),
+        paymentResponse,
+      };
+    }
+
+    return parseFailedDownload(response, paymentResponse);
   }
 
   async verifyDirectPurchase(

@@ -105,6 +105,7 @@ export async function updateSkill(
     out: outputPath,
     force: true,
     dryRun: false,
+    tree: metadata?.installed_format === "tree",
     keypairPath: input.keypairPath,
     baseUrl: input.baseUrl,
     rpcUrl: input.rpcUrl,

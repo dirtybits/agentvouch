@@ -2,6 +2,7 @@ import path from "node:path";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { wrapFetchWithPayment, x402Client, x402HTTPClient } from "@x402/fetch";
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
+import type { AuthPayload } from "@agentvouch/protocol";
 import { CliError } from "./errors.js";
 import { assertWritableOutputPath, writeUtf8File } from "./fs.js";
 import { type SkillRecord, AgentVouchApiClient } from "./http.js";
@@ -12,15 +13,79 @@ import {
 } from "./metadata.js";
 import { createDownloadAuthPayload, loadKeypair } from "./signer.js";
 import { AgentVouchSolanaClient } from "./solana.js";
+import {
+  isDirectoryLikeOutput,
+  writeTarArchiveToDirectory,
+} from "./archive.js";
 
 export interface InstallSkillInput {
   id: string;
   out: string;
+  tree?: boolean;
   force?: boolean;
   dryRun?: boolean;
   baseUrl: string;
   rpcUrl: string;
   keypairPath?: string;
+}
+
+type InstallKind = "raw" | "archive";
+
+function skillHasTree(skill: SkillRecord): boolean {
+  return Boolean(skill.tree_hash || (skill.files && skill.files.length > 1));
+}
+
+function resolveInstallKind(
+  skill: SkillRecord,
+  outputPath: string,
+  forceTree = false
+): InstallKind {
+  if (forceTree) return "archive";
+  return skillHasTree(skill) && isDirectoryLikeOutput(outputPath)
+    ? "archive"
+    : "raw";
+}
+
+async function downloadForKind(
+  api: AgentVouchApiClient,
+  kind: InstallKind,
+  id: string,
+  options?: {
+    auth?: AuthPayload;
+    fetchImpl?: typeof fetch;
+  }
+) {
+  return kind === "archive"
+    ? api.downloadArchive(id, options)
+    : api.downloadRaw(id, options);
+}
+
+function hasDownloadPayload(
+  kind: InstallKind,
+  download: Awaited<ReturnType<typeof downloadForKind>>
+) {
+  return kind === "archive"
+    ? download.archive !== undefined
+    : download.content !== undefined;
+}
+
+async function writeDownloadOutput(
+  kind: InstallKind,
+  outputPath: string,
+  download: Awaited<ReturnType<typeof downloadForKind>>
+): Promise<number | null> {
+  if (kind === "archive") {
+    if (!download.archive) {
+      throw new CliError("Archive download did not include an archive body.");
+    }
+    return writeTarArchiveToDirectory(outputPath, download.archive);
+  }
+
+  if (download.content === undefined) {
+    throw new CliError("Raw download did not include skill content.");
+  }
+  await writeUtf8File(outputPath, download.content);
+  return null;
 }
 
 async function resolveChainSkillContent(
@@ -84,6 +149,7 @@ export async function installSkill(input: InstallSkillInput) {
   const skill = await api.getSkill(input.id);
   const outputPath = path.resolve(input.out);
   const metadataPath = getInstallMetadataPath(outputPath);
+  const installKind = resolveInstallKind(skill, outputPath, input.tree);
 
   if (!input.dryRun) {
     await assertWritableOutputPath(outputPath, input.force);
@@ -98,7 +164,9 @@ export async function installSkill(input: InstallSkillInput) {
       await writeUtf8File(outputPath, content);
       await writeInstalledSkillMetadata(
         outputPath,
-        buildInstalledSkillMetadata(input.id, skill)
+        buildInstalledSkillMetadata(input.id, skill, {
+          installedFormat: "file",
+        })
       );
     }
     return {
@@ -120,25 +188,32 @@ export async function installSkill(input: InstallSkillInput) {
           skill.on_chain_address ?? undefined
         )
       : undefined;
-  const initialDownload = await api.downloadRaw(
+  const initialDownload = await downloadForKind(
+    api,
+    installKind,
     input.id,
     signedInitialAuth ? { auth: signedInitialAuth } : undefined
   );
-  if (initialDownload.ok && initialDownload.content !== undefined) {
+  if (initialDownload.ok && hasDownloadPayload(installKind, initialDownload)) {
+    const filesWritten = input.dryRun
+      ? null
+      : await writeDownloadOutput(installKind, outputPath, initialDownload);
     if (!input.dryRun) {
-      await writeUtf8File(outputPath, initialDownload.content);
       await writeInstalledSkillMetadata(
         outputPath,
-        buildInstalledSkillMetadata(input.id, skill)
+        buildInstalledSkillMetadata(input.id, skill, {
+          installedFormat: installKind === "archive" ? "tree" : "file",
+        })
       );
     }
     return {
       ok: true,
-      mode: "free-raw",
+      mode: installKind === "archive" ? "free-archive" : "free-raw",
       skillId: input.id,
       outputPath,
       metadataPath,
       priceUsdcMicros: skill.price_usdc_micros ?? null,
+      filesWritten,
       dryRun: !!input.dryRun,
     };
   }
@@ -170,6 +245,8 @@ export async function installSkill(input: InstallSkillInput) {
         ? "listing-required-dry-run"
         : initialDownload.x402PaymentRequired
         ? "x402-usdc-dry-run"
+        : installKind === "archive"
+        ? "paid-archive-dry-run"
         : "paid-raw-dry-run",
       skillId: input.id,
       outputPath,
@@ -204,18 +281,29 @@ export async function installSkill(input: InstallSkillInput) {
   if (initialDownload.listingRequired) {
     const keypair = loadKeypair(input.keypairPath);
     const auth = createDownloadAuthPayload(keypair, input.id, undefined);
-    const signedDownload = await api.downloadRaw(input.id, { auth });
+    const signedDownload = await downloadForKind(api, installKind, input.id, {
+      auth,
+    });
 
-    if (signedDownload.ok && signedDownload.content !== undefined) {
-      await writeUtf8File(outputPath, signedDownload.content);
+    if (signedDownload.ok && hasDownloadPayload(installKind, signedDownload)) {
+      const filesWritten = await writeDownloadOutput(
+        installKind,
+        outputPath,
+        signedDownload
+      );
       await writeInstalledSkillMetadata(
         outputPath,
-        buildInstalledSkillMetadata(input.id, skill)
+        buildInstalledSkillMetadata(input.id, skill, {
+          installedFormat: installKind === "archive" ? "tree" : "file",
+        })
       );
 
       return {
         ok: true,
-        mode: "signed-entitlement",
+        mode:
+          installKind === "archive"
+            ? "signed-entitlement-archive"
+            : "signed-entitlement",
         skillId: input.id,
         outputPath,
         metadataPath,
@@ -225,6 +313,7 @@ export async function installSkill(input: InstallSkillInput) {
           null,
         listingAddress: null,
         alreadyPurchased: true,
+        filesWritten,
         dryRun: false,
       };
     }
@@ -249,12 +338,12 @@ export async function installSkill(input: InstallSkillInput) {
       rpcUrl: input.rpcUrl,
       keypairPath: input.keypairPath,
     });
-    const paidDownload = await api.downloadRaw(input.id, {
+    const paidDownload = await downloadForKind(api, installKind, input.id, {
       auth: authPayload,
       fetchImpl: paidFetch,
     });
 
-    if (!paidDownload.ok || paidDownload.content === undefined) {
+    if (!paidDownload.ok || !hasDownloadPayload(installKind, paidDownload)) {
       throw new CliError(
         `USDC x402 payment completed but download failed: ${
           paidDownload.error || "unexpected response"
@@ -262,15 +351,21 @@ export async function installSkill(input: InstallSkillInput) {
       );
     }
 
-    await writeUtf8File(outputPath, paidDownload.content);
+    const filesWritten = await writeDownloadOutput(
+      installKind,
+      outputPath,
+      paidDownload
+    );
     await writeInstalledSkillMetadata(
       outputPath,
-      buildInstalledSkillMetadata(input.id, skill)
+      buildInstalledSkillMetadata(input.id, skill, {
+        installedFormat: installKind === "archive" ? "tree" : "file",
+      })
     );
 
     return {
       ok: true,
-      mode: "x402-usdc",
+      mode: installKind === "archive" ? "x402-usdc-archive" : "x402-usdc",
       skillId: input.id,
       outputPath,
       metadataPath,
@@ -283,6 +378,7 @@ export async function installSkill(input: InstallSkillInput) {
       listingAddress: skill.on_chain_address ?? null,
       purchaseTx: paidDownload.paymentResponse?.transaction ?? null,
       alreadyPurchased: !paidDownload.paymentResponse,
+      filesWritten,
       dryRun: false,
     };
   }
@@ -303,6 +399,11 @@ export async function installSkill(input: InstallSkillInput) {
       `Skill ${input.id} returned a direct-purchase requirement without a listing address.`
     );
   }
+  if (!skill.author_pubkey) {
+    throw new CliError(
+      `Skill ${input.id} requires direct purchase but has no wallet author.`
+    );
+  }
   const purchase = await solana.purchaseSkill(
     skillListingAddress,
     skill.author_pubkey
@@ -319,9 +420,11 @@ export async function installSkill(input: InstallSkillInput) {
     input.id,
     skillListingAddress
   );
-  const signedDownload = await api.downloadRaw(input.id, { auth });
+  const signedDownload = await downloadForKind(api, installKind, input.id, {
+    auth,
+  });
 
-  if (!signedDownload.ok || signedDownload.content === undefined) {
+  if (!signedDownload.ok || !hasDownloadPayload(installKind, signedDownload)) {
     throw new CliError(
       `Purchase completed but signed raw download failed: ${
         signedDownload.error || "unexpected response"
@@ -329,15 +432,21 @@ export async function installSkill(input: InstallSkillInput) {
     );
   }
 
-  await writeUtf8File(outputPath, signedDownload.content);
+  const filesWritten = await writeDownloadOutput(
+    installKind,
+    outputPath,
+    signedDownload
+  );
   await writeInstalledSkillMetadata(
     outputPath,
-    buildInstalledSkillMetadata(input.id, skill)
+    buildInstalledSkillMetadata(input.id, skill, {
+      installedFormat: installKind === "archive" ? "tree" : "file",
+    })
   );
 
   return {
     ok: true,
-    mode: "paid-raw",
+    mode: installKind === "archive" ? "paid-archive" : "paid-raw",
     skillId: input.id,
     outputPath,
     metadataPath,
@@ -349,6 +458,7 @@ export async function installSkill(input: InstallSkillInput) {
     listingAddress: skillListingAddress,
     purchaseTx: purchase.tx,
     alreadyPurchased: purchase.alreadyPurchased,
+    filesWritten,
     dryRun: false,
   };
 }

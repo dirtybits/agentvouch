@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildSignMessage } from "@agentvouch/protocol";
@@ -19,12 +19,72 @@ async function createFixtureFiles() {
   const skillFile = path.join(tempDir, "SKILL.md");
   await writeFile(keypairPath, JSON.stringify(Array.from(keypair.secretKey)));
   await writeFile(skillFile, "# skill content\n");
-  return { keypairPath, skillFile };
+  return { tempDir, keypairPath, skillFile };
 }
 
 describe("publish flows", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("publishes skill directories as tar uploads", async () => {
+    const { tempDir, keypairPath } = await createFixtureFiles();
+    const skillDir = path.join(tempDir, "calendar-agent");
+    await mkdir(path.join(skillDir, "scripts"), { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "# tree skill\n");
+    await writeFile(
+      path.join(skillDir, "scripts", "run.mjs"),
+      "export default 1;\n"
+    );
+    let publishBody: Record<string, unknown> | null = null;
+
+    vi.spyOn(AgentVouchApiClient.prototype, "publishSkill").mockImplementation(
+      async (body) => {
+        publishBody = body;
+        return {
+          id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+          skill_id: "calendar-agent",
+          ipfs_cid: "bafy-test",
+        };
+      }
+    );
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "linkSkillListing"
+    ).mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: Keypair.generate().publicKey.toBase58(),
+      name: "Calendar Agent",
+      description: "Books meetings",
+      on_chain_address: "mock-listing",
+      total_installs: 0,
+    });
+    vi.spyOn(
+      AgentVouchSolanaClient.prototype,
+      "createSkillListing"
+    ).mockResolvedValue({
+      tx: "mock-create-tx",
+      alreadyExists: false,
+      skillListing: "mock-listing",
+    });
+
+    const result = await publishSkill({
+      file: skillDir,
+      skillId: "calendar-agent",
+      name: "Calendar Agent",
+      description: "Books meetings",
+      tags: ["calendar"],
+      priceUsdcMicros: "1000000",
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+      keypairPath,
+    });
+
+    expect(result.repoSkillId).toBe("595f5534-07ae-4839-a45a-b6858ab731fe");
+    expect(String(publishBody?.content)).toContain("# tree skill");
+    expect(typeof publishBody?.tar_base64).toBe("string");
+    expect(String(publishBody?.tar_base64).length).toBeGreaterThan(0);
   });
 
   it("assembles repo publish and listing link requests", async () => {

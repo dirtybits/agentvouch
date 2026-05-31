@@ -284,8 +284,12 @@ addRpcUrlOption(
       .argument("<id>", "Repo UUID or chain-<listing> id")
       .requiredOption(
         "--out <path>",
-        "Output path for the downloaded skill file",
+        "Output path for the downloaded skill file or tree directory",
         "SKILL.md"
+      )
+      .option(
+        "--tree",
+        "Install the full multi-file skill archive into --out as a directory"
       )
       .option("--keypair <file>", "Solana keypair JSON file for paid installs")
       .option("--force", "Overwrite an existing output file")
@@ -296,7 +300,7 @@ addRpcUrlOption(
       .option("--json", "Print structured JSON output")
       .addHelpText(
         "after",
-        "\nExamples:\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --keypair ~/.config/solana/id.json\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --dry-run --json"
+        "\nExamples:\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --tree --out ./calendar-agent\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --keypair ~/.config/solana/id.json\n  agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --dry-run --json"
       )
       .action(
         async (
@@ -304,6 +308,7 @@ addRpcUrlOption(
           options: {
             out: string;
             keypair?: string;
+            tree?: boolean;
             force?: boolean;
             dryRun?: boolean;
             baseUrl: string;
@@ -317,6 +322,7 @@ addRpcUrlOption(
               installSkill({
                 id,
                 out: options.out,
+                tree: options.tree,
                 keypairPath: options.keypair,
                 force: options.force,
                 dryRun: options.dryRun,
@@ -339,6 +345,9 @@ addRpcUrlOption(
                 : []),
               ...(result.purchaseTx
                 ? [`purchase_tx: ${result.purchaseTx}`]
+                : []),
+              ...(typeof result.filesWritten === "number"
+                ? [`files_written: ${result.filesWritten}`]
                 : []),
               ...(result.dryRun ? ["dry_run: true"] : []),
             ]
@@ -421,7 +430,10 @@ addRpcUrlOption(
   addBaseUrlOption(
     skill
       .command("publish")
-      .requiredOption("--file <path>", "Path to the local SKILL.md file")
+      .requiredOption(
+        "--file <path>",
+        "Path to the local SKILL.md file or skill directory"
+      )
       .requiredOption("--skill-id <id>", "Stable on-chain skill id/slug")
       .requiredOption("--name <name>", "Skill display name")
       .requiredOption("--description <text>", "Skill description")
@@ -441,7 +453,7 @@ addRpcUrlOption(
       .option("--json", "Print structured JSON output")
       .addHelpText(
         "after",
-        '\nExamples:\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json --dry-run'
+        '\nExamples:\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./calendar-agent --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json\n  agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json --dry-run'
       )
       .action(
         async (options: {
@@ -484,6 +496,8 @@ addRpcUrlOption(
                     `repo_skill_id: ${result.repoRequest.skill_id}`,
                     `listing: ${result.onChainListing.address}`,
                     `price_usdc_micros: ${result.repoRequest.price_usdc_micros}`,
+                    `upload_mode: ${result.repoRequest.upload_mode}`,
+                    `file_count: ${result.repoRequest.file_count}`,
                     "dry_run: true",
                   ]
                 : [
@@ -574,9 +588,12 @@ const skillVersion = skill
 
 addBaseUrlOption(
   skillVersion
-    .command("add")
-    .argument("<id>", "Repo skill UUID")
-    .requiredOption("--file <path>", "Path to the local SKILL.md file")
+      .command("add")
+      .argument("<id>", "Repo skill UUID")
+      .requiredOption(
+        "--file <path>",
+        "Path to the local SKILL.md file or skill directory"
+      )
     .requiredOption("--keypair <file>", "Solana keypair JSON file")
     .option("--changelog <text>", "Optional changelog entry")
     .option("--json", "Print structured JSON output")
@@ -608,6 +625,8 @@ addBaseUrlOption(
           (result) => [
             `added version for ${result.skillId}`,
             `version: ${result.version}`,
+            `upload_mode: ${result.uploadMode}`,
+            `file_count: ${result.fileCount}`,
           ]
         );
       }

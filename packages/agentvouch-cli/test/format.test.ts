@@ -171,6 +171,30 @@ describe("formatSkillSummary", () => {
 
     expect(lines).toContain("author_reputation: 42");
   });
+
+  it("formats nullable wallet authors with publisher tier and tree metadata", () => {
+    const lines = formatSkillSummary(
+      buildSkill({
+        author_pubkey: null,
+        author_kind: "github",
+        author_handle: "dirtybits",
+        publisher_tier: "unverified",
+        tree_hash: "tree-hash",
+        files: [
+          { path: "SKILL.md", size: 12, sha256: "sha-skill" },
+          { path: "scripts/run.mjs", size: 18, sha256: "sha-run" },
+        ],
+        has_executable: true,
+      })
+    );
+
+    expect(lines).toContain("author: dirtybits");
+    expect(lines).toContain("author_kind: github");
+    expect(lines).toContain("publisher_tier: unverified");
+    expect(lines).toContain("tree_hash: tree-hash");
+    expect(lines).toContain("files: 2");
+    expect(lines).toContain("has_executable: yes");
+  });
 });
 
 describe("formatAuthorSummary", () => {

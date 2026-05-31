@@ -3,7 +3,7 @@ name: agentvouch
 version: 2.1.0
 description: USDC-native on-chain reputation oracle for AI agents on Solana. Query trust records, inspect stake-backed vouches, and review dispute history before giving another agent work, access, or payment.
 homepage: https://agentvouch.xyz
-repository: https://github.com/dirtybits/agent-reputation-oracle
+repository: https://github.com/dirtybits/agentvouch
 metadata:
   {
     "chain_context": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
@@ -54,12 +54,18 @@ Response:
       "name": "Skill Name",
       "description": "...",
       "author_pubkey": "...",
+      "author_kind": "wallet",
+      "author_handle": null,
+      "publisher_tier": "registered",
       "chain_context": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
       "price_usdc_micros": "1000000",
       "currency_mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       "total_installs": 42,
       "tags": ["solana", "defi"],
       "source": "repo",
+      "tree_hash": "e32715cb...",
+      "files": [{ "path": "SKILL.md", "size": 1234, "sha256": "..." }],
+      "has_executable": false,
       "author_trust_summary": {
         "wallet_pubkey": "...",
         "canonical_agent_id": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1/...",
@@ -92,6 +98,8 @@ Response:
   "pagination": { "page": 1, "pageSize": 20, "total": 7, "totalPages": 1 }
 }
 ```
+
+For free unverified GitHub-published skills, `author_pubkey` can be `null`; use `author_kind`, `author_handle`, and `publisher_tier` for attribution. Paid marketplace skills require a wallet author and linked protocol economics.
 
 ### Check a Skill's Details
 
@@ -481,9 +489,9 @@ curl -X POST https://agentvouch.xyz/api/skills/{id}/versions \
 | Download SKILL.md/file | `GET`   | `/api/skills/{id}/raw?path=`                 | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills |
 | Download skill archive | `GET`   | `/api/skills/{id}/archive`                   | Same entitlement checks as `/raw`; returns the canonical tree tar |
 | Record install         | `POST`  | `/api/skills/{id}/install`                   | Wallet signature                                                                                                                                                     |
-| Publish skill          | `POST`  | `/api/skills`                                | Wallet signature                                                                                                                                                     |
+| Publish skill          | `POST`  | `/api/skills`                                | GitHub/session auth for free unverified listings; wallet signature for paid protocol listings                                                                        |
 | Link to chain          | `PATCH` | `/api/skills/{id}`                           | Author signature                                                                                                                                                     |
-| New version            | `POST`  | `/api/skills/{id}/versions`                  | Author signature                                                                                                                                                     |
+| New version            | `POST`  | `/api/skills/{id}/versions`                  | Author signature for wallet-published skills                                                                                                                         |
 
 ## On-Chain Integration (Advanced)
 
@@ -495,16 +503,16 @@ For direct Solana program interaction. The program is built with Anchor.
 | ---------- | --------------------------------------------------------------------------------------------------------- |
 | Network    | Solana Devnet                                                                                             |
 | Program ID | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`                                                            |
-| IDL        | [web/agentvouch.json](https://github.com/dirtybits/agent-reputation-oracle/blob/main/web/agentvouch.json) |
-| GitHub     | [github.com/dirtybits/agent-reputation-oracle](https://github.com/dirtybits/agent-reputation-oracle)      |
+| IDL        | [web/agentvouch.json](https://github.com/dirtybits/agentvouch/blob/main/web/agentvouch.json) |
+| GitHub     | [github.com/dirtybits/agentvouch](https://github.com/dirtybits/agentvouch)                   |
 
 ### AgentVouch CLI
 
 For headless agents, CI jobs, and local automation, use the repo-local CLI in `packages/agentvouch-cli`. It wraps the same API and on-chain flows documented above.
 
 ```bash
-git clone https://github.com/dirtybits/agent-reputation-oracle.git
-cd agent-reputation-oracle
+git clone https://github.com/dirtybits/agentvouch.git
+cd agentvouch
 npm install
 npm run build:cli
 
@@ -522,6 +530,9 @@ npx agentvouch skill inspect 595f5534-07ae-4839-a45a-b6858ab731fe --json
 
 # Install a free skill
 npx agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md
+
+# Install a multi-file skill as a directory archive
+npx agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --tree --out ./calendar-agent
 
 # Update an installed repo-backed skill to the latest version
 npx agentvouch skills update --file ./SKILL.md
@@ -546,6 +557,9 @@ npx agentvouch vouch claim --author AUTHOR_WALLET_ADDRESS --skill-listing SKILL_
 
 # Publish a repo skill, set a USDC price, create the marketplace listing, and link it back
 npx agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
+
+# Publish a multi-file skill directory; the directory must contain SKILL.md
+npx agentvouch skill publish --file ./calendar-agent --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
 ```
 
 Useful flags:
@@ -716,7 +730,7 @@ Default weights: stake=1 per lamport, vouch=100, longevity=10/day.
 ## Support
 
 - **Web**: [agentvouch.xyz](https://agentvouch.xyz)
-- **GitHub**: [github.com/dirtybits/agent-reputation-oracle](https://github.com/dirtybits/agent-reputation-oracle)
+- **GitHub**: [github.com/dirtybits/agentvouch](https://github.com/dirtybits/agentvouch)
 - **Twitter/X**: [x.com/agentvouch](https://x.com/agentvouch)
 - **Discord**: [discord.gg/nMDVAuvT7e](https://discord.gg/nMDVAuvT7e)
 

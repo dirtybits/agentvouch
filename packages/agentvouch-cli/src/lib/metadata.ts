@@ -10,9 +10,14 @@ export interface InstalledSkillMetadata {
   skill_id: string;
   source: "repo" | "chain";
   installed_version: number;
+  installed_format?: "file" | "tree";
   on_chain_address: string | null;
   skill_slug: string;
-  author_pubkey: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_handle?: string | null;
+  publisher_tier?: string | null;
+  tree_hash?: string | null;
   historical_sol_price_base_units?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
@@ -25,7 +30,8 @@ export function getInstallMetadataPath(skillFilePath: string): string {
 
 export function buildInstalledSkillMetadata(
   installedSkillId: string,
-  skill: SkillRecord
+  skill: SkillRecord,
+  options: { installedFormat?: "file" | "tree" } = {}
 ): InstalledSkillMetadata {
   return {
     schema_version: INSTALL_METADATA_SCHEMA_VERSION,
@@ -33,9 +39,14 @@ export function buildInstalledSkillMetadata(
     skill_id: installedSkillId,
     source: skill.source === "chain" ? "chain" : "repo",
     installed_version: skill.current_version ?? 1,
+    installed_format: options.installedFormat ?? "file",
     on_chain_address: skill.on_chain_address ?? null,
     skill_slug: skill.skill_id,
-    author_pubkey: skill.author_pubkey,
+    author_pubkey: skill.author_pubkey ?? null,
+    author_kind: skill.author_kind ?? null,
+    author_handle: skill.author_handle ?? null,
+    publisher_tier: skill.publisher_tier ?? null,
+    tree_hash: skill.tree_hash ?? null,
     historical_sol_price_base_units: skill.price_lamports ?? 0,
     price_usdc_micros: skill.price_usdc_micros ?? null,
     currency_mint: skill.currency_mint ?? null,
@@ -58,7 +69,23 @@ function isInstalledSkillMetadata(
     (candidate.source === "repo" || candidate.source === "chain") &&
     typeof candidate.installed_version === "number" &&
     typeof candidate.skill_slug === "string" &&
-    typeof candidate.author_pubkey === "string" &&
+    (typeof candidate.author_pubkey === "string" ||
+      candidate.author_pubkey === null) &&
+    (candidate.installed_format === "file" ||
+      candidate.installed_format === "tree" ||
+      candidate.installed_format === undefined) &&
+    (typeof candidate.author_kind === "string" ||
+      candidate.author_kind === null ||
+      candidate.author_kind === undefined) &&
+    (typeof candidate.author_handle === "string" ||
+      candidate.author_handle === null ||
+      candidate.author_handle === undefined) &&
+    (typeof candidate.publisher_tier === "string" ||
+      candidate.publisher_tier === null ||
+      candidate.publisher_tier === undefined) &&
+    (typeof candidate.tree_hash === "string" ||
+      candidate.tree_hash === null ||
+      candidate.tree_hash === undefined) &&
     (typeof candidate.historical_sol_price_base_units === "number" ||
       typeof (candidate as { price_lamports?: unknown }).price_lamports ===
         "number" ||

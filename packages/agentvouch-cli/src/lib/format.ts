@@ -37,18 +37,30 @@ export function formatSkillSummary(skill: SkillRecord): string[] {
         ? "direct-purchase-skill"
         : "listing-required"
       : "free");
+  const publisher =
+    skill.author_pubkey ??
+    skill.author_handle ??
+    skill.publisher_identity_key ??
+    "unknown";
 
   return [
     `${skill.name}`,
     `id: ${skill.id}`,
     `skill_id: ${skill.skill_id}`,
     `source: ${skill.source ?? "repo"}`,
-    `author: ${skill.author_pubkey}`,
+    `author: ${publisher}`,
+    ...(skill.author_kind ? [`author_kind: ${skill.author_kind}`] : []),
+    ...(skill.publisher_tier ? [`publisher_tier: ${skill.publisher_tier}`] : []),
     `author_reputation: ${trust.reputation}`,
     `payment_flow: ${paymentFlow}`,
     `price_usdc_micros: ${skill.price_usdc_micros ?? "none"}`,
     `currency_mint: ${skill.currency_mint ?? "none"}`,
     `listing: ${skill.on_chain_address ?? "none"}`,
+    ...(skill.tree_hash ? [`tree_hash: ${skill.tree_hash}`] : []),
+    ...(Array.isArray(skill.files) ? [`files: ${skill.files.length}`] : []),
+    ...(skill.has_executable !== undefined && skill.has_executable !== null
+      ? [`has_executable: ${skill.has_executable ? "yes" : "no"}`]
+      : []),
     `registered: ${trust.isRegistered ? "yes" : "no"}`,
     ...(trust.recommendedAction
       ? [`recommended_action: ${trust.recommendedAction}`]

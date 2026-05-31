@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentVouchApiClient } from "../src/lib/http.js";
 import { installSkill } from "../src/lib/install.js";
 import { AgentVouchSolanaClient } from "../src/lib/solana.js";
+import { buildTarArchive } from "../src/lib/archive.js";
 
 async function createKeypairFile() {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentvouch-cli-"));
@@ -58,6 +59,67 @@ describe("installSkill", () => {
       skill_id: "595f5534-07ae-4839-a45a-b6858ab731fe",
       source: "repo",
       installed_version: 1,
+    });
+  });
+
+  it("installs multi-file repo skills as a directory archive", async () => {
+    const { tempDir } = await createKeypairFile();
+    const outputPath = path.join(tempDir, "calendar-agent");
+    const archive = buildTarArchive([
+      { path: "SKILL.md", content: Buffer.from("# tree skill\n") },
+      { path: "scripts/run.mjs", content: Buffer.from("export default 1;\n") },
+    ]);
+
+    vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      skill_id: "calendar-agent",
+      author_pubkey: Keypair.generate().publicKey.toBase58(),
+      name: "Calendar Agent",
+      description: "Tree skill",
+      on_chain_address: null,
+      total_installs: 0,
+      files: [
+        {
+          path: "SKILL.md",
+          size: 13,
+          sha256: "sha-skill",
+        },
+        {
+          path: "scripts/run.mjs",
+          size: 18,
+          sha256: "sha-script",
+        },
+      ],
+      tree_hash: "tree-hash",
+    });
+    const rawSpy = vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw");
+    vi.spyOn(AgentVouchApiClient.prototype, "downloadArchive").mockResolvedValue({
+      ok: true,
+      status: 200,
+      archive,
+    });
+
+    const result = await installSkill({
+      id: "595f5534-07ae-4839-a45a-b6858ab731fe",
+      out: outputPath,
+      tree: true,
+      baseUrl: "https://agentvouch.xyz",
+      rpcUrl: "https://api.devnet.solana.com",
+    });
+
+    expect(result.mode).toBe("free-archive");
+    expect(result.filesWritten).toBe(2);
+    expect(rawSpy).not.toHaveBeenCalled();
+    expect(await readFile(path.join(outputPath, "SKILL.md"), "utf8")).toContain(
+      "# tree skill"
+    );
+    expect(
+      await readFile(path.join(outputPath, "scripts", "run.mjs"), "utf8")
+    ).toContain("export default 1");
+    const metadata = JSON.parse(await readFile(result.metadataPath, "utf8"));
+    expect(metadata).toMatchObject({
+      installed_format: "tree",
+      tree_hash: "tree-hash",
     });
   });
 

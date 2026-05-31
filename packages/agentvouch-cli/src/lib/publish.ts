@@ -1,9 +1,9 @@
 import path from "node:path";
 import { createRepoAuthPayload, loadKeypair } from "./signer.js";
-import { readUtf8File } from "./fs.js";
 import { AgentVouchApiClient, type SkillRecord } from "./http.js";
 import { AgentVouchSolanaClient } from "./solana.js";
 import { CliError, getErrorMessage } from "./errors.js";
+import { prepareSkillUploadFromPath } from "./archive.js";
 
 export interface PublishSkillInput {
   file: string;
@@ -49,6 +49,11 @@ async function linkRepoSkillListing(input: {
   const { repoSkill } = input;
   if (repoSkill.source === "chain") {
     throw new CliError(`Skill ${repoSkill.id} is already an on-chain skill.`);
+  }
+  if (!repoSkill.author_pubkey) {
+    throw new CliError(
+      `Repo skill ${repoSkill.id} has no wallet author. Link it from a wallet-published skill or republish it with a wallet before creating an on-chain listing.`
+    );
   }
   if (repoSkill.author_pubkey !== authorPubkey) {
     throw new CliError(
@@ -111,7 +116,7 @@ async function linkRepoSkillListing(input: {
 }
 
 export async function publishSkill(input: PublishSkillInput) {
-  const content = await readUtf8File(path.resolve(input.file));
+  const upload = await prepareSkillUploadFromPath(path.resolve(input.file));
   const keypair = loadKeypair(input.keypairPath);
   const repoAuth = createRepoAuthPayload(keypair, "publish-skill");
   const solana = new AgentVouchSolanaClient(keypair, input.rpcUrl);
@@ -130,6 +135,8 @@ export async function publishSkill(input: PublishSkillInput) {
         tags: input.tags,
         contact: input.contact,
         price_usdc_micros: input.priceUsdcMicros,
+        upload_mode: upload.mode,
+        file_count: upload.fileCount,
       },
       onChainListing: {
         address: listingAddress,
@@ -146,7 +153,8 @@ export async function publishSkill(input: PublishSkillInput) {
     description: input.description,
     tags: input.tags,
     contact: input.contact,
-    content,
+    content: upload.content,
+    ...(upload.tarBase64 ? { tar_base64: upload.tarBase64 } : {}),
     price_usdc_micros: input.priceUsdcMicros,
   });
 
@@ -219,10 +227,11 @@ export async function addSkillVersion(input: AddSkillVersionInput) {
   const api = new AgentVouchApiClient(input.baseUrl);
   const keypair = loadKeypair(input.keypairPath);
   const auth = createRepoAuthPayload(keypair, "publish-skill");
-  const content = await readUtf8File(path.resolve(input.file));
+  const upload = await prepareSkillUploadFromPath(path.resolve(input.file));
   const result = await api.addSkillVersion(input.id, {
     auth,
-    content,
+    content: upload.content,
+    ...(upload.tarBase64 ? { tar_base64: upload.tarBase64 } : {}),
     changelog: input.changelog,
   });
 
@@ -230,5 +239,7 @@ export async function addSkillVersion(input: AddSkillVersionInput) {
     ok: true,
     skillId: input.id,
     version: result.version,
+    uploadMode: upload.mode,
+    fileCount: upload.fileCount,
   };
 }
