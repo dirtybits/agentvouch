@@ -23,8 +23,9 @@ describe("skills page source", () => {
     );
 
     expect(source).toContain("fetch(`/api/skills?${params}`)");
-    expect(source).toContain('params.set("buyer", String(publicKey))');
-    expect(source).toContain('params.set("buyerStatus", "1")');
+    expect(source).toContain('params.set("mode", "fast")');
+    expect(source).toContain('fetch("/api/skills/hydrate"');
+    expect(source).toContain("buyer: publicKey ? String(publicKey) : null");
     expect(source).toContain('fetch("/api/skills/activity")');
     expect(source).not.toContain("oracle.getAllSkillListings");
     expect(source).not.toContain("oracle.getAllPurchases");

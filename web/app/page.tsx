@@ -72,6 +72,9 @@ type LandingResponse = {
 type SkillsListResponse = {
   skills?: FeaturedSkill[];
 };
+type SkillsHydrateResponse = {
+  skills?: Record<string, Partial<FeaturedSkill>>;
+};
 
 const homepageJsonLd = {
   "@context": "https://schema.org",
@@ -129,11 +132,20 @@ export default function Home() {
   const [featuredSkills, setFeaturedSkills] = useState<FeaturedSkill[]>([]);
 
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
-        const landingRes = await fetch("/api/landing")
-          .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
-          .catch(() => null);
+        const [landingRes, skillsRes] = await Promise.all([
+          fetch("/api/landing")
+            .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
+            .catch(() => null),
+          fetch("/api/skills?sort=trusted&mode=fast")
+            .then((r) =>
+              r.ok ? (r.json() as Promise<SkillsListResponse>) : null
+            )
+            .catch(() => null),
+        ]);
+        if (!active) return;
         if (landingRes) {
           setLandingMetrics({
             agents: landingRes.metrics.agents,
@@ -145,18 +157,39 @@ export default function Home() {
           });
         }
 
-        const skillsRes = await fetch("/api/skills?sort=trusted")
-          .then((r) =>
-            r.ok ? (r.json() as Promise<SkillsListResponse>) : null
-          )
-          .catch(() => null);
         if (skillsRes?.skills) {
-          setFeaturedSkills(skillsRes.skills.slice(0, 3));
+          const featured = skillsRes.skills.slice(0, 3);
+          setFeaturedSkills(featured);
+          const skillIds = featured.map((skill) => skill.id).filter(Boolean);
+          if (skillIds.length > 0) {
+            void fetch("/api/skills/hydrate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ skillIds }),
+            })
+              .then((r) =>
+                r.ok ? (r.json() as Promise<SkillsHydrateResponse>) : null
+              )
+              .then((hydrated) => {
+                if (!active || !hydrated?.skills) return;
+                setFeaturedSkills((prev) =>
+                  prev.map((skill) =>
+                    hydrated.skills?.[skill.id]
+                      ? { ...skill, ...hydrated.skills[skill.id] }
+                      : skill
+                  )
+                );
+              })
+              .catch(() => null);
+          }
         }
       } catch (error: unknown) {
         console.error("Failed to load landing metrics:", error);
       }
     })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (

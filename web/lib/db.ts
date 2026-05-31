@@ -390,6 +390,23 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE TABLE IF NOT EXISTS author_trust_snapshots (
+      wallet_pubkey VARCHAR(44) NOT NULL,
+      chain_context VARCHAR(64) NOT NULL,
+      reputation_score INTEGER NOT NULL DEFAULT 0,
+      author_trust JSONB NOT NULL,
+      author_trust_summary JSONB,
+      refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (wallet_pubkey, chain_context)
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_author_trust_snapshots_score
+    ON author_trust_snapshots(chain_context, reputation_score DESC)
+  `;
+
+  await db`
     CREATE TABLE IF NOT EXISTS api_keys (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       owner_pubkey VARCHAR(44) NOT NULL,

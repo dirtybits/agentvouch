@@ -102,6 +102,9 @@ interface ApiResponse {
     totalPages: number;
   };
 }
+interface HydrateResponse {
+  skills?: Record<string, Partial<SkillRow>>;
+}
 
 type SkillListingData = { publicKey: Address; account: SkillListing };
 type PurchaseData = { publicKey: Address; account: Purchase };
@@ -257,6 +260,7 @@ export default function MarketplacePage() {
     Map<string, SkillRow>
   >(new Map());
   const purchaseStateWalletRef = useRef<string | null>(null);
+  const hydrationRequestRef = useRef(0);
 
   // Feed state
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
@@ -270,15 +274,45 @@ export default function MarketplacePage() {
     [myPurchases, purchasedKeys]
   );
 
+  const hydrateVisibleSkills = useCallback(
+    async (visibleSkills: SkillRow[]) => {
+      const skillIds = [
+        ...new Set(visibleSkills.map((skill) => skill.id).filter(Boolean)),
+      ];
+      if (skillIds.length === 0) return;
+
+      const requestId = ++hydrationRequestRef.current;
+      try {
+        const res = await fetch("/api/skills/hydrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            skillIds,
+            buyer: publicKey ? String(publicKey) : null,
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to hydrate skills");
+        const data = (await res.json()) as HydrateResponse;
+        if (hydrationRequestRef.current !== requestId) return;
+        const updates = data.skills ?? {};
+        setSkills((prev) =>
+          prev.map((skill) =>
+            updates[skill.id] ? { ...skill, ...updates[skill.id] } : skill
+          )
+        );
+      } catch (err) {
+        console.error("Error hydrating skills:", err);
+      }
+    },
+    [publicKey]
+  );
+
   const fetchSkills = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
-      if (publicKey) {
-        params.set("buyer", String(publicKey));
-        params.set("buyerStatus", "1");
-      }
+      params.set("mode", "fast");
       params.set("sort", sort);
       params.set("page", String(page));
 
@@ -289,13 +323,14 @@ export default function MarketplacePage() {
       setSkills(data.skills);
       setTotalPages(data.pagination.totalPages);
       setTotal(data.pagination.total);
+      void hydrateVisibleSkills(data.skills);
     } catch (err) {
       console.error("Error fetching skills:", err);
       setSkills([]);
     } finally {
       setLoading(false);
     }
-  }, [page, publicKey, search, sort]);
+  }, [hydrateVisibleSkills, page, search, sort]);
 
   const loadFeed = useCallback(async () => {
     setFeedLoading(true);

@@ -3,14 +3,22 @@ import { initializeDatabase, sql } from "@/lib/db";
 import { generateSummarySafe } from "@/lib/ai/summarize";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
-import { verifyAuthorTrust, resolveMultipleAuthorTrust } from "@/lib/trust";
+import {
+  verifyAuthorTrust,
+  resolveMultipleAuthorTrust,
+  type AuthorTrust,
+} from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
 import {
+  type AgentIdentitySummary,
   resolveManyAgentIdentitiesByWallet,
   upsertLocalAgentIdentity,
 } from "@/lib/agentIdentity";
-import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
+import {
+  buildAgentTrustSummary,
+  type AgentTrustSummary,
+} from "@/lib/agentDiscovery";
 import {
   getConfiguredSolanaChainContext,
   normalizeInputChainContext,
@@ -41,7 +49,7 @@ import { listOnChainSkillListings } from "@/lib/onchain";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { hasOnChainPurchase } from "@/lib/x402";
-import { address, createSolanaRpc, isAddress } from "@solana/kit";
+import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
@@ -56,6 +64,13 @@ import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 const PAGE_SIZE = 20;
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
+
+type SkillPaymentFlow =
+  | "free"
+  | "legacy-sol"
+  | "listing-required"
+  | "x402-usdc"
+  | "direct-purchase-skill";
 
 type RepoSkillRow = {
   id: string;
@@ -90,6 +105,10 @@ type RepoSkillRow = {
   files?: unknown;
   tree_hash?: string | null;
   has_executable?: boolean | null;
+  cached_author_trust?: AuthorTrust | string | null;
+  cached_author_trust_summary?: AgentTrustSummary | string | null;
+  cached_reputation_score?: number | string | null;
+  cached_trust_refreshed_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -118,6 +137,101 @@ type ChainSkillRow = Omit<
 
 type RepoMergedSkillRow = RepoSkillRow & { source: "repo" };
 type MergedSkillRow = RepoMergedSkillRow | ChainSkillRow;
+type EnrichedSkillRow = Omit<
+  MergedSkillRow,
+  | "cached_author_trust"
+  | "cached_author_trust_summary"
+  | "cached_reputation_score"
+  | "cached_trust_refreshed_at"
+> & {
+  price_usdc_micros: string | null;
+  payment_flow: SkillPaymentFlow;
+  author_trust: AuthorTrust | null;
+  author_trust_summary: AgentTrustSummary | null;
+  author_identity: AgentIdentitySummary | null;
+};
+
+type RouteTiming = {
+  measure<T>(name: string, fn: () => Promise<T>): Promise<T>;
+  header(): string;
+};
+
+function createRouteTiming(): RouteTiming {
+  const entries: { name: string; durationMs: number }[] = [];
+  return {
+    async measure<T>(name: string, fn: () => Promise<T>): Promise<T> {
+      const startedAt = Date.now();
+      try {
+        return await fn();
+      } finally {
+        entries.push({ name, durationMs: Date.now() - startedAt });
+      }
+    },
+    header() {
+      return entries
+        .map(
+          ({ name, durationMs }) =>
+            `${name};dur=${Math.max(0, durationMs).toFixed(1)}`
+        )
+        .join(", ");
+    },
+  };
+}
+
+function parseCachedJson<T>(value: T | string | null | undefined): T | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
+  }
+  return value;
+}
+
+function getCachedTrust(skill: MergedSkillRow): AuthorTrust | null {
+  if (skill.source !== "repo") return null;
+  return parseCachedJson<AuthorTrust>(skill.cached_author_trust);
+}
+
+function getCachedTrustSummary(skill: MergedSkillRow): AgentTrustSummary | null {
+  if (skill.source !== "repo") return null;
+  return parseCachedJson<AgentTrustSummary>(skill.cached_author_trust_summary);
+}
+
+function stripCachedSkillFields(skill: MergedSkillRow): MergedSkillRow {
+  if (skill.source !== "repo") return skill;
+  const {
+    cached_author_trust: _cachedAuthorTrust,
+    cached_author_trust_summary: _cachedAuthorTrustSummary,
+    cached_reputation_score: _cachedReputationScore,
+    cached_trust_refreshed_at: _cachedTrustRefreshedAt,
+    ...publicSkill
+  } = skill;
+  return publicSkill;
+}
+
+function getSkillResponseHeaders(input: {
+  buyerAddress: string | null;
+  mode: "fast" | "full";
+  timing: RouteTiming;
+}) {
+  const headers: Record<string, string> = {
+    "Cache-Control": input.buyerAddress
+      ? PRIVATE_NO_STORE_CACHE_CONTROL
+      : buildPublicCacheControl(
+          PUBLIC_ROUTE_CACHE_SECONDS.skillsList,
+          PUBLIC_ROUTE_STALE_SECONDS.skillsList
+        ),
+    "X-AgentVouch-Skills-Mode": input.mode,
+  };
+  const serverTiming = input.timing.header();
+  if (serverTiming) {
+    headers["Server-Timing"] = serverTiming;
+  }
+  return headers;
+}
 
 type PublisherAuth =
   | {
@@ -233,6 +347,363 @@ function normalizeCurrencyMint(value: unknown): string | null {
   return normalized;
 }
 
+async function loadRepoSkillRows(input: {
+  q?: string | null;
+  author?: string | null;
+  tags?: string | null;
+  ids?: string[];
+  timing?: RouteTiming;
+}): Promise<RepoSkillRow[]> {
+  const load = async () => {
+    const skillIds = input.ids ?? [];
+    if (skillIds.length > 0) {
+      return sql()<RepoSkillRow>`
+        SELECT
+          s.*,
+          latest.files,
+          latest.tree_hash,
+          latest.has_executable,
+          ats.author_trust AS cached_author_trust,
+          ats.author_trust_summary AS cached_author_trust_summary,
+          ats.reputation_score AS cached_reputation_score,
+          ats.refreshed_at AS cached_trust_refreshed_at
+        FROM skills s
+        LEFT JOIN LATERAL (
+          SELECT files, tree_hash, has_executable
+          FROM skill_versions
+          WHERE skill_id = s.id
+          ORDER BY version DESC
+          LIMIT 1
+        ) latest ON true
+        LEFT JOIN author_trust_snapshots ats
+          ON ats.wallet_pubkey = s.author_pubkey
+          AND ats.chain_context = ${configuredSolanaChainContext}
+        WHERE s.id = ANY(${skillIds}::uuid[])
+      `;
+    }
+
+    if (input.q) {
+      return sql()<RepoSkillRow>`
+        SELECT
+          s.*,
+          latest.files,
+          latest.tree_hash,
+          latest.has_executable,
+          ats.author_trust AS cached_author_trust,
+          ats.author_trust_summary AS cached_author_trust_summary,
+          ats.reputation_score AS cached_reputation_score,
+          ats.refreshed_at AS cached_trust_refreshed_at
+        FROM skills s
+        LEFT JOIN LATERAL (
+          SELECT files, tree_hash, has_executable
+          FROM skill_versions
+          WHERE skill_id = s.id
+          ORDER BY version DESC
+          LIMIT 1
+        ) latest ON true
+        LEFT JOIN author_trust_snapshots ats
+          ON ats.wallet_pubkey = s.author_pubkey
+          AND ats.chain_context = ${configuredSolanaChainContext}
+        WHERE to_tsvector('english', s.name || ' ' || COALESCE(s.description, '')) @@ plainto_tsquery('english', ${input.q})
+        ${input.author ? sql()`AND s.author_pubkey = ${input.author}` : sql()``}
+        ${
+          input.tags
+            ? sql()`AND s.tags && ${input.tags.split(",").filter(Boolean)}::text[]`
+            : sql()``
+        }
+      `;
+    }
+
+    return sql()<RepoSkillRow>`
+      SELECT
+        s.*,
+        latest.files,
+        latest.tree_hash,
+        latest.has_executable,
+        ats.author_trust AS cached_author_trust,
+        ats.author_trust_summary AS cached_author_trust_summary,
+        ats.reputation_score AS cached_reputation_score,
+        ats.refreshed_at AS cached_trust_refreshed_at
+      FROM skills s
+      LEFT JOIN LATERAL (
+        SELECT files, tree_hash, has_executable
+        FROM skill_versions
+        WHERE skill_id = s.id
+        ORDER BY version DESC
+        LIMIT 1
+      ) latest ON true
+      LEFT JOIN author_trust_snapshots ats
+        ON ats.wallet_pubkey = s.author_pubkey
+        AND ats.chain_context = ${configuredSolanaChainContext}
+      WHERE 1=1
+      ${input.author ? sql()`AND s.author_pubkey = ${input.author}` : sql()``}
+      ${
+        input.tags
+          ? sql()`AND s.tags && ${input.tags.split(",").filter(Boolean)}::text[]`
+          : sql()``
+      }
+    `;
+  };
+
+  if (input.timing) {
+    return input.timing.measure("db", load);
+  }
+  return load();
+}
+
+function normalizeRepoSkillRows(pgSkills: RepoSkillRow[]): RepoMergedSkillRow[] {
+  return pgSkills.map((skill) => ({
+    ...skill,
+    chain_context: normalizePersistedChainContext(skill.chain_context),
+    source: "repo",
+  }));
+}
+
+function getAuthorPubkeys(skills: MergedSkillRow[]): string[] {
+  return [
+    ...new Set(
+      skills
+        .map((s) => s.author_pubkey)
+        .filter((value): value is string => Boolean(value && isAddress(value)))
+    ),
+  ];
+}
+
+function buildEnrichedSkillRows(input: {
+  skills: MergedSkillRow[];
+  trustMap?: Map<string, AuthorTrust>;
+  identityMap?: Map<string, AgentIdentitySummary>;
+  useCachedTrust?: boolean;
+}): EnrichedSkillRow[] {
+  const trustMap = input.trustMap ?? new Map();
+  const identityMap = input.identityMap ?? new Map();
+
+  return input.skills.map((skill) => {
+    const authorTrust =
+      (skill.author_pubkey ? trustMap.get(skill.author_pubkey) || null : null) ??
+      (input.useCachedTrust ? getCachedTrust(skill) : null);
+    const authorIdentity = skill.author_pubkey
+      ? identityMap.get(skill.author_pubkey) || null
+      : null;
+    const authorTrustSummary =
+      skill.author_pubkey && trustMap.has(skill.author_pubkey) && authorTrust
+        ? buildAgentTrustSummary({
+            walletPubkey: skill.author_pubkey,
+            trust: authorTrust,
+            identity: authorIdentity,
+          })
+        : input.useCachedTrust
+        ? getCachedTrustSummary(skill)
+        : null;
+    const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
+
+    return {
+      ...stripCachedSkillFields(skill),
+      price_usdc_micros: priceUsdcMicros,
+      payment_flow: getSkillPaymentFlow({
+        priceUsdcMicros,
+        onChainAddress: skill.on_chain_address,
+        legacySolLamports: skill.price_lamports,
+        allowLegacySol: true,
+      }),
+      author_trust: authorTrust,
+      author_trust_summary: authorTrustSummary,
+      author_identity: authorIdentity,
+    };
+  });
+}
+
+function sortEnrichedSkills(skills: EnrichedSkillRow[], sort: string) {
+  if (sort === "trusted") {
+    skills.sort(
+      (a, b) =>
+        (b.author_trust?.reputationScore ?? 0) -
+          (a.author_trust?.reputationScore ?? 0) ||
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  } else if (sort === "installs") {
+    skills.sort(
+      (a, b) =>
+        b.total_installs +
+        (b.total_downloads ?? 0) -
+        (a.total_installs + (a.total_downloads ?? 0))
+    );
+  } else if (sort === "name") {
+    skills.sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    skills.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+}
+
+async function resolveLiveSkillTrust(input: {
+  skills: MergedSkillRow[];
+  timing: RouteTiming;
+}): Promise<{
+  trustMap: Map<string, AuthorTrust>;
+  identityMap: Map<string, AgentIdentitySummary>;
+}> {
+  const authorPubkeys = getAuthorPubkeys(input.skills);
+  const trustMap =
+    authorPubkeys.length > 0
+      ? await input.timing.measure("trust", () =>
+          resolveMultipleAuthorTrust(authorPubkeys)
+        )
+      : new Map<string, AuthorTrust>();
+  let identityMap = new Map<string, AgentIdentitySummary>();
+  if (authorPubkeys.length > 0) {
+    try {
+      identityMap = await input.timing.measure("identity", () =>
+        resolveManyAgentIdentitiesByWallet(authorPubkeys, {
+          hasAgentProfileByWallet: new Map(
+            authorPubkeys.map((authorPubkey) => [
+              authorPubkey,
+              trustMap.get(authorPubkey)?.isRegistered ?? false,
+            ])
+          ),
+        })
+      );
+    } catch (error) {
+      console.error(
+        "Failed to resolve author identities for /api/skills:",
+        error
+      );
+    }
+  }
+  return { trustMap, identityMap };
+}
+
+async function upsertAuthorTrustSnapshots(input: {
+  trustMap: Map<string, AuthorTrust>;
+  identityMap: Map<string, AgentIdentitySummary>;
+}) {
+  const entries = [...input.trustMap.entries()];
+  if (entries.length === 0) return;
+
+  await Promise.all(
+    entries.map(([walletPubkey, trust]) => {
+      const identity = input.identityMap.get(walletPubkey) ?? null;
+      const summary = buildAgentTrustSummary({
+        walletPubkey,
+        trust,
+        identity,
+      });
+      return sql()`
+        INSERT INTO author_trust_snapshots (
+          wallet_pubkey,
+          chain_context,
+          reputation_score,
+          author_trust,
+          author_trust_summary,
+          refreshed_at
+        )
+        VALUES (
+          ${walletPubkey},
+          ${configuredSolanaChainContext},
+          ${trust.reputationScore},
+          ${JSON.stringify(trust)}::jsonb,
+          ${JSON.stringify(summary)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (wallet_pubkey, chain_context)
+        DO UPDATE SET
+          reputation_score = EXCLUDED.reputation_score,
+          author_trust = EXCLUDED.author_trust,
+          author_trust_summary = EXCLUDED.author_trust_summary,
+          refreshed_at = NOW()
+      `;
+    })
+  );
+}
+
+function persistAuthorTrustSnapshots(input: {
+  trustMap: Map<string, AuthorTrust>;
+  identityMap: Map<string, AgentIdentitySummary>;
+}) {
+  if (input.trustMap.size === 0) return;
+  const persist = () =>
+    upsertAuthorTrustSnapshots(input).catch((error) => {
+      console.error("Failed to persist author trust snapshots:", error);
+    });
+  try {
+    after(persist);
+  } catch {
+    void persist();
+  }
+}
+
+async function addPurchasePreflightAndBuyerStatus(input: {
+  skills: EnrichedSkillRow[];
+  buyerAddress: Address | null;
+  timing: RouteTiming;
+}) {
+  const usdcMint = address(getConfiguredUsdcMint());
+  const preflightContext = await input.timing.measure("preflight", () =>
+    createPurchasePreflightContext({
+      rpc,
+      buyer: input.buyerAddress,
+      usdcMint,
+      authors: input.skills
+        .map((skill) => skill.author_pubkey)
+        .filter((value): value is string => Boolean(value && isAddress(value)))
+        .map((authorPubkey) => address(authorPubkey)),
+    })
+  );
+
+  return input.timing.measure("buyer-status", async () =>
+    Promise.all(
+      input.skills.map(async (skill) => {
+        const creatorPriceUsdcMicros = normalizeUsdcMicros(
+          skill.price_usdc_micros
+        );
+        const preflight = serializePurchasePreflight(
+          assessPurchasePreflight({
+            context: preflightContext,
+            priceUsdcMicros: creatorPriceUsdcMicros
+              ? BigInt(creatorPriceUsdcMicros)
+              : 0n,
+            author:
+              skill.author_pubkey && isAddress(skill.author_pubkey)
+                ? address(skill.author_pubkey)
+                : null,
+            authorBackingUsdcMicros:
+              skill.on_chain_address && creatorPriceUsdcMicros
+                ? BigInt(skill.author_trust?.totalStakeAtRisk ?? 0)
+                : null,
+          })
+        );
+        const buyerHasPurchased = input.buyerAddress
+          ? creatorPriceUsdcMicros
+            ? skill.source === "repo" && !skill.on_chain_address
+              ? await hasUsdcPurchaseEntitlement(
+                  skill.id,
+                  String(input.buyerAddress)
+                ).catch(() => false)
+              : skill.on_chain_address
+              ? await hasOnChainPurchase(
+                  String(input.buyerAddress),
+                  String(skill.on_chain_address)
+                ).catch(() => false)
+              : false
+            : skill.payment_flow === "legacy-sol" && skill.on_chain_address
+            ? await hasOnChainPurchase(
+                String(input.buyerAddress),
+                String(skill.on_chain_address)
+              ).catch(() => false)
+            : false
+          : false;
+        return {
+          ...skill,
+          ...preflight,
+          buyerHasPurchased,
+        };
+      })
+    )
+  );
+}
+
 async function resolvePublisherAuth(input: {
   request: NextRequest;
   auth: AuthPayload | undefined;
@@ -323,6 +794,7 @@ async function resolvePublisherAuth(input: {
 }
 
 export async function GET(request: NextRequest) {
+  const timing = createRouteTiming();
   try {
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
@@ -330,64 +802,26 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get("sort") || "trusted";
     const author = searchParams.get("author");
     const buyer = searchParams.get("buyer");
+    const fastMode =
+      searchParams.get("mode") === "fast" ||
+      searchParams.get("deferRpc") === "1";
     const includeBuyerStatus =
       searchParams.get("buyerStatus") === "1" ||
       searchParams.get("includeBuyerStatus") === "true";
     const tags = searchParams.get("tags");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
-    let pgSkills: RepoSkillRow[] = [];
-    try {
-      if (q) {
-        pgSkills = await sql()<RepoSkillRow>`
-          SELECT s.*, latest.files, latest.tree_hash, latest.has_executable
-          FROM skills s
-          LEFT JOIN LATERAL (
-            SELECT files, tree_hash, has_executable
-            FROM skill_versions
-            WHERE skill_id = s.id
-            ORDER BY version DESC
-            LIMIT 1
-          ) latest ON true
-          WHERE to_tsvector('english', s.name || ' ' || COALESCE(s.description, '')) @@ plainto_tsquery('english', ${q})
-          ${author ? sql()`AND s.author_pubkey = ${author}` : sql()``}
-          ${
-            tags
-              ? sql()`AND s.tags && ${tags.split(",").filter(Boolean)}::text[]`
-              : sql()``
-          }
-        `;
-      } else {
-        pgSkills = await sql()<RepoSkillRow>`
-          SELECT s.*, latest.files, latest.tree_hash, latest.has_executable
-          FROM skills s
-          LEFT JOIN LATERAL (
-            SELECT files, tree_hash, has_executable
-            FROM skill_versions
-            WHERE skill_id = s.id
-            ORDER BY version DESC
-            LIMIT 1
-          ) latest ON true
-          WHERE 1=1
-          ${author ? sql()`AND s.author_pubkey = ${author}` : sql()``}
-          ${
-            tags
-              ? sql()`AND s.tags && ${tags.split(",").filter(Boolean)}::text[]`
-              : sql()``
-          }
-        `;
-      }
-    } catch {
-      pgSkills = [];
-    }
-
-    const normalizedPgSkills: RepoMergedSkillRow[] = pgSkills.map((skill) => ({
-      ...skill,
-      chain_context: normalizePersistedChainContext(skill.chain_context),
-      source: "repo",
-    }));
-
-    const chainSkills = tags ? [] : await fetchOnChainListings();
+    const pgSkills = await loadRepoSkillRows({
+      q,
+      author,
+      tags,
+      timing,
+    }).catch(() => []);
+    const normalizedPgSkills = normalizeRepoSkillRows(pgSkills);
+    const chainSkills =
+      tags || fastMode
+        ? []
+        : await timing.measure("chain", () => fetchOnChainListings());
 
     let allSkills = mergeSkills(normalizedPgSkills, chainSkills);
 
@@ -404,158 +838,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const authorPubkeys = [
-      ...new Set(
-        allSkills
-          .map((s) => s.author_pubkey)
-          .filter((value): value is string => Boolean(value && isAddress(value)))
-      ),
-    ];
-    const trustMap =
-      authorPubkeys.length > 0
-        ? await resolveMultipleAuthorTrust(authorPubkeys)
-        : new Map();
-    let identityMap = new Map();
-    if (authorPubkeys.length > 0) {
-      try {
-        identityMap = await resolveManyAgentIdentitiesByWallet(authorPubkeys, {
-          hasAgentProfileByWallet: new Map(
-            authorPubkeys.map((authorPubkey) => [
-              authorPubkey,
-              trustMap.get(authorPubkey)?.isRegistered ?? false,
-            ])
-          ),
-        });
-      } catch (error) {
-        console.error(
-          "Failed to resolve author identities for /api/skills:",
-          error
-        );
-      }
+    const live = fastMode
+      ? {
+          trustMap: new Map<string, AuthorTrust>(),
+          identityMap: new Map<string, AgentIdentitySummary>(),
+        }
+      : await resolveLiveSkillTrust({ skills: allSkills, timing });
+    if (!fastMode) {
+      persistAuthorTrustSnapshots(live);
     }
 
-    const enriched = allSkills.map((skill) => {
-      const authorTrust = skill.author_pubkey
-        ? trustMap.get(skill.author_pubkey) || null
-        : null;
-      const authorIdentity = skill.author_pubkey
-        ? identityMap.get(skill.author_pubkey) || null
-        : null;
-      const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
-
-      return {
-        ...skill,
-        price_usdc_micros: priceUsdcMicros,
-        payment_flow: getSkillPaymentFlow({
-          priceUsdcMicros,
-          onChainAddress: skill.on_chain_address,
-          legacySolLamports: skill.price_lamports,
-          allowLegacySol: true,
-        }),
-        author_trust: authorTrust,
-        author_trust_summary: authorTrust
-          ? buildAgentTrustSummary({
-              walletPubkey: skill.author_pubkey!,
-              trust: authorTrust,
-              identity: authorIdentity,
-            })
-          : null,
-        author_identity: authorIdentity,
-      };
+    const enriched = buildEnrichedSkillRows({
+      skills: allSkills,
+      trustMap: live.trustMap,
+      identityMap: live.identityMap,
+      useCachedTrust: true,
     });
-
-    if (sort === "trusted") {
-      enriched.sort(
-        (a, b) =>
-          (b.author_trust?.reputationScore ?? 0) -
-          (a.author_trust?.reputationScore ?? 0)
-      );
-    } else if (sort === "installs") {
-      enriched.sort(
-        (a, b) =>
-          b.total_installs +
-          (b.total_downloads ?? 0) -
-          (a.total_installs + (a.total_downloads ?? 0))
-      );
-    } else if (sort === "name") {
-      enriched.sort((a, b) => a.name.localeCompare(b.name));
-    } else {
-      enriched.sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-    }
+    sortEnrichedSkills(enriched, sort);
 
     const total = enriched.length;
     const offset = (page - 1) * PAGE_SIZE;
     const paged = enriched.slice(offset, offset + PAGE_SIZE);
     const buyerAddress =
       includeBuyerStatus && buyer && isAddress(buyer) ? address(buyer) : null;
-    const usdcMint = address(getConfiguredUsdcMint());
-    const preflightContext = await createPurchasePreflightContext({
-      rpc,
-      buyer: buyerAddress,
-      usdcMint,
-      authors: paged
-        .map((skill) => skill.author_pubkey)
-        .filter((value): value is string => Boolean(value && isAddress(value)))
-        .map((authorPubkey) => address(authorPubkey)),
-    });
-    const pagedWithPricing = await Promise.all(
-      paged.map(async (skill) => {
-        const creatorPriceUsdcMicros = normalizeUsdcMicros(
-          skill.price_usdc_micros
-        );
-        const preflight = serializePurchasePreflight(
-          assessPurchasePreflight({
-            context: preflightContext,
-            priceUsdcMicros: creatorPriceUsdcMicros
-              ? BigInt(creatorPriceUsdcMicros)
-              : 0n,
-            author:
-              skill.author_pubkey && isAddress(skill.author_pubkey)
-                ? address(skill.author_pubkey)
-                : null,
-            authorBackingUsdcMicros:
-              skill.on_chain_address && creatorPriceUsdcMicros
-                ? BigInt(skill.author_trust?.totalStakeAtRisk ?? 0)
-                : null,
-          })
-        );
-        const buyerHasPurchased = buyerAddress
-          ? creatorPriceUsdcMicros
-            ? skill.source === "repo" && !skill.on_chain_address
-              ? await hasUsdcPurchaseEntitlement(
-                  skill.id,
-                  String(buyerAddress)
-                ).catch(() => false)
-              : skill.on_chain_address
-              ? await hasOnChainPurchase(
-                  String(buyerAddress),
-                  String(skill.on_chain_address)
-                ).catch(() => false)
-              : false
-            : getSkillPaymentFlow({
-                legacySolLamports: skill.price_lamports,
-                allowLegacySol: true,
-              }) === "legacy-sol" && skill.on_chain_address
-            ? await hasOnChainPurchase(
-                String(buyerAddress),
-                String(skill.on_chain_address)
-              ).catch(() => false)
-            : false
-          : false;
-        return {
-          ...skill,
-          ...preflight,
-          buyerHasPurchased,
-        };
-      })
-    );
+    const responseSkills = fastMode
+      ? paged
+      : await addPurchasePreflightAndBuyerStatus({
+          skills: paged,
+          buyerAddress,
+          timing,
+        });
 
     return NextResponse.json(
       {
-        skills: pagedWithPricing,
+        skills: responseSkills,
         pagination: {
           page,
           pageSize: PAGE_SIZE,
@@ -564,14 +880,11 @@ export async function GET(request: NextRequest) {
         },
       },
       {
-        headers: {
-          "Cache-Control": buyerAddress
-            ? PRIVATE_NO_STORE_CACHE_CONTROL
-            : buildPublicCacheControl(
-                PUBLIC_ROUTE_CACHE_SECONDS.skillsList,
-                PUBLIC_ROUTE_STALE_SECONDS.skillsList
-              ),
-        },
+        headers: getSkillResponseHeaders({
+          buyerAddress: fastMode ? null : buyerAddress ? String(buyerAddress) : null,
+          mode: fastMode ? "fast" : "full",
+          timing,
+        }),
       }
     );
   } catch (error: unknown) {
