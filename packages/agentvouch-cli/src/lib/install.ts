@@ -134,9 +134,12 @@ async function createX402Fetch(options: {
   );
 
   if (options.authHeader) {
+    // Capture into a const so the narrowing survives into the async closure
+    // (a property read would re-widen to string | undefined inside the callback).
+    const authHeader = options.authHeader;
     client.onPaymentRequired(async () => ({
       headers: {
-        "X-AgentVouch-Auth": options.authHeader,
+        "X-AgentVouch-Auth": authHeader,
       },
     }));
   }

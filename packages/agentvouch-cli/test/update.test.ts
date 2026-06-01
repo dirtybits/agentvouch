@@ -201,7 +201,7 @@ describe("updateSkill", () => {
     const purchaseSpy = vi
       .spyOn(AgentVouchSolanaClient.prototype, "purchaseSkill")
       .mockResolvedValue({
-        tx: undefined,
+        tx: null,
         alreadyPurchased: true,
         purchase: "purchase-pda",
       });

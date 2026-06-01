@@ -124,6 +124,8 @@ export async function updateSkill(
     requiresPurchase: check.requires_purchase,
     dryRun: false,
     mode: installResult.mode,
-    purchaseTx: installResult.purchaseTx,
+    // installSkill yields string | null; UpdateResult.purchaseTx is optional
+    // string. Normalize the "no purchase" case (null -> undefined).
+    purchaseTx: installResult.purchaseTx ?? undefined,
   };
 }

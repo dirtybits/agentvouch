@@ -1,14 +1,16 @@
 import { AGENTVOUCH_PROGRAM_ID } from "@agentvouch/protocol";
 import anchor from "@coral-xyz/anchor";
 import {
+  Connection,
   Keypair,
   PublicKey,
   SystemProgram,
   type Commitment,
 } from "@solana/web3.js";
 import agentvouchIdl from "../../../../web/agentvouch.json";
+import type { Agentvouch } from "../../../../target/types/agentvouch";
 
-const { AnchorProvider, Program, Wallet, web3 } = anchor;
+const { AnchorProvider, Program, Wallet } = anchor;
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 );
@@ -65,20 +67,20 @@ function assertSupportedListingPrice(priceUsdcMicros: bigint) {
 }
 
 export class AgentVouchSolanaClient {
-  readonly connection: web3.Connection;
+  readonly connection: Connection;
   readonly provider: anchor.AnchorProvider;
-  readonly program: anchor.Program<anchor.Idl>;
+  readonly program: anchor.Program<Agentvouch>;
 
   constructor(
     private readonly keypair: Keypair,
     rpcUrl: string,
     commitment: Commitment = "confirmed"
   ) {
-    this.connection = new web3.Connection(rpcUrl, commitment);
+    this.connection = new Connection(rpcUrl, commitment);
     this.provider = new AnchorProvider(this.connection, new Wallet(keypair), {
       commitment,
     });
-    this.program = new Program(agentvouchIdl as anchor.Idl, this.provider);
+    this.program = new Program(agentvouchIdl as Agentvouch, this.provider);
   }
 
   get authority(): PublicKey {
@@ -303,7 +305,7 @@ export class AgentVouchSolanaClient {
 
     const tx = await this.program.methods
       .registerAgent(metadataUri)
-      .accounts({
+      .accountsPartial({
         agentProfile,
         authority: this.authority,
         systemProgram: SystemProgram.programId,
@@ -348,7 +350,7 @@ export class AgentVouchSolanaClient {
     }
     const tx = await this.program.methods
       .vouch(toMicrosBn(stakeMicros, "stakeUsdcMicros"))
-      .accounts({
+      .accountsPartial({
         vouch,
         voucherProfile,
         voucheeProfile,
@@ -376,9 +378,8 @@ export class AgentVouchSolanaClient {
 
   async purchaseSkill(skillListingAddress: string, authorAddress: string) {
     const skillListingKey = new PublicKey(skillListingAddress);
-    const listing = await this.program.account.skillListing.fetch(
-      skillListingKey
-    );
+    const listing =
+      await this.program.account.skillListing.fetch(skillListingKey);
     const purchase = this.getPurchaseAddress(
       skillListingAddress,
       this.authority,
@@ -407,7 +408,7 @@ export class AgentVouchSolanaClient {
       this.getAuthorProceedsVaultAuthorityAddress(listingSettlement);
     const tx = await this.program.methods
       .purchaseSkill()
-      .accounts({
+      .accountsPartial({
         skillListing: skillListingKey,
         purchase,
         author: new PublicKey(authorAddress),
@@ -453,7 +454,7 @@ export class AgentVouchSolanaClient {
 
     const tx = await this.program.methods
       .claimVoucherRevenue()
-      .accounts({
+      .accountsPartial({
         authorProfile,
         vouch,
         voucherProfile,
@@ -517,10 +518,12 @@ export class AgentVouchSolanaClient {
         input.description,
         toMicrosBn(priceUsdcMicros, "priceUsdcMicros")
       )
-      .accounts({
+      .accountsPartial({
         skillListing,
         authorProfile,
         config,
+        // null for paid listings — author_bond is an optional account in the IDL,
+        // so Anchor types it Address | null and resolves null as "omitted".
         authorBond,
         usdcMint,
         listingSettlement,

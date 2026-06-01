@@ -10,7 +10,8 @@
     "build": "tsup src/bin.ts src/cli.ts --format esm --dts --sourcemap --clean --out-dir dist",
     "dev": "tsx src/cli.ts",
     "prepare": "npm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@agentvouch/protocol": "0.1.0",

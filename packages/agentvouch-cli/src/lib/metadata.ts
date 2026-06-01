@@ -19,6 +19,12 @@ export interface InstalledSkillMetadata {
   publisher_tier?: string | null;
   tree_hash?: string | null;
   historical_sol_price_base_units?: number;
+  /**
+   * Legacy alias for historical_sol_price_base_units. New installs write the
+   * latter; this is still accepted when reading older on-disk metadata (see
+   * isInstalledSkillMetadata) and is retained for back-compat.
+   */
+  price_lamports?: number | null;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
   installed_at: string;

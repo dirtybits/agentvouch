@@ -24,8 +24,8 @@ describe("AgentVouchSolanaClient", () => {
     );
     const rpc = vi.fn().mockResolvedValue("mock-tx");
     const signers = vi.fn().mockReturnValue({ rpc });
-    const accounts = vi.fn().mockReturnValue({ signers });
-    const createSkillListing = vi.fn().mockReturnValue({ accounts });
+    const accountsPartial = vi.fn().mockReturnValue({ signers });
+    const createSkillListing = vi.fn().mockReturnValue({ accountsPartial });
 
     vi.spyOn(client, "accountExists").mockResolvedValue(false);
     setMockProgram(client, { createSkillListing });
@@ -72,8 +72,8 @@ describe("AgentVouchSolanaClient", () => {
     );
     const rpc = vi.fn().mockResolvedValue("mock-vouch-tx");
     const signers = vi.fn().mockReturnValue({ rpc });
-    const accounts = vi.fn().mockReturnValue({ signers });
-    const vouch = vi.fn().mockReturnValue({ accounts });
+    const accountsPartial = vi.fn().mockReturnValue({ signers });
+    const vouch = vi.fn().mockReturnValue({ accountsPartial });
 
     vi.spyOn(client, "accountExists").mockResolvedValue(false);
     setMockProgram(client, { vouch });

@@ -36,7 +36,7 @@ describe("publish flows", () => {
       path.join(skillDir, "scripts", "run.mjs"),
       "export default 1;\n"
     );
-    let publishBody: Record<string, unknown> | null = null;
+    let publishBody = null as Record<string, unknown> | null;
 
     vi.spyOn(AgentVouchApiClient.prototype, "publishSkill").mockImplementation(
       async (body) => {
@@ -89,8 +89,8 @@ describe("publish flows", () => {
 
   it("assembles repo publish and listing link requests", async () => {
     const { keypairPath, skillFile } = await createFixtureFiles();
-    let publishBody: Record<string, unknown> | null = null;
-    let linkBody: Record<string, unknown> | null = null;
+    let publishBody = null as Record<string, unknown> | null;
+    let linkBody = null as Record<string, unknown> | null;
 
     vi.spyOn(AgentVouchApiClient.prototype, "publishSkill").mockImplementation(
       async (body) => {
@@ -160,7 +160,7 @@ describe("publish flows", () => {
 
   it("publishes free repo-backed skills without creating an on-chain listing", async () => {
     const { keypairPath, skillFile } = await createFixtureFiles();
-    let publishBody: Record<string, unknown> | null = null;
+    let publishBody = null as Record<string, unknown> | null;
 
     vi.spyOn(AgentVouchApiClient.prototype, "publishSkill").mockImplementation(
       async (body) => {
@@ -209,7 +209,7 @@ describe("publish flows", () => {
     const keypair = Keypair.fromSecretKey(
       new Uint8Array(JSON.parse(await readFile(keypairPath, "utf8")))
     );
-    let linkBody: Record<string, unknown> | null = null;
+    let linkBody = null as Record<string, unknown> | null;
 
     vi.spyOn(AgentVouchApiClient.prototype, "getSkill").mockResolvedValue({
       id: "44e50012-b146-426a-ac0f-1056b14bd1fc",
@@ -262,7 +262,7 @@ describe("publish flows", () => {
 
   it("assembles version update requests", async () => {
     const { keypairPath, skillFile } = await createFixtureFiles();
-    let versionBody: Record<string, unknown> | null = null;
+    let versionBody = null as Record<string, unknown> | null;
 
     vi.spyOn(
       AgentVouchApiClient.prototype,
