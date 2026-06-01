@@ -61,8 +61,37 @@ const MONTHLY_GENERATION_LIMIT = Number(
 );
 const MAX_CHECK_BODY_BYTES = MAX_SKILL_TREE_BYTES + 256 * 1024;
 
+const MAX_TRACKED_IPS = 10_000;
+
 const ipWindows = new Map<string, RateWindow>();
 const globalWindow: RateWindow = { resetAt: 0, count: 0 };
+
+// On Vercel, x-real-ip is set by the platform to the true client IP and cannot
+// be spoofed by the caller; x-forwarded-for may carry client-prepended hops, so
+// its leftmost entry is attacker-controlled. Prefer x-real-ip, falling back to
+// the nearest (rightmost) forwarded hop only for local / non-Vercel dev.
+function clientIp(request: NextRequest): string {
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  const hops = request.headers
+    .get("x-forwarded-for")
+    ?.split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return hops && hops.length > 0 ? hops[hops.length - 1] : "unknown";
+}
+
+// Bound the in-memory IP table so a flood of distinct IPs cannot grow it without
+// limit. Drop windows that have already expired; if still over the cap, the
+// global window and the durable daily/monthly budget remain as backstops. Note:
+// this map is per-instance and is best-effort burst smoothing only — the durable
+// budget counters are the authoritative cross-instance spend cap.
+function pruneIpWindows(now: number) {
+  if (ipWindows.size <= MAX_TRACKED_IPS) return;
+  for (const [ip, window] of ipWindows) {
+    if (now >= window.resetAt) ipWindows.delete(ip);
+  }
+}
 
 class CheckRequestError extends Error {
   constructor(message: string, public status = 400) {
@@ -118,8 +147,8 @@ function takeGenerationSlot(request: NextRequest):
   | { ok: true }
   | { ok: false; reason: string; retryAfterSeconds: number } {
   const now = Date.now();
-  const forwarded = request.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  pruneIpWindows(now);
+  const ip = clientIp(request);
   const ipWindow = ipWindows.get(ip) ?? { resetAt: 0, count: 0 };
   resetWindowIfNeeded(ipWindow, now);
   resetWindowIfNeeded(globalWindow, now);
@@ -192,6 +221,20 @@ async function reserveScanBudget(): Promise<
   return { ok: false, reason: "monthly_scan_budget_exhausted" };
 }
 
+// Refund a reserved budget unit when the model call fails, so transient provider
+// errors do not permanently erode the daily/monthly cap. Best-effort: a failed
+// release is logged, never thrown (the original scan failure is what matters).
+async function releaseScanBudget(): Promise<void> {
+  try {
+    await sql()`SELECT release_ai_scan_budget()`;
+  } catch (error) {
+    console.error(
+      "[ai-scan] failed to release reserved budget:",
+      (error as Error)?.message ?? error
+    );
+  }
+}
+
 function parseFilesInput(body: CheckRequestBody): SkillTreeInputFile[] | null {
   if (typeof body.content === "string") {
     return [{ path: "SKILL.md", content: body.content }];
@@ -200,11 +243,15 @@ function parseFilesInput(body: CheckRequestBody): SkillTreeInputFile[] | null {
 
   const files = body.files.map((entry): SkillTreeInputFile => {
     if (!entry || typeof entry !== "object") {
-      throw new Error("files entries must be objects with path and content");
+      throw new CheckRequestError(
+        "files entries must be objects with path and content"
+      );
     }
     const file = entry as Record<string, unknown>;
     if (typeof file.path !== "string" || typeof file.content !== "string") {
-      throw new Error("files entries must include string path and content");
+      throw new CheckRequestError(
+        "files entries must include string path and content"
+      );
     }
     return { path: file.path, content: file.content };
   });
@@ -379,7 +426,14 @@ async function resolveScanForFiles(input: {
     };
   }
 
-  const generated = await ensureSkillScan(input.treeHash, input.files);
+  // The reservation already incremented the durable counter; refund it if the
+  // model call fails so a provider outage does not burn budget without a scan.
+  const generated = await ensureSkillScan(input.treeHash, input.files).catch(
+    async (error) => {
+      await releaseScanBudget();
+      throw error;
+    }
+  );
   return {
     action: generated.verdict,
     response: scanBlock(generated, {
@@ -389,17 +443,30 @@ async function resolveScanForFiles(input: {
   };
 }
 
-function fuseActions(input: {
+// Fuse staked on-chain trust with the advisory scan into one top-line action.
+//
+// Design contract ("the scan is advisory except for concrete danger"):
+//   - Only staked on-chain trust can grant `allow`; the scan never grants it.
+//   - A concrete `avoid` finding from EITHER signal always wins, even over a
+//     staked `allow` — concrete danger is the one thing the scan can veto.
+//   - A scan `review` is the model's "look closer", not a blocker. A clean scan
+//     returns `review` (there is no "pass" verdict), so capping on it would make
+//     `allow` unreachable for every scanned skill. It rides along in the `scan`
+//     block as advisory detail and never lowers staked trust.
+//   - An `unknown` scan carries no signal and never lowers staked trust.
+//   - With no on-chain basis (`staked === "unknown"`), defer to the scan: a
+//     `review` surfaces as `review`, otherwise `unknown`.
+export function fuseActions(input: {
   staked: OpenWorldAction;
   scan: OpenWorldAction;
 }): OpenWorldAction {
-  const rank: Record<OpenWorldAction, number> = {
-    avoid: 0,
-    review: 1,
-    unknown: 2,
-    allow: 3,
-  };
-  return rank[input.staked] <= rank[input.scan] ? input.staked : input.scan;
+  if (input.staked === "avoid" || input.scan === "avoid") return "avoid";
+  if (input.staked === "unknown") {
+    return input.scan === "review" ? "review" : "unknown";
+  }
+  // staked ∈ {allow, review}: the advisory scan is non-blocking apart from the
+  // `avoid` veto handled above, so staked trust stands.
+  return input.staked;
 }
 
 export async function POST(request: NextRequest) {

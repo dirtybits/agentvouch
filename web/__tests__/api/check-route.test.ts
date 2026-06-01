@@ -22,7 +22,7 @@ vi.mock("@/lib/ai/scan", () => ({
   recordHeuristicReviewScan: vi.fn(),
 }));
 
-import { POST } from "@/app/api/check/route";
+import { POST, fuseActions } from "@/app/api/check/route";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import {
@@ -178,7 +178,7 @@ describe("POST /api/check", () => {
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
   });
 
-  it("keeps staked trust separate from advisory scan output", async () => {
+  it("lets staked allow stand over an advisory review scan", async () => {
     mockResolveAuthorTrust.mockResolvedValueOnce({
       reputationScore: 100,
       totalVouchesReceived: 2,
@@ -202,8 +202,10 @@ describe("POST /api/check", () => {
 
     expect(body.staked.status).toBe("present");
     expect(body.staked.summary.recommended_action).toBe("allow");
+    // The advisory scan is surfaced but does not cap staked trust; only a
+    // concrete `avoid` can veto a staked allow.
     expect(body.scan.verdict).toBe("review");
-    expect(body.recommended_action).toBe("review");
+    expect(body.recommended_action).toBe("allow");
   });
 
   it("uses the heuristic prefilter for low-signal arbitrary content", async () => {
@@ -276,5 +278,125 @@ describe("POST /api/check", () => {
     expect(body.scan.unavailable_reason).toBe(
       "daily_scan_budget_exhausted"
     );
+  });
+
+  it("refunds the reserved budget when model generation fails", async () => {
+    const dbQuery = vi.fn().mockResolvedValue([
+      {
+        ok: true,
+        reason: null,
+        daily_reserved: true,
+        monthly_reserved: true,
+        daily_used: 1,
+        monthly_used: 1,
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+    mockEnsureSkillScan.mockRejectedValueOnce(new Error("model unavailable"));
+
+    const res = await POST(
+      makeRequest({
+        content:
+          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+      })
+    );
+
+    expect(res.status).toBe(500);
+    expect(mockEnsureSkillScan).toHaveBeenCalled();
+    // One call to reserve the budget, a second to release it after the failure.
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects malformed files entries with 400 and never scans", async () => {
+    const res = await POST(makeRequest({ files: [{ path: "SKILL.md" }] }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toMatch(/path and content/i);
+    expect(mockEnsureSkillScan).not.toHaveBeenCalled();
+  });
+
+  it("keeps a staked allow when the scan is unavailable (budget exhausted)", async () => {
+    mockResolveAuthorTrust.mockResolvedValueOnce({
+      reputationScore: 100,
+      totalVouchesReceived: 2,
+      totalStakedFor: 1000000,
+      authorBondUsdcMicros: 0,
+      totalStakeAtRisk: 1000000,
+      disputesAgainstAuthor: 0,
+      disputesUpheldAgainstAuthor: 0,
+      activeDisputesAgainstAuthor: 0,
+      registeredAt: 1,
+      isRegistered: true,
+    });
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          ok: false,
+          reason: "daily_scan_budget_exhausted",
+          daily_reserved: false,
+          monthly_reserved: true,
+          daily_used: 200,
+          monthly_used: 50,
+        },
+      ])
+    );
+
+    const res = await POST(
+      makeRequest({
+        author: "AuthorWallet1111111111111111111111111111111",
+        content:
+          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+      })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockEnsureSkillScan).not.toHaveBeenCalled();
+    expect(body.scan.verdict).toBe("unknown");
+    expect(body.staked.summary.recommended_action).toBe("allow");
+    expect(body.recommended_action).toBe("allow");
+  });
+});
+
+describe("fuseActions", () => {
+  const cases: Array<{
+    staked: "allow" | "review" | "avoid" | "unknown";
+    scan: "allow" | "review" | "avoid" | "unknown";
+    expected: "allow" | "review" | "avoid" | "unknown";
+  }> = [
+    // Staked allow stands over an advisory review/unknown scan; only a concrete
+    // avoid vetoes it.
+    { staked: "allow", scan: "review", expected: "allow" },
+    { staked: "allow", scan: "unknown", expected: "allow" },
+    { staked: "allow", scan: "avoid", expected: "avoid" },
+    // Staked review cannot be raised by the scan, only vetoed to avoid.
+    { staked: "review", scan: "review", expected: "review" },
+    { staked: "review", scan: "unknown", expected: "review" },
+    { staked: "review", scan: "avoid", expected: "avoid" },
+    // Staked avoid is terminal.
+    { staked: "avoid", scan: "review", expected: "avoid" },
+    { staked: "avoid", scan: "unknown", expected: "avoid" },
+    // No on-chain basis: defer to the advisory scan, never allow.
+    { staked: "unknown", scan: "review", expected: "review" },
+    { staked: "unknown", scan: "avoid", expected: "avoid" },
+    { staked: "unknown", scan: "unknown", expected: "unknown" },
+    { staked: "unknown", scan: "allow", expected: "unknown" },
+  ];
+
+  it.each(cases)(
+    "staked=$staked + scan=$scan -> $expected",
+    ({ staked, scan, expected }) => {
+      expect(fuseActions({ staked, scan })).toBe(expected);
+    }
+  );
+
+  it("never emits allow unless staked trust is allow", () => {
+    const scans = ["allow", "review", "avoid", "unknown"] as const;
+    for (const staked of ["review", "avoid", "unknown"] as const) {
+      for (const scan of scans) {
+        expect(fuseActions({ staked, scan })).not.toBe("allow");
+      }
+    }
   });
 });

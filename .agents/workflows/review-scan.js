@@ -20,7 +20,7 @@ const PREAMBLE = [
   `- TWO HARD INVARIANTS: (1) the scan may only LOWER trust, never grant "allow" — only staked vouches earn allow; (2) scan output must be visibly distinct from staked trust ("advisory/automated", never styled like a stake).`,
   `- POST /api/check is a PUBLIC, walletless endpoint that invokes a PAID model on caller-supplied content. It must not be drainable. Launch gate = rate limit + spend cap/circuit breaker + max content size + cheap pre-filter. Caching does NOT protect it (unique-content floods bypass the cache).`,
   `- Cache is content-addressed by tree_hash, keyed (tree_hash, rubric_version, model), in a skill_scans table.`,
-  `- Fusion lattice: avoid < review < unknown < allow; recommended_action = worst(staked, scan); allow only when staked===allow AND scan is not review/avoid.`,
+  `- Fusion: the scan is advisory and only LOWERS trust via a concrete \`avoid\` veto. A \`review\` or \`unknown\` scan never lowers staked trust (a clean scan returns \`review\`, so capping on it would make \`allow\` unreachable). recommended_action = staked, except \`avoid\` from either side wins; with no on-chain basis (staked===unknown) defer to the scan. Only staked on-chain trust can grant \`allow\`; the scan never grants it.`,
   ``,
   `Key files: web/app/api/check/route.ts (443, new), web/lib/ai/scan.ts (279, new), web/lib/securityScan.ts (89, new), web/lib/db.ts (+19 migration), web/lib/skillStorage.ts (+39), web/app/api/skills/route.ts (+74), web/app/api/skills/[id]/versions/route.ts (+2), web/app/api/skills/[id]/route.ts (+43), web/app/api/skills/hydrate/route.ts (+28), UI: web/components/SkillPreviewCard.tsx, web/components/SkillFileTree.tsx, web/app/skills/[id]/page.tsx, tests under web/__tests__/.`,
   ``,

@@ -367,6 +367,32 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE OR REPLACE FUNCTION release_ai_scan_budget()
+    RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      day_start DATE := CURRENT_DATE;
+      month_start DATE := date_trunc('month', NOW())::date;
+    BEGIN
+      PERFORM pg_advisory_xact_lock(hashtext('agentvouch:ai_scan_budget')::bigint);
+
+      UPDATE ai_scan_budget_counters
+      SET used = GREATEST(used - 1, 0),
+          updated_at = NOW()
+      WHERE bucket = 'day'
+        AND period_start = day_start;
+
+      UPDATE ai_scan_budget_counters
+      SET used = GREATEST(used - 1, 0),
+          updated_at = NOW()
+      WHERE bucket = 'month'
+        AND period_start = month_start;
+    END;
+    $$;
+  `;
+
+  await db`
     CREATE INDEX IF NOT EXISTS idx_skill_versions_tree_hash
     ON skill_versions(tree_hash)
   `;
