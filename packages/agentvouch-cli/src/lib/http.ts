@@ -168,6 +168,7 @@ export interface AgentTrustResponse {
     canonicalAgentId?: string | null;
   } | null;
   author_disputes?: Array<Record<string, unknown>>;
+  signals?: TrustSignalRecord[] | null;
 }
 
 export interface ListSkillsOptions {

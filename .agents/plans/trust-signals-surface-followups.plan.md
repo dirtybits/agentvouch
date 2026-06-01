@@ -4,22 +4,22 @@ overview: "Three follow-ups after the trust-signal checklist landed: delete the 
 todos:
   - id: remove-review-scan-workflow
     content: Delete .agents/workflows/review-scan.js (stale, inert dev artifact referencing a dead commit).
-    status: pending
+    status: completed
   - id: checklist-render-findings
     content: Extend TrustSignalChecklist to render the AI scan's top findings under the ai_scan row (accept an optional scan prop).
-    status: pending
+    status: completed
   - id: consolidate-detail-scan-box
     content: Remove the standalone security-scan box (getSecurityScanCopy + scanCopy block) from web/app/skills/[id]/page.tsx and pass the scan to the checklist.
-    status: pending
+    status: completed
   - id: agent-trust-endpoint-signals
     content: Add author-scope trust signals to web/app/api/agents/[pubkey]/trust/route.ts.
-    status: pending
+    status: completed
   - id: cli-agent-trust-render
     content: Add signals to the CLI AgentTrustResponse type and render them in formatAgentTrust via the existing formatSignals helper.
-    status: pending
+    status: completed
   - id: verify-followups
     content: Run web tsc/eslint/vitest, CLI vitest, and a local check of the detail page + `agent trust --json`.
-    status: pending
+    status: completed
 isProject: false
 ---
 

@@ -5,6 +5,7 @@ import {
   FiCircle,
 } from "react-icons/fi";
 import type { TrustSignal, TrustSignalStatus } from "@/lib/trustSignals";
+import type { SkillSecurityScan } from "@/lib/securityScan";
 
 const STATUS_META: Record<
   TrustSignalStatus,
@@ -37,8 +38,10 @@ const STATUS_META: Record<
 // verdict. Only staked on-chain trust grants `allow`; the scan never does.
 export function TrustSignalChecklist({
   signals,
+  scan,
 }: {
   signals: TrustSignal[] | null | undefined;
+  scan?: SkillSecurityScan | null;
 }) {
   if (!signals || signals.length === 0) return null;
 
@@ -65,6 +68,15 @@ export function TrustSignalChecklist({
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   {signal.detail}
                 </p>
+                {signal.id === "ai_scan" && scan?.findings?.length ? (
+                  <ul className="mt-1 space-y-1 font-mono text-xs text-neutral-500 dark:text-neutral-400">
+                    {scan.findings.slice(0, 3).map((f) => (
+                      <li key={`${f.file}:${f.detail}`}>
+                        {f.severity.toUpperCase()} · {f.file}: {f.detail}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </li>
           );

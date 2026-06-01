@@ -197,6 +197,7 @@ export function formatAgentTrust(trust: AgentTrustResponse): string[] {
     `active_author_disputes: ${trust.trust.activeDisputesAgainstAuthor}`,
     `upheld_author_disputes: ${trust.trust.disputesUpheldAgainstAuthor}`,
     `author_dispute_count: ${disputeCount}`,
+    ...formatSignals(trust.signals),
   ];
 }
 
