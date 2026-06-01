@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { sql } from "@/lib/db";
 import { SCAN_MODEL, gatewayTags } from "@/lib/ai/gateway";
-import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
+import { reserveScanBudget, releaseScanBudget } from "@/lib/ai/scanBudget";
 import type { SkillFileWithBytes } from "@/lib/skillStorage";
 import {
   buildSecurityScanFromFields,
@@ -15,6 +15,20 @@ import {
 export const SCAN_RUBRIC_VERSION = "v1";
 
 const MAX_FINDINGS = 12;
+
+// Cap the bytes of file content fed to the model, independent of the much larger
+// upload cap (MAX_SKILL_TREE_BYTES, 5 MB). A 5 MB prompt is ~1-2M tokens, which
+// risks exceeding model context and is unbounded on cost; 512 KB (~130K tokens)
+// keeps the prompt cheap and well within context. Files are included in priority
+// order (SKILL.md, scripts/, references/, other), so truncation drops the
+// least security-relevant content first and sets truncated=true. Env-tunable.
+const CONFIGURED_SCAN_INPUT_BYTES = Number(
+  process.env.AI_SCAN_MAX_INPUT_BYTES ?? 512 * 1024
+);
+export const MAX_SCAN_INPUT_BYTES =
+  Number.isFinite(CONFIGURED_SCAN_INPUT_BYTES) && CONFIGURED_SCAN_INPUT_BYTES > 0
+    ? CONFIGURED_SCAN_INPUT_BYTES
+    : 512 * 1024;
 
 const ScanFindingSchema = z.object({
   severity: z.enum(["low", "medium", "high"]),
@@ -104,7 +118,7 @@ function buildScanPrompt(files: SkillFileWithBytes[]): {
   const skippedBinaryFiles: string[] = [];
   const includedFiles: string[] = [];
   const blocks: string[] = [];
-  let remaining = MAX_SKILL_TREE_BYTES;
+  let remaining = MAX_SCAN_INPUT_BYTES;
   let truncated = false;
 
   for (const file of sorted) {
@@ -171,7 +185,7 @@ export async function scanSkillTree(
   const scanInput = buildScanPrompt(files);
   if (scanInput.truncated) {
     console.info(
-      `[ai-scan] truncated tree input to ${MAX_SKILL_TREE_BYTES} bytes`
+      `[ai-scan] truncated tree input to ${MAX_SCAN_INPUT_BYTES} bytes`
     );
   }
 
@@ -307,8 +321,37 @@ export async function runScanSafe(
   files: SkillFileWithBytes[]
 ): Promise<void> {
   try {
-    const res = await ensureSkillScan(treeHash, files);
-    if (res.generated) console.info(`[ai-scan] generated for ${treeHash}`);
+    // Already scanned (content-addressed) — no model call, no budget cost.
+    const cached = await getCachedSkillScan(treeHash);
+    if (cached) return;
+
+    // Publish-time scans draw from the same durable budget as /api/check, so a
+    // flood of free publishes cannot run up unbounded model spend.
+    const budget = await reserveScanBudget();
+    if (!budget.ok) {
+      console.warn(
+        `[ai-scan] skipped publish scan for ${treeHash}: ${budget.reason}`
+      );
+      return;
+    }
+
+    let res: EnsureScanResult;
+    try {
+      res = await ensureSkillScan(treeHash, files);
+    } catch (e) {
+      // Model call failed: refund the reserved unit so a provider outage does
+      // not permanently erode the cap.
+      await releaseScanBudget();
+      throw e;
+    }
+
+    if (!res.generated) {
+      // Another request generated this scan between our cache check and the
+      // reservation; refund the unused unit.
+      await releaseScanBudget();
+      return;
+    }
+    console.info(`[ai-scan] generated for ${treeHash}`);
   } catch (e) {
     console.error(
       `[ai-scan] generation failed for ${treeHash}:`,

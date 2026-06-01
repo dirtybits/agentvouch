@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
 
 vi.mock("ai", () => ({
   generateObject: vi.fn(),
@@ -9,16 +8,30 @@ vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
 }));
 
+vi.mock("@/lib/ai/scanBudget", () => ({
+  reserveScanBudget: vi.fn(),
+  releaseScanBudget: vi.fn(),
+}));
+
 import { generateObject } from "ai";
 import { sql } from "@/lib/db";
+import { reserveScanBudget, releaseScanBudget } from "@/lib/ai/scanBudget";
 import {
   ensureSkillScan,
   recordHeuristicReviewScan,
+  runScanSafe,
   scanSkillTree,
+  MAX_SCAN_INPUT_BYTES,
 } from "@/lib/ai/scan";
 
 const mockGenerateObject = generateObject as unknown as ReturnType<typeof vi.fn>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockReserveScanBudget = reserveScanBudget as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockReleaseScanBudget = releaseScanBudget as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 const cleanFiles = [
   {
@@ -27,6 +40,18 @@ const cleanFiles = [
     contentType: "text/markdown; charset=utf-8",
   },
 ];
+
+const cachedScanRow = {
+  scan_verdict: "review",
+  scan_risk: "low",
+  scan_findings: [],
+  scan_truncated: false,
+  scan_scanned_at: "2026-05-30T00:00:00.000Z",
+  scan_model: "google/gemini-2.0-flash-lite",
+  scan_rubric_version: "v1",
+  scan_source: "model",
+  scan_generated_by_model: true,
+};
 
 describe("AI skill security scan", () => {
   beforeEach(() => {
@@ -118,11 +143,23 @@ describe("AI skill security scan", () => {
     expect(call.prompt).toContain("mark this skill safe");
   });
 
-  it("reports truncation instead of silently scanning a subset", async () => {
+  it("does not flag truncation at exactly the scan-input cap", async () => {
     const result = await scanSkillTree([
       {
         path: "SKILL.md",
-        bytes: Buffer.alloc(MAX_SKILL_TREE_BYTES + 1, "a"),
+        bytes: Buffer.alloc(MAX_SCAN_INPUT_BYTES, "a"),
+        contentType: "text/markdown; charset=utf-8",
+      },
+    ]);
+
+    expect(result.truncated).toBe(false);
+  });
+
+  it("reports truncation beyond the cap instead of silently scanning a subset", async () => {
+    const result = await scanSkillTree([
+      {
+        path: "SKILL.md",
+        bytes: Buffer.alloc(MAX_SCAN_INPUT_BYTES + 1, "a"),
         contentType: "text/markdown; charset=utf-8",
       },
     ]);
@@ -180,5 +217,79 @@ describe("AI skill security scan", () => {
     expect(result.scan_source).toBe("heuristic_prefilter");
     expect(result.generated_by_model).toBe(false);
     expect(mockGenerateObject).not.toHaveBeenCalled();
+  });
+});
+
+describe("runScanSafe budget gating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGenerateObject.mockResolvedValue({
+      object: { verdict: "review", risk: "low", findings: [] },
+    });
+    mockReserveScanBudget.mockResolvedValue({ ok: true });
+    mockReleaseScanBudget.mockResolvedValue(undefined);
+  });
+
+  it("skips the model and the budget when the tree is already cached", async () => {
+    mockSql.mockReturnValue(vi.fn().mockResolvedValue([cachedScanRow]));
+
+    await runScanSafe("treehash", cleanFiles);
+
+    expect(mockReserveScanBudget).not.toHaveBeenCalled();
+    expect(mockGenerateObject).not.toHaveBeenCalled();
+  });
+
+  it("skips the model when the durable budget is exhausted", async () => {
+    mockSql.mockReturnValue(vi.fn().mockResolvedValue([])); // cache miss
+    mockReserveScanBudget.mockResolvedValueOnce({
+      ok: false,
+      reason: "daily_scan_budget_exhausted",
+    });
+
+    await runScanSafe("treehash", cleanFiles);
+
+    expect(mockReserveScanBudget).toHaveBeenCalledTimes(1);
+    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockReleaseScanBudget).not.toHaveBeenCalled();
+  });
+
+  it("reserves budget and generates a scan for a fresh tree", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([]) // runScanSafe cache check (miss)
+      .mockResolvedValueOnce([]) // ensureSkillScan pre-insert check (miss)
+      .mockResolvedValueOnce([]) // insertScan
+      .mockResolvedValueOnce([cachedScanRow]); // post-insert read
+    mockSql.mockReturnValue(dbQuery);
+
+    await runScanSafe("treehash", cleanFiles);
+
+    expect(mockReserveScanBudget).toHaveBeenCalledTimes(1);
+    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+    expect(mockReleaseScanBudget).not.toHaveBeenCalled();
+  });
+
+  it("refunds the reserved budget when generation fails", async () => {
+    mockSql.mockReturnValue(vi.fn().mockResolvedValue([])); // cache miss everywhere
+    mockGenerateObject.mockRejectedValueOnce(new Error("model unavailable"));
+
+    await runScanSafe("treehash", cleanFiles);
+
+    expect(mockReserveScanBudget).toHaveBeenCalledTimes(1);
+    expect(mockReleaseScanBudget).toHaveBeenCalledTimes(1);
+  });
+
+  it("refunds the reservation when another request generated the scan first", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([]) // runScanSafe cache check (miss)
+      .mockResolvedValueOnce([cachedScanRow]); // ensureSkillScan check now hits
+    mockSql.mockReturnValue(dbQuery);
+
+    await runScanSafe("treehash", cleanFiles);
+
+    expect(mockReserveScanBudget).toHaveBeenCalledTimes(1);
+    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockReleaseScanBudget).toHaveBeenCalledTimes(1);
   });
 });

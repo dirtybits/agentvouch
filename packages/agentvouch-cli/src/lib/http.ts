@@ -37,6 +37,14 @@ export interface SkillAuthorTrustSummary {
   isRegistered: boolean;
 }
 
+export interface TrustSignalRecord {
+  id: string;
+  label: string;
+  scope: "skill" | "author";
+  status: "pass" | "warn" | "fail" | "unknown";
+  detail: string;
+}
+
 export interface SkillRecord {
   id: string;
   skill_id: string;
@@ -86,6 +94,7 @@ export interface SkillRecord {
   author_identity?: {
     name?: string | null;
   } | null;
+  signals?: TrustSignalRecord[] | null;
 }
 
 export interface SkillUpdateCheckResponse {

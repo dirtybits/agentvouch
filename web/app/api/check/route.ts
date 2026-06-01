@@ -11,6 +11,7 @@ import {
   hasScanEscalationSignal,
   recordHeuristicReviewScan,
 } from "@/lib/ai/scan";
+import { reserveScanBudget, releaseScanBudget } from "@/lib/ai/scanBudget";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -24,8 +25,11 @@ import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
 import type { AuthorTrust } from "@/lib/trust";
 import { resolveAuthorTrust } from "@/lib/trust";
 import type { SkillSecurityScan } from "@/lib/securityScan";
-
-type OpenWorldAction = "allow" | "review" | "avoid" | "unknown";
+import {
+  buildTrustSignals,
+  recommendedActionFromSignals,
+  type OpenWorldAction,
+} from "@/lib/trustSignals";
 
 type CheckRequestBody = {
   author?: unknown;
@@ -52,12 +56,6 @@ const RATE_WINDOW_MS = 10 * 60 * 1000;
 const IP_GENERATION_LIMIT = Number(process.env.AI_SCAN_IP_WINDOW_LIMIT ?? 20);
 const GLOBAL_GENERATION_LIMIT = Number(
   process.env.AI_SCAN_GLOBAL_WINDOW_LIMIT ?? 100
-);
-const DAILY_GENERATION_LIMIT = Number(
-  process.env.AI_SCAN_DAILY_GENERATION_LIMIT ?? 200
-);
-const MONTHLY_GENERATION_LIMIT = Number(
-  process.env.AI_SCAN_MONTHLY_GENERATION_LIMIT ?? 2000
 );
 const MAX_CHECK_BODY_BYTES = MAX_SKILL_TREE_BYTES + 256 * 1024;
 
@@ -173,66 +171,6 @@ function takeGenerationSlot(request: NextRequest):
   globalWindow.count += 1;
   ipWindows.set(ip, ipWindow);
   return { ok: true };
-}
-
-async function reserveScanBudget(): Promise<
-  | { ok: true }
-  | { ok: false; reason: "daily_scan_budget_exhausted" | "monthly_scan_budget_exhausted" }
-> {
-  if (!Number.isFinite(DAILY_GENERATION_LIMIT) || DAILY_GENERATION_LIMIT <= 0) {
-    return { ok: false, reason: "daily_scan_budget_exhausted" };
-  }
-  if (
-    !Number.isFinite(MONTHLY_GENERATION_LIMIT) ||
-    MONTHLY_GENERATION_LIMIT <= 0
-  ) {
-    return { ok: false, reason: "monthly_scan_budget_exhausted" };
-  }
-
-  const rows = await sql()<{
-    ok: boolean;
-    reason: string | null;
-    daily_reserved: boolean;
-    monthly_reserved: boolean;
-    daily_used: string | number;
-    monthly_used: string | number;
-  }>`
-    SELECT
-      ok,
-      reason,
-      ok AS daily_reserved,
-      ok AS monthly_reserved,
-      daily_used,
-      monthly_used
-    FROM reserve_ai_scan_budget(
-      ${DAILY_GENERATION_LIMIT}::integer,
-      ${MONTHLY_GENERATION_LIMIT}::integer
-    )
-  `;
-  const row = rows[0];
-  if (row?.ok) {
-    return { ok: true };
-  }
-
-  if (row?.reason === "daily_scan_budget_exhausted") {
-    return { ok: false, reason: "daily_scan_budget_exhausted" };
-  }
-
-  return { ok: false, reason: "monthly_scan_budget_exhausted" };
-}
-
-// Refund a reserved budget unit when the model call fails, so transient provider
-// errors do not permanently erode the daily/monthly cap. Best-effort: a failed
-// release is logged, never thrown (the original scan failure is what matters).
-async function releaseScanBudget(): Promise<void> {
-  try {
-    await sql()`SELECT release_ai_scan_budget()`;
-  } catch (error) {
-    console.error(
-      "[ai-scan] failed to release reserved budget:",
-      (error as Error)?.message ?? error
-    );
-  }
 }
 
 function parseFilesInput(body: CheckRequestBody): SkillTreeInputFile[] | null {
@@ -384,12 +322,14 @@ async function resolveScanForFiles(input: {
 }): Promise<{
   action: OpenWorldAction;
   response: ReturnType<typeof scanBlock>;
+  scan: SkillSecurityScan | null;
 }> {
   const cached = await getCachedSkillScan(input.treeHash);
   if (cached) {
     return {
       action: cached.verdict,
       response: scanBlock(cached, { cached: true, generated: false }),
+      scan: cached,
     };
   }
 
@@ -402,6 +342,7 @@ async function resolveScanForFiles(input: {
         generated: false,
         source: "heuristic_prefilter",
       }),
+      scan: heuristic,
     };
   }
 
@@ -413,6 +354,7 @@ async function resolveScanForFiles(input: {
         unavailable_reason: slot.reason,
         retry_after_seconds: slot.retryAfterSeconds,
       }),
+      scan: null,
     };
   }
 
@@ -423,6 +365,7 @@ async function resolveScanForFiles(input: {
       response: scanBlock(null, {
         unavailable_reason: budget.reason,
       }),
+      scan: null,
     };
   }
 
@@ -440,33 +383,8 @@ async function resolveScanForFiles(input: {
       cached: generated.cached,
       generated: generated.generated,
     }),
+    scan: generated,
   };
-}
-
-// Fuse staked on-chain trust with the advisory scan into one top-line action.
-//
-// Design contract ("the scan is advisory except for concrete danger"):
-//   - Only staked on-chain trust can grant `allow`; the scan never grants it.
-//   - A concrete `avoid` finding from EITHER signal always wins, even over a
-//     staked `allow` — concrete danger is the one thing the scan can veto.
-//   - A scan `review` is the model's "look closer", not a blocker. A clean scan
-//     returns `review` (there is no "pass" verdict), so capping on it would make
-//     `allow` unreachable for every scanned skill. It rides along in the `scan`
-//     block as advisory detail and never lowers staked trust.
-//   - An `unknown` scan carries no signal and never lowers staked trust.
-//   - With no on-chain basis (`staked === "unknown"`), defer to the scan: a
-//     `review` surfaces as `review`, otherwise `unknown`.
-export function fuseActions(input: {
-  staked: OpenWorldAction;
-  scan: OpenWorldAction;
-}): OpenWorldAction {
-  if (input.staked === "avoid" || input.scan === "avoid") return "avoid";
-  if (input.staked === "unknown") {
-    return input.scan === "review" ? "review" : "unknown";
-  }
-  // staked ∈ {allow, review}: the advisory scan is non-blocking apart from the
-  // `avoid` veto handled above, so staked trust stands.
-  return input.staked;
 }
 
 export async function POST(request: NextRequest) {
@@ -484,8 +402,8 @@ export async function POST(request: NextRequest) {
     const inputFiles = parseFilesInput(body);
 
     let author = explicitAuthor;
-    let scanAction: OpenWorldAction = "unknown";
     let scanResponse = scanBlock(null);
+    let rawScan: SkillSecurityScan | null = null;
     let resolvedTreeHash: string | null = treeHash;
 
     if (inputFiles) {
@@ -497,8 +415,8 @@ export async function POST(request: NextRequest) {
         files: tree.filesWithBytes,
         knownSkill: false,
       });
-      scanAction = scan.action;
       scanResponse = scan.response;
+      rawScan = scan.scan;
     } else {
       const known = await lookupSkillVersion({ skill, treeHash });
       if (known) {
@@ -512,8 +430,8 @@ export async function POST(request: NextRequest) {
             files,
             knownSkill: true,
           });
-          scanAction = scan.action;
           scanResponse = scan.response;
+          rawScan = scan.scan;
         }
       } else if (treeHash) {
         scanResponse = scanBlock(null, {
@@ -523,15 +441,19 @@ export async function POST(request: NextRequest) {
     }
 
     const staked = await buildStakedBlock(author);
-    const recommendedAction = fuseActions({
-      staked: staked.action,
-      scan: scanAction,
+    // The checklist is the source of truth; the one-line verdict is derived from
+    // it so the two can never drift.
+    const signals = buildTrustSignals({
+      trust: staked.response.trust,
+      scan: rawScan,
     });
+    const recommendedAction = recommendedActionFromSignals(signals);
 
     return NextResponse.json(
       {
         recommended_action: recommendedAction,
         tree_hash: resolvedTreeHash,
+        signals,
         staked: staked.response,
         scan: scanResponse,
         disclaimer:

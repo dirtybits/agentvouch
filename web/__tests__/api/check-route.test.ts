@@ -22,7 +22,7 @@ vi.mock("@/lib/ai/scan", () => ({
   recordHeuristicReviewScan: vi.fn(),
 }));
 
-import { POST, fuseActions } from "@/app/api/check/route";
+import { POST } from "@/app/api/check/route";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import {
@@ -206,6 +206,12 @@ describe("POST /api/check", () => {
     // concrete `avoid` can veto a staked allow.
     expect(body.scan.verdict).toBe("review");
     expect(body.recommended_action).toBe("allow");
+    // The transparent checklist accompanies the derived verdict.
+    const signalStatus = (id: string) =>
+      body.signals.find((s: { id: string }) => s.id === id)?.status;
+    expect(signalStatus("ai_scan")).toBe("pass");
+    expect(signalStatus("vouched")).toBe("pass");
+    expect(signalStatus("registered")).toBe("pass");
   });
 
   it("uses the heuristic prefilter for low-signal arbitrary content", async () => {
@@ -356,47 +362,5 @@ describe("POST /api/check", () => {
     expect(body.scan.verdict).toBe("unknown");
     expect(body.staked.summary.recommended_action).toBe("allow");
     expect(body.recommended_action).toBe("allow");
-  });
-});
-
-describe("fuseActions", () => {
-  const cases: Array<{
-    staked: "allow" | "review" | "avoid" | "unknown";
-    scan: "allow" | "review" | "avoid" | "unknown";
-    expected: "allow" | "review" | "avoid" | "unknown";
-  }> = [
-    // Staked allow stands over an advisory review/unknown scan; only a concrete
-    // avoid vetoes it.
-    { staked: "allow", scan: "review", expected: "allow" },
-    { staked: "allow", scan: "unknown", expected: "allow" },
-    { staked: "allow", scan: "avoid", expected: "avoid" },
-    // Staked review cannot be raised by the scan, only vetoed to avoid.
-    { staked: "review", scan: "review", expected: "review" },
-    { staked: "review", scan: "unknown", expected: "review" },
-    { staked: "review", scan: "avoid", expected: "avoid" },
-    // Staked avoid is terminal.
-    { staked: "avoid", scan: "review", expected: "avoid" },
-    { staked: "avoid", scan: "unknown", expected: "avoid" },
-    // No on-chain basis: defer to the advisory scan, never allow.
-    { staked: "unknown", scan: "review", expected: "review" },
-    { staked: "unknown", scan: "avoid", expected: "avoid" },
-    { staked: "unknown", scan: "unknown", expected: "unknown" },
-    { staked: "unknown", scan: "allow", expected: "unknown" },
-  ];
-
-  it.each(cases)(
-    "staked=$staked + scan=$scan -> $expected",
-    ({ staked, scan, expected }) => {
-      expect(fuseActions({ staked, scan })).toBe(expected);
-    }
-  );
-
-  it("never emits allow unless staked trust is allow", () => {
-    const scans = ["allow", "review", "avoid", "unknown"] as const;
-    for (const staked of ["review", "avoid", "unknown"] as const) {
-      for (const scan of scans) {
-        expect(fuseActions({ staked, scan })).not.toBe("allow");
-      }
-    }
   });
 });

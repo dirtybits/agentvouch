@@ -11,6 +11,7 @@ import {
   hasUsdcPurchaseEntitlement,
 } from "@/lib/usdcPurchases";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
+import { buildTrustSignals } from "@/lib/trustSignals";
 import {
   getConfiguredSolanaChainContext,
   normalizePersistedChainContext,
@@ -218,6 +219,7 @@ export async function GET(
           storage_backend: null,
           has_executable: false,
           security_scan: null,
+          signals: buildTrustSignals({ trust: author_trust, scan: null }),
           versions: [],
           author_trust,
           author_trust_summary,
@@ -415,6 +417,7 @@ export async function GET(
         storage_backend: latestVersion?.storage_backend ?? null,
         has_executable: latestVersion?.has_executable ?? false,
         security_scan,
+        signals: buildTrustSignals({ trust: author_trust, scan: security_scan }),
         versions: versionsWithoutContent,
         author_trust,
         author_trust_summary,

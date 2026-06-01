@@ -10,6 +10,7 @@ import {
   type SkillScanFieldRow,
   type SkillSecurityScan,
 } from "@/lib/securityScan";
+import { buildTrustSignals, type TrustSignal } from "@/lib/trustSignals";
 import {
   verifyAuthorTrust,
   resolveMultipleAuthorTrust,
@@ -157,6 +158,7 @@ type EnrichedSkillRow = Omit<
   author_trust: AuthorTrust | null;
   author_trust_summary: AgentTrustSummary | null;
   author_identity: AgentIdentitySummary | null;
+  signals: TrustSignal[];
 };
 
 type RouteTiming = {
@@ -565,6 +567,10 @@ function buildEnrichedSkillRows(input: {
       author_trust: authorTrust,
       author_trust_summary: authorTrustSummary,
       author_identity: authorIdentity,
+      signals: buildTrustSignals({
+        trust: authorTrust,
+        scan: skill.security_scan ?? null,
+      }),
     };
   });
 }

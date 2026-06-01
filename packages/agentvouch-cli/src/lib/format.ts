@@ -4,7 +4,28 @@ import type {
   AuthorRecord,
   SkillListResponse,
   SkillRecord,
+  TrustSignalRecord,
 } from "./http.js";
+
+const SIGNAL_MARK: Record<TrustSignalRecord["status"], string> = {
+  pass: "✓",
+  warn: "!",
+  fail: "✗",
+  unknown: "·",
+};
+
+// Render the trust-signal checklist as indented lines under a `signals:` header.
+// Each signal is an independent fact the caller can weigh against its own policy.
+export function formatSignals(signals: TrustSignalRecord[] | null | undefined): string[] {
+  if (!signals || signals.length === 0) return [];
+  return [
+    "signals:",
+    ...signals.map(
+      (signal) =>
+        `  ${SIGNAL_MARK[signal.status] ?? "·"} ${signal.id} (${signal.label}): ${signal.detail}`
+    ),
+  ];
+}
 
 function getTrustFields(skill: SkillRecord) {
   return {
@@ -67,6 +88,7 @@ export function formatSkillSummary(skill: SkillRecord): string[] {
       : []),
     `active_author_disputes: ${trust.activeDisputes}`,
     `upheld_author_disputes: ${trust.upheldDisputes}`,
+    ...formatSignals(skill.signals),
   ];
 }
 

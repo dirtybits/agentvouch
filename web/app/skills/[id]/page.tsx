@@ -8,6 +8,8 @@ import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import SkillFileTree, { type SkillFileTreeEntry } from "@/components/SkillFileTree";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import type { TrustSignal } from "@/lib/trustSignals";
+import TrustSignalChecklist from "@/components/TrustSignalChecklist";
 import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
@@ -124,6 +126,7 @@ interface SkillDetail {
   storage_backend: string | null;
   has_executable: boolean;
   security_scan: SkillSecurityScan | null;
+  signals: TrustSignal[];
   legacySolLamports?: number;
   estimatedPurchaseRentLamports?: number;
   feeBufferLamports?: number;
@@ -1932,6 +1935,8 @@ export default function SkillDetailPage({
             </div>
           </div>
         )}
+
+        <TrustSignalChecklist signals={skill.signals} />
 
         {/* On-chain listing section */}
         {skill.on_chain_address ? (

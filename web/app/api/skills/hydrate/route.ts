@@ -36,6 +36,7 @@ import {
   type SkillScanFieldRow,
   type SkillSecurityScan,
 } from "@/lib/securityScan";
+import { buildTrustSignals, type TrustSignal } from "@/lib/trustSignals";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 
@@ -99,6 +100,7 @@ type HydratedSkillRow = RepoSkillRow & {
   author_trust: AuthorTrust | null;
   author_trust_summary: AgentTrustSummary | null;
   author_identity: AgentIdentitySummary | null;
+  signals: TrustSignal[];
 };
 
 async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
@@ -224,6 +226,10 @@ function buildHydratedBaseRows(input: {
             })
           : null,
       author_identity: authorIdentity,
+      signals: buildTrustSignals({
+        trust: authorTrust,
+        scan: skill.security_scan ?? null,
+      }),
     };
   });
 }
