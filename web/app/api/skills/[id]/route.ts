@@ -157,8 +157,13 @@ export async function GET(
         );
       }
 
+      // Content wall: only free skills expose full content pre-purchase. Paid
+      // skills surface trust signals + metadata as the decision layer; the
+      // content itself is delivered via the signature-verified raw/archive
+      // download, so the detail surface can't bypass the paywall.
+      const chainIsFree = Number(listing.data.priceUsdcMicros) <= 0;
       let content: string | null = null;
-      if (listing.data.skillUri) {
+      if (chainIsFree && listing.data.skillUri) {
         try {
           const res = await fetch(listing.data.skillUri);
           if (res.ok) content = await res.text();
@@ -400,18 +405,24 @@ export async function GET(
           identity: author_identity,
         })
       : null;
+    const paymentFlow = getSkillPaymentFlow({
+      priceUsdcMicros,
+      onChainAddress: skill.on_chain_address,
+      legacySolLamports: skill.price_lamports,
+      allowLegacySol: true,
+    });
+    // Content wall: full content is returned only for free skills. Paid content
+    // is gated to the signature-verified raw/archive download, so the detail
+    // surface can't be used to bypass the paywall. Gating on the unauthenticated
+    // `buyer` param would be spoofable, so entitlement is NOT used here.
+    const canViewContent = paymentFlow === "free";
 
     return NextResponse.json(
       {
         ...skill,
         price_usdc_micros: priceUsdcMicros,
-        payment_flow: getSkillPaymentFlow({
-          priceUsdcMicros,
-          onChainAddress: skill.on_chain_address,
-          legacySolLamports: skill.price_lamports,
-          allowLegacySol: true,
-        }),
-        content: latestContent,
+        payment_flow: paymentFlow,
+        content: canViewContent ? latestContent : null,
         files: latestVersion?.files ?? null,
         tree_hash: latestVersion?.tree_hash ?? null,
         storage_backend: latestVersion?.storage_backend ?? null,
