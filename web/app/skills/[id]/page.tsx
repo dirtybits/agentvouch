@@ -99,6 +99,8 @@ interface SkillDetail {
   description: string | null;
   tags: string[];
   current_version: number;
+  summary?: string | null;
+  summary_capabilities?: string[] | null;
   ipfs_cid: string | null;
   on_chain_address: string | null;
   total_installs: number;
@@ -362,6 +364,17 @@ export default function SkillDetailPage({
     skill?.description ?? null
   );
   const capabilityBullets = extractCapabilityBullets(content);
+  // Prefer the AI summary (generated once at publish from the content, no leak)
+  // as the "what it does" decision layer. Paid skills wall their content, so the
+  // AI capabilities replace the content-derived bullets; free skills fall back to
+  // content-derived text when no summary exists yet.
+  const aiSummaryLine = skill?.summary?.trim() || null;
+  const aiCapabilities = (skill?.summary_capabilities ?? []).filter(
+    (c): c is string => typeof c === "string" && c.trim().length > 0
+  );
+  const displaySummaryLine = aiSummaryLine ?? capabilitySummary;
+  const displayCapabilities =
+    aiCapabilities.length > 0 ? aiCapabilities : capabilityBullets;
   const requestedAuthorAction = searchParams.get("authorAction");
 
   const refreshSkill = useCallback(async () => {
@@ -1312,17 +1325,17 @@ export default function SkillDetailPage({
           </div>
         )}
 
-        {(capabilitySummary ||
-          capabilityBullets.length > 0 ||
+        {(displaySummaryLine ||
+          displayCapabilities.length > 0 ||
           skill.tags?.length > 0) && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <FiFileText className="w-4 h-4 text-[var(--sea-accent)]" />
-              Capability Preview
+              What it does
             </h2>
-            {capabilitySummary && (
+            {displaySummaryLine && (
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                {capabilitySummary}
+                {displaySummaryLine}
               </p>
             )}
             {skill.tags?.length > 0 && (
@@ -1337,9 +1350,9 @@ export default function SkillDetailPage({
                 ))}
               </div>
             )}
-            {capabilityBullets.length > 0 && (
+            {displayCapabilities.length > 0 && (
               <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                {capabilityBullets.map((bullet) => (
+                {displayCapabilities.map((bullet) => (
                   <li key={bullet} className="flex items-start gap-2">
                     <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[var(--sea-accent)] shrink-0" />
                     <span>{bullet}</span>

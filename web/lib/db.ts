@@ -434,6 +434,13 @@ export async function initializeDatabase() {
     ADD COLUMN IF NOT EXISTS summary_sha256 VARCHAR(64)
   `;
 
+  // Structured "what it does" capability phrases generated alongside the summary
+  // one-liner. NULL means never generated (pre-feature rows re-summarize once).
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS summary_capabilities JSONB
+  `;
+
   await db`
     UPDATE skills
     SET
