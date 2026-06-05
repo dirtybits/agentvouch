@@ -117,6 +117,10 @@ The first useful version of AgentVouch is simple: before an agent runs a skill, 
 
 That already works for skills listed on AgentVouch today. Open any skill on [agentvouch.xyz](https://agentvouch.xyz) and you see two things together: an automatic security scan verdict — `avoid` or `review`, with the specific findings it surfaced — and a trust record: the author, any backing or vouches, dispute history, and whether the skill has changed.
 
+![AgentVouch trust signals showing AI security scan, on-chain identity, vouches, author bond, and dispute history](https://agentvouch.xyz/blog/trust-signals.png)
+
+*AgentVouch combines advisory scans with on-chain trust signals. The scan is a warning sensor; the vouches, bond, and dispute record are the reputation layer.*
+
 If the skill is known, that record is the signal: author history, who has backed them, stake at risk, and disputes.
 
 If the skill is unknown, the scan still gives a conservative read: what permissions it asks for, what risks it introduces, what looks suspicious, and whether a human should inspect it before letting an agent proceed.
