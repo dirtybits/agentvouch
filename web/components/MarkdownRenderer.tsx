@@ -59,6 +59,17 @@ export default function MarkdownRenderer({
               {children}
             </a>
           ),
+          p: ({ children }) => (
+            <p className="my-4 leading-relaxed">{children}</p>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="my-4 border-l-4 border-gray-300 pl-4 italic text-gray-600 dark:border-gray-700 dark:text-gray-400">
+              {children}
+            </blockquote>
+          ),
+          hr: () => (
+            <hr className="my-8 border-gray-200 dark:border-gray-800" />
+          ),
           ul: ({ children }) => (
             <ul className="list-disc list-inside space-y-1 my-2">{children}</ul>
           ),
