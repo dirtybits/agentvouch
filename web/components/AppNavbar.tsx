@@ -38,6 +38,11 @@ const navItems: NavItem[] = [
     label: "Docs",
     match: (pathname) => pathname === "/docs",
   },
+  {
+    href: "/blog",
+    label: "Blog",
+    match: (pathname) => pathname === "/blog" || pathname.startsWith("/blog/"),
+  },
 ];
 
 function navLinkClass(isActive: boolean) {
