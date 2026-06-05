@@ -37,7 +37,7 @@ export default async function BlogPostPage({
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <article className="max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
+      <article className="font-article max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
         <Link
           href="/blog"
           className="text-sm text-[var(--lobster-accent)] hover:underline"

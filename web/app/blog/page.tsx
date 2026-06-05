@@ -26,11 +26,11 @@ export default async function BlogIndexPage() {
         {posts.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">No posts yet.</p>
         ) : (
-          <ul className="space-y-6">
+          <ul className="space-y-6 font-article">
             {posts.map((post) => (
               <li key={post.slug}>
                 <Link href={`/blog/${post.slug}`} className="group block">
-                  <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white group-hover:underline">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white group-hover:underline">
                     {post.title}
                   </h2>
                   {post.subtitle && (

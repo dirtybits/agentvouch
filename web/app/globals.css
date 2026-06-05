@@ -67,6 +67,16 @@ body {
   font-weight: 400 !important;
 }
 
+/* Long-form reading serif for blog articles. !important to override the body's
+   font-mono; code/pre stay monospace for readability. */
+.font-article {
+  font-family: var(--font-crimson-pro), "Crimson Pro", Georgia, serif !important;
+}
+
+.font-article :where(code, pre, kbd, samp) {
+  font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
+}
+
 /* Keep the UI sharp: normalize most rounded utilities to md. */
 .rounded,
 .rounded-sm,
