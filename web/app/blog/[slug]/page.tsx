@@ -45,7 +45,7 @@ export default async function BlogPostPage({
           ← Blog
         </Link>
         <div className="mt-6">
-          <MarkdownRenderer content={post.content} />
+          <MarkdownRenderer content={post.content} size="lg" />
         </div>
       </article>
     </main>

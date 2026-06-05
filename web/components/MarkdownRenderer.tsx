@@ -7,28 +7,27 @@ import remarkGfm from "remark-gfm";
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /** Prose scale. Defaults to "sm" (matches app/skill UI text); blog uses "lg". */
+  size?: "sm" | "base" | "lg";
 }
 
 export default function MarkdownRenderer({
   content,
   className = "",
+  size = "sm",
 }: MarkdownRendererProps) {
+  const sizeClass =
+    size === "lg" ? "prose-lg" : size === "base" ? "prose-base" : "prose-sm";
   return (
-    <div className={`prose prose-lg dark:prose-invert max-w-none ${className}`}>
+    <div
+      className={`prose ${sizeClass} dark:prose-invert max-w-none ${className}`}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => (
-            <h1 className="text-2xl font-bold border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-xl font-bold mt-6 mb-3">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>
-          ),
+          // Generic prose elements (headings, paragraphs, lists, blockquote, hr,
+          // tables) are styled by @tailwindcss/typography via the `prose` wrapper.
+          // Only genuinely custom rendering stays below.
           code: ({ children, className: codeClassName }) => {
             const isBlock = codeClassName?.includes("language-");
             if (isBlock) {
@@ -38,7 +37,7 @@ export default function MarkdownRenderer({
                 <CopyCodeBlock
                   value={value}
                   language={language}
-                  className="my-4 p-4 text-sm"
+                  className="not-prose my-4 p-4 text-sm"
                 />
               );
             }
@@ -48,6 +47,7 @@ export default function MarkdownRenderer({
               </code>
             );
           },
+          // Unwrap the markdown <pre>; fenced blocks render via CopyCodeBlock.
           pre: ({ children }) => <>{children}</>,
           a: ({ href, children }) => (
             <a
@@ -58,42 +58,6 @@ export default function MarkdownRenderer({
             >
               {children}
             </a>
-          ),
-          p: ({ children }) => (
-            <p className="my-4 text-lg leading-relaxed">{children}</p>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="my-4 border-l-4 border-gray-300 pl-4 italic text-gray-600 dark:border-gray-700 dark:text-gray-400">
-              {children}
-            </blockquote>
-          ),
-          hr: () => (
-            <hr className="my-8 border-gray-200 dark:border-gray-800" />
-          ),
-          ul: ({ children }) => (
-            <ul className="list-disc list-inside space-y-1 my-2">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal list-inside space-y-1 my-2">
-              {children}
-            </ol>
-          ),
-          table: ({ children }) => (
-            <div className="overflow-x-auto my-4">
-              <table className="min-w-full border border-gray-200 dark:border-gray-700 rounded-sm">
-                {children}
-              </table>
-            </div>
-          ),
-          th: ({ children }) => (
-            <th className="bg-gray-100 dark:bg-gray-800 px-3 py-2 text-left text-xs font-semibold border-b border-gray-200 dark:border-gray-700">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-800">
-              {children}
-            </td>
           ),
         }}
       >

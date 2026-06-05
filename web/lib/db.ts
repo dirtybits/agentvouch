@@ -38,12 +38,41 @@ function sqlStringLiteral(db: SqlQuery, value: string) {
   return db.unsafe(`'${value.replace(/'/g, "''")}'`);
 }
 
+// Concurrent cold starts can each run this idempotent bootstrap at once. Postgres
+// then throws "tuple concurrently updated" (XX000) when two sessions CREATE OR
+// REPLACE the same function, or deadlocks. Those are transient: the DDL is
+// idempotent, so a short retry converges instead of failing the request.
+function isTransientInitError(error: unknown): boolean {
+  const message = ((error as Error)?.message ?? "").toLowerCase();
+  const code = (error as { code?: string })?.code;
+  return (
+    message.includes("tuple concurrently updated") ||
+    message.includes("tuple concurrently deleted") ||
+    code === "40P01" // deadlock_detected
+  );
+}
+
+async function initWithRetry(run: () => Promise<void>): Promise<void> {
+  const maxAttempts = 5;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await run();
+      return;
+    } catch (error) {
+      if (attempt >= maxAttempts || !isTransientInitError(error)) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, 40 * attempt + Math.floor(Math.random() * 60))
+      );
+    }
+  }
+}
+
 export async function initializeDatabase() {
   if (_initializePromise) {
     return _initializePromise;
   }
 
-  _initializePromise = (async () => {
+  _initializePromise = initWithRetry(async () => {
   const db = sql();
   const configuredSolanaChainContext = getConfiguredSolanaChainContext();
   const currentProgramId = getAgentVouchProgramId();
@@ -581,7 +610,7 @@ export async function initializeDatabase() {
   await db`
     CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)
   `;
-  })().catch((error) => {
+  }).catch((error) => {
     _initializePromise = null;
     throw error;
   });

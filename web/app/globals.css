@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
@@ -75,6 +76,13 @@ body {
 
 .font-article :where(code, pre, kbd, samp) {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
+}
+
+/* @tailwindcss/typography wraps inline <code> in literal backtick characters via
+   ::before/::after. MarkdownRenderer styles inline code itself, so drop them. */
+.prose code::before,
+.prose code::after {
+  content: none;
 }
 
 /* Keep the UI sharp: normalize most rounded utilities to md. */
