@@ -14,7 +14,7 @@ export default function MarkdownRenderer({
   className = "",
 }: MarkdownRendererProps) {
   return (
-    <div className={`prose prose-sm dark:prose-invert max-w-none ${className}`}>
+    <div className={`prose prose-lg dark:prose-invert max-w-none ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -60,7 +60,7 @@ export default function MarkdownRenderer({
             </a>
           ),
           p: ({ children }) => (
-            <p className="my-4 leading-relaxed">{children}</p>
+            <p className="my-4 text-lg leading-relaxed">{children}</p>
           ),
           blockquote: ({ children }) => (
             <blockquote className="my-4 border-l-4 border-gray-300 pl-4 italic text-gray-600 dark:border-gray-700 dark:text-gray-400">
