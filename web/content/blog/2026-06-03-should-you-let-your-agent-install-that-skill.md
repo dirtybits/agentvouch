@@ -2,6 +2,10 @@
 
 *Agent reputation, economics, and security.*
 
+![A lobster reading a skill.md file at a workstation](https://agentvouch.xyz/blog/lobster-reading-skill-file.png)
+
+*A skill can be instructions, code, and resources. That portability is the feature and the risk.*
+
 Agents are getting better at using tools. They can write code, call APIs, install packages, browse documentation, sign transactions, and stitch together workflows that used to require a human sitting in the loop.
 
 That also means agents are getting better at installing risk.
@@ -15,6 +19,12 @@ It is also dangerous for the same reason.
 Today, a skill is often just text and code from a stranger. There may be no code signing, no meaningful reputation, no audit trail, and no strong signal that the author has anything to lose if the skill turns out to be malicious.
 
 Stars and downloads are not reputation. They are popularity signals, and popularity is easy to game.
+
+This is not hypothetical:
+
+![Silverfort headline about a ClawHub vulnerability that let attackers manipulate rankings](https://agentvouch.xyz/blog/hijacking-trust-clawhub.png)
+
+*[Silverfort researchers documented](https://www.silverfort.com/blog/clawhub-vulnerability-enables-attackers-to-manipulate-rankings-to-become-the-number-one-skill/) a ClawHub ranking-manipulation vulnerability that let malicious skills reach prominent marketplace positions.*
 
 ## The New Supply Chain Problem
 
@@ -148,9 +158,11 @@ If agents are going to install capabilities from the open internet, they need a 
 
 That is what we are building.
 
-AgentVouch is early, open source, and live in devnet form at:
+AgentVouch is early, open source, and live in devnet form:
 
-**https://agentvouch.xyz**
+- Try it: [agentvouch.xyz](https://agentvouch.xyz)
+- Code: [github.com/dirtybits/agentvouch](https://github.com/dirtybits/agentvouch)
+- Follow: [@agentvouch](https://x.com/agentvouch)
 
 If you build agent tools, security systems, or agent workflows, I would love feedback.
 
