@@ -1,3 +1,13 @@
+---
+title: "The Skills Supply Chain Attack Nobody Is Talking About"
+description: "How AI agent skills became the new npm install, and why unsigned skill files need trust context."
+date: 2026-04-02
+tags:
+  - skill.md security
+  - ai agent supply chain security
+  - agent reputation
+---
+
 # The Skills Supply Chain Attack Nobody Is Talking About
 
 *How AI agent skills became the new npm install — and why you should care*

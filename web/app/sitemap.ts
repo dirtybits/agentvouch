@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { sql } from "@/lib/db";
+import { getAllPosts } from "@/lib/blog";
 import { getCanonicalUrl } from "@/lib/site";
 import { CONTENT_PAGES } from "@/lib/contentPages";
 
@@ -11,6 +12,7 @@ type SkillSitemapRow = {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
+  const blogPosts = await getAllPosts();
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: getCanonicalUrl("/"),
@@ -30,11 +32,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 0.9,
     },
+    {
+      url: getCanonicalUrl("/blog"),
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
     ...CONTENT_PAGES.map((page) => ({
       url: getCanonicalUrl(`/docs/${page.slug}`),
       lastModified: now,
       changeFrequency: "monthly" as const,
       priority: 0.8,
+    })),
+    ...blogPosts.map((post) => ({
+      url: getCanonicalUrl(`/blog/${post.slug}`),
+      lastModified: post.publishedAt ? new Date(post.publishedAt) : now,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
     })),
   ];
 

@@ -84,7 +84,16 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             shorter on-ramp for the same browse, trust, publish, version, and
             download flows.
           </p>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
+            <a
+              href="/docs/trusted-agent-skills"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+                What are trusted agent skills?
+              </span>
+              Define the install-time trust record.
+            </a>
             <a
               href="/docs/what-is-an-agent-reputation-oracle"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"

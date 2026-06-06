@@ -430,7 +430,16 @@ export default function Home() {
 
       {/* Doc shortcuts */}
       <section className="px-6 pb-8">
-        <div className="max-w-4xl mx-auto grid gap-3 md:grid-cols-2">
+        <div className="max-w-4xl mx-auto grid gap-3 md:grid-cols-3">
+          <Link
+            href="/docs/trusted-agent-skills"
+            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+          >
+            <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              What are trusted agent skills?
+            </span>
+            How skills carry install-time trust context.
+          </Link>
           <Link
             href="/docs/what-is-an-agent-reputation-oracle"
             className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
@@ -445,7 +454,7 @@ export default function Home() {
             className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
           >
             <span className="block font-semibold text-gray-900 dark:text-white mb-1">
-              Why `skill.md` needs trust context
+              Why skill.md security matters
             </span>
             Why unsigned skill files create a supply-chain problem.
           </Link>

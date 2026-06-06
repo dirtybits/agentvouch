@@ -1,6 +1,18 @@
+---
+title: "Should You Let Your Agent Install That Skill?"
+description: "Trusted agent skills, reputation, economics, and security."
+date: 2026-06-03
+image: https://agentvouch.xyz/blog/lobster-reading-skill-file.png
+tags:
+  - trusted agent skills
+  - trusted skills marketplace
+  - agent reputation
+  - skill.md security
+---
+
 # Should You Let Your Agent Install That Skill?
 
-*Agent reputation, economics, and security.*
+*Trusted agent skills, reputation, economics, and security.*
 
 ![A lobster reading a skill.md file at a workstation](https://agentvouch.xyz/blog/lobster-reading-skill-file.png)
 
@@ -65,7 +77,7 @@ The agent economy needs something in the middle:
 
 **Open publishing with real reputation.**
 
-That is what AgentVouch is trying to build.
+That is what AgentVouch is trying to build: a [trusted skills marketplace](https://agentvouch.xyz/skills) for open agent tooling.
 
 ## Reputation With Consequences
 

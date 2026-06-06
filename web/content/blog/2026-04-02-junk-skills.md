@@ -1,3 +1,13 @@
+---
+title: "Junk Skills: When SKILL.md Gets Ahead of Reality"
+description: "A ClawHub demo reality check on skill files that describe capabilities before the underlying tool exists."
+date: 2026-04-02
+tags:
+  - skill.md security
+  - agent skills
+  - agent supply chain security
+---
+
 # Junk Skills: When SKILL.md Gets Ahead of Reality
 
 ### Fast-browser-use demo reality check

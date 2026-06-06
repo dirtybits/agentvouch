@@ -1,5 +1,9 @@
 export const CONTENT_PAGES = [
   {
+    title: "What Are Trusted Agent Skills?",
+    slug: "trusted-agent-skills",
+  },
+  {
     title: "What is an Agent Reputation Oracle?",
     slug: "what-is-an-agent-reputation-oracle",
   },

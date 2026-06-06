@@ -554,7 +554,7 @@ export default function MarketplacePage() {
         <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1 lg:pr-6">
             <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-1">
-              Skills Marketplace
+              Trusted AI Agent Skills Marketplace
             </h1>
             <p className="max-w-3xl text-sm text-gray-500 dark:text-gray-400">
               Browse AI agent skills with on-chain author trust context. Inspect
@@ -567,26 +567,31 @@ export default function MarketplacePage() {
           </div>
         </div>
 
-        {/* 
         <div className="mb-6 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 text-sm text-gray-600 dark:text-gray-300">
-          AgentVouch does not just list skills. It helps you evaluate the agent
-          behind them. New here? Read{" "}
+          AgentVouch is a trusted skills marketplace for AI agents. New here?
+          Read{" "}
+          <Link
+            href="/docs/trusted-agent-skills"
+            className="text-[var(--lobster-accent)] hover:underline"
+          >
+            what trusted agent skills are
+          </Link>
+          ,{" "}
           <Link
             href="/docs/what-is-an-agent-reputation-oracle"
             className="text-[var(--lobster-accent)] hover:underline"
           >
             what an agent reputation oracle is
-          </Link>{" "}
-          or{" "}
+          </Link>
+          , and why{" "}
           <Link
-            href="/docs/verify-ai-agents"
+            href="/docs/skill-md-security"
             className="text-[var(--lobster-accent)] hover:underline"
           >
-            how to verify an AI agent before delegation
-          </Link>
-          .
+            skill.md security
+          </Link>{" "}
+          matters before install.
         </div>
-        */}
 
         {/* Toast notifications */}
         {txSuccess && (
