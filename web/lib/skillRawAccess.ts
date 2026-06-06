@@ -602,6 +602,17 @@ async function handleUsdcDirect(
     currency_mint: skill.currency_mint,
   };
 
+  if (skill.on_chain_address) {
+    const liveListing = await getOnChainUsdcPrice(skill.on_chain_address, {
+      useCache: false,
+    });
+    if (!liveListing) {
+      skill.on_chain_address = null;
+      skill.on_chain_protocol_version = null;
+      skill.on_chain_program_id = null;
+    }
+  }
+
   if (!skill.on_chain_address) {
     const authHeader = request.headers.get("x-agentvouch-auth");
     if (authHeader) {

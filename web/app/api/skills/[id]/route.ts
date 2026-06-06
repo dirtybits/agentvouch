@@ -269,16 +269,19 @@ export async function GET(
     const skill = rows[0];
     skill.chain_context = normalizePersistedChainContext(skill.chain_context);
 
-    if (
-      skill.on_chain_address &&
-      !normalizeUsdcMicros(skill.price_usdc_micros)
-    ) {
-      const listing = await getOnChainUsdcPrice(skill.on_chain_address);
-      if (listing) {
-        skill.price_usdc_micros = listing.priceUsdcMicros;
+    if (skill.on_chain_address) {
+      const listing = await fetchOnChainSkillListing(skill.on_chain_address, {
+        useCache: false,
+      });
+      if (!listing) {
+        skill.on_chain_address = null;
+        skill.on_chain_protocol_version = null;
+        skill.on_chain_program_id = null;
+      } else {
+        skill.price_usdc_micros = String(listing.data.priceUsdcMicros);
         skill.currency_mint ??= getConfiguredUsdcMint();
-        skill.on_chain_protocol_version ??= AGENTVOUCH_PROTOCOL_VERSION;
-        skill.on_chain_program_id ??= getAgentVouchProgramId();
+        skill.on_chain_protocol_version = AGENTVOUCH_PROTOCOL_VERSION;
+        skill.on_chain_program_id = getAgentVouchProgramId();
       }
     }
 
