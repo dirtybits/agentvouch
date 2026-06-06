@@ -135,19 +135,10 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const [landingRes, skillsRes] = await Promise.all([
-          fetch("/api/landing")
-            .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
-            .catch(() => null),
-          fetch("/api/skills?sort=trusted&mode=fast")
-            .then((r) =>
-              r.ok ? (r.json() as Promise<SkillsListResponse>) : null
-            )
-            .catch(() => null),
-        ]);
-        if (!active) return;
+    void fetch("/api/landing")
+      .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
+      .then((landingRes) => {
+        if (!active || !landingRes) return;
         if (landingRes) {
           setLandingMetrics({
             agents: landingRes.metrics.agents,
@@ -158,7 +149,15 @@ export default function Home() {
             downloads: landingRes.metrics.downloads,
           });
         }
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load landing metrics:", error);
+      });
 
+    void fetch("/api/skills?sort=trusted&mode=fast&pageSize=3")
+      .then((r) => (r.ok ? (r.json() as Promise<SkillsListResponse>) : null))
+      .then((skillsRes) => {
+        if (!active) return;
         if (skillsRes?.skills) {
           const featured = skillsRes.skills.slice(0, 3);
           setFeaturedSkills(featured);
@@ -167,7 +166,7 @@ export default function Home() {
             void fetch("/api/skills/hydrate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ skillIds }),
+              body: JSON.stringify({ skillIds, includeBuyerStatus: false }),
             })
               .then((r) =>
                 r.ok ? (r.json() as Promise<SkillsHydrateResponse>) : null
@@ -185,10 +184,10 @@ export default function Home() {
               .catch(() => null);
           }
         }
-      } catch (error: unknown) {
-        console.error("Failed to load landing metrics:", error);
-      }
-    })();
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load featured skills:", error);
+      });
     return () => {
       active = false;
     };

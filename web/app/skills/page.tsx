@@ -302,6 +302,7 @@ export default function MarketplacePage() {
           body: JSON.stringify({
             skillIds,
             buyer: publicKey ? String(publicKey) : null,
+            includeBuyerStatus: Boolean(publicKey),
           }),
         });
         if (!res.ok) throw new Error("Failed to hydrate skills");

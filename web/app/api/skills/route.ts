@@ -71,7 +71,8 @@ import {
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
@@ -169,6 +170,13 @@ type RouteTiming = {
   measure<T>(name: string, fn: () => Promise<T>): Promise<T>;
   header(): string;
 };
+
+function parsePageSize(value: string | null): number {
+  if (!value) return DEFAULT_PAGE_SIZE;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_PAGE_SIZE;
+  return Math.min(MAX_PAGE_SIZE, Math.max(1, parsed));
+}
 
 function createRouteTiming(): RouteTiming {
   const entries: { name: string; durationMs: number }[] = [];
@@ -384,7 +392,6 @@ async function loadRepoSkillRows(input: {
       return sql()<RepoSkillRow & Record<string, unknown>>`
         SELECT
           s.*,
-          latest.files,
           latest.tree_hash,
           latest.has_executable,
           scan.verdict AS scan_verdict,
@@ -402,7 +409,7 @@ async function loadRepoSkillRows(input: {
           ats.refreshed_at AS cached_trust_refreshed_at
         FROM skills s
         LEFT JOIN LATERAL (
-          SELECT files, tree_hash, has_executable
+          SELECT tree_hash, has_executable
           FROM skill_versions
           WHERE skill_id = s.id
           ORDER BY version DESC
@@ -423,7 +430,6 @@ async function loadRepoSkillRows(input: {
       return sql()<RepoSkillRow & Record<string, unknown>>`
         SELECT
           s.*,
-          latest.files,
           latest.tree_hash,
           latest.has_executable,
           scan.verdict AS scan_verdict,
@@ -441,7 +447,7 @@ async function loadRepoSkillRows(input: {
           ats.refreshed_at AS cached_trust_refreshed_at
         FROM skills s
         LEFT JOIN LATERAL (
-          SELECT files, tree_hash, has_executable
+          SELECT tree_hash, has_executable
           FROM skill_versions
           WHERE skill_id = s.id
           ORDER BY version DESC
@@ -467,7 +473,6 @@ async function loadRepoSkillRows(input: {
     return sql()<RepoSkillRow & Record<string, unknown>>`
       SELECT
         s.*,
-        latest.files,
         latest.tree_hash,
         latest.has_executable,
         scan.verdict AS scan_verdict,
@@ -485,7 +490,7 @@ async function loadRepoSkillRows(input: {
         ats.refreshed_at AS cached_trust_refreshed_at
       FROM skills s
       LEFT JOIN LATERAL (
-        SELECT files, tree_hash, has_executable
+        SELECT tree_hash, has_executable
         FROM skill_versions
         WHERE skill_id = s.id
         ORDER BY version DESC
@@ -878,6 +883,9 @@ export async function GET(request: NextRequest) {
       searchParams.get("includeBuyerStatus") === "true";
     const tags = searchParams.get("tags");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const pageSize = parsePageSize(
+      searchParams.get("pageSize") ?? searchParams.get("limit")
+    );
 
     const pgSkills = await loadRepoSkillRows({
       q,
@@ -925,8 +933,8 @@ export async function GET(request: NextRequest) {
     sortEnrichedSkills(enriched, sort);
 
     const total = enriched.length;
-    const offset = (page - 1) * PAGE_SIZE;
-    const paged = enriched.slice(offset, offset + PAGE_SIZE);
+    const offset = (page - 1) * pageSize;
+    const paged = enriched.slice(offset, offset + pageSize);
     const buyerAddress =
       includeBuyerStatus && buyer && isAddress(buyer) ? address(buyer) : null;
     const responseSkills = fastMode
@@ -942,9 +950,9 @@ export async function GET(request: NextRequest) {
         skills: responseSkills,
         pagination: {
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
-          totalPages: Math.ceil(total / PAGE_SIZE),
+          totalPages: Math.ceil(total / pageSize),
         },
       },
       {

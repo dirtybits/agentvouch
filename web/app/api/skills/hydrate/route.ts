@@ -49,6 +49,7 @@ const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 type HydrateRequestBody = {
   skillIds?: unknown;
   buyer?: unknown;
+  includeBuyerStatus?: unknown;
 };
 
 type SkillPaymentFlow =
@@ -111,7 +112,6 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
   >`
     SELECT
       s.*,
-      latest.files,
       latest.tree_hash,
       latest.has_executable,
       scan.verdict AS scan_verdict,
@@ -125,7 +125,7 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
       scan.generated_by_model AS scan_generated_by_model
     FROM skills s
     LEFT JOIN LATERAL (
-      SELECT files, tree_hash, has_executable
+      SELECT tree_hash, has_executable
       FROM skill_versions
       WHERE skill_id = s.id
       ORDER BY version DESC
@@ -362,6 +362,7 @@ export async function POST(request: NextRequest) {
       typeof body.buyer === "string" && isAddress(body.buyer)
         ? body.buyer
         : null;
+    const includeBuyerStatus = body.includeBuyerStatus === true;
     const repoSkills = await loadRepoSkillsById(skillIds);
     const live = await resolveHydrationTrust(repoSkills);
     if (live.trustMap.size > 0) {
@@ -375,14 +376,18 @@ export async function POST(request: NextRequest) {
         void persist();
       }
     }
-    const hydrated = await addPurchasePreflightAndBuyerStatus({
-      skills: buildHydratedBaseRows({
-        skills: repoSkills,
-        trustMap: live.trustMap,
-        identityMap: live.identityMap,
-      }),
-      buyerAddress: buyer ? address(buyer) : null,
+    const baseHydrated = buildHydratedBaseRows({
+      skills: repoSkills,
+      trustMap: live.trustMap,
+      identityMap: live.identityMap,
     });
+    const hydrated =
+      includeBuyerStatus && buyer
+        ? await addPurchasePreflightAndBuyerStatus({
+            skills: baseHydrated,
+            buyerAddress: address(buyer),
+          })
+        : baseHydrated;
 
     return NextResponse.json(
       {
