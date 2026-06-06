@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "agentvouch": "./dist/bin.js"
+    "agentvouch": "dist/bin.js"
   },
   "scripts": {
     "build": "tsup src/bin.ts src/cli.ts --format esm --dts --sourcemap --clean --out-dir dist",
