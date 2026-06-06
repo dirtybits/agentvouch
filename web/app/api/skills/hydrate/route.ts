@@ -61,6 +61,8 @@ type SkillPaymentFlow =
 type RepoSkillRow = SkillScanFieldRow & {
   id: string;
   skill_id: string;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_external_id?: string | null;

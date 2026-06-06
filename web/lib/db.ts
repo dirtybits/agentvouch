@@ -11,7 +11,7 @@ import {
 } from "@/lib/protocolMetadata";
 
 type SqlRow = Record<string, unknown>;
-type SqlQuery = {
+export type SqlQuery = {
   <TRow extends SqlRow = SqlRow>(
     strings: TemplateStringsArray,
     ...values: unknown[]
@@ -147,6 +147,18 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS public_slug VARCHAR(96)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS public_author_slug VARCHAR(96)
+  `;
+
+  await db`DROP INDEX IF EXISTS idx_skills_public_slug`;
+
+  await db`
     UPDATE skills
     SET
       author_kind = CASE
@@ -174,6 +186,102 @@ export async function initializeDatabase() {
         author_pubkey IS NULL
         AND (author_kind = 'wallet' OR publisher_tier = 'registered')
       )
+  `;
+
+  await db`
+    WITH normalized AS (
+      SELECT
+        id,
+        COALESCE(
+          NULLIF(
+            trim(
+              BOTH '-' FROM substring(
+                regexp_replace(
+                  regexp_replace(lower(skill_id), '[^a-z0-9-]+', '-', 'g'),
+                  '-{2,}',
+                  '-',
+                  'g'
+                )
+                FROM 1 FOR 64
+              )
+            ),
+            ''
+          ),
+          left(replace(id::text, '-', ''), 8)
+        ) AS base_skill_slug,
+        COALESCE(
+          NULLIF(
+            CASE
+              WHEN author_handle IS NOT NULL AND author_handle <> '' THEN trim(
+                BOTH '-' FROM substring(
+                  regexp_replace(
+                    regexp_replace(lower(author_handle), '[^a-z0-9-]+', '-', 'g'),
+                    '-{2,}',
+                    '-',
+                    'g'
+                  )
+                  FROM 1 FOR 64
+                )
+              )
+              WHEN author_pubkey IS NOT NULL AND author_pubkey <> '' THEN 'wallet-' || lower(left(author_pubkey, 8))
+              WHEN publisher_identity_key IS NOT NULL AND publisher_identity_key <> '' THEN trim(
+                BOTH '-' FROM substring(
+                  regexp_replace(
+                    regexp_replace(lower(replace(publisher_identity_key, ':', '-')), '[^a-z0-9-]+', '-', 'g'),
+                    '-{2,}',
+                    '-',
+                    'g'
+                  )
+                  FROM 1 FOR 64
+                )
+              )
+              ELSE NULL
+            END,
+            ''
+          ),
+          'publisher-' || left(replace(id::text, '-', ''), 8)
+        ) AS base_author_slug
+      FROM skills
+      WHERE public_slug IS NULL
+        OR public_slug = ''
+        OR public_author_slug IS NULL
+        OR public_author_slug = ''
+    )
+    UPDATE skills s
+    SET
+      public_slug = COALESCE(NULLIF(s.public_slug, ''), normalized.base_skill_slug),
+      public_author_slug = COALESCE(NULLIF(s.public_author_slug, ''), normalized.base_author_slug)
+    FROM normalized
+    WHERE s.id = normalized.id
+  `;
+
+  await db`
+    WITH ranked AS (
+      SELECT
+        id,
+        public_slug,
+        public_author_slug,
+        ROW_NUMBER() OVER (
+          PARTITION BY public_author_slug, public_slug
+          ORDER BY id
+        ) AS route_rank
+      FROM skills
+    )
+    UPDATE skills s
+    SET public_slug = left(ranked.public_slug, 84) || '-' || left(replace(s.id::text, '-', ''), 8)
+    FROM ranked
+    WHERE s.id = ranked.id
+      AND ranked.route_rank > 1
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ALTER COLUMN public_slug SET NOT NULL
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ALTER COLUMN public_author_slug SET NOT NULL
   `;
 
   // Per-identity uniqueness is enforced by the canonical partial index
@@ -562,6 +670,13 @@ export async function initializeDatabase() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_publisher_identity_skill_id
     ON skills(publisher_identity_key, skill_id)
     WHERE publisher_identity_key IS NOT NULL
+  `;
+
+  await db`DROP INDEX IF EXISTS idx_skills_public_slug`;
+
+  await db`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_public_route
+    ON skills(public_author_slug, public_slug)
   `;
 
   await db`

@@ -20,6 +20,7 @@ import {
   normalizeSkillName,
   slugify,
 } from "@/lib/skillDraft";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import { formatMinPrice, isValidListingPriceMicros } from "@/lib/pricing";
@@ -420,6 +421,7 @@ function PublishSkillPageInner() {
       }
 
       const skillDbId: string = data.id;
+      const publicSkillPath = getPublicSkillPath(data);
       const ipfsCid: string | null = data.ipfs_cid;
       const skillUri = ipfsCid
         ? `${window.location.origin}/api/skills/${skillDbId}/raw`
@@ -432,7 +434,7 @@ function PublishSkillPageInner() {
             "Free skill published. It will appear as unverified until you link a wallet or add protocol backing.",
           id: skillDbId,
         });
-        setTimeout(() => router.push(`/skills/${skillDbId}`), 1500);
+        setTimeout(() => router.push(publicSkillPath), 1500);
         return;
       }
 
@@ -488,7 +490,7 @@ function PublishSkillPageInner() {
           )}. Visit the skill page to retry.`,
           id: skillDbId,
         });
-        setTimeout(() => router.push(`/skills/${skillDbId}`), 3000);
+        setTimeout(() => router.push(publicSkillPath), 3000);
         return;
       }
 
@@ -498,7 +500,7 @@ function PublishSkillPageInner() {
         id: skillDbId,
       });
 
-      setTimeout(() => router.push(`/skills/${skillDbId}`), 1500);
+      setTimeout(() => router.push(publicSkillPath), 1500);
     } catch (error: unknown) {
       setResult({ success: false, message: getErrorMessage(error) });
     } finally {

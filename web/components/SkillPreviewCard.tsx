@@ -18,9 +18,12 @@ import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 
 interface SkillPreviewCardSkill {
   id: string;
+  public_slug?: string | null;
+  skill_id?: string | null;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_handle?: string | null;
@@ -321,6 +324,7 @@ export default function SkillPreviewCard({
   });
   const PillIcon = pill.Icon;
   const registered = Boolean(trust && trust.isRegistered);
+  const skillHref = getPublicSkillPath(skill);
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
@@ -334,7 +338,7 @@ export default function SkillPreviewCard({
         {/* Top strip: app icon + action pill */}
         <div className="flex items-start justify-between gap-3">
           <Link
-            href={`/skills/${skill.id}`}
+            href={skillHref}
             className="transition-transform duration-200 group-hover:scale-[1.03]"
             aria-label={skill.name}
           >
@@ -347,7 +351,7 @@ export default function SkillPreviewCard({
           </Link>
 
           <Link
-            href={`/skills/${skill.id}`}
+            href={skillHref}
             className={`mt-0.5 shrink-0 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
               PILL_VARIANT[pill.variant]
             }`}
@@ -363,7 +367,7 @@ export default function SkillPreviewCard({
         {/* Title (hero — full width, up to two lines) + author */}
         <div className="mt-3">
           <Link
-            href={`/skills/${skill.id}`}
+            href={skillHref}
             className="block font-heading text-[18px] font-bold leading-snug text-gray-900 line-clamp-2 break-words transition group-hover:text-[var(--lobster-accent)] dark:text-white"
             title={skill.name}
           >

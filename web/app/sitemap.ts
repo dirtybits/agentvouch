@@ -3,9 +3,13 @@ import { sql } from "@/lib/db";
 import { getAllPosts } from "@/lib/blog";
 import { getCanonicalUrl } from "@/lib/site";
 import { CONTENT_PAGES } from "@/lib/contentPages";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 
 type SkillSitemapRow = {
   id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   author_pubkey: string | null;
   updated_at: string;
 };
@@ -54,13 +58,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   try {
     const rows = await sql()<SkillSitemapRow>`
-      SELECT id, author_pubkey, updated_at
+      SELECT id, skill_id, public_slug, public_author_slug, author_pubkey, updated_at
       FROM skills
       ORDER BY updated_at DESC
     `;
 
     const skillPages: MetadataRoute.Sitemap = rows.map((row) => ({
-      url: getCanonicalUrl(`/skills/${row.id}`),
+      url: getCanonicalUrl(getPublicSkillPath(row)),
       lastModified: new Date(row.updated_at),
       changeFrequency: "weekly",
       priority: 0.7,

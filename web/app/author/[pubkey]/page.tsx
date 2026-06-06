@@ -37,6 +37,7 @@ import {
 import type { SolanaRegistryCandidate } from "@/lib/solanaAgentRegistry";
 import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -95,6 +96,8 @@ function sleep(ms: number) {
 interface RepoSkill {
   id: string;
   skill_id: string;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   author_pubkey: string;
   name: string;
   description: string | null;
@@ -1708,7 +1711,7 @@ export default function AuthorProfilePage() {
                 return (
                   <Link
                     key={skill.id}
-                    href={`/skills/${skill.id}`}
+                    href={getPublicSkillPath(skill)}
                     className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition block"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -1760,7 +1763,7 @@ export default function AuthorProfilePage() {
                   return (
                     <Link
                       key={skill.id}
-                      href={`/skills/${skill.id}`}
+                      href={getPublicSkillPath(skill)}
                       className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition block"
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">

@@ -10,6 +10,9 @@ import { getSkillPaymentFlow } from "@/lib/listingContract";
 
 type RepoListingActivityRow = {
   id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   name: string;
   author_pubkey: string | null;
   on_chain_address: string | null;
@@ -28,6 +31,9 @@ type UsdcPurchaseActivityRow = {
   amount_micros: string;
   verified_at: string;
   skill_db_id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   skill_name: string;
   author_pubkey: string | null;
   on_chain_address: string | null;
@@ -47,6 +53,9 @@ export async function GET() {
       sql()<RepoListingActivityRow>`
         SELECT
           id,
+          skill_id,
+          public_slug,
+          public_author_slug,
           name,
           author_pubkey,
           on_chain_address,
@@ -68,6 +77,9 @@ export async function GET() {
           r.amount_micros::text AS amount_micros,
           r.verified_at::text AS verified_at,
           s.id AS skill_db_id,
+          s.skill_id,
+          s.public_slug,
+          s.public_author_slug,
           s.name AS skill_name,
           s.author_pubkey,
           s.on_chain_address,

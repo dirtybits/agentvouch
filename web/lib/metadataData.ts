@@ -8,12 +8,15 @@ import {
 } from "@/lib/chains";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import { truncateDescription } from "@/lib/site";
+import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
 
 const CHAIN_PREFIX = "chain-";
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
 type SkillRow = {
   id: string;
+  public_slug: string;
+  public_author_slug: string;
   author_pubkey: string | null;
   author_kind: string | null;
   author_handle: string | null;
@@ -59,9 +62,14 @@ export async function getSkillMetadataSummary(id: string) {
     };
   }
 
+  const route = await resolveSkillRouteParam(id).catch(() => null);
+  if (!route || route.id.startsWith(CHAIN_PREFIX)) return null;
+
   const rows = await sql()<SkillRow>`
     SELECT
       id,
+      public_slug,
+      public_author_slug,
       author_pubkey,
       author_kind,
       author_handle,
@@ -74,7 +82,7 @@ export async function getSkillMetadataSummary(id: string) {
       on_chain_address,
       price_usdc_micros
     FROM skills
-    WHERE id = ${id}::uuid
+    WHERE id = ${route.id}::uuid
     LIMIT 1
   `.catch(() => []);
   const skill = rows[0];
@@ -108,6 +116,9 @@ export async function getSkillMetadataSummary(id: string) {
 
   return {
     id: skill.id,
+    public_slug: skill.public_slug,
+    public_author_slug: skill.public_author_slug,
+    skill_id: skill.skill_id,
     name: skill.name,
     description:
       skill.description ||

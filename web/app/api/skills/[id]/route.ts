@@ -44,6 +44,7 @@ import {
   type SkillScanFieldRow,
   type SkillSecurityScan,
 } from "@/lib/securityScan";
+import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
 
 const CHAIN_PREFIX = "chain-";
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -51,6 +52,8 @@ const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
 type SkillRow = {
   id: string;
+  public_slug: string;
+  public_author_slug: string;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_external_id?: string | null;
@@ -190,6 +193,8 @@ export async function GET(
         {
           id: `chain-${listing.publicKey}`,
           skill_id: listing.publicKey,
+          public_slug: `chain-${listing.publicKey}`,
+          public_author_slug: "chain",
           author_pubkey: listing.data.author,
           name: listing.data.name,
           description: listing.data.description,
@@ -247,8 +252,14 @@ export async function GET(
       );
     }
 
+    const route = await resolveSkillRouteParam(id);
+    if (!route || route.id.startsWith(CHAIN_PREFIX)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
+    const skillDbId = route.id;
+
     const rows = await sql()<SkillRow>`
-      SELECT * FROM skills WHERE id = ${id}::uuid
+      SELECT * FROM skills WHERE id = ${skillDbId}::uuid
     `;
 
     if (rows.length === 0) {
@@ -284,7 +295,7 @@ export async function GET(
         has_executable,
         created_at
       FROM skill_versions
-      WHERE skill_id = ${id}::uuid
+      WHERE skill_id = ${skillDbId}::uuid
       ORDER BY version DESC
     `;
 
@@ -378,9 +389,10 @@ export async function GET(
               String(buyerAddress),
               String(skill.on_chain_address)
             ).catch(() => false)
-          : await hasUsdcPurchaseEntitlement(id, String(buyerAddress)).catch(
-              () => false
-            )
+          : await hasUsdcPurchaseEntitlement(
+              skillDbId,
+              String(buyerAddress)
+            ).catch(() => false)
         : getSkillPaymentFlow({
             legacySolLamports: skill.price_lamports,
             allowLegacySol: true,
@@ -394,7 +406,7 @@ export async function GET(
     const buyerPurchaseSummary =
       buyerAddress && buyerHasPurchased
         ? await getUsdcPurchaseEntitlementSummary(
-            id,
+            skillDbId,
             String(buyerAddress)
           ).catch(() => null)
         : null;

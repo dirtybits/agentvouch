@@ -48,12 +48,15 @@ import { isRpcRateLimitError } from "@/lib/rpcErrors";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getErrorMessage } from "@/lib/errors";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import { getPublicSkillPath, type PublicSkillUrlFields } from "@/lib/skillUrls";
 
 type PageTab = "browse" | "my-purchases" | "my-listings";
 
 interface SkillRow {
   id: string;
   skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_handle?: string | null;
@@ -112,6 +115,9 @@ type SkillListingData = { publicKey: Address; account: SkillListing };
 type PurchaseData = { publicKey: Address; account: Purchase };
 type ActivityRepoListing = {
   id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   name: string;
   author_pubkey: string | null;
   on_chain_address: string | null;
@@ -132,6 +138,9 @@ type ActivityUsdcPurchase = {
   amount_micros: string;
   verified_at: string;
   skill_db_id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   skill_name: string;
   author_pubkey: string | null;
   on_chain_address: string | null;
@@ -149,6 +158,8 @@ type FeedItem = {
   skillListing: string | null;
   skillName: string;
   skillRepoId: string | null;
+  publicSlug: string | null;
+  publicAuthorSlug: string | null;
   author: string | null;
   timestamp: number;
   legacySolLamports: number | null;
@@ -220,10 +231,10 @@ function getCapabilityFallback(tags: string[]): string | null {
 }
 
 function getAuthorActionHref(
-  detailId: string,
+  skill: PublicSkillUrlFields,
   action: "edit-listing" | "publish-version"
 ): string {
-  return `/skills/${detailId}?authorAction=${action}#author-actions`;
+  return `${getPublicSkillPath(skill)}?authorAction=${action}#author-actions`;
 }
 
 export default function MarketplacePage() {
@@ -349,6 +360,8 @@ export default function MarketplacePage() {
         skillListing: listing.on_chain_address,
         skillName: listing.name,
         skillRepoId: listing.id,
+        publicSlug: listing.public_slug,
+        publicAuthorSlug: listing.public_author_slug,
         author: listing.author_pubkey,
         timestamp: Math.floor(new Date(listing.created_at).getTime() / 1000),
         legacySolLamports: null,
@@ -362,6 +375,8 @@ export default function MarketplacePage() {
           skillListing: purchase.on_chain_address,
           skillName: purchase.skill_name,
           skillRepoId: purchase.skill_db_id,
+          publicSlug: purchase.public_slug,
+          publicAuthorSlug: purchase.public_author_slug,
           author: purchase.author_pubkey,
           timestamp: Math.floor(
             new Date(purchase.verified_at).getTime() / 1000
@@ -854,7 +869,12 @@ export default function MarketplacePage() {
                           {item.type === "listing" ? "listed " : "bought "}
                           {item.skillRepoId ? (
                             <Link
-                              href={`/skills/${item.skillRepoId}`}
+                              href={getPublicSkillPath({
+                                id: item.skillRepoId,
+                                skill_id: item.skillName,
+                                public_slug: item.publicSlug,
+                                public_author_slug: item.publicAuthorSlug,
+                              })}
                               className="font-semibold text-gray-900 dark:text-white hover:text-[var(--sea-accent)] transition"
                             >
                               &ldquo;{item.skillName}&rdquo;
@@ -1015,10 +1035,13 @@ export default function MarketplacePage() {
                   const listingDetail = myListingDetails.get(
                     String(listing.publicKey)
                   );
-                  const detailId =
-                    listingDetail?.id ?? `chain-${String(listing.publicKey)}`;
+                  const detailSkill =
+                    listingDetail ?? {
+                      id: `chain-${String(listing.publicKey)}`,
+                      skill_id: String(listing.publicKey),
+                    };
                   const canPublishVersion =
-                    !!listingDetail && detailId.indexOf("chain-") !== 0;
+                    !!listingDetail && !detailSkill.id.startsWith("chain-");
                   const price = Number(listing.account.priceUsdcMicros);
                   const downloads = Number(listing.account.totalDownloads);
                   const revenue = Number(
@@ -1060,7 +1083,10 @@ export default function MarketplacePage() {
                       </div>
                       <div className="mt-4 flex flex-wrap items-center gap-2">
                         <Link
-                          href={getAuthorActionHref(detailId, "edit-listing")}
+                          href={getAuthorActionHref(
+                            detailSkill,
+                            "edit-listing"
+                          )}
                           className={navButtonInlineClass}
                         >
                           <FiEdit2 className="w-3.5 h-3.5" />
@@ -1069,7 +1095,7 @@ export default function MarketplacePage() {
                         {canPublishVersion && (
                           <Link
                             href={getAuthorActionHref(
-                              detailId,
+                              detailSkill,
                               "publish-version"
                             )}
                             className={navButtonInlineClass}

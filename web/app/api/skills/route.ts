@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { randomUUID } from "node:crypto";
 import { initializeDatabase, sql } from "@/lib/db";
 import { generateSummarySafe } from "@/lib/ai/summarize";
 import { runScanSafe, SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
@@ -68,6 +69,7 @@ import {
   normalizeUsdcMicros,
 } from "@/lib/listingContract";
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
+import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 
 const PAGE_SIZE = 20;
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -83,6 +85,8 @@ type SkillPaymentFlow =
 type RepoSkillRow = SkillScanFieldRow & {
   id: string;
   skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
   author_pubkey: string | null;
   author_kind?: "wallet" | "github" | "api_token" | "unknown" | string;
   author_external_id?: string | null;
@@ -278,6 +282,8 @@ async function fetchOnChainListings(): Promise<ChainSkillRow[]> {
     return listings.map((listing) => ({
       id: `chain-${listing.publicKey}`,
       skill_id: listing.publicKey,
+      public_slug: `chain-${listing.publicKey}`,
+      public_author_slug: "chain",
       author_pubkey: listing.data.author,
       name: listing.data.name,
       description: listing.data.description,
@@ -1079,6 +1085,14 @@ export async function POST(request: NextRequest) {
     }
 
     await initializeDatabase();
+    const skillDbId = randomUUID();
+    const { publicAuthorSlug, publicSlug } = await buildUniquePublicSkillRoute(sql(), {
+      id: skillDbId,
+      skill_id,
+      author_handle: publisher.handle,
+      author_pubkey: publisher.authorPubkey,
+      publisher_identity_key: publisher.identityKey,
+    });
 
     const tree = await putSkillTree(upload.files);
     const pinResult = await pinSkillContent(content, skill_id, 1);
@@ -1099,7 +1113,10 @@ export async function POST(request: NextRequest) {
 
     const [skill] = await sql()<RepoSkillRow & Record<string, unknown>>`
       INSERT INTO skills (
+        id,
         skill_id,
+        public_slug,
+        public_author_slug,
         author_pubkey,
         author_kind,
         author_external_id,
@@ -1118,7 +1135,10 @@ export async function POST(request: NextRequest) {
         currency_mint
       )
       VALUES (
+        ${skillDbId}::uuid,
         ${skill_id},
+        ${publicSlug},
+        ${publicAuthorSlug},
         ${publisher.authorPubkey},
         ${publisher.kind},
         ${publisher.externalId},

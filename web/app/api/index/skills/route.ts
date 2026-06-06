@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchAllIndexedSkills } from "@/lib/indexFeeds";
 import { AGENT_DISCOVERY_SCHEMA_VERSION } from "@/lib/agentDiscovery";
 import { getErrorMessage } from "@/lib/errors";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
       skills: skills.map((skill) => ({
         id: skill.id,
         skill_id: skill.skill_id,
+        public_url: `${baseUrl}${getPublicSkillPath(skill)}`,
         name: skill.name,
         description: skill.description,
         tags: skill.tags,

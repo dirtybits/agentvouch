@@ -38,11 +38,15 @@ import {
 import { isRpcRateLimitError } from "@/lib/rpcErrors";
 import { getErrorMessage } from "@/lib/errors";
 import { normalizeRegisteredAt } from "@/lib/registeredAt";
+import { getPublicSkillPath, type PublicSkillUrlFields } from "@/lib/skillUrls";
 
 type Tab = "profile" | "vouch" | "explorer" | "disputes";
 
 type MarketplaceListingRow = {
   id: string;
+  skill_id?: string | null;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   name: string;
   description: string | null;
   on_chain_address?: string | null;
@@ -100,10 +104,10 @@ function getSolanaFmTxUrl(tx: string): string {
 }
 
 function getAuthorActionHref(
-  detailId: string,
+  skill: PublicSkillUrlFields,
   action: "edit-listing" | "publish-version"
 ): string {
-  return `/skills/${detailId}?authorAction=${action}#author-actions`;
+  return `${getPublicSkillPath(skill)}?authorAction=${action}#author-actions`;
 }
 
 function toBigInt(value: unknown): bigint {
@@ -1218,7 +1222,7 @@ export default function DashboardPage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-2">
                                 <Link
-                                  href={`/skills/${listing.id}`}
+                                  href={getPublicSkillPath(listing)}
                                   className="text-base font-bold text-gray-900 dark:text-white hover:text-[var(--lobster-accent)] transition hover:underline"
                                 >
                                   {listing.name}
@@ -1244,10 +1248,7 @@ export default function DashboardPage() {
                             </div>
                             <div className="flex flex-wrap items-center gap-2 shrink-0">
                               <Link
-                                href={getAuthorActionHref(
-                                  listing.id,
-                                  "edit-listing"
-                                )}
+                                href={getAuthorActionHref(listing, "edit-listing")}
                                 className={navButtonSecondaryInlineClass}
                               >
                                 <FiEdit2 className="w-3.5 h-3.5" />
@@ -1256,7 +1257,7 @@ export default function DashboardPage() {
                               {canPublishVersion && (
                                 <Link
                                   href={getAuthorActionHref(
-                                    listing.id,
+                                    listing,
                                     "publish-version"
                                   )}
                                   className={navButtonSecondaryInlineClass}
@@ -1266,7 +1267,7 @@ export default function DashboardPage() {
                                 </Link>
                               )}
                               <Link
-                                href={`/skills/${listing.id}`}
+                                href={getPublicSkillPath(listing)}
                                 className={navButtonSecondaryInlineClass}
                               >
                                 View
