@@ -70,6 +70,7 @@ import {
 } from "@/lib/listingContract";
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
+import { upsertAuthorTrustSnapshots } from "@/lib/trustSnapshots";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -657,49 +658,6 @@ async function resolveLiveSkillTrust(input: {
     }
   }
   return { trustMap, identityMap };
-}
-
-async function upsertAuthorTrustSnapshots(input: {
-  trustMap: Map<string, AuthorTrust>;
-  identityMap: Map<string, AgentIdentitySummary>;
-}) {
-  const entries = [...input.trustMap.entries()];
-  if (entries.length === 0) return;
-
-  await Promise.all(
-    entries.map(([walletPubkey, trust]) => {
-      const identity = input.identityMap.get(walletPubkey) ?? null;
-      const summary = buildAgentTrustSummary({
-        walletPubkey,
-        trust,
-        identity,
-      });
-      return sql()`
-        INSERT INTO author_trust_snapshots (
-          wallet_pubkey,
-          chain_context,
-          reputation_score,
-          author_trust,
-          author_trust_summary,
-          refreshed_at
-        )
-        VALUES (
-          ${walletPubkey},
-          ${configuredSolanaChainContext},
-          ${trust.reputationScore},
-          ${JSON.stringify(trust)}::jsonb,
-          ${JSON.stringify(summary)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (wallet_pubkey, chain_context)
-        DO UPDATE SET
-          reputation_score = EXCLUDED.reputation_score,
-          author_trust = EXCLUDED.author_trust,
-          author_trust_summary = EXCLUDED.author_trust_summary,
-          refreshed_at = NOW()
-      `;
-    })
-  );
 }
 
 function persistAuthorTrustSnapshots(input: {
