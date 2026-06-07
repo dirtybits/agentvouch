@@ -46,7 +46,7 @@ export function TrustSignalChecklist({
   if (!signals || signals.length === 0) return null;
 
   return (
-    <div className="mb-6 rounded-sm border border-neutral-200 p-4 dark:border-neutral-800">
+    <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/50">
       <p className="text-sm font-semibold">Trust signals</p>
       <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
         Independent advisory checks. Only staked on-chain trust grants allow.

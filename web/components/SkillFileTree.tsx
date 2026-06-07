@@ -132,24 +132,6 @@ function collectDirectoryPaths(directory: TreeDirectoryNode): string[] {
   );
 }
 
-function getScanBanner(scan: SkillSecurityScan | null | undefined) {
-  if (!scan) return null;
-  if (scan.verdict === "avoid") {
-    return {
-      text: "Automated advisory scan found concrete risk in this skill tree.",
-      className:
-        "border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
-    };
-  }
-  return {
-    text: scan.truncated
-      ? "Automated advisory scan reviewed this skill tree with truncation. Review before installing."
-      : "Automated advisory scan completed for this skill tree. Review before installing.",
-    className:
-      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
-  };
-}
-
 export default function SkillFileTree({
   skillId,
   skillName,
@@ -175,8 +157,6 @@ export default function SkillFileTree({
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const selected = files.find((file) => file.path === selectedPath);
-  const scanBanner = getScanBanner(securityScan);
-
   async function selectFile(file: SkillFileTreeEntry) {
     setSelectedPath(file.path);
     setError(null);
@@ -286,21 +266,13 @@ export default function SkillFileTree({
         <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-gray-500 dark:text-gray-400">
           <span>{files.length} files</span>
           <span>{formatBytes(totalBytes)}</span>
-          {treeHash && <span title={treeHash}>tree {treeHash.slice(0, 10)}...</span>}
+          {treeHash && (
+            <span title={treeHash}>tree {treeHash.slice(0, 10)}...</span>
+          )}
         </div>
       </div>
 
-      {scanBanner ? (
-        <div
-          className={`mb-4 flex items-start gap-2 rounded-sm border px-3 py-2 text-sm ${scanBanner.className}`}
-        >
-          <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            {scanBanner.text} This automated signal is advisory, not a staked
-            vouch.
-          </span>
-        </div>
-      ) : hasExecutable ? (
+      {hasExecutable && !securityScan ? (
         <div className="mb-4 flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>Contains executable code — not yet security-scanned.</span>
@@ -348,7 +320,9 @@ export default function SkillFileTree({
               Loading file...
             </div>
           ) : error ? (
-            <p className="text-sm text-amber-600 dark:text-amber-400">{error}</p>
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              {error}
+            </p>
           ) : selectedPath === "SKILL.md" ? (
             <div className="font-article">
               <MarkdownRenderer content={selectedContent} />

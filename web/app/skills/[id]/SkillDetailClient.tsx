@@ -13,6 +13,7 @@ import type { SkillSecurityScan } from "@/lib/securityScan";
 import type { TrustSignal } from "@/lib/trustSignals";
 import TrustSignalChecklist from "@/components/TrustSignalChecklist";
 import InfoTip from "@/components/InfoTip";
+import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
@@ -1438,7 +1439,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
             </details>
             {/* Version History */}
             {(skill.versions?.length > 0 || (isAuthor && !isChainOnly)) && (
-              <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+              <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-6">
                 <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-2">
                     <FiGitCommit className="w-4 h-4 text-gray-400" />
@@ -1586,145 +1587,155 @@ export default function SkillDetailPage({ id }: { id: string }) {
           <aside className="self-start lg:sticky lg:top-6">
             {/* Install / Buy action */}
             {(!hasLegacySolPrice || hasUsdcPrimary) && (
-              <div className="rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-4 mb-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white">
-                      {purchaseTitle}
-                      <InfoTip
-                        label="Pricing and checkout details"
-                        align="left"
-                      >
-                        {purchaseDescription}
-                      </InfoTip>
-                    </div>
+              <div className="mb-6 rounded-lg border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    {primaryUsdcPrice ? (
+                      <>
+                        <span className="font-display text-3xl font-bold leading-none text-gray-900 dark:text-white">
+                          {primaryUsdcPrice}
+                        </span>
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                          USDC
+                        </span>
+                      </>
+                    ) : hasLegacySolPrice ? (
+                      <span className="font-display text-2xl font-bold leading-none text-gray-900 dark:text-white">
+                        Legacy SOL
+                      </span>
+                    ) : (
+                      <span className="font-display text-3xl font-bold leading-none text-gray-900 dark:text-white">
+                        Free
+                      </span>
+                    )}
                   </div>
+                  <InfoTip label="Pricing and checkout details" align="right">
+                    {purchaseDescription}
+                  </InfoTip>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <span>
+                    {(skill.total_installs ?? 0) + (skill.total_downloads ?? 0)}{" "}
+                    installs
+                  </span>
+                  {estimatedPurchaseRentLamports > 0 ? (
+                    <span className="inline-flex items-center gap-1">
+                      · +
+                      <SolAmount
+                        amount={fromLamports(
+                          estimatedPurchaseRentLamports
+                        ).toFixed(4)}
+                        iconClassName="w-3 h-3"
+                      />
+                      rent
+                    </span>
+                  ) : null}
+                  <span>· {isPaidSkill ? "paid skill" : "free skill"}</span>
+                </div>
+
+                <div className="mt-4">
                   {connected ? (
-                    <div className="flex items-center gap-2">
-                      {!isPaidSkill ? (
+                    !isPaidSkill ? (
+                      <button
+                        onClick={handleFreeInstall}
+                        disabled={installing}
+                        className={`${navButtonPrimaryInlineClass} w-full justify-center`}
+                      >
+                        {installing ? (
+                          <>
+                            <FiLoader className="w-4 h-4 animate-spin" />
+                            Installing…
+                          </>
+                        ) : (
+                          <>
+                            <FiDownload className="w-4 h-4" />
+                            Install
+                          </>
+                        )}
+                      </button>
+                    ) : isAuthor ? (
+                      <Link
+                        href="#author-actions"
+                        className={`${navButtonSecondaryInlineClass} w-full justify-center`}
+                      >
+                        Manage Listing
+                      </Link>
+                    ) : buyerHasPurchased ? (
+                      signedRedownloadAvailable ? (
                         <button
-                          onClick={handleFreeInstall}
-                          disabled={installing}
-                          className={navButtonPrimaryInlineClass}
+                          onClick={handleSignedDownload}
+                          disabled={downloading}
+                          className={`${navButtonPrimaryInlineClass} w-full justify-center`}
                         >
-                          {installing ? (
+                          {downloading ? (
                             <>
                               <FiLoader className="w-4 h-4 animate-spin" />
-                              Installing…
+                              Signing…
                             </>
                           ) : (
                             <>
                               <FiDownload className="w-4 h-4" />
-                              Install
-                            </>
-                          )}
-                        </button>
-                      ) : isAuthor ? (
-                        <Link
-                          href="#author-actions"
-                          className={navButtonSecondaryInlineClass}
-                        >
-                          Manage Listing
-                        </Link>
-                      ) : buyerHasPurchased ? (
-                        signedRedownloadAvailable ? (
-                          <button
-                            onClick={handleSignedDownload}
-                            disabled={downloading}
-                            className={navButtonPrimaryInlineClass}
-                          >
-                            {downloading ? (
-                              <>
-                                <FiLoader className="w-4 h-4 animate-spin" />
-                                Signing…
-                              </>
-                            ) : (
-                              <>
-                                <FiDownload className="w-4 h-4" />
-                                Sign & Download
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
-                            Purchased. Signed re-downloads require an on-chain
-                            link.
-                          </span>
-                        )
-                      ) : embeddedWalletCheckoutBlocked ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
-                          <FiAlertTriangle className="w-3.5 h-3.5" />
-                          Use an extension wallet
-                        </span>
-                      ) : isListingRequired ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
-                          <FiAlertTriangle className="w-3.5 h-3.5" />
-                          Listing setup required
-                        </span>
-                      ) : primaryUsdcPrice && browserCanUseUsdc ? (
-                        <button
-                          onClick={handleUsdcPurchase}
-                          disabled={purchasingUsdc || purchaseBlocked}
-                          className={navButtonPrimaryInlineClass}
-                        >
-                          {purchasingUsdc ? (
-                            <>
-                              <FiLoader className="w-4 h-4 animate-spin" />
-                              Processing…
-                            </>
-                          ) : (
-                            <>
-                              <UsdcIcon className="w-4 h-4" />
-                              {purchaseBlocked
-                                ? purchasePreflightStatus ===
-                                  "buyerMissingUsdcAccount"
-                                  ? "Set Up USDC Account"
-                                  : "Need More USDC"
-                                : "Pay with USDC"}
+                              Sign & Download
                             </>
                           )}
                         </button>
                       ) : (
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
-                          USDC checkout is required for new purchases.
-                        </span>
-                      )}
-                    </div>
+                        <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+                          Purchased. Signed re-downloads require an on-chain
+                          link.
+                        </p>
+                      )
+                    ) : embeddedWalletCheckoutBlocked ? (
+                      <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
+                        <FiAlertTriangle className="w-3.5 h-3.5" />
+                        Use an extension wallet
+                      </p>
+                    ) : isListingRequired ? (
+                      <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <FiAlertTriangle className="w-3.5 h-3.5" />
+                        Listing setup required
+                      </p>
+                    ) : primaryUsdcPrice && browserCanUseUsdc ? (
+                      <button
+                        onClick={handleUsdcPurchase}
+                        disabled={purchasingUsdc || purchaseBlocked}
+                        className={`${navButtonPrimaryInlineClass} w-full justify-center`}
+                      >
+                        {purchasingUsdc ? (
+                          <>
+                            <FiLoader className="w-4 h-4 animate-spin" />
+                            Processing…
+                          </>
+                        ) : (
+                          <>
+                            <UsdcIcon className="w-4 h-4" />
+                            {purchaseBlocked
+                              ? purchasePreflightStatus ===
+                                "buyerMissingUsdcAccount"
+                                ? "Set Up USDC Account"
+                                : "Need More USDC"
+                              : "Pay with USDC"}
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+                        USDC checkout is required for new purchases.
+                      </p>
+                    )
                   ) : (
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
-                      {connectWalletLabel}
-                    </span>
+                    <div className="flex flex-col items-stretch gap-1.5 [&_button]:w-full [&_button]:justify-center">
+                      <ClientWalletButton />
+                      <span className="text-center text-[11px] text-gray-400 dark:text-gray-500">
+                        {connectWalletLabel}
+                      </span>
+                    </div>
                   )}
                 </div>
-                {(primaryUsdcPrice || estimatedPurchaseRentLamports > 0) && (
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {primaryUsdcPrice && (
-                      <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          Primary price
-                        </div>
-                        <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono inline-flex items-center gap-2">
-                          <UsdcIcon className="w-3.5 h-3.5 text-[var(--lobster-accent)]" />
-                          {primaryUsdcPrice} USDC
-                        </div>
-                      </div>
-                    )}
-                    {estimatedPurchaseRentLamports > 0 && (
-                      <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          Receipt rent
-                        </div>
-                        <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                          <SolAmount
-                            amount={fromLamports(
-                              estimatedPurchaseRentLamports
-                            ).toFixed(4)}
-                            iconClassName="w-3.5 h-3.5"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                {isPaidSkill && !buyerHasPurchased && !isAuthor && (
+                  <p className="mt-2.5 text-center text-[11px] text-gray-400 dark:text-gray-500">
+                    on-chain purchase · per-buyer receipt · refund-eligible
+                  </p>
                 )}
                 {buyerHasPurchased &&
                   skill.buyerPurchaseSummary &&
@@ -1843,7 +1854,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
               scan={skill.security_scan}
             />
             {/* Trust Section */}
-            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+            <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-6 mb-6">
               <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <FiShield className="w-4 h-4" />
                 Author Trust Signals
@@ -2042,7 +2053,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                 )}
                 {/* IPFS CID */}
                 {skill.ipfs_cid && (
-                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
+                  <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-4 mb-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FiShield className="w-4 h-4 text-green-500" />
@@ -2074,7 +2085,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                 )}
                 {/* Skill URI */}
                 {skill.skill_uri && (
-                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
+                  <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-4 mb-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FiExternalLink className="w-4 h-4 text-[var(--sea-accent)]" />
@@ -2345,7 +2356,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
         ) : (
           connected &&
           walletAddress === skill.author_pubkey && (
-            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 mb-6">
+            <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <UsdcIcon className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -2412,7 +2423,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
         {isAuthor && !isChainOnly && !skill.on_chain_address && (
           <div
             id="author-actions"
-            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 mb-6"
+            className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6"
           >
             <div className="flex items-center justify-between gap-4">
               <div>
