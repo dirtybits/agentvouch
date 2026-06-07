@@ -10,6 +10,7 @@ import {
   FiFileText,
   FiFolder,
   FiLoader,
+  FiLock,
 } from "react-icons/fi";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { finalizeSlug } from "@/lib/skillDraft";
@@ -30,6 +31,9 @@ interface SkillFileTreeProps {
   hasExecutable: boolean;
   securityScan?: SkillSecurityScan | null;
   initialContent: string | null;
+  /** Paid skill whose content is gated: show the tree, lock the file body. */
+  walled?: boolean;
+  priceLabel?: string;
 }
 
 type TreeFileNode = {
@@ -154,6 +158,8 @@ export default function SkillFileTree({
   hasExecutable,
   securityScan,
   initialContent,
+  walled = false,
+  priceLabel,
 }: SkillFileTreeProps) {
   const tree = useMemo(
     () => buildTree(files, getSkillTreeRootName(skillName)),
@@ -174,6 +180,9 @@ export default function SkillFileTree({
   async function selectFile(file: SkillFileTreeEntry) {
     setSelectedPath(file.path);
     setError(null);
+    if (walled) {
+      return;
+    }
     if (file.path === "SKILL.md") {
       setSelectedContent(initialContent ?? "");
       return;
@@ -266,7 +275,7 @@ export default function SkillFileTree({
   }
 
   return (
-    <div className="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-lg border border-gray-200 bg-white/70 p-6 dark:border-gray-800 dark:bg-gray-900/50">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <FiFolder className="h-4 w-4 text-gray-400" />
@@ -320,7 +329,20 @@ export default function SkillFileTree({
               </span>
             )}
           </div>
-          {loading ? (
+          {walled ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+              <FiLock className="h-6 w-6 text-gray-400" />
+              <p className="font-article text-lg text-gray-700 dark:text-gray-200">
+                Full content unlocks after purchase
+              </p>
+              <p className="max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                You can review the file tree and the security-scan read now.
+                SKILL.md and any scripts are delivered on a verified, per-buyer
+                download once you purchase
+                {priceLabel ? ` (${priceLabel})` : ""}.
+              </p>
+            </div>
+          ) : loading ? (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <FiLoader className="h-4 w-4 animate-spin" />
               Loading file...
@@ -328,7 +350,9 @@ export default function SkillFileTree({
           ) : error ? (
             <p className="text-sm text-amber-600 dark:text-amber-400">{error}</p>
           ) : selectedPath === "SKILL.md" ? (
-            <MarkdownRenderer content={selectedContent} />
+            <div className="font-article">
+              <MarkdownRenderer content={selectedContent} />
+            </div>
           ) : (
             <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-gray-700 dark:text-gray-300">
               <code>{selectedContent}</code>

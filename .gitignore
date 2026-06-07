@@ -56,3 +56,4 @@ db-inventory*.json
 
 # claude code — worktrees are ephemeral
 .claude/worktrees/
+web/public/skill-mockup.html

@@ -4,12 +4,15 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
-import TrustBadge, { type TrustData } from "@/components/TrustBadge";
+import { type TrustData } from "@/components/TrustBadge";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
-import SkillFileTree, { type SkillFileTreeEntry } from "@/components/SkillFileTree";
+import SkillFileTree, {
+  type SkillFileTreeEntry,
+} from "@/components/SkillFileTree";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import type { TrustSignal } from "@/lib/trustSignals";
 import TrustSignalChecklist from "@/components/TrustSignalChecklist";
+import InfoTip from "@/components/InfoTip";
 import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
@@ -18,9 +21,7 @@ import {
   createSignedDownloadAuthPayload,
 } from "@/lib/auth";
 import { encodeBase64 } from "@/lib/base64";
-import {
-  buildPaidSkillDownloadRequiredMessage,
-} from "@/lib/skillFlowMessages";
+import { buildPaidSkillDownloadRequiredMessage } from "@/lib/skillFlowMessages";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
@@ -57,7 +58,6 @@ import {
   FiArrowLeft,
   FiCheckCircle,
   FiDownload,
-  FiTag,
   FiClock,
   FiShield,
   FiCopy,
@@ -69,6 +69,8 @@ import {
   FiGithub,
   FiEdit2,
   FiTrash2,
+  FiTerminal,
+  FiChevronDown,
 } from "react-icons/fi";
 
 interface SkillVersion {
@@ -281,11 +283,7 @@ async function fetchSignedRawSkill({
   return rawRes.text();
 }
 
-export default function SkillDetailPage({
-  id,
-}: {
-  id: string;
-}) {
+export default function SkillDetailPage({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const { status, account, walletName } = useAgentVouchWallet();
   const {
@@ -1089,823 +1087,1018 @@ export default function SkillDetailPage({
     ? "Connect wallet to buy and unlock"
     : "Connect wallet to install";
 
+  const trustVerdict = (() => {
+    const sigs = skill.signals ?? [];
+    if (sigs.length === 0) return null;
+    if (sigs.some((s) => s.status === "fail"))
+      return {
+        word: "Avoid",
+        text: "text-red-700 dark:text-red-300",
+        box: "border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-900/10",
+        sub: "A trust signal failed. Review the signals before installing.",
+      };
+    if (sigs.some((s) => s.status === "warn" || s.status === "unknown"))
+      return {
+        word: "Review",
+        text: "text-amber-700 dark:text-amber-300",
+        box: "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/10",
+        sub: "Advisory findings or unestablished signals to weigh before installing.",
+      };
+    return {
+      word: "Trusted",
+      text: "text-emerald-700 dark:text-emerald-300",
+      box: "border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10",
+      sub: "Staked on-chain trust and clean advisory checks back this listing.",
+    };
+  })();
+
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <Link
-                href="/skills"
-                className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition flex items-center gap-1"
-              >
-                <FiArrowLeft className="w-3.5 h-3.5" />
-                Skills
-              </Link>
-              <span className="text-gray-300 dark:text-gray-700">/</span>
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                {skill.name}
-              </span>
-            </div>
-            <h1 className="text-3xl font-display text-gray-900 dark:text-white">
-              {skill.name}
-            </h1>
-            {skill.description && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {skill.description}
-              </p>
-            )}
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">
-              Before you install or pay, inspect the author&apos;s trust record.
-              See{" "}
-              <Link
-                href="/docs/verify-ai-agents"
-                className="text-[var(--lobster-accent)] hover:underline"
-              >
-                how to verify an AI agent
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/docs/skill-md-security"
-                className="text-[var(--lobster-accent)] hover:underline"
-              >
-                why `skill.md` needs trust context
-              </Link>
-              .
-            </p>
-          </div>
-        </div>
-
-        {/* Trust Section */}
-        <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <FiShield className="w-4 h-4" />
-            Author Trust Signals
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Reputation, USDC backing, and author-wide dispute history help show
-            how much accountability sits behind this author.
-          </p>
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Author:
-            </span>
-            {authorHref?.startsWith("http") ? (
-              <a
-                href={authorHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
-                title={authorTitle}
-              >
-                <FiGithub className="w-3.5 h-3.5" />
-                {authorLabel}
-                <FiExternalLink className="w-3.5 h-3.5" />
-              </a>
-            ) : authorHref ? (
-              <Link
-                href={authorHref}
-                className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
-                title={authorTitle}
-              >
-                {authorLabel}
-                <FiExternalLink className="w-3.5 h-3.5" />
-              </Link>
-            ) : (
-              <span
-                className="font-mono text-sm text-gray-500 dark:text-gray-400"
-                title={authorTitle}
-              >
-                {authorLabel}
-              </span>
-            )}
-            {skill.author_pubkey && (
-              <button
-                onClick={() => copyToClipboard(skill.author_pubkey!, "author")}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-                title="Copy address"
-              >
-                {copied === "author" ? (
-                  <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-                ) : (
-                  <FiCopy className="w-3.5 h-3.5" />
+    <main className="font-heading min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
+      <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
+        {/* ===== HERO ===== */}
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            {/* Header */}
+            <div className="mb-8">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <Link
+                    href="/skills"
+                    className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition flex items-center gap-1"
+                  >
+                    <FiArrowLeft className="w-3.5 h-3.5" />
+                    Skills
+                  </Link>
+                  <span className="text-gray-300 dark:text-gray-700">/</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {skill.name}
+                  </span>
+                </div>
+                <h1 className="font-display text-4xl leading-[1.05] tracking-tight text-gray-900 dark:text-white sm:text-5xl">
+                  {skill.name}
+                </h1>
+                {skill.description && (
+                  <p className="font-article mt-3 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300">
+                    {skill.description}
+                  </p>
                 )}
-              </button>
-            )}
-            {skill.author_trust?.registeredAt ? (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
-                Registered{" "}
-                {formatDate(
-                  new Date(skill.author_trust.registeredAt * 1000).toISOString()
-                )}
-              </span>
-            ) : null}
-          </div>
-          {skill.contact && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Contact:{" "}
-              <span className="text-gray-900 dark:text-white">
-                {skill.contact}
-              </span>
-            </p>
-          )}
-          <TrustBadge trust={skill.author_trust} />
-          {skill.author_pubkey ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Link
-                href={`/author/${skill.author_pubkey}`}
-                className="inline-flex items-center gap-1 text-sm font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-              >
-                View full author trust history{" "}
-                <FiExternalLink className="w-3.5 h-3.5" />
-              </Link>
-              <Link
-                href={`/author/${skill.author_pubkey}?report=1${
-                  skill.on_chain_address
-                    ? `&skill=${encodeURIComponent(
-                        `skill:${skill.on_chain_address}`
-                      )}`
-                    : ""
-                }`}
-                className={navButtonSecondaryInlineClass}
-              >
-                Report Author
-              </Link>
-            </div>
-          ) : (
-            <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-              This free listing is attributed to an unverified publisher. It has
-              no on-chain author wallet yet, so vouching, reports, and paid
-              settlement are unavailable until the publisher links one.
-            </p>
-          )}
-        </div>
-
-        {skill.author_identity && (
-          <div className="mb-6">
-            <AgentIdentityPanel
-              identity={skill.author_identity}
-              title={
-                skill.author_identity.registryAsset
-                  ? "Registry Identity"
-                  : "Author Identity"
-              }
-            />
-          </div>
-        )}
-
-        {/* Meta Row */}
-        <div
-          className={`grid grid-cols-2 ${
-            hasLegacySolPrice || primaryUsdcPrice
-              ? "sm:grid-cols-5"
-              : "sm:grid-cols-4"
-          } gap-3 mb-6`}
-        >
-          {primaryUsdcPrice && (
-            <div className="rounded-sm border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] p-3 text-center">
-              <div className="text-lg font-bold text-[var(--lobster-accent)] font-mono flex items-center justify-center gap-2">
-                <UsdcIcon className="w-4 h-4" />
-                {primaryUsdcPrice}
-              </div>
-              <div className="text-xs text-[var(--lobster-accent)]">
-                Primary price (USDC)
+                <div className="mt-4 flex flex-wrap items-center gap-2.5 text-sm text-gray-500 dark:text-gray-400">
+                  <span
+                    aria-hidden
+                    className="h-7 w-7 shrink-0 rounded-md ring-1 ring-black/10 dark:ring-white/10"
+                    style={{
+                      background:
+                        "conic-gradient(from 210deg at 60% 40%, var(--lobster-accent), var(--lobster-accent-strong), var(--sea-accent), var(--lobster-accent))",
+                    }}
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
+                    {authorLabel}
+                  </span>
+                  {skill.author_trust?.registeredAt ? (
+                    <span className="rounded-full border border-[var(--sea-accent-border)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)]">
+                      Registered
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
-          )}
-          {hasLegacySolPrice && (
-            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-center">
-              <div className="text-lg font-bold text-gray-700 dark:text-gray-300 font-mono flex items-center justify-center">
-                Legacy
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                Legacy SOL price
-              </div>
-            </div>
-          )}
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-center">
-            <div className="text-lg font-bold text-gray-900 dark:text-white">
-              v{skill.current_version}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Version
-            </div>
-          </div>
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-center">
-            <div className="text-lg font-bold text-gray-900 dark:text-white flex items-center justify-center gap-1">
-              <FiDownload className="w-4 h-4" />
-              {(skill.total_installs ?? 0) + (skill.total_downloads ?? 0)}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Downloads
-            </div>
-          </div>
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-center">
-            <div className="text-sm font-bold text-gray-900 dark:text-white">
-              {formatDate(skill.created_at)}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Published
-            </div>
-          </div>
-        </div>
-
-        {/* Tags */}
-        {skill.tags?.length > 0 && (
-          <div className="flex items-center gap-2 mb-6 flex-wrap">
-            <FiTag className="w-4 h-4 text-gray-400" />
-            {skill.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {(displaySummaryLine ||
-          displayCapabilities.length > 0 ||
-          skill.tags?.length > 0) && (
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <FiFileText className="w-4 h-4 text-[var(--sea-accent)]" />
-              What it does
-            </h2>
-            {displaySummaryLine && (
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                {displaySummaryLine}
-              </p>
-            )}
+            {/* Tags */}
             {skill.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {skill.tags.slice(0, 4).map((tag) => (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {skill.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-2 py-0.5 rounded-full bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] text-xs font-medium border border-[var(--sea-accent-border)]"
+                    className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--lobster-accent)]"
                   >
                     {tag}
                   </span>
                 ))}
               </div>
             )}
-            {displayCapabilities.length > 0 && (
-              <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                {displayCapabilities.map((bullet) => (
-                  <li key={bullet} className="flex items-start gap-2">
-                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[var(--sea-accent)] shrink-0" />
-                    <span>{bullet}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
-        )}
-
-        {/* Install / Buy action */}
-        {(!hasLegacySolPrice || hasUsdcPrimary) && (
-          <div className="rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-4 mb-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                  {purchaseTitle}
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {purchaseDescription}
-                </p>
-              </div>
-              {connected ? (
-                <div className="flex items-center gap-2">
-                  {!isPaidSkill ? (
-                    <button
-                      onClick={handleFreeInstall}
-                      disabled={installing}
-                      className={navButtonPrimaryInlineClass}
-                    >
-                      {installing ? (
-                        <>
-                          <FiLoader className="w-4 h-4 animate-spin" />
-                          Installing…
-                        </>
-                      ) : (
-                        <>
-                          <FiDownload className="w-4 h-4" />
-                          Install
-                        </>
-                      )}
-                    </button>
-                  ) : isAuthor ? (
-                    <Link
-                      href="#author-actions"
-                      className={navButtonSecondaryInlineClass}
-                    >
-                      Manage Listing
-                    </Link>
-                  ) : buyerHasPurchased ? (
-                    signedRedownloadAvailable ? (
-                      <button
-                        onClick={handleSignedDownload}
-                        disabled={downloading}
-                        className={navButtonPrimaryInlineClass}
-                      >
-                        {downloading ? (
-                          <>
-                            <FiLoader className="w-4 h-4 animate-spin" />
-                            Signing…
-                          </>
-                        ) : (
-                          <>
-                            <FiDownload className="w-4 h-4" />
-                            Sign & Download
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                        Purchased. Signed re-downloads require an on-chain link.
-                      </span>
-                    )
-                  ) : embeddedWalletCheckoutBlocked ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
-                      <FiAlertTriangle className="w-3.5 h-3.5" />
-                      Use an extension wallet
-                    </span>
-                  ) : isListingRequired ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
-                      <FiAlertTriangle className="w-3.5 h-3.5" />
-                      Listing setup required
-                    </span>
-                  ) : primaryUsdcPrice && browserCanUseUsdc ? (
-                    <button
-                      onClick={handleUsdcPurchase}
-                      disabled={purchasingUsdc || purchaseBlocked}
-                      className={navButtonPrimaryInlineClass}
-                    >
-                      {purchasingUsdc ? (
-                        <>
-                          <FiLoader className="w-4 h-4 animate-spin" />
-                          Processing…
-                        </>
-                      ) : (
-                        <>
-                          <UsdcIcon className="w-4 h-4" />
-                          {purchaseBlocked
-                            ? purchasePreflightStatus ===
-                              "buyerMissingUsdcAccount"
-                              ? "Set Up USDC Account"
-                              : "Need More USDC"
-                            : "Pay with USDC"}
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
-                      USDC checkout is required for new purchases.
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  {connectWalletLabel}
-                </span>
-              )}
-            </div>
-            {(primaryUsdcPrice || estimatedPurchaseRentLamports > 0) && (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {primaryUsdcPrice && (
-                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Primary price
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono inline-flex items-center gap-2">
-                      <UsdcIcon className="w-3.5 h-3.5 text-[var(--lobster-accent)]" />
-                      {primaryUsdcPrice} USDC
-                    </div>
-                  </div>
-                )}
-                {estimatedPurchaseRentLamports > 0 && (
-                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Receipt rent
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                      <SolAmount
-                        amount={fromLamports(
-                          estimatedPurchaseRentLamports
-                        ).toFixed(4)}
-                        iconClassName="w-3.5 h-3.5"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {buyerHasPurchased && skill.buyerPurchaseSummary && !isAuthor && (
-              <div className="mt-3 rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
-                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Refund status
-                </div>
-                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                  {skill.buyerPurchaseSummary.refundStatus === "refunded"
-                    ? "Refund claimed for this purchase."
-                    : skill.buyerPurchaseSummary.legacyRefundEligible
-                    ? "Legacy purchase metadata is present; refund eligibility depends on a mapped refund pool."
-                    : "No active refund claim is recorded for this purchase."}
-                </p>
-                {skill.buyerPurchaseSummary.purchasePda && (
-                  <p className="mt-1 font-mono text-[11px] text-gray-400">
-                    Purchase {shortAddr(skill.buyerPurchaseSummary.purchasePda)}
-                    {skill.buyerPurchaseSummary.listingRevision
-                      ? ` · revision ${skill.buyerPurchaseSummary.listingRevision}`
-                      : ""}
-                  </p>
-                )}
-              </div>
-            )}
-            {skill.priceDisclosure && hasLegacySolPrice && !hasUsdcPrimary && (
-              <p className="text-xs mt-3 text-gray-500 dark:text-gray-400">
-                {skill.priceDisclosure}
-              </p>
-            )}
-            {primaryUsdcPrice && (
-              <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
-                {isListingRequired
-                  ? "New paid purchases are disabled until this repo skill is linked to an on-chain listing."
-                  : "USDC is the default app-layer price. Protocol-listed purchases settle through purchase_skill and signed re-downloads stay wallet-bound."}
-              </p>
-            )}
-            {skill.purchaseRiskWarning &&
-              hasUsdcPrimary &&
-              !isListingRequired &&
-              !buyerHasPurchased &&
-              !isAuthor && (
-                <div className="mt-3 rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
-                  <div className="mb-1 flex items-center gap-2 font-medium">
-                    <FiInfo className="h-3.5 w-3.5" />
-                    Limited dispute recovery
-                  </div>
-                  <p>{skill.purchaseRiskWarning}</p>
-                </div>
-              )}
-            {skill.purchasePreflightMessage &&
-              hasUsdcPrimary &&
-              !isListingRequired && (
-              <p
-                className={`text-xs mt-2 ${
-                  purchaseBlocked
-                    ? "text-amber-700 dark:text-amber-300"
-                    : purchasePreflightStatus === "estimateUnavailable"
-                    ? "text-gray-500 dark:text-gray-400"
-                    : "text-gray-500 dark:text-gray-400"
-                }`}
-              >
-                {skill.purchasePreflightMessage}
-              </p>
-            )}
-            {installResult && (
-              <p
-                className={`text-xs mt-2 ${
-                  installResult.success
-                    ? "text-green-600 dark:text-green-400"
-                    : "text-red-600 dark:text-red-400"
-                }`}
-              >
-                {installResult.message}
-              </p>
-            )}
-            {usdcPurchaseTx && (
-              <p className="text-xs mt-2 text-green-600 dark:text-green-400">
-                Settlement tx:{" "}
-                <a
-                  href={getConfiguredSolanaExplorerTxUrl(usdcPurchaseTx)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline font-mono"
+          {trustVerdict && (
+            <div
+              className={`shrink-0 rounded-xl border p-5 backdrop-blur-sm sm:w-72 ${trustVerdict.box}`}
+            >
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                Recommended action
+                <InfoTip
+                  label="How the recommended action is derived"
+                  align="left"
                 >
-                  {usdcPurchaseTx.slice(0, 8)}...{usdcPurchaseTx.slice(-8)}
-                </a>
-              </p>
-            )}
-            {downloadResult && (
-              <p
-                className={`text-xs mt-2 ${
-                  downloadResult.success
-                    ? "text-green-600 dark:text-green-400"
-                    : "text-red-600 dark:text-red-400"
-                }`}
-              >
-                {downloadResult.message}
-              </p>
-            )}
-            {connected &&
-              walletAddress === skill.author_pubkey &&
-              !hasUsdcPrimary &&
-              skill.on_chain_address && (
-                <p className="text-xs mt-2 text-amber-600 dark:text-amber-400">
-                  This skill is listed for free. You can set a price via Edit
-                  Listing above.
-                </p>
-              )}
-          </div>
-        )}
-
-        {/* Install Command */}
-        <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Install
-            </span>
-            <button
-              onClick={() => copyToClipboard(installCommand, "install")}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition"
-            >
-              {copied === "install" ? (
-                <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-              ) : (
-                <FiCopy className="w-3.5 h-3.5" />
-              )}
-              {copied === "install" ? "Copied!" : "Copy"}
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            {isPaidSkill ? (
-              isListingRequired ? (
-                <>
-                  This paid repo skill is waiting for its on-chain listing. New
-                  purchases are unavailable until the author links a{" "}
-                  <code className="text-amber-600 dark:text-amber-400">
-                    SkillListing
-                  </code>
-                  .
-                </>
-              ) : (
-              primaryUsdcPrice ? (
-                browserCanUseUsdc ? (
-                  <>
-                    This listing is USDC-primary. The button above handles the
-                    browser checkout flow, while the command below documents the
-                    agent/API path against the same raw endpoint.
-                  </>
-                ) : (
-                  <>
-                    This listing is USDC-primary. Use the agent/API x402 flow
-                    below if you are not checking out through the browser UI.
-                  </>
-                )
-              ) : (
-                <>
-                  Paid skills require an on-chain purchase first, then a signed{" "}
-                  <code className="text-amber-600 dark:text-amber-400">
-                    X-AgentVouch-Auth
-                  </code>{" "}
-                  header on the raw download request. Full instructions are
-                  below and in{" "}
-                  <Link
-                    href={paidSkillDocsHref}
-                    className="text-[var(--sea-accent)] hover:underline"
-                  >
-                    docs
-                  </Link>
-                  .
-                </>
-              )
-              )
-            ) : (
-              <>
-                Free skills can be downloaded directly with the command below.
-              </>
-            )}
-          </p>
-          <pre className="text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
-            <code>{installCommand}</code>
-          </pre>
-        </div>
-
-        {/* Agent API Access */}
-        <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Agent API
-            </span>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            {isPaidSkill ? (
-              isListingRequired ? (
-                <>
-                  This paid repo skill returns{" "}
-                  <code className="text-amber-600 dark:text-amber-400">
-                    listing-required
-                  </code>{" "}
-                  instead of x402 payment requirements until the author links an
-                  on-chain listing.
-                </>
-              ) : (
-              primaryUsdcPrice ? (
-                <>
-                  This listing is USDC-primary. Agents should use the x402 raw
-                  endpoint directly; browser checkout uses the same USDC
-                  entitlement path.
-                </>
-              ) : (
-                <>
-                  This is a paid skill. Requests return{" "}
-                  <code className="text-amber-600 dark:text-amber-400">
-                    402
-                  </code>{" "}
-                  until you purchase on-chain and provide a signed{" "}
-                  <code className="text-amber-600 dark:text-amber-400">
-                    X-AgentVouch-Auth
-                  </code>{" "}
-                  header. See{" "}
-                  <Link
-                    href={paidSkillDocsHref}
-                    className="text-[var(--sea-accent)] hover:underline"
-                  >
-                    docs
-                  </Link>
-                  .
-                </>
-              )
-              )
-            ) : (
-              <>
-                This is a free skill. Agents receive content directly — no
-                payment required.
-              </>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            <pre className="flex-1 text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
-              <code>{`GET /api/skills/${skill.id}/raw`}</code>
-            </pre>
-            <button
-              onClick={() =>
-                copyToClipboard(
-                  `${
-                    typeof window !== "undefined" ? window.location.origin : ""
-                  }/api/skills/${skill.id}/raw`,
-                  "api"
-                )
-              }
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition shrink-0"
-            >
-              {copied === "api" ? (
-                <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-              ) : (
-                <FiCopy className="w-3.5 h-3.5" />
-              )}
-              {copied === "api" ? "Copied!" : "Copy URL"}
-            </button>
-          </div>
-          {isPaidSkill && (
-            <div className="mt-3 space-y-3">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Signed Message
-                  </span>
-                  <button
-                    onClick={() =>
-                      copyToClipboard(signedDownloadMessage, "api-message")
-                    }
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition"
-                  >
-                    {copied === "api-message" ? (
-                      <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-                    ) : (
-                      <FiCopy className="w-3.5 h-3.5" />
-                    )}
-                    {copied === "api-message" ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-                <pre className="text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
-                  <code>{signedDownloadMessage}</code>
-                </pre>
+                  Rolled up from the independent trust signals below. Only
+                  staked on-chain trust earns &ldquo;Trusted&rdquo; — the
+                  automated scan can flag risk but never grants it.
+                </InfoTip>
               </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    X-AgentVouch-Auth
-                  </span>
-                  <button
-                    onClick={() =>
-                      copyToClipboard(signedDownloadHeader, "api-auth")
-                    }
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition"
-                  >
-                    {copied === "api-auth" ? (
-                      <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-                    ) : (
-                      <FiCopy className="w-3.5 h-3.5" />
-                    )}
-                    {copied === "api-auth" ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-                <pre className="text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
-                  <code>{signedDownloadHeader}</code>
-                </pre>
+              <div
+                className={`font-display text-3xl leading-none ${trustVerdict.text}`}
+              >
+                {trustVerdict.word}
+              </div>
+              <div className="mt-2.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                {trustVerdict.sub}
               </div>
             </div>
           )}
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-            Auth:{" "}
-            <code className="text-gray-500 dark:text-gray-400">
-              Authorization: Bearer sk_...
-            </code>{" "}
-            or wallet signature.{" "}
-            <Link
-              href="/settings"
-              className="text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-            >
-              Get API key →
-            </Link>
-          </p>
         </div>
 
-        {/* IPFS CID */}
-        {skill.ipfs_cid && (
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FiShield className="w-4 h-4 text-green-500" />
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Content Hash (IPFS)
-                </span>
+        {/* ===== QUICK STATS ===== */}
+        {/* Meta Row */}
+        <div className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <span className="text-gray-700 dark:text-gray-300">
+            v{skill.current_version}
+          </span>
+          <span className="text-gray-300 dark:text-gray-700">·</span>
+          <span className="inline-flex items-center gap-1">
+            <FiDownload className="h-3.5 w-3.5" />
+            {(skill.total_installs ?? 0) + (skill.total_downloads ?? 0)}{" "}
+            installs
+          </span>
+          <span className="text-gray-300 dark:text-gray-700">·</span>
+          <span>Published {formatDate(skill.created_at)}</span>
+          {primaryUsdcPrice ? (
+            <>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <span className="inline-flex items-center gap-1 font-medium text-[var(--lobster-accent)]">
+                <UsdcIcon className="h-3.5 w-3.5" />
+                {primaryUsdcPrice} USDC
+              </span>
+            </>
+          ) : null}
+          {hasLegacySolPrice ? (
+            <>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <span>Legacy SOL price</span>
+            </>
+          ) : null}
+        </div>
+
+        {/* ===== MAIN + RAIL ===== */}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0">
+            {(displayCapabilities.length > 0 ||
+              (displaySummaryLine &&
+                displaySummaryLine !== skill.description)) && (
+              <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-6 dark:border-gray-800 dark:bg-gray-900/50">
+                <h2 className="mb-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                  <FiFileText className="h-4 w-4 text-[var(--sea-accent)]" />
+                  What it does
+                </h2>
+                {displaySummaryLine &&
+                  displaySummaryLine !== skill.description && (
+                    <p className="font-article mb-4 text-lg leading-relaxed text-gray-700 dark:text-gray-200">
+                      {displaySummaryLine}
+                    </p>
+                  )}
+                {displayCapabilities.length > 0 && (
+                  <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                    {displayCapabilities.map((bullet) => (
+                      <li key={bullet} className="flex items-start gap-2.5">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--lobster-accent)]" />
+                        <span>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              <a
-                href={`https://ipfs.io/ipfs/${skill.ipfs_cid}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-              >
-                Verify on IPFS <FiExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <button
-              onClick={() => copyToClipboard(skill.ipfs_cid!, "cid")}
-              className="mt-2 font-mono text-sm text-gray-600 dark:text-gray-400 hover:text-[var(--sea-accent)] flex items-center gap-1.5 transition"
-            >
-              {skill.ipfs_cid}
-              {copied === "cid" ? (
-                <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-              ) : (
-                <FiCopy className="w-3.5 h-3.5" />
-              )}
-            </button>
+            )}
+            {/* Skill Tree / SKILL.md Content */}
+            {skill.files?.length ? (
+              <div className="mb-6">
+                <SkillFileTree
+                  skillId={skill.id}
+                  skillName={skill.name}
+                  files={skill.files}
+                  treeHash={skill.tree_hash}
+                  hasExecutable={skill.has_executable}
+                  securityScan={skill.security_scan}
+                  initialContent={content}
+                  walled={!content && isPaidSkill}
+                  priceLabel={
+                    primaryUsdcPrice ? `${primaryUsdcPrice} USDC` : undefined
+                  }
+                />
+              </div>
+            ) : content ? (
+              <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-6 dark:border-gray-800 dark:bg-gray-900/50">
+                <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4 dark:border-gray-800">
+                  <FiFileText className="h-4 w-4 text-gray-400" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    SKILL.md Content
+                  </span>
+                </div>
+                <div className="font-article">
+                  <MarkdownRenderer content={content} />
+                </div>
+              </div>
+            ) : (
+              isChainOnly &&
+              skill.skill_uri && (
+                <div className="rounded-sm border border-yellow-200 dark:border-yellow-800/50 bg-yellow-50 dark:bg-yellow-900/10 p-4 mb-6">
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                    Content could not be loaded from the source URL. The file
+                    may have been moved or is temporarily unavailable.
+                  </p>
+                </div>
+              )
+            )}
+            {/* Developer & API (collapsed by default) */}
+            <details className="group/dev mb-6 rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-2">
+                  <FiTerminal className="h-4 w-4 text-[var(--sea-accent)]" />
+                  Developer &amp; API
+                </span>
+                <FiChevronDown className="h-4 w-4 transition-transform group-open/dev:rotate-180" />
+              </summary>
+              <div className="space-y-5 border-t border-gray-100 px-5 py-5 dark:border-gray-800">
+                {/* Install Command */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Install
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(installCommand, "install")}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition"
+                    >
+                      {copied === "install" ? (
+                        <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                      ) : (
+                        <FiCopy className="w-3.5 h-3.5" />
+                      )}
+                      {copied === "install" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                  <pre className="text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
+                    <code>{installCommand}</code>
+                  </pre>
+                </div>
+                {/* Agent API */}
+                <div className="border-t border-gray-100 pt-5 dark:border-gray-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Agent API
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <pre className="flex-1 text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
+                      <code>{`GET /api/skills/${skill.id}/raw`}</code>
+                    </pre>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(
+                          `${
+                            typeof window !== "undefined"
+                              ? window.location.origin
+                              : ""
+                          }/api/skills/${skill.id}/raw`,
+                          "api"
+                        )
+                      }
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition shrink-0"
+                    >
+                      {copied === "api" ? (
+                        <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                      ) : (
+                        <FiCopy className="w-3.5 h-3.5" />
+                      )}
+                      {copied === "api" ? "Copied!" : "Copy URL"}
+                    </button>
+                  </div>
+                  {isPaidSkill && (
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Signed Message
+                          </span>
+                          <button
+                            onClick={() =>
+                              copyToClipboard(
+                                signedDownloadMessage,
+                                "api-message"
+                              )
+                            }
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition"
+                          >
+                            {copied === "api-message" ? (
+                              <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                            ) : (
+                              <FiCopy className="w-3.5 h-3.5" />
+                            )}
+                            {copied === "api-message" ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                        <pre className="text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
+                          <code>{signedDownloadMessage}</code>
+                        </pre>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            X-AgentVouch-Auth
+                          </span>
+                          <button
+                            onClick={() =>
+                              copyToClipboard(signedDownloadHeader, "api-auth")
+                            }
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-[var(--sea-accent)] transition"
+                          >
+                            {copied === "api-auth" ? (
+                              <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                            ) : (
+                              <FiCopy className="w-3.5 h-3.5" />
+                            )}
+                            {copied === "api-auth" ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                        <pre className="text-sm bg-gray-50 dark:bg-gray-800 rounded-sm p-3 overflow-x-auto border border-gray-100 dark:border-gray-700">
+                          <code>{signedDownloadHeader}</code>
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                    Auth:{" "}
+                    <code className="text-gray-500 dark:text-gray-400">
+                      Authorization: Bearer sk_...
+                    </code>{" "}
+                    or wallet signature.{" "}
+                    <Link
+                      href="/settings"
+                      className="text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                    >
+                      Get API key →
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            </details>
+            {/* Version History */}
+            {(skill.versions?.length > 0 || (isAuthor && !isChainOnly)) && (
+              <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+                <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                  <div className="flex items-center gap-2">
+                    <FiGitCommit className="w-4 h-4 text-gray-400" />
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Version History
+                    </span>
+                  </div>
+                  {isAuthor && !isChainOnly && !versionComposerOpen && (
+                    <button
+                      onClick={openVersionComposer}
+                      className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium`}
+                    >
+                      <FiGitCommit className="w-3.5 h-3.5" />
+                      Publish New Version
+                    </button>
+                  )}
+                </div>
+                {isAuthor && !isChainOnly && versionComposerOpen && (
+                  <div className="mb-4 p-4 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)]">
+                    <div className="flex items-center justify-between gap-4 mb-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                          Publish New Version
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          This publishes updated repo-backed skill content and
+                          changelog only. Listing edits stay on the on-chain
+                          path.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setVersionComposerOpen(false)}
+                        disabled={publishingVersion}
+                        className={`${navButtonSizeClass} text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Updated SKILL.md content
+                        </label>
+                        <textarea
+                          value={versionDraft}
+                          onChange={(e) => setVersionDraft(e.target.value)}
+                          rows={14}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Changelog
+                        </label>
+                        <input
+                          type="text"
+                          value={versionChangelog}
+                          onChange={(e) => setVersionChangelog(e.target.value)}
+                          placeholder="Summarize what changed in this version"
+                          className="w-full px-3 py-1.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
+                        />
+                      </div>
+                      {versionResult && (
+                        <p
+                          className={`text-xs ${
+                            versionResult.success
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-red-600 dark:text-red-400"
+                          }`}
+                        >
+                          {versionResult.message}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handlePublishVersion}
+                          disabled={publishingVersion}
+                          className={navButtonPrimaryInlineClass}
+                        >
+                          {publishingVersion ? (
+                            <>
+                              <FiLoader className="w-4 h-4 animate-spin" />
+                              Publishing…
+                            </>
+                          ) : (
+                            <>
+                              <FiGitCommit className="w-4 h-4" />
+                              Publish New Version
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {skill.versions?.length > 0 ? (
+                  <div className="space-y-3">
+                    {skill.versions.map((ver) => (
+                      <div
+                        key={ver.id}
+                        className="flex items-start justify-between p-3 rounded-sm bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                              v{ver.version}
+                            </span>
+                            {ver.version === skill.current_version && (
+                              <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs">
+                                latest
+                              </span>
+                            )}
+                          </div>
+                          {ver.changelog && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                              {ver.changelog}
+                            </p>
+                          )}
+                          {ver.ipfs_cid && (
+                            <span className="text-xs font-mono text-gray-400 dark:text-gray-500 mt-1 block">
+                              CID: {ver.ipfs_cid.slice(0, 16)}...
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                          <FiClock className="w-3 h-3" />
+                          {formatDate(ver.created_at)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  isAuthor &&
+                  !isChainOnly && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Publish the first repo-backed version update for this
+                      skill.
+                    </p>
+                  )
+                )}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Content Verification */}
-        {skill.content_verification && (
-          <div
-            className={`rounded-sm border p-4 mb-6 ${
-              skill.content_verification.status === "verified"
-                ? "border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10"
-                : skill.content_verification.status === "drift_detected"
-                ? "border-yellow-200 dark:border-yellow-800/50 bg-yellow-50 dark:bg-yellow-900/10"
-                : "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {skill.content_verification.status === "verified" ? (
-                <>
-                  <FiShield className="w-4 h-4 text-green-600 dark:text-green-400" />
-                  <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                    Content hash verified
+          <aside className="self-start lg:sticky lg:top-6">
+            {/* Install / Buy action */}
+            {(!hasLegacySolPrice || hasUsdcPrimary) && (
+              <div className="rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-4 mb-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white">
+                      {purchaseTitle}
+                      <InfoTip
+                        label="Pricing and checkout details"
+                        align="left"
+                      >
+                        {purchaseDescription}
+                      </InfoTip>
+                    </div>
+                  </div>
+                  {connected ? (
+                    <div className="flex items-center gap-2">
+                      {!isPaidSkill ? (
+                        <button
+                          onClick={handleFreeInstall}
+                          disabled={installing}
+                          className={navButtonPrimaryInlineClass}
+                        >
+                          {installing ? (
+                            <>
+                              <FiLoader className="w-4 h-4 animate-spin" />
+                              Installing…
+                            </>
+                          ) : (
+                            <>
+                              <FiDownload className="w-4 h-4" />
+                              Install
+                            </>
+                          )}
+                        </button>
+                      ) : isAuthor ? (
+                        <Link
+                          href="#author-actions"
+                          className={navButtonSecondaryInlineClass}
+                        >
+                          Manage Listing
+                        </Link>
+                      ) : buyerHasPurchased ? (
+                        signedRedownloadAvailable ? (
+                          <button
+                            onClick={handleSignedDownload}
+                            disabled={downloading}
+                            className={navButtonPrimaryInlineClass}
+                          >
+                            {downloading ? (
+                              <>
+                                <FiLoader className="w-4 h-4 animate-spin" />
+                                Signing…
+                              </>
+                            ) : (
+                              <>
+                                <FiDownload className="w-4 h-4" />
+                                Sign & Download
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            Purchased. Signed re-downloads require an on-chain
+                            link.
+                          </span>
+                        )
+                      ) : embeddedWalletCheckoutBlocked ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
+                          <FiAlertTriangle className="w-3.5 h-3.5" />
+                          Use an extension wallet
+                        </span>
+                      ) : isListingRequired ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                          <FiAlertTriangle className="w-3.5 h-3.5" />
+                          Listing setup required
+                        </span>
+                      ) : primaryUsdcPrice && browserCanUseUsdc ? (
+                        <button
+                          onClick={handleUsdcPurchase}
+                          disabled={purchasingUsdc || purchaseBlocked}
+                          className={navButtonPrimaryInlineClass}
+                        >
+                          {purchasingUsdc ? (
+                            <>
+                              <FiLoader className="w-4 h-4 animate-spin" />
+                              Processing…
+                            </>
+                          ) : (
+                            <>
+                              <UsdcIcon className="w-4 h-4" />
+                              {purchaseBlocked
+                                ? purchasePreflightStatus ===
+                                  "buyerMissingUsdcAccount"
+                                  ? "Set Up USDC Account"
+                                  : "Need More USDC"
+                                : "Pay with USDC"}
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          USDC checkout is required for new purchases.
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {connectWalletLabel}
+                    </span>
+                  )}
+                </div>
+                {(primaryUsdcPrice || estimatedPurchaseRentLamports > 0) && (
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {primaryUsdcPrice && (
+                      <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Primary price
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono inline-flex items-center gap-2">
+                          <UsdcIcon className="w-3.5 h-3.5 text-[var(--lobster-accent)]" />
+                          {primaryUsdcPrice} USDC
+                        </div>
+                      </div>
+                    )}
+                    {estimatedPurchaseRentLamports > 0 && (
+                      <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Receipt rent
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white font-mono">
+                          <SolAmount
+                            amount={fromLamports(
+                              estimatedPurchaseRentLamports
+                            ).toFixed(4)}
+                            iconClassName="w-3.5 h-3.5"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {buyerHasPurchased &&
+                  skill.buyerPurchaseSummary &&
+                  !isAuthor && (
+                    <div className="mt-3 rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
+                      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Refund status
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                        {skill.buyerPurchaseSummary.refundStatus === "refunded"
+                          ? "Refund claimed for this purchase."
+                          : skill.buyerPurchaseSummary.legacyRefundEligible
+                          ? "Legacy purchase metadata is present; refund eligibility depends on a mapped refund pool."
+                          : "No active refund claim is recorded for this purchase."}
+                      </p>
+                      {skill.buyerPurchaseSummary.purchasePda && (
+                        <p className="mt-1 font-mono text-[11px] text-gray-400">
+                          Purchase{" "}
+                          {shortAddr(skill.buyerPurchaseSummary.purchasePda)}
+                          {skill.buyerPurchaseSummary.listingRevision
+                            ? ` · revision ${skill.buyerPurchaseSummary.listingRevision}`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                {skill.priceDisclosure &&
+                  hasLegacySolPrice &&
+                  !hasUsdcPrimary && (
+                    <p className="text-xs mt-3 text-gray-500 dark:text-gray-400">
+                      {skill.priceDisclosure}
+                    </p>
+                  )}
+                {primaryUsdcPrice && isListingRequired && (
+                  <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
+                    New paid purchases are disabled until this repo skill is
+                    linked to an on-chain listing.
+                  </p>
+                )}
+                {skill.purchaseRiskWarning &&
+                  hasUsdcPrimary &&
+                  !isListingRequired &&
+                  !buyerHasPurchased &&
+                  !isAuthor && (
+                    <div className="mt-3 rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+                      <div className="mb-1 flex items-center gap-2 font-medium">
+                        <FiInfo className="h-3.5 w-3.5" />
+                        Limited dispute recovery
+                      </div>
+                      <p>{skill.purchaseRiskWarning}</p>
+                    </div>
+                  )}
+                {skill.purchasePreflightMessage &&
+                  hasUsdcPrimary &&
+                  !isListingRequired && (
+                    <p
+                      className={`text-xs mt-2 ${
+                        purchaseBlocked
+                          ? "text-amber-700 dark:text-amber-300"
+                          : purchasePreflightStatus === "estimateUnavailable"
+                          ? "text-gray-500 dark:text-gray-400"
+                          : "text-gray-500 dark:text-gray-400"
+                      }`}
+                    >
+                      {skill.purchasePreflightMessage}
+                    </p>
+                  )}
+                {installResult && (
+                  <p
+                    className={`text-xs mt-2 ${
+                      installResult.success
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {installResult.message}
+                  </p>
+                )}
+                {usdcPurchaseTx && (
+                  <p className="text-xs mt-2 text-green-600 dark:text-green-400">
+                    Settlement tx:{" "}
+                    <a
+                      href={getConfiguredSolanaExplorerTxUrl(usdcPurchaseTx)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-mono"
+                    >
+                      {usdcPurchaseTx.slice(0, 8)}...{usdcPurchaseTx.slice(-8)}
+                    </a>
+                  </p>
+                )}
+                {downloadResult && (
+                  <p
+                    className={`text-xs mt-2 ${
+                      downloadResult.success
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {downloadResult.message}
+                  </p>
+                )}
+                {connected &&
+                  walletAddress === skill.author_pubkey &&
+                  !hasUsdcPrimary &&
+                  skill.on_chain_address && (
+                    <p className="text-xs mt-2 text-amber-600 dark:text-amber-400">
+                      This skill is listed for free. You can set a price via
+                      Edit Listing above.
+                    </p>
+                  )}
+              </div>
+            )}
+            <TrustSignalChecklist
+              signals={skill.signals}
+              scan={skill.security_scan}
+            />
+            {/* Trust Section */}
+            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <FiShield className="w-4 h-4" />
+                Author Trust Signals
+              </h2>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  Author:
+                </span>
+                {authorHref?.startsWith("http") ? (
+                  <a
+                    href={authorHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
+                    title={authorTitle}
+                  >
+                    <FiGithub className="w-3.5 h-3.5" />
+                    {authorLabel}
+                    <FiExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                ) : authorHref ? (
+                  <Link
+                    href={authorHref}
+                    className="flex items-center gap-1.5 font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline transition"
+                    title={authorTitle}
+                  >
+                    {authorLabel}
+                    <FiExternalLink className="w-3.5 h-3.5" />
+                  </Link>
+                ) : (
+                  <span
+                    className="font-mono text-sm text-gray-500 dark:text-gray-400"
+                    title={authorTitle}
+                  >
+                    {authorLabel}
                   </span>
-                  <span className="text-xs text-green-600 dark:text-green-500 ml-1">
-                    — All versions pinned to IPFS, current CID consistent
+                )}
+                {skill.author_pubkey && (
+                  <button
+                    onClick={() =>
+                      copyToClipboard(skill.author_pubkey!, "author")
+                    }
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                    title="Copy address"
+                  >
+                    {copied === "author" ? (
+                      <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                    ) : (
+                      <FiCopy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
+                {skill.author_trust?.registeredAt ? (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    Registered{" "}
+                    {formatDate(
+                      new Date(
+                        skill.author_trust.registeredAt * 1000
+                      ).toISOString()
+                    )}
                   </span>
-                </>
-              ) : skill.content_verification.status === "drift_detected" ? (
-                <>
-                  <FiShield className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                  <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
-                    Content updated since last pin
+                ) : null}
+              </div>
+              {skill.contact && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Contact:{" "}
+                  <span className="text-gray-900 dark:text-white">
+                    {skill.contact}
                   </span>
-                  <span className="text-xs text-yellow-600 dark:text-yellow-500 ml-1">
-                    — Current version may differ from previously vouched content
-                  </span>
-                </>
+                </p>
+              )}
+              {skill.author_trust ? (
+                <div className="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-gray-200 bg-gray-200 text-center dark:border-gray-800 dark:bg-gray-800">
+                  <div className="bg-white px-2 py-3 dark:bg-gray-900">
+                    <div className="font-display text-xl font-bold text-gray-900 dark:text-white">
+                      {skill.author_trust.reputationScore ?? 0}
+                    </div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-gray-400">
+                      Reputation
+                    </div>
+                  </div>
+                  <div className="bg-white px-2 py-3 dark:bg-gray-900">
+                    <div className="font-display text-xl font-bold text-gray-900 dark:text-white">
+                      {skill.author_trust.totalVouchesReceived ?? 0}
+                    </div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-gray-400">
+                      Vouches
+                    </div>
+                  </div>
+                  <div className="bg-white px-2 py-3 dark:bg-gray-900">
+                    <div className="font-display text-xl font-bold text-[var(--lobster-accent)]">
+                      {formatUsdcMicros(
+                        (skill.author_trust.totalStakeAtRisk ?? 0).toString()
+                      ) ?? "0"}
+                    </div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-gray-400">
+                      USDC at stake
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {skill.author_pubkey ? (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Link
+                    href={`/author/${skill.author_pubkey}`}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                  >
+                    View full author trust history{" "}
+                    <FiExternalLink className="w-3.5 h-3.5" />
+                  </Link>
+                  <Link
+                    href={`/author/${skill.author_pubkey}?report=1${
+                      skill.on_chain_address
+                        ? `&skill=${encodeURIComponent(
+                            `skill:${skill.on_chain_address}`
+                          )}`
+                        : ""
+                    }`}
+                    className={navButtonSecondaryInlineClass}
+                  >
+                    Report Author
+                  </Link>
+                </div>
               ) : (
-                <>
-                  <FiShield className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    Content not yet pinned to IPFS
-                  </span>
-                </>
+                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                  This free listing is attributed to an unverified publisher. It
+                  has no on-chain author wallet yet, so vouching, reports, and
+                  paid settlement are unavailable until the publisher links one.
+                </p>
               )}
             </div>
-          </div>
-        )}
+            {skill.author_identity && (
+              <div className="mb-6">
+                <AgentIdentityPanel
+                  identity={skill.author_identity}
+                  title={
+                    skill.author_identity.registryAsset
+                      ? "Registry Identity"
+                      : "Author Identity"
+                  }
+                />
+              </div>
+            )}
+            {(skill.content_verification ||
+              skill.ipfs_cid ||
+              skill.skill_uri) && (
+              <details className="mb-6">
+                <summary className="mb-3 cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  On-chain provenance
+                </summary>
+                {/* Content Verification */}
+                {skill.content_verification && (
+                  <div
+                    className={`rounded-sm border p-4 mb-6 ${
+                      skill.content_verification.status === "verified"
+                        ? "border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10"
+                        : skill.content_verification.status === "drift_detected"
+                        ? "border-yellow-200 dark:border-yellow-800/50 bg-yellow-50 dark:bg-yellow-900/10"
+                        : "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {skill.content_verification.status === "verified" ? (
+                        <>
+                          <FiShield className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                            Content hash verified
+                          </span>
+                          <span className="text-xs text-green-600 dark:text-green-500 ml-1">
+                            — All versions pinned to IPFS, current CID
+                            consistent
+                          </span>
+                        </>
+                      ) : skill.content_verification.status ===
+                        "drift_detected" ? (
+                        <>
+                          <FiShield className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                          <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                            Content updated since last pin
+                          </span>
+                          <span className="text-xs text-yellow-600 dark:text-yellow-500 ml-1">
+                            — Current version may differ from previously vouched
+                            content
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <FiShield className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            Content not yet pinned to IPFS
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* IPFS CID */}
+                {skill.ipfs_cid && (
+                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FiShield className="w-4 h-4 text-green-500" />
+                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Content Hash (IPFS)
+                        </span>
+                      </div>
+                      <a
+                        href={`https://ipfs.io/ipfs/${skill.ipfs_cid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                      >
+                        Verify on IPFS <FiExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(skill.ipfs_cid!, "cid")}
+                      className="mt-2 font-mono text-sm text-gray-600 dark:text-gray-400 hover:text-[var(--sea-accent)] flex items-center gap-1.5 transition"
+                    >
+                      {skill.ipfs_cid}
+                      {copied === "cid" ? (
+                        <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
+                      ) : (
+                        <FiCopy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                )}
+                {/* Skill URI */}
+                {skill.skill_uri && (
+                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FiExternalLink className="w-4 h-4 text-[var(--sea-accent)]" />
+                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Skill Source
+                        </span>
+                      </div>
+                    </div>
+                    <a
+                      href={skill.skill_uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 block text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline break-all"
+                    >
+                      {skill.skill_uri}
+                    </a>
+                  </div>
+                )}
+              </details>
+            )}
+          </aside>
+        </div>
 
-        <TrustSignalChecklist
-          signals={skill.signals}
-          scan={skill.security_scan}
-        />
-
+        {/* ===== AUTHOR / ON-CHAIN LISTING ===== */}
         {/* On-chain listing section */}
         {skill.on_chain_address ? (
           <div
@@ -2239,207 +2432,6 @@ export default function SkillDetailPage({
                 Publish New Version
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Skill URI */}
-        {skill.skill_uri && (
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FiExternalLink className="w-4 h-4 text-[var(--sea-accent)]" />
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Skill Source
-                </span>
-              </div>
-            </div>
-            <a
-              href={skill.skill_uri}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 block text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline break-all"
-            >
-              {skill.skill_uri}
-            </a>
-          </div>
-        )}
-
-        {/* Skill Tree / SKILL.md Content */}
-        {content && skill.files?.length ? (
-          <div className="mb-6">
-            <SkillFileTree
-              skillId={skill.id}
-              skillName={skill.name}
-              files={skill.files}
-              treeHash={skill.tree_hash}
-              hasExecutable={skill.has_executable}
-              securityScan={skill.security_scan}
-              initialContent={content}
-            />
-          </div>
-        ) : content ? (
-          <div className="mb-6 rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4 dark:border-gray-800">
-              <FiFileText className="h-4 w-4 text-gray-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                SKILL.md Content
-              </span>
-            </div>
-            <MarkdownRenderer content={content} />
-          </div>
-        ) : (
-          isChainOnly &&
-          skill.skill_uri && (
-            <div className="rounded-sm border border-yellow-200 dark:border-yellow-800/50 bg-yellow-50 dark:bg-yellow-900/10 p-4 mb-6">
-              <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                Content could not be loaded from the source URL. The file may
-                have been moved or is temporarily unavailable.
-              </p>
-            </div>
-          )
-        )}
-
-        {/* Version History */}
-        {(skill.versions?.length > 0 || (isAuthor && !isChainOnly)) && (
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-            <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
-              <div className="flex items-center gap-2">
-                <FiGitCommit className="w-4 h-4 text-gray-400" />
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Version History
-                </span>
-              </div>
-              {isAuthor && !isChainOnly && !versionComposerOpen && (
-                <button
-                  onClick={openVersionComposer}
-                  className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium`}
-                >
-                  <FiGitCommit className="w-3.5 h-3.5" />
-                  Publish New Version
-                </button>
-              )}
-            </div>
-            {isAuthor && !isChainOnly && versionComposerOpen && (
-              <div className="mb-4 p-4 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)]">
-                <div className="flex items-center justify-between gap-4 mb-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                      Publish New Version
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      This publishes updated repo-backed skill content and
-                      changelog only. Listing edits stay on the on-chain path.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setVersionComposerOpen(false)}
-                    disabled={publishingVersion}
-                    className={`${navButtonSizeClass} text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition`}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      Updated SKILL.md content
-                    </label>
-                    <textarea
-                      value={versionDraft}
-                      onChange={(e) => setVersionDraft(e.target.value)}
-                      rows={14}
-                      className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      Changelog
-                    </label>
-                    <input
-                      type="text"
-                      value={versionChangelog}
-                      onChange={(e) => setVersionChangelog(e.target.value)}
-                      placeholder="Summarize what changed in this version"
-                      className="w-full px-3 py-1.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
-                    />
-                  </div>
-                  {versionResult && (
-                    <p
-                      className={`text-xs ${
-                        versionResult.success
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-red-600 dark:text-red-400"
-                      }`}
-                    >
-                      {versionResult.message}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handlePublishVersion}
-                      disabled={publishingVersion}
-                      className={navButtonPrimaryInlineClass}
-                    >
-                      {publishingVersion ? (
-                        <>
-                          <FiLoader className="w-4 h-4 animate-spin" />
-                          Publishing…
-                        </>
-                      ) : (
-                        <>
-                          <FiGitCommit className="w-4 h-4" />
-                          Publish New Version
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {skill.versions?.length > 0 ? (
-              <div className="space-y-3">
-                {skill.versions.map((ver) => (
-                  <div
-                    key={ver.id}
-                    className="flex items-start justify-between p-3 rounded-sm bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">
-                          v{ver.version}
-                        </span>
-                        {ver.version === skill.current_version && (
-                          <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs">
-                            latest
-                          </span>
-                        )}
-                      </div>
-                      {ver.changelog && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {ver.changelog}
-                        </p>
-                      )}
-                      {ver.ipfs_cid && (
-                        <span className="text-xs font-mono text-gray-400 dark:text-gray-500 mt-1 block">
-                          CID: {ver.ipfs_cid.slice(0, 16)}...
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
-                      <FiClock className="w-3 h-3" />
-                      {formatDate(ver.created_at)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              isAuthor &&
-              !isChainOnly && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Publish the first repo-backed version update for this skill.
-                </p>
-              )
-            )}
           </div>
         )}
       </div>

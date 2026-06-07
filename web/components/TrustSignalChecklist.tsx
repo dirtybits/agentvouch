@@ -61,7 +61,9 @@ export function TrustSignalChecklist({
               <div className="min-w-0">
                 <p className="text-sm font-medium">
                   {signal.label}{" "}
-                  <span className={`font-mono text-[10px] uppercase ${meta.tone}`}>
+                  <span
+                    className={`font-mono text-[10px] uppercase ${meta.tone}`}
+                  >
                     {meta.word}
                   </span>
                 </p>
@@ -71,7 +73,10 @@ export function TrustSignalChecklist({
                 {signal.id === "ai_scan" && scan?.findings?.length ? (
                   <ul className="mt-1 space-y-1 font-mono text-xs text-neutral-500 dark:text-neutral-400">
                     {scan.findings.slice(0, 3).map((f) => (
-                      <li key={`${f.file}:${f.detail}`}>
+                      <li
+                        key={`${f.file}:${f.detail}`}
+                        className="line-clamp-2"
+                      >
                         {f.severity.toUpperCase()} · {f.file}: {f.detail}
                       </li>
                     ))}
