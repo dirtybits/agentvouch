@@ -82,29 +82,22 @@ export async function upsertAuthorTrustSnapshots(input: {
 }
 
 /**
- * Resolve trust + identity from on-chain data for every author that currently
- * has a repo skill, and persist the snapshots. This is the slow path and is
- * intended for the background refresh job. A pre-fetched
- * `agentProfilesByWallet` map (from a shared agent-profile scan) lets the trust
- * resolution skip its per-author profile fetches.
+ * Resolve trust + identity from on-chain data for a set of authors. A
+ * pre-fetched `agentProfilesByWallet` map (from a shared agent-profile scan)
+ * lets the trust resolution skip its per-author profile fetches.
  */
-export async function refreshAllAuthorTrustSnapshots(options?: {
-  agentProfilesByWallet?: Map<string, AgentProfileData>;
-}): Promise<{ authors: number }> {
-  await initializeDatabase();
-  const rows = await sql()<{ author_pubkey: string | null }>`
-    SELECT DISTINCT author_pubkey
-    FROM skills
-    WHERE author_pubkey IS NOT NULL AND author_pubkey <> ''
-  `;
-  const authorPubkeys = rows
-    .map((row) => row.author_pubkey)
-    .filter((pubkey): pubkey is string => Boolean(pubkey));
-
-  if (authorPubkeys.length === 0) {
-    return { authors: 0 };
+export async function resolveTrustAndIdentity(
+  authorPubkeys: string[],
+  options?: {
+    agentProfilesByWallet?: Map<string, AgentProfileData>;
   }
-
+): Promise<{
+  trustMap: Map<string, AuthorTrust>;
+  identityMap: Map<string, AgentIdentitySummary>;
+}> {
+  if (authorPubkeys.length === 0) {
+    return { trustMap: new Map(), identityMap: new Map() };
+  }
   const trustMap = await resolveMultipleAuthorTrust(authorPubkeys, {
     agentProfilesByWallet: options?.agentProfilesByWallet,
   });
@@ -124,7 +117,42 @@ export async function refreshAllAuthorTrustSnapshots(options?: {
       error
     );
   }
+  return { trustMap, identityMap };
+}
 
+/** Resolve trust for the given authors from on-chain data and persist snapshots. */
+export async function refreshAuthorTrustSnapshotsFor(
+  authorPubkeys: string[],
+  options?: {
+    agentProfilesByWallet?: Map<string, AgentProfileData>;
+  }
+): Promise<{ authors: number }> {
+  if (authorPubkeys.length === 0) return { authors: 0 };
+  const { trustMap, identityMap } = await resolveTrustAndIdentity(
+    authorPubkeys,
+    options
+  );
   await upsertAuthorTrustSnapshots({ trustMap, identityMap });
   return { authors: trustMap.size };
+}
+
+/**
+ * Resolve trust + identity from on-chain data for every author that currently
+ * has a repo skill, and persist the snapshots. This is the slow path and is
+ * intended for the background refresh job.
+ */
+export async function refreshAllAuthorTrustSnapshots(options?: {
+  agentProfilesByWallet?: Map<string, AgentProfileData>;
+}): Promise<{ authors: number }> {
+  await initializeDatabase();
+  const rows = await sql()<{ author_pubkey: string | null }>`
+    SELECT DISTINCT author_pubkey
+    FROM skills
+    WHERE author_pubkey IS NOT NULL AND author_pubkey <> ''
+  `;
+  const authorPubkeys = rows
+    .map((row) => row.author_pubkey)
+    .filter((pubkey): pubkey is string => Boolean(pubkey));
+
+  return refreshAuthorTrustSnapshotsFor(authorPubkeys, options);
 }

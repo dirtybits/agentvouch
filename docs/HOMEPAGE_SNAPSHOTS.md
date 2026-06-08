@@ -1,20 +1,37 @@
-# Homepage snapshot layer
+# Homepage + marketplace snapshot layer
 
-The homepage (skill preview cards + platform metrics) is served from Neon
-Postgres so it loads in ~200-300ms, instead of scanning Solana program
-accounts on every request. On-chain data is pulled into Postgres by a periodic
-background job.
+Trusted surfaces (homepage, marketplace, author pages, dashboard) are served
+from Neon Postgres so they load in ~200-300ms, instead of scanning Solana
+program accounts or resolving per-author trust from chain on every request.
+On-chain data is pulled into Postgres by a periodic background job and by
+stale-while-revalidate on the read paths.
 
 ## How it works
 
 | Surface | Served from | Kept fresh by |
 |---|---|---|
-| Platform metrics (`GET /api/landing`) | `platform_metrics_snapshot` table | cron refresh |
-| Skill cards (`GET /api/skills?mode=fast`) | `skills` + `author_trust_snapshots` (LEFT JOIN) | cron refresh + live `/api/skills` requests |
+| Platform metrics (`GET /api/landing`) | `platform_metrics_snapshot` table | stale-while-revalidate + cron |
+| Marketplace list (`GET /api/skills?mode=fast`) | `skills` + `author_trust_snapshots` (LEFT JOIN) | cron + full-mode requests |
+| Card hydration (`POST /api/skills/hydrate`) | `author_trust_snapshots` (trust) + live RPC (buyer status) | snapshot-first trust + background revalidate |
+| Author / dashboard (`GET /api/skills?author=…`) | `author_trust_snapshots` | snapshot-first trust + background revalidate |
 
 Before this change, `/api/landing` ran two `getProgramAccounts` scans plus
-author-identity resolution on the request path, and the homepage's card
-hydration resolved per-author trust from chain. Both are now off the hot path.
+author-identity resolution on the request path; `/api/skills` full mode and
+`/api/skills/hydrate` resolved per-author trust from chain on every request.
+All of that is now off the hot path.
+
+### Trust is snapshot-first
+`/api/skills` (full mode) and `/api/skills/hydrate` serve author trust from
+`author_trust_snapshots` and only touch chain for **first-seen** authors
+(resolved synchronously so they still get trust on that request). Authors whose
+snapshot is older than `AUTHOR_TRUST_SNAPSHOT_STALE_MS` (15m) are served from
+cache and refreshed in the background (`scheduleBackgroundTrustRefresh`). Buyer
+status / purchase preflight stays live — it needs real balance and entitlement
+checks. The classification lives in `lib/authorTrustView.ts`
+(`partitionAuthorsByTrustFreshness`).
+
+Not covered: `useMarketplaceOracle` still reads some program accounts
+client-side; server-mediating those is a separate migration.
 
 ### Request path (fast, Postgres-only)
 - `GET /api/landing` reads `platform_metrics_snapshot` for the configured
@@ -63,8 +80,11 @@ does not depend on the cadence.
 
 ## Key files
 - `web/lib/platformMetrics.ts` — metrics compute + snapshot read/write/refresh
-- `web/lib/trustSnapshots.ts` — author trust snapshot upsert + refresh
+- `web/lib/trustSnapshots.ts` — author trust resolve/upsert/refresh helpers
+- `web/lib/authorTrustView.ts` — cached-trust helpers + freshness partition + background scheduling
 - `web/app/api/landing/route.ts` — snapshot-first metrics endpoint
+- `web/app/api/skills/route.ts` — snapshot-first trust in full mode
+- `web/app/api/skills/hydrate/route.ts` — snapshot-first trust + live buyer status
 - `web/app/api/cron/refresh-snapshots/route.ts` — background refresh job
 - `web/lib/db.ts` — `platform_metrics_snapshot` schema
 - `web/vercel.json` — cron schedule

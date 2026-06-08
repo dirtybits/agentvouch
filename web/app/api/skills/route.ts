@@ -71,6 +71,12 @@ import {
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 import { upsertAuthorTrustSnapshots } from "@/lib/trustSnapshots";
+import {
+  getCachedTrust,
+  getCachedTrustSummary,
+  partitionAuthorsByTrustFreshness,
+  scheduleBackgroundTrustRefresh,
+} from "@/lib/authorTrustView";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -199,30 +205,6 @@ function createRouteTiming(): RouteTiming {
         .join(", ");
     },
   };
-}
-
-function parseCachedJson<T>(value: T | string | null | undefined): T | null {
-  if (!value) return null;
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return null;
-    }
-  }
-  return value;
-}
-
-function getCachedTrust(skill: MergedSkillRow): AuthorTrust | null {
-  if (skill.source !== "repo") return null;
-  return parseCachedJson<AuthorTrust>(skill.cached_author_trust);
-}
-
-function getCachedTrustSummary(
-  skill: MergedSkillRow
-): AgentTrustSummary | null {
-  if (skill.source !== "repo") return null;
-  return parseCachedJson<AgentTrustSummary>(skill.cached_author_trust_summary);
 }
 
 function stripCachedSkillFields(skill: MergedSkillRow): MergedSkillRow {
@@ -539,16 +521,6 @@ function normalizeRepoSkillRows(
   }));
 }
 
-function getAuthorPubkeys(skills: MergedSkillRow[]): string[] {
-  return [
-    ...new Set(
-      skills
-        .map((s) => s.author_pubkey)
-        .filter((value): value is string => Boolean(value && isAddress(value)))
-    ),
-  ];
-}
-
 function buildEnrichedSkillRows(input: {
   skills: MergedSkillRow[];
   trustMap?: Map<string, AuthorTrust>;
@@ -624,13 +596,13 @@ function sortEnrichedSkills(skills: EnrichedSkillRow[], sort: string) {
 }
 
 async function resolveLiveSkillTrust(input: {
-  skills: MergedSkillRow[];
+  authorPubkeys: string[];
   timing: RouteTiming;
 }): Promise<{
   trustMap: Map<string, AuthorTrust>;
   identityMap: Map<string, AgentIdentitySummary>;
 }> {
-  const authorPubkeys = getAuthorPubkeys(input.skills);
+  const authorPubkeys = input.authorPubkeys;
   const trustMap =
     authorPubkeys.length > 0
       ? await input.timing.measure("trust", () =>
@@ -883,14 +855,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const live = fastMode
-      ? {
-          trustMap: new Map<string, AuthorTrust>(),
-          identityMap: new Map<string, AgentIdentitySummary>(),
-        }
-      : await resolveLiveSkillTrust({ skills: allSkills, timing });
+    // Snapshot-first trust: serve cached author_trust_snapshots, resolve only
+    // first-seen authors synchronously, and revalidate stale authors in the
+    // background. Fast mode skips trust entirely and relies on the cache.
+    const live = {
+      trustMap: new Map<string, AuthorTrust>(),
+      identityMap: new Map<string, AgentIdentitySummary>(),
+    };
     if (!fastMode) {
-      persistAuthorTrustSnapshots(live);
+      const { missing, stale } = partitionAuthorsByTrustFreshness(allSkills);
+      if (missing.length > 0) {
+        const resolved = await resolveLiveSkillTrust({
+          authorPubkeys: missing,
+          timing,
+        });
+        live.trustMap = resolved.trustMap;
+        live.identityMap = resolved.identityMap;
+        persistAuthorTrustSnapshots(resolved);
+      }
+      scheduleBackgroundTrustRefresh(stale);
     }
 
     const enriched = buildEnrichedSkillRows({
