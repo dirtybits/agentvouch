@@ -704,6 +704,24 @@ export async function initializeDatabase() {
     ON author_trust_snapshots(chain_context, reputation_score DESC)
   `;
 
+  // Singleton-per-chain snapshot of the homepage platform metrics. Refreshed
+  // from on-chain data by the background snapshot refresh job so /api/landing
+  // can serve metrics straight from Postgres instead of scanning program
+  // accounts on every request.
+  await db`
+    CREATE TABLE IF NOT EXISTS platform_metrics_snapshot (
+      chain_context VARCHAR(64) PRIMARY KEY,
+      agents BIGINT NOT NULL DEFAULT 0,
+      authors BIGINT NOT NULL DEFAULT 0,
+      skills BIGINT NOT NULL DEFAULT 0,
+      revenue_usdc_micros BIGINT NOT NULL DEFAULT 0,
+      staked_usdc_micros BIGINT NOT NULL DEFAULT 0,
+      on_chain_downloads BIGINT NOT NULL DEFAULT 0,
+      downloads BIGINT NOT NULL DEFAULT 0,
+      refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
   await db`
     CREATE TABLE IF NOT EXISTS api_keys (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -29,7 +29,11 @@ describe("skills api source", () => {
     expect(source).toContain('headers["Server-Timing"]');
     expect(hydrateSource).toContain("MAX_HYDRATE_SKILLS");
     expect(hydrateSource).toContain("createPurchasePreflightContext");
-    expect(hydrateSource).toContain("resolveMultipleAuthorTrust");
+    // Trust is snapshot-first: serve cached, resolve first-seen authors, and
+    // revalidate stale ones in the background.
+    expect(hydrateSource).toContain("partitionAuthorsByTrustFreshness");
+    expect(hydrateSource).toContain("resolveTrustAndIdentity");
+    expect(hydrateSource).toContain("scheduleBackgroundTrustRefresh");
   });
 
   it("exposes repo listing activity plus recent USDC receipts", () => {

@@ -19,6 +19,11 @@ export const IN_MEMORY_CACHE_TTL_MS = {
   onChainListings: 60_000,
 } as const;
 
+// A persisted author_trust_snapshots row older than this is served immediately
+// but triggers a background recompute (stale-while-revalidate), so trusted
+// surfaces stay fast without resolving trust from chain on the request path.
+export const AUTHOR_TRUST_SNAPSHOT_STALE_MS = 15 * 60_000;
+
 export const READ_MODEL_GRADUATION_THRESHOLDS = {
   maxSkillsRouteP95Ms: 1_200,
   maxProgramScanCallsPerMinute: 30,

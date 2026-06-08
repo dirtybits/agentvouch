@@ -46,7 +46,10 @@ const CACHE_TTL_MS = IN_MEMORY_CACHE_TTL_MS.authorTrust;
 const textEncoder = getUtf8Encoder();
 const addressEncoder = getAddressEncoder();
 type AgentProfileAccount = Awaited<ReturnType<typeof fetchMaybeAgentProfile>>;
-type AgentProfileData = Extract<AgentProfileAccount, { exists: true }>["data"];
+export type AgentProfileData = Extract<
+  AgentProfileAccount,
+  { exists: true }
+>["data"];
 
 async function getAgentPDA(agentKey: Address): Promise<Address> {
   const [derived] = await getProgramDerivedAddress({
@@ -153,12 +156,22 @@ export async function verifyAuthorTrust(pubkey: string): Promise<AuthorTrust> {
 }
 
 export async function resolveMultipleAuthorTrust(
-  pubkeys: string[]
+  pubkeys: string[],
+  options?: {
+    /**
+     * Pre-fetched AgentProfile accounts keyed by authority wallet. When
+     * provided (e.g. from a shared {@link scanAgentProfiles} scan in the
+     * background refresh), the per-author profile fetch is skipped: a missing
+     * key means the author has no on-chain profile.
+     */
+    agentProfilesByWallet?: Map<string, AgentProfileData>;
+  }
 ): Promise<Map<string, AuthorTrust>> {
   const unique = [...new Set(pubkeys)];
   const disputeMetricsByAuthor = await resolveMultipleAuthorDisputeMetrics(
     unique
   );
+  const injectedProfiles = options?.agentProfilesByWallet;
   const results = await Promise.all(
     unique.map(async (pubkey) => {
       const disputeMetrics: AuthorDisputeMetrics = disputeMetricsByAuthor.get(
@@ -170,6 +183,17 @@ export async function resolveMultipleAuthorTrust(
       };
 
       const now = Date.now();
+
+      if (injectedProfiles) {
+        const profile = injectedProfiles.get(pubkey);
+        const trust = mergeAuthorTrust(
+          profile ? mapAgentProfileTrust(profile) : getDefaultTrust(),
+          disputeMetrics
+        );
+        cache.set(pubkey, { data: trust, expires: now + CACHE_TTL_MS });
+        return trust;
+      }
+
       const cached = cache.get(pubkey);
       if (cached && cached.expires > now) {
         return mergeAuthorTrust(cached.data, disputeMetrics);
