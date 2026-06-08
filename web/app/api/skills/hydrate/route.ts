@@ -9,10 +9,7 @@ import {
   type AgentTrustSummary,
 } from "@/lib/agentDiscovery";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
-import {
-  getConfiguredSolanaChainContext,
-  normalizePersistedChainContext,
-} from "@/lib/chains";
+import { normalizePersistedChainContext } from "@/lib/chains";
 import { initializeDatabase, sql } from "@/lib/db";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -37,13 +34,13 @@ import {
   type SkillSecurityScan,
 } from "@/lib/securityScan";
 import { buildTrustSignals, type TrustSignal } from "@/lib/trustSignals";
+import { upsertAuthorTrustSnapshots } from "@/lib/trustSnapshots";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 
 const MAX_HYDRATE_SKILLS = 24;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 
 type HydrateRequestBody = {
@@ -234,45 +231,6 @@ function buildHydratedBaseRows(input: {
       }),
     };
   });
-}
-
-async function upsertAuthorTrustSnapshots(input: {
-  trustMap: Map<string, AuthorTrust>;
-  identityMap: Map<string, AgentIdentitySummary>;
-}) {
-  await Promise.all(
-    [...input.trustMap.entries()].map(([walletPubkey, trust]) => {
-      const summary = buildAgentTrustSummary({
-        walletPubkey,
-        trust,
-        identity: input.identityMap.get(walletPubkey) ?? null,
-      });
-      return sql()`
-        INSERT INTO author_trust_snapshots (
-          wallet_pubkey,
-          chain_context,
-          reputation_score,
-          author_trust,
-          author_trust_summary,
-          refreshed_at
-        )
-        VALUES (
-          ${walletPubkey},
-          ${configuredSolanaChainContext},
-          ${trust.reputationScore},
-          ${JSON.stringify(trust)}::jsonb,
-          ${JSON.stringify(summary)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (wallet_pubkey, chain_context)
-        DO UPDATE SET
-          reputation_score = EXCLUDED.reputation_score,
-          author_trust = EXCLUDED.author_trust,
-          author_trust_summary = EXCLUDED.author_trust_summary,
-          refreshed_at = NOW()
-      `;
-    })
-  );
 }
 
 async function addPurchasePreflightAndBuyerStatus(input: {

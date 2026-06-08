@@ -10,6 +10,7 @@ import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { initializeDatabase, sql } from "@/lib/db";
 import { listOnChainSkillListings } from "@/lib/onchain";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
+import type { AgentProfileData } from "@/lib/trust";
 
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const asBase64 = (bytes: Uint8Array) =>
@@ -27,13 +28,20 @@ export type LandingMetrics = {
 
 export type LandingPayload = {
   metrics: LandingMetrics;
-  featuredSkills: Array<{
-    account: {
-      author: string;
-      totalDownloads: number;
-      totalRevenueUsdcMicros: number;
-    };
-  }>;
+};
+
+/**
+ * A single `getProgramAccounts` scan of all AgentProfile accounts, shared
+ * between the metrics aggregation and the per-author trust refresh so the cron
+ * does not scan the same accounts twice.
+ */
+export type AgentProfileScan = {
+  /** Number of AgentProfile accounts (one per registered agent). */
+  count: number;
+  /** Total vouch stake across all agents, in USDC micros (overflow-clamped). */
+  totalStakedUsdcMicros: number;
+  /** Decoded profile keyed by the agent's authority wallet. */
+  byAuthority: Map<string, AgentProfileData>;
 };
 
 function toSafeMetricNumber(value: bigint): number {
@@ -73,56 +81,70 @@ async function getRepoInstallCount(): Promise<number> {
 }
 
 /**
+ * Scan every AgentProfile account once. The decoded profiles are reused by both
+ * the metrics aggregation and the trust-snapshot refresh.
+ */
+export async function scanAgentProfiles(): Promise<AgentProfileScan> {
+  const accounts = await rpc
+    .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
+      encoding: "base64",
+      filters: [
+        {
+          memcmp: {
+            offset: 0n,
+            bytes: asBase64(AGENT_PROFILE_DISCRIMINATOR),
+            encoding: "base64",
+          },
+        },
+      ],
+    })
+    .send();
+
+  const decoder = getAgentProfileDecoder();
+  const byAuthority = new Map<string, AgentProfileData>();
+  let totalStakedUsdcMicros = 0;
+
+  for (const account of accounts) {
+    const data = decoder.decode(
+      new Uint8Array(Buffer.from(account.account.data[0], "base64"))
+    ) as AgentProfileData;
+    byAuthority.set(String(data.authority), data);
+    totalStakedUsdcMicros += toSafeMetricNumber(
+      BigInt(data.totalVouchStakeUsdcMicros)
+    );
+  }
+
+  return {
+    count: accounts.length,
+    totalStakedUsdcMicros,
+    byAuthority,
+  };
+}
+
+/**
  * Compute the homepage platform metrics directly from on-chain program
  * accounts. This is the slow path (two getProgramAccounts scans plus identity
  * resolution) and is intended to run in the background refresh job, not on the
- * request hot path.
+ * request hot path. An already-fetched {@link AgentProfileScan} may be injected
+ * to share the agent scan with the trust refresh.
  */
-export async function computeLandingPayloadFromChain(): Promise<LandingPayload> {
-  const [skillAccounts, agentAccounts, repoInstalls] = await Promise.all([
+export async function computeLandingPayloadFromChain(opts?: {
+  agentScan?: AgentProfileScan;
+}): Promise<LandingPayload> {
+  const [skillAccounts, agentScan, repoInstalls] = await Promise.all([
     listOnChainSkillListings(),
-    rpc
-      .getProgramAccounts(AGENTVOUCH_PROGRAM_ADDRESS, {
-        encoding: "base64",
-        filters: [
-          {
-            memcmp: {
-              offset: 0n,
-              bytes: asBase64(AGENT_PROFILE_DISCRIMINATOR),
-              encoding: "base64",
-            },
-          },
-        ],
-      })
-      .send(),
+    opts?.agentScan ? Promise.resolve(opts.agentScan) : scanAgentProfiles(),
     getRepoInstallCount(),
   ]);
 
-  const agentDecoder = getAgentProfileDecoder();
-
   const skills = skillAccounts.map(({ data }) => ({
-    account: {
-      author: data.author,
-      totalDownloads: toSafeMetricNumber(data.totalDownloads),
-      totalRevenueUsdcMicros: toSafeMetricNumber(data.totalRevenueUsdcMicros),
-    },
+    author: data.author,
+    totalDownloads: toSafeMetricNumber(data.totalDownloads),
+    totalRevenueUsdcMicros: toSafeMetricNumber(data.totalRevenueUsdcMicros),
   }));
 
-  const agents = agentAccounts.map((a) => {
-    const data = agentDecoder.decode(
-      new Uint8Array(Buffer.from(a.account.data[0], "base64"))
-    );
-    return {
-      publicKey: a.pubkey,
-      account: {
-        authority: data.authority,
-        totalStakedFor: Number(data.totalVouchStakeUsdcMicros),
-      },
-    };
-  });
-
-  const authorPubkeys = [...new Set(skills.map((s) => s.account.author))];
-  const registeredWallets = new Set(agents.map((a) => a.account.authority));
+  const authorPubkeys = [...new Set(skills.map((s) => s.author))];
+  const registeredWallets = agentScan.byAuthority;
   let identityMap = new Map();
   try {
     identityMap = await resolveManyAgentIdentitiesByWallet(authorPubkeys, {
@@ -147,29 +169,24 @@ export async function computeLandingPayloadFromChain(): Promise<LandingPayload> 
     )
   );
   const totalRevenue = skills.reduce(
-    (sum, s) => sum + s.account.totalRevenueUsdcMicros,
-    0
-  );
-  const totalStaked = agents.reduce(
-    (sum, a) => sum + a.account.totalStakedFor,
+    (sum, s) => sum + s.totalRevenueUsdcMicros,
     0
   );
   const onChainDownloads = skills.reduce(
-    (sum, s) => sum + s.account.totalDownloads,
+    (sum, s) => sum + s.totalDownloads,
     0
   );
 
   return {
     metrics: {
-      agents: agents.length,
+      agents: agentScan.count,
       authors: authorSet.size,
       skills: skills.length,
       revenue: totalRevenue,
-      staked: totalStaked,
+      staked: agentScan.totalStakedUsdcMicros,
       onChainDownloads,
       downloads: onChainDownloads + repoInstalls,
     },
-    featuredSkills: skills.slice(0, 3),
   };
 }
 
@@ -260,8 +277,10 @@ export async function writePlatformMetricsSnapshot(
 }
 
 /** Recompute platform metrics from on-chain data and persist the snapshot. */
-export async function refreshPlatformMetricsSnapshot(): Promise<LandingPayload> {
-  const payload = await computeLandingPayloadFromChain();
+export async function refreshPlatformMetricsSnapshot(opts?: {
+  agentScan?: AgentProfileScan;
+}): Promise<LandingPayload> {
+  const payload = await computeLandingPayloadFromChain(opts);
   await writePlatformMetricsSnapshot(payload.metrics);
   return payload;
 }

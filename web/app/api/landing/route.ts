@@ -1,7 +1,6 @@
 import { NextResponse, after } from "next/server";
 import {
   buildPublicCacheControl,
-  IN_MEMORY_CACHE_TTL_MS,
   PUBLIC_ROUTE_CACHE_SECONDS,
   PUBLIC_ROUTE_STALE_SECONDS,
 } from "@/lib/cachePolicy";
@@ -9,79 +8,98 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   computeLandingPayloadFromChain,
   readPlatformMetricsSnapshot,
+  refreshPlatformMetricsSnapshot,
   writePlatformMetricsSnapshot,
   type LandingPayload,
 } from "@/lib/platformMetrics";
 
-const LANDING_CACHE_KEY = "landing";
+// A snapshot older than this is served immediately but triggers a background
+// recompute (stale-while-revalidate), so organic traffic keeps metrics fresh
+// even if the cron is delayed or disabled.
+const SNAPSHOT_STALE_MS = 15 * 60_000;
 
-const landingCache = new Map<
-  string,
-  { value: LandingPayload; expiresAt: number }
->();
-let inFlightLandingPayload: Promise<LandingPayload> | null = null;
+let inFlightCompute: Promise<LandingPayload> | null = null;
+let inFlightRefresh: Promise<unknown> | null = null;
 
 /**
- * Slow path: compute metrics from on-chain data, dedupe concurrent callers, and
- * persist the snapshot so subsequent requests can serve straight from Postgres.
- * Used only when the background-refreshed snapshot is missing (e.g. cold start
- * before the first cron run).
+ * Cold path (no snapshot row yet, e.g. before the first refresh): compute from
+ * chain, dedupe concurrent callers, and persist the snapshot so subsequent
+ * requests serve straight from Postgres.
  */
-function computeAndCacheLandingPayload(): Promise<LandingPayload> {
-  if (process.env.NODE_ENV === "test") {
-    return computeLandingPayloadFromChain();
-  }
+function computeLandingPayloadOnce(): Promise<LandingPayload> {
+  if (inFlightCompute) return inFlightCompute;
 
-  const now = Date.now();
-  const cached = landingCache.get(LANDING_CACHE_KEY);
-  if (cached && cached.expiresAt > now) {
-    return Promise.resolve(cached.value);
-  }
-
-  if (inFlightLandingPayload) {
-    return inFlightLandingPayload;
-  }
-
-  inFlightLandingPayload = computeLandingPayloadFromChain()
+  inFlightCompute = computeLandingPayloadFromChain()
     .then((value) => {
-      landingCache.set(LANDING_CACHE_KEY, {
-        value,
-        expiresAt: Date.now() + IN_MEMORY_CACHE_TTL_MS.landing,
-      });
-      after(() =>
+      const persist = () =>
         writePlatformMetricsSnapshot(value.metrics).catch((error) => {
           console.error(
             "Failed to persist platform metrics snapshot from /api/landing:",
             error
           );
-        })
-      );
+        });
+      try {
+        after(persist);
+      } catch {
+        void persist();
+      }
       return value;
     })
     .finally(() => {
-      inFlightLandingPayload = null;
+      inFlightCompute = null;
     });
 
-  return inFlightLandingPayload;
+  return inFlightCompute;
+}
+
+/** Recompute the snapshot in the background, single-flighted to avoid a stampede. */
+function scheduleSnapshotRefresh(): void {
+  const run = () => {
+    if (inFlightRefresh) return inFlightRefresh;
+    inFlightRefresh = refreshPlatformMetricsSnapshot()
+      .catch((error) => {
+        console.error(
+          "Background platform metrics refresh failed:",
+          getErrorMessage(error)
+        );
+      })
+      .finally(() => {
+        inFlightRefresh = null;
+      });
+    return inFlightRefresh;
+  };
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
+}
+
+function isStale(refreshedAt: string): boolean {
+  const refreshedMs = Date.parse(refreshedAt);
+  if (Number.isNaN(refreshedMs)) return true;
+  return Date.now() - refreshedMs > SNAPSHOT_STALE_MS;
 }
 
 async function getLandingPayload(): Promise<LandingPayload> {
-  if (process.env.NODE_ENV !== "test") {
-    try {
-      const snapshot = await readPlatformMetricsSnapshot();
-      if (snapshot) {
-        // featuredSkills is unused by the homepage; metrics come from Postgres.
-        return { metrics: snapshot.metrics, featuredSkills: [] };
-      }
-    } catch (error) {
-      console.error(
-        "Failed to read platform metrics snapshot; falling back to live compute:",
-        error
-      );
-    }
+  let snapshot: Awaited<ReturnType<typeof readPlatformMetricsSnapshot>> = null;
+  try {
+    snapshot = await readPlatformMetricsSnapshot();
+  } catch (error) {
+    console.error(
+      "Failed to read platform metrics snapshot; falling back to live compute:",
+      error
+    );
   }
 
-  return computeAndCacheLandingPayload();
+  if (snapshot) {
+    if (isStale(snapshot.refreshedAt)) {
+      scheduleSnapshotRefresh();
+    }
+    return { metrics: snapshot.metrics };
+  }
+
+  return computeLandingPayloadOnce();
 }
 
 export async function GET() {
