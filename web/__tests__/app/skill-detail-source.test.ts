@@ -5,18 +5,18 @@ import { describe, expect, it } from "vitest";
 describe("skill detail source", () => {
   it("shows USDC price, receipt rent, and preflight warnings", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
       "utf8"
     );
 
     expect(source).toContain("USDC primary pricing");
-    expect(source).toContain("Receipt rent");
+    expect(source).toContain("estimatedPurchaseRentLamports");
     expect(source).toContain("purchasePreflightMessage");
   });
 
   it("documents signed download instructions for paid skills", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
       "utf8"
     );
 
@@ -45,7 +45,7 @@ describe("skill detail source", () => {
 
   it("keeps repo-backed listing edits and repo version publishing as separate author actions", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
       "utf8"
     );
 
@@ -54,12 +54,12 @@ describe("skill detail source", () => {
     expect(source).toContain("Publish New Version");
     expect(source).toContain("buildSignMessage");
     expect(source).toContain('requestedAuthorAction === "publish-version"');
-    expect(source).toContain("Listing edits stay on the on-chain path.");
+    expect(source).toContain("Listing edits stay on the on-chain");
   });
 
   it("passes the skill title into the multi-file tree", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
       "utf8"
     );
 

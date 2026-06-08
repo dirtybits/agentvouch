@@ -146,7 +146,9 @@ describe("POST /api/skills/hydrate", () => {
     );
     mockHasUsdcPurchaseEntitlement.mockResolvedValue(true);
 
-    const res = await POST(makeRequest({ skillIds: [skillId], buyer }));
+    const res = await POST(
+      makeRequest({ skillIds: [skillId], buyer, includeBuyerStatus: true })
+    );
     const body = await res.json();
 
     expect(res.status).toBe(200);

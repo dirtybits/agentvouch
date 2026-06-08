@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "node:crypto";
 import { initializeDatabase, sql } from "@/lib/db";
-import { generateSummarySafe } from "@/lib/ai/summarize";
-import { runScanSafe, SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import { runReviewSafe } from "@/lib/ai/review";
 import { SCAN_MODEL } from "@/lib/ai/gateway";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
@@ -217,7 +217,9 @@ function getCachedTrust(skill: MergedSkillRow): AuthorTrust | null {
   return parseCachedJson<AuthorTrust>(skill.cached_author_trust);
 }
 
-function getCachedTrustSummary(skill: MergedSkillRow): AgentTrustSummary | null {
+function getCachedTrustSummary(
+  skill: MergedSkillRow
+): AgentTrustSummary | null {
   if (skill.source !== "repo") return null;
   return parseCachedJson<AgentTrustSummary>(skill.cached_author_trust_summary);
 }
@@ -460,11 +462,15 @@ async function loadRepoSkillRows(input: {
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
           AND ats.chain_context = ${configuredSolanaChainContext}
-        WHERE to_tsvector('english', s.name || ' ' || COALESCE(s.description, '')) @@ plainto_tsquery('english', ${input.q})
+        WHERE to_tsvector('english', s.name || ' ' || COALESCE(s.description, '')) @@ plainto_tsquery('english', ${
+          input.q
+        })
         ${input.author ? sql()`AND s.author_pubkey = ${input.author}` : sql()``}
         ${
           input.tags
-            ? sql()`AND s.tags && ${input.tags.split(",").filter(Boolean)}::text[]`
+            ? sql()`AND s.tags && ${input.tags
+                .split(",")
+                .filter(Boolean)}::text[]`
             : sql()``
         }
       `;
@@ -507,7 +513,9 @@ async function loadRepoSkillRows(input: {
       ${input.author ? sql()`AND s.author_pubkey = ${input.author}` : sql()``}
       ${
         input.tags
-          ? sql()`AND s.tags && ${input.tags.split(",").filter(Boolean)}::text[]`
+          ? sql()`AND s.tags && ${input.tags
+              .split(",")
+              .filter(Boolean)}::text[]`
           : sql()``
       }
     `;
@@ -519,7 +527,9 @@ async function loadRepoSkillRows(input: {
   return load();
 }
 
-function normalizeRepoSkillRows(pgSkills: RepoSkillRow[]): RepoMergedSkillRow[] {
+function normalizeRepoSkillRows(
+  pgSkills: RepoSkillRow[]
+): RepoMergedSkillRow[] {
   return pgSkills.map((skill) => ({
     ...skill,
     security_scan: buildSecurityScanFromFields(skill),
@@ -549,8 +559,9 @@ function buildEnrichedSkillRows(input: {
 
   return input.skills.map((skill) => {
     const authorTrust =
-      (skill.author_pubkey ? trustMap.get(skill.author_pubkey) || null : null) ??
-      (input.useCachedTrust ? getCachedTrust(skill) : null);
+      (skill.author_pubkey
+        ? trustMap.get(skill.author_pubkey) || null
+        : null) ?? (input.useCachedTrust ? getCachedTrust(skill) : null);
     const authorIdentity = skill.author_pubkey
       ? identityMap.get(skill.author_pubkey) || null
       : null;
@@ -957,7 +968,11 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: getSkillResponseHeaders({
-          buyerAddress: fastMode ? null : buyerAddress ? String(buyerAddress) : null,
+          buyerAddress: fastMode
+            ? null
+            : buyerAddress
+            ? String(buyerAddress)
+            : null,
           mode: fastMode ? "fast" : "full",
           timing,
         }),
@@ -1013,7 +1028,11 @@ export async function POST(request: NextRequest) {
       max: number;
     }> = [
       { field: "name", value: name, max: MAX_SKILL_NAME_LENGTH },
-      { field: "description", value: description, max: MAX_SKILL_DESCRIPTION_LENGTH },
+      {
+        field: "description",
+        value: description,
+        max: MAX_SKILL_DESCRIPTION_LENGTH,
+      },
       { field: "contact", value: contact, max: MAX_SKILL_CONTACT_LENGTH },
     ];
     for (const { field, value, max } of fieldByteLimits) {
@@ -1094,13 +1113,16 @@ export async function POST(request: NextRequest) {
 
     await initializeDatabase();
     const skillDbId = randomUUID();
-    const { publicAuthorSlug, publicSlug } = await buildUniquePublicSkillRoute(sql(), {
-      id: skillDbId,
-      skill_id,
-      author_handle: publisher.handle,
-      author_pubkey: publisher.authorPubkey,
-      publisher_identity_key: publisher.identityKey,
-    });
+    const { publicAuthorSlug, publicSlug } = await buildUniquePublicSkillRoute(
+      sql(),
+      {
+        id: skillDbId,
+        skill_id,
+        author_handle: publisher.handle,
+        author_pubkey: publisher.authorPubkey,
+        publisher_identity_key: publisher.identityKey,
+      }
+    );
 
     const tree = await putSkillTree(upload.files);
     const pinResult = await pinSkillContent(content, skill_id, 1);
@@ -1192,9 +1214,17 @@ export async function POST(request: NextRequest) {
       )
     `;
 
-    // Auto-generate the AI summary after the response — publishers never write one.
-    after(() => generateSummarySafe(skill.id, content, { expectedVersion: 1 }));
-    after(() => runScanSafe(tree.treeHash, tree.filesWithBytes));
+    // Auto-generate the skill's automated review (summary + scan) after the
+    // response — publishers never write one.
+    after(() =>
+      runReviewSafe({
+        skillId: skill.id,
+        content,
+        treeHash: tree.treeHash,
+        files: tree.filesWithBytes,
+        expectedVersion: 1,
+      })
+    );
 
     return NextResponse.json(
       {

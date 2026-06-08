@@ -50,6 +50,21 @@ vi.mock("@/lib/githubOAuth", () => ({
   getGithubSessionFromRequest: vi.fn(),
 }));
 
+// Public-slug routing runs real slug-uniqueness sql() queries; stub it so it
+// doesn't consume the mocked db response queue meant for the INSERTs. Keep the
+// module's other exports real (the PATCH tests rely on them).
+vi.mock("@/lib/skillRouteResolver", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/skillRouteResolver")>();
+  return {
+    ...actual,
+    buildUniquePublicSkillRoute: vi.fn(async () => ({
+      publicAuthorSlug: "author-slug",
+      publicSlug: "skill-slug",
+    })),
+  };
+});
+
 import { POST } from "@/app/api/skills/route";
 import { PATCH } from "@/app/api/skills/[id]/route";
 import { verifyWalletSignature } from "@/lib/auth";
@@ -180,7 +195,8 @@ describe("POST /api/skills", () => {
       "my-skill",
       1
     );
-    expect(mockAfter).toHaveBeenCalledTimes(2);
+    // One after(): runReviewSafe orchestrates the summary + scan passes.
+    expect(mockAfter).toHaveBeenCalledTimes(1);
     expect(mockUpsertLocalAgentIdentity).toHaveBeenCalledWith({
       walletPubkey: "AuthorWallet1111111111111111111111111111111",
       chainContext: expect.any(String),

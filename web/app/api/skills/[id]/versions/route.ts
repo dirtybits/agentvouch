@@ -2,8 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { sql } from "@/lib/db";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
-import { generateSummarySafe } from "@/lib/ai/summarize";
-import { runScanSafe } from "@/lib/ai/scan";
+import { runReviewSafe } from "@/lib/ai/review";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import { MAX_SKILL_CONTENT_BYTES } from "@/lib/skillDraft";
@@ -126,11 +125,16 @@ export async function POST(
       WHERE id = ${id}::uuid
     `;
 
-    // Regenerate the AI summary for the new content after the response.
+    // Regenerate the automated review (summary + scan) for the new content.
     after(() =>
-      generateSummarySafe(id, content, { expectedVersion: newVersion })
+      runReviewSafe({
+        skillId: id,
+        content,
+        treeHash: tree.treeHash,
+        files: tree.filesWithBytes,
+        expectedVersion: newVersion,
+      })
     );
-    after(() => runScanSafe(tree.treeHash, tree.filesWithBytes));
 
     return NextResponse.json(
       {
@@ -142,9 +146,6 @@ export async function POST(
   } catch (error: unknown) {
     console.error("POST /api/skills/[id]/versions error:", error);
     const status = error instanceof SkillUploadError ? error.status : 500;
-    return NextResponse.json(
-      { error: getErrorMessage(error) },
-      { status }
-    );
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
   }
 }

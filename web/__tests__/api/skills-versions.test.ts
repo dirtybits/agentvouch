@@ -197,7 +197,8 @@ describe("POST /api/skills/[id]/versions", () => {
       "calendar-agent",
       3
     );
-    expect(mockAfter).toHaveBeenCalledTimes(2);
+    // One after(): runReviewSafe orchestrates the summary + scan passes.
+    expect(mockAfter).toHaveBeenCalledTimes(1);
     expect(dbQuery).toHaveBeenCalledTimes(3);
 
     const body = await res.json();
