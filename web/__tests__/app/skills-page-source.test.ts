@@ -24,6 +24,8 @@ describe("skills page source", () => {
 
     expect(source).toContain("fetch(`/api/skills?${params}`)");
     expect(source).toContain('params.set("mode", "fast")');
+    expect(source).toContain("MARKETPLACE_PAGE_SIZE");
+    expect(source).toContain('params.set("pageSize", String(MARKETPLACE_PAGE_SIZE))');
     expect(source).toContain('fetch("/api/skills/hydrate"');
     expect(source).toContain("buyer: publicKey ? String(publicKey) : null");
     expect(source).toContain('fetch("/api/skills/activity")');

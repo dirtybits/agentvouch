@@ -169,6 +169,7 @@ type FeedItem = {
 type SortOption = "newest" | "installs" | "trusted" | "name";
 
 const SEARCH_DEBOUNCE_MS = 250;
+const MARKETPLACE_PAGE_SIZE = 9;
 
 function formatUsdc(
   micros: number | bigint | string | null | undefined
@@ -336,6 +337,7 @@ export default function MarketplacePage() {
       params.set("mode", "fast");
       params.set("sort", sort);
       params.set("page", String(page));
+      params.set("pageSize", String(MARKETPLACE_PAGE_SIZE));
 
       const res = await fetch(`/api/skills?${params}`);
       if (!res.ok) throw new Error("Failed to fetch skills");
