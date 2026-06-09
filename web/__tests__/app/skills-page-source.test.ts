@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 describe("skills page source", () => {
   it("derives purchased state from both purchases and direct listing flags", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/page.tsx"),
+      path.join(process.cwd(), "app/skills/MarketplaceClient.tsx"),
       "utf8"
     );
 
@@ -18,7 +18,7 @@ describe("skills page source", () => {
 
   it("uses server-scoped buyer status without broad browser-side marketplace scans", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/page.tsx"),
+      path.join(process.cwd(), "app/skills/MarketplaceClient.tsx"),
       "utf8"
     );
 
@@ -36,7 +36,7 @@ describe("skills page source", () => {
 
   it("debounces search, resets pagination, and ignores stale browse responses", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/page.tsx"),
+      path.join(process.cwd(), "app/skills/MarketplaceClient.tsx"),
       "utf8"
     );
 
@@ -50,7 +50,7 @@ describe("skills page source", () => {
 
   it("filters marketplace cards by clicked skill tags", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/page.tsx"),
+      path.join(process.cwd(), "app/skills/MarketplaceClient.tsx"),
       "utf8"
     );
 
@@ -65,7 +65,7 @@ describe("skills page source", () => {
 
   it("shows USDC purchase preflight warnings for paid skills", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/page.tsx"),
+      path.join(process.cwd(), "app/skills/MarketplaceClient.tsx"),
       "utf8"
     );
 
@@ -78,7 +78,7 @@ describe("skills page source", () => {
 
   it("links author listing cards into edit and repo version actions", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "app/skills/page.tsx"),
+      path.join(process.cwd(), "app/skills/MarketplaceClient.tsx"),
       "utf8"
     );
 

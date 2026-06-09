@@ -165,6 +165,9 @@ type FeedItem = {
 type SortOption = "newest" | "installs" | "trusted" | "name";
 
 const SEARCH_DEBOUNCE_MS = 250;
+// Must match MARKETPLACE_PAGE_SIZE in lib/marketplaceBrowse.ts (the server
+// snapshot); a client component can't import that module without pulling
+// server-only deps into the bundle.
 const MARKETPLACE_PAGE_SIZE = 9;
 
 function formatUsdc(
@@ -236,7 +239,15 @@ function getAuthorActionHref(
   return `${getPublicSkillPath(skill)}?authorAction=${action}#author-actions`;
 }
 
-export default function MarketplacePage() {
+export default function MarketplaceClient({
+  initialSkills = null,
+  initialTotal = 0,
+  pageSize = MARKETPLACE_PAGE_SIZE,
+}: {
+  initialSkills?: SkillRow[] | null;
+  initialTotal?: number;
+  pageSize?: number;
+}) {
   const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
   const publicKey = account ?? null;
@@ -244,16 +255,26 @@ export default function MarketplacePage() {
 
   const [activeTab, setActiveTab] = useState<PageTab>("browse");
 
-  // Browse state
-  const [skills, setSkills] = useState<SkillRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Browse state, seeded from the server snapshot when available so first
+  // paint shows real cards without waiting for a client fetch.
+  const [skills, setSkills] = useState<SkillRow[]>(initialSkills ?? []);
+  const [loading, setLoading] = useState(!initialSkills);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOption>("trusted");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(
+    Math.max(1, Math.ceil(initialTotal / pageSize))
+  );
+  const [total, setTotal] = useState(initialTotal);
+  // The query state the server snapshot covers. While the live state still
+  // matches it, the browse fetch is redundant; any change (search, sort, page,
+  // wallet) breaks the match and fetches as usual. A plain ref flag would
+  // misfire under StrictMode's double effect run.
+  const snapshotKeyRef = useRef(
+    initialSkills ? "page=1 sort=trusted q= tags= buyer=" : null
+  );
 
   // Marketplace state
   const [purchasing, setPurchasing] = useState<string | null>(null);
@@ -496,8 +517,15 @@ export default function MarketplacePage() {
   }, [search]);
 
   useEffect(() => {
+    const browseKey = `page=${page} sort=${sort} q=${debouncedSearch} tags=${
+      selectedTag ?? ""
+    } buyer=${publicKey ? String(publicKey) : ""}`;
+    if (snapshotKeyRef.current === browseKey) {
+      return;
+    }
+    snapshotKeyRef.current = null;
     fetchSkills();
-  }, [fetchSkills]);
+  }, [debouncedSearch, fetchSkills, page, publicKey, selectedTag, sort]);
   useEffect(() => {
     void loadFeed();
   }, [loadFeed]);

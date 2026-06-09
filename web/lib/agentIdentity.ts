@@ -4,7 +4,7 @@ import {
   getUtf8Encoder,
   type Address,
 } from "@solana/kit";
-import { sql } from "@/lib/db";
+import { computeSchemaFingerprint, runSchemaDdlOnce, sql } from "@/lib/db";
 import {
   getConfiguredSolanaChainContext,
   normalizeInputChainContext,
@@ -222,7 +222,21 @@ export async function ensureAgentIdentitySchema(): Promise<void> {
 
   schemaReady = (async () => {
     const db = sql();
+    const fingerprint = computeSchemaFingerprint(
+      runAgentIdentityDdl.toString()
+    );
+    await runSchemaDdlOnce(db, "agent_identity", fingerprint, () =>
+      runAgentIdentityDdl(db)
+    );
+  })().catch((error) => {
+    schemaReady = null;
+    throw error;
+  });
 
+  return schemaReady;
+}
+
+async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
     await db`
       CREATE TABLE IF NOT EXISTS agents (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -324,12 +338,6 @@ export async function ensureAgentIdentitySchema(): Promise<void> {
       ON agent_identity_bindings(agent_id, binding_type)
       WHERE binding_type = 'github_profile'
     `;
-  })().catch((error) => {
-    schemaReady = null;
-    throw error;
-  });
-
-  return schemaReady;
 }
 
 async function deriveAgentProfilePda(walletPubkey: string): Promise<string> {

@@ -37,7 +37,13 @@ describe("skills api source", () => {
   });
 
   it("uses ranked expanded Postgres search with trigram fallback", () => {
+    // The browse query pipeline lives in lib/marketplaceBrowse so the /skills
+    // server page and /api/skills share it.
     const source = fs.readFileSync(
+      path.join(process.cwd(), "lib/marketplaceBrowse.ts"),
+      "utf8"
+    );
+    const routeSource = fs.readFileSync(
       path.join(process.cwd(), "app/api/skills/route.ts"),
       "utf8"
     );
@@ -51,7 +57,8 @@ describe("skills api source", () => {
     expect(source).toContain("% search.raw_query");
     expect(source).toContain("agentvouch_skill_search_tsvector");
     expect(source).toContain("agentvouch_skill_search_text");
-    expect(source).toContain("ensureAgentIdentitySchema");
+    expect(routeSource).toContain("ensureAgentIdentitySchema");
+    expect(routeSource).toContain("loadRepoSkillRows");
     expect(source).toContain("author_agent.username");
     expect(source).toContain("github_binding.metadata->>'login'");
     expect(dbSource).toContain("CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector");
