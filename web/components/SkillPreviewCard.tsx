@@ -27,6 +27,13 @@ interface SkillPreviewCardSkill {
   author_kind?: string | null;
   author_handle?: string | null;
   author_display_name?: string | null;
+  author_identity?: {
+    username?: string | null;
+    githubProfile?: {
+      login: string;
+      url: string;
+    } | null;
+  } | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
   name: string;
@@ -277,7 +284,15 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
-  const authorLabel = skill.author_handle
+  const walletAuthorUsername = skill.author_pubkey
+    ? skill.author_identity?.username
+    : null;
+  const linkedGithubProfile = skill.author_pubkey
+    ? skill.author_identity?.githubProfile
+    : null;
+  const authorLabel = walletAuthorUsername
+    ? `@${walletAuthorUsername}`
+    : skill.author_handle
     ? `@${skill.author_handle}`
     : skill.author_pubkey
     ? shortAddr(skill.author_pubkey)
@@ -288,7 +303,9 @@ export default function SkillPreviewCard({
     ? `https://github.com/${skill.author_handle}`
     : null;
   const authorTitle = skill.author_pubkey
-    ? "Author wallet that published this skill"
+    ? linkedGithubProfile
+      ? `Author wallet linked to GitHub @${linkedGithubProfile.login}`
+      : "Author wallet that published this skill"
     : skill.author_kind === "github"
     ? "GitHub identity that published this unverified skill"
     : "Unverified publisher identity";
@@ -373,6 +390,17 @@ export default function SkillPreviewCard({
               >
                 {authorLabel}
               </span>
+            )}
+            {linkedGithubProfile && (
+              <a
+                href={linkedGithubProfile.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-gray-400 transition hover:text-[var(--sea-accent)]"
+                title={`Linked GitHub @${linkedGithubProfile.login}`}
+              >
+                <FiGithub className="h-3 w-3" />
+              </a>
             )}
             {skill.source !== "chain" && (
               <span

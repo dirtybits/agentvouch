@@ -61,6 +61,13 @@ interface SkillRow {
   author_kind?: string | null;
   author_handle?: string | null;
   author_display_name?: string | null;
+  author_identity?: {
+    username?: string | null;
+    githubProfile?: {
+      login: string;
+      url: string;
+    } | null;
+  } | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
   name: string;

@@ -8,8 +8,10 @@ import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransaction
 import {
   navButtonInlineClass,
   navButtonPrimaryInlineClass,
+  navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import {
+  FiGithub,
   FiKey,
   FiPlus,
   FiTrash2,
@@ -19,6 +21,7 @@ import {
   FiShield,
   FiArrowLeft,
   FiAlertTriangle,
+  FiUser,
 } from "react-icons/fi";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -30,6 +33,28 @@ interface ApiKeyRow {
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
+}
+
+interface AgentIdentitySummary {
+  username: string | null;
+  usernameSource: "fallback" | "user";
+  displayName: string | null;
+  githubProfile: {
+    login: string;
+    name: string | null;
+    avatarUrl: string | null;
+    url: string;
+  } | null;
+}
+
+interface GithubSessionState {
+  configured: boolean;
+  authenticated: boolean;
+  user: {
+    login: string;
+    name: string | null;
+    avatarUrl: string | null;
+  } | null;
 }
 
 export default function SettingsPage() {
@@ -46,6 +71,15 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<AgentIdentitySummary | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [identityStatus, setIdentityStatus] = useState<string | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [githubSession, setGithubSession] = useState<GithubSessionState | null>(
+    null
+  );
+  const [linkingGithub, setLinkingGithub] = useState(false);
 
   const signAuth = useCallback(
     async (action: string) => {
@@ -87,9 +121,51 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, walletAddress]);
 
+  const loadIdentity = useCallback(async () => {
+    if (!connected || !walletAddress) return;
+    setIdentityLoading(true);
+    try {
+      const res = await fetch(`/api/agents/${walletAddress}/identity`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to load profile identity");
+      }
+      const data = await res.json();
+      const nextIdentity = data.author_identity ?? null;
+      setIdentity(nextIdentity);
+      setUsernameDraft(nextIdentity?.username ?? "");
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIdentityLoading(false);
+    }
+  }, [connected, walletAddress]);
+
+  const loadGithubSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/github/session", { cache: "no-store" });
+      if (!res.ok) return;
+      setGithubSession(await res.json());
+    } catch {
+      setGithubSession(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (connected) loadKeys();
   }, [connected, loadKeys]);
+
+  useEffect(() => {
+    if (!connected) {
+      setIdentity(null);
+      setUsernameDraft("");
+      return;
+    }
+    loadIdentity();
+    loadGithubSession();
+  }, [connected, loadIdentity, loadGithubSession]);
 
   const createKey = async () => {
     if (!connected) return;
@@ -137,6 +213,53 @@ export default function SettingsPage() {
     }
   };
 
+  const saveUsername = async () => {
+    if (!connected || !walletAddress) return;
+    setIdentitySaving(true);
+    setIdentityStatus(null);
+    setError(null);
+    try {
+      const auth = await signAuth("update-identity");
+      const res = await fetch(`/api/agents/${walletAddress}/identity`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auth, username: usernameDraft }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update username");
+      setIdentity(data.author_identity ?? null);
+      setUsernameDraft(data.author_identity?.username ?? usernameDraft);
+      setIdentityStatus("Username saved.");
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
+
+  const linkGithub = async () => {
+    if (!connected || !walletAddress) return;
+    setLinkingGithub(true);
+    setIdentityStatus(null);
+    setError(null);
+    try {
+      const auth = await signAuth("link-github-profile");
+      const res = await fetch(`/api/agents/${walletAddress}/identity/github`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auth }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to link GitHub");
+      setIdentity(data.author_identity ?? null);
+      setIdentityStatus("GitHub profile linked.");
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setLinkingGithub(false);
+    }
+  };
+
   const copyKey = () => {
     if (newKey) {
       navigator.clipboard.writeText(newKey);
@@ -147,6 +270,8 @@ export default function SettingsPage() {
 
   const activeKeys = keys.filter((k) => !k.revoked_at);
   const revokedKeys = keys.filter((k) => k.revoked_at);
+  const usernameChanged = usernameDraft.trim() !== (identity?.username ?? "");
+  const githubReturnTo = encodeURIComponent("/settings");
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
@@ -220,6 +345,136 @@ export default function SettingsPage() {
                 </p>
               </div>
             )}
+
+            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-sm font-normal uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    <FiUser className="w-4 h-4" />
+                    Profile Identity
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    Choose the public handle agents see for this wallet.
+                  </p>
+                </div>
+                {identityLoading && (
+                  <FiLoader className="mt-1 h-4 w-4 animate-spin text-gray-400" />
+                )}
+              </div>
+
+              {identityStatus && (
+                <div className="mb-4 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  {identityStatus}
+                </div>
+              )}
+
+              <div className="grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
+                <div>
+                  <label
+                    htmlFor="agent-username"
+                    className="mb-1 block text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                  >
+                    Username
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm text-gray-400">@</span>
+                    <input
+                      id="agent-username"
+                      type="text"
+                      value={usernameDraft}
+                      onChange={(e) => setUsernameDraft(e.target.value)}
+                      placeholder="wallet-dmt4cd"
+                      className="min-w-0 flex-1 rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-sm text-gray-900 focus:border-[var(--sea-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--sea-focus-ring)] dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                      maxLength={32}
+                    />
+                    <button
+                      type="button"
+                      onClick={saveUsername}
+                      disabled={!usernameChanged || identitySaving}
+                      className={`${navButtonPrimaryInlineClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {identitySaving ? (
+                        <>
+                          <FiLoader className="w-4 h-4 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        "Save"
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                    {identity?.usernameSource === "fallback"
+                      ? "This fallback was created from your wallet. You can replace it."
+                      : "Use lowercase letters, numbers, and hyphens."}
+                  </p>
+                </div>
+
+                <div className="rounded-sm border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+                  <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    <FiGithub className="w-4 h-4" />
+                    GitHub Profile
+                  </div>
+                  {identity?.githubProfile ? (
+                    <div className="space-y-2">
+                      <a
+                        href={identity.githubProfile.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex max-w-full items-center gap-1 truncate font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                      >
+                        <FiGithub className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">
+                          @{identity.githubProfile.login}
+                        </span>
+                      </a>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        Verified by GitHub OAuth and this wallet signature.
+                      </p>
+                    </div>
+                  ) : githubSession?.authenticated ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Signed in as{" "}
+                        <span className="font-mono">@{githubSession.user?.login}</span>.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={linkGithub}
+                        disabled={linkingGithub}
+                        className={navButtonSecondaryInlineClass}
+                      >
+                        {linkingGithub ? (
+                          <>
+                            <FiLoader className="w-4 h-4 animate-spin" />
+                            Linking…
+                          </>
+                        ) : (
+                          "Link to wallet"
+                        )}
+                      </button>
+                    </div>
+                  ) : githubSession?.configured === false ? (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      GitHub OAuth is not configured in this environment.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Sign in with GitHub, then link that profile to this wallet.
+                      </p>
+                      <a
+                        href={`/api/auth/github/start?returnTo=${githubReturnTo}`}
+                        className={navButtonSecondaryInlineClass}
+                      >
+                        <FiGithub className="w-4 h-4" />
+                        Sign in with GitHub
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Create key */}
             <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">

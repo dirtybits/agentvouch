@@ -42,6 +42,7 @@ vi.mock("@/lib/onchain", () => ({
 }));
 
 vi.mock("@/lib/agentIdentity", () => ({
+  ensureAgentIdentitySchema: vi.fn(),
   resolveManyAgentIdentitiesByWallet: vi.fn(),
   upsertLocalAgentIdentity: vi.fn(),
 }));

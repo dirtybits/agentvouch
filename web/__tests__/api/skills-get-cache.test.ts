@@ -21,6 +21,7 @@ vi.mock("@/lib/ipfs", () => ({
 
 vi.mock("@/lib/agentIdentity", () => ({
   buildLocalCanonicalAgentId: vi.fn((wallet: string) => `local:${wallet}`),
+  ensureAgentIdentitySchema: vi.fn(),
   resolveManyAgentIdentitiesByWallet: vi.fn(),
   upsertLocalAgentIdentity: vi.fn(),
 }));

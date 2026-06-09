@@ -50,6 +50,10 @@ type SkillIndexRow = {
   author_trust_summary?: {
     wallet_pubkey: string;
     canonical_agent_id: string;
+    username?: string | null;
+    display_name?: string | null;
+    github_login?: string | null;
+    github_url?: string | null;
     chain_context: string;
     schema_version: string;
     trust_updated_at: string;
@@ -66,6 +70,11 @@ type SkillIndexRow = {
   author_identity?: {
     canonicalAgentId?: string | null;
     displayName?: string | null;
+    username?: string | null;
+    githubProfile?: {
+      login: string;
+      url: string;
+    } | null;
   } | null;
 };
 

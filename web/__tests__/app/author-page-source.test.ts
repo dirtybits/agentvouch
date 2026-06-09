@@ -44,4 +44,15 @@ describe("author page source", () => {
     expect(source).toContain("Author-wide reward pool");
     expect(source).not.toContain("listing.account.unclaimedVoucherRevenueUsdcMicros");
   });
+
+  it("shows a username in the author header when identity has one", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("authorDisplayHandle");
+    expect(source).toContain("authorIdentity?.username");
+    expect(source).toContain("Author Trust Record");
+  });
 });

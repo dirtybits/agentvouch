@@ -32,4 +32,15 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain("onClick={() => onTagClick(tag)}");
     expect(source).toContain("Show all skills tagged");
   });
+
+  it("prefers wallet identity usernames and exposes linked GitHub profiles", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/SkillPreviewCard.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("skill.author_identity?.username");
+    expect(source).toContain("skill.author_identity?.githubProfile");
+    expect(source).toContain("Linked GitHub");
+  });
 });

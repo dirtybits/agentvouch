@@ -659,7 +659,9 @@ export async function initializeDatabase() {
       tags text[],
       description text,
       author_handle text,
-      author_display_name text
+      author_display_name text,
+      agent_username text,
+      linked_github_login text
     )
     RETURNS tsvector
     LANGUAGE sql
@@ -670,7 +672,8 @@ export async function initializeDatabase() {
         setweight(to_tsvector('english', COALESCE(skill_name, '')), 'A') ||
         setweight(to_tsvector('english', COALESCE(skill_id, '') || ' ' || COALESCE(public_slug, '')), 'A') ||
         setweight(to_tsvector('english', array_to_string(COALESCE(tags, ARRAY[]::text[]), ' ')), 'B') ||
-        setweight(to_tsvector('english', COALESCE(description, '') || ' ' || COALESCE(author_handle, '') || ' ' || COALESCE(author_display_name, '')), 'C')
+        setweight(to_tsvector('english', COALESCE(agent_username, '') || ' ' || COALESCE(linked_github_login, '') || ' ' || COALESCE(author_handle, '') || ' ' || COALESCE(author_display_name, '')), 'B') ||
+        setweight(to_tsvector('english', COALESCE(description, '')), 'C')
     $$
   `;
 
@@ -682,7 +685,9 @@ export async function initializeDatabase() {
       tags text[],
       description text,
       author_handle text,
-      author_display_name text
+      author_display_name text,
+      agent_username text,
+      linked_github_login text
     )
     RETURNS text
     LANGUAGE sql
@@ -696,7 +701,9 @@ export async function initializeDatabase() {
         COALESCE(description, '') || ' ' ||
         array_to_string(COALESCE(tags, ARRAY[]::text[]), ' ') || ' ' ||
         COALESCE(author_handle, '') || ' ' ||
-        COALESCE(author_display_name, '')
+        COALESCE(author_display_name, '') || ' ' ||
+        COALESCE(agent_username, '') || ' ' ||
+        COALESCE(linked_github_login, '')
       )
     $$
   `;
@@ -721,7 +728,9 @@ export async function initializeDatabase() {
         tags,
         description,
         author_handle,
-        author_display_name
+        author_display_name,
+        NULL::text,
+        NULL::text
       )
     )
   `;
@@ -736,7 +745,9 @@ export async function initializeDatabase() {
         tags,
         description,
         author_handle,
-        author_display_name
+        author_display_name,
+        NULL::text,
+        NULL::text
       ) gin_trgm_ops
     )
   `;

@@ -51,8 +51,13 @@ describe("skills api source", () => {
     expect(source).toContain("% search.raw_query");
     expect(source).toContain("agentvouch_skill_search_tsvector");
     expect(source).toContain("agentvouch_skill_search_text");
+    expect(source).toContain("ensureAgentIdentitySchema");
+    expect(source).toContain("author_agent.username");
+    expect(source).toContain("github_binding.metadata->>'login'");
     expect(dbSource).toContain("CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector");
     expect(dbSource).toContain("array_to_string(COALESCE(tags");
+    expect(dbSource).toContain("agent_username text");
+    expect(dbSource).toContain("linked_github_login text");
     expect(source).toContain("author_display_name");
     expect(dbSource).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
     expect(dbSource).toContain("idx_skills_search_v2");

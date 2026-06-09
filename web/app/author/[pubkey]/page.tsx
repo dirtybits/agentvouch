@@ -874,6 +874,10 @@ export default function AuthorProfilePage() {
     }
   }, [searchParams]);
 
+  const authorDisplayHandle = authorIdentity?.username
+    ? `@${authorIdentity.username}`
+    : null;
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -1103,8 +1107,13 @@ export default function AuthorProfilePage() {
             </Link>
             <div>
               <h1 className="text-2xl md:text-3xl font-display text-gray-900 dark:text-white">
-                Author Trust Record
+                {authorDisplayHandle ?? "Author Trust Record"}
               </h1>
+              {authorDisplayHandle && (
+                <p className="mt-1 text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  Author Trust Record
+                </p>
+              )}
               <button
                 onClick={copyPubkey}
                 className="flex items-center gap-1.5 font-mono text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition mt-1"

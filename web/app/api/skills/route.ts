@@ -20,6 +20,7 @@ import {
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { pinSkillContent } from "@/lib/ipfs";
 import {
+  ensureAgentIdentitySchema,
   type AgentIdentitySummary,
   resolveManyAgentIdentitiesByWallet,
   upsertLocalAgentIdentity,
@@ -447,7 +448,9 @@ async function loadRepoSkillRows(input: {
                   s.tags,
                   s.description,
                   s.author_handle,
-                  s.author_display_name
+                  s.author_display_name,
+                  author_agent.username,
+                  github_binding.metadata->>'login'
                 ),
                 search.query
               )
@@ -463,7 +466,9 @@ async function loadRepoSkillRows(input: {
                   s.tags,
                   s.description,
                   s.author_handle,
-                  s.author_display_name
+                  s.author_display_name,
+                  author_agent.username,
+                  github_binding.metadata->>'login'
                 ),
                 search.raw_query
               ),
@@ -476,7 +481,9 @@ async function loadRepoSkillRows(input: {
                   s.tags,
                   s.description,
                   s.author_handle,
-                  s.author_display_name
+                  s.author_display_name,
+                  author_agent.username,
+                  github_binding.metadata->>'login'
                 )
               ),
               CASE
@@ -487,7 +494,9 @@ async function loadRepoSkillRows(input: {
                   s.tags,
                   s.description,
                   s.author_handle,
-                  s.author_display_name
+                  s.author_display_name,
+                  author_agent.username,
+                  github_binding.metadata->>'login'
                 ) LIKE '%' || search.raw_query || '%' THEN 0.15
                 ELSE 0
               END
@@ -509,6 +518,20 @@ async function loadRepoSkillRows(input: {
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
           AND ats.chain_context = ${configuredSolanaChainContext}
+        LEFT JOIN agent_identity_bindings owner_binding
+          ON owner_binding.binding_type = 'wallet_owner'
+          AND owner_binding.binding_ref = s.author_pubkey
+          AND owner_binding.chain_context = ${configuredSolanaChainContext}
+        LEFT JOIN agents author_agent
+          ON author_agent.id = owner_binding.agent_id
+        LEFT JOIN LATERAL (
+          SELECT metadata
+          FROM agent_identity_bindings
+          WHERE agent_id = author_agent.id
+            AND binding_type = 'github_profile'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) github_binding ON true
         WHERE (
           (
             numnode(search.query) > 0 AND
@@ -519,7 +542,9 @@ async function loadRepoSkillRows(input: {
               s.tags,
               s.description,
               s.author_handle,
-              s.author_display_name
+              s.author_display_name,
+              author_agent.username,
+              github_binding.metadata->>'login'
             ) @@ search.query
           )
           OR agentvouch_skill_search_text(
@@ -529,7 +554,9 @@ async function loadRepoSkillRows(input: {
             s.tags,
             s.description,
             s.author_handle,
-            s.author_display_name
+            s.author_display_name,
+            author_agent.username,
+            github_binding.metadata->>'login'
           ) LIKE '%' || search.raw_query || '%'
           OR agentvouch_skill_search_text(
             s.name,
@@ -538,7 +565,9 @@ async function loadRepoSkillRows(input: {
             s.tags,
             s.description,
             s.author_handle,
-            s.author_display_name
+            s.author_display_name,
+            author_agent.username,
+            github_binding.metadata->>'login'
           ) % search.raw_query
           OR word_similarity(
             search.raw_query,
@@ -549,7 +578,9 @@ async function loadRepoSkillRows(input: {
               s.tags,
               s.description,
               s.author_handle,
-              s.author_display_name
+              s.author_display_name,
+              author_agent.username,
+              github_binding.metadata->>'login'
             )
           ) >= 0.6
         )
@@ -931,6 +962,7 @@ export async function GET(request: NextRequest) {
   const timing = createRouteTiming();
   try {
     await initializeDatabase();
+    await ensureAgentIdentitySchema();
     const { searchParams } = request.nextUrl;
     const q = searchParams.get("q")?.trim() || null;
     const sort = searchParams.get("sort") || "trusted";
