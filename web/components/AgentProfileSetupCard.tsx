@@ -31,7 +31,7 @@ export function AgentProfileSetupCard({
   return (
     <div className={className}>
       <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mb-8">
-        <span className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
+        <span className="flex items-center gap-1.5 font-normal text-gray-900 dark:text-white">
           <span className="w-5 h-5 rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 flex items-center justify-center text-xs font-bold">
             1
           </span>

@@ -207,7 +207,7 @@ export default function SkillFileTree({
             type="button"
             onClick={() => toggleDirectory(node.path)}
             aria-expanded={expanded}
-            className="flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left font-mono text-xs font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200"
+            className="flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left font-mono text-xs font-normal text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200"
             style={{ paddingLeft }}
           >
             {expanded ? (
@@ -259,7 +259,7 @@ export default function SkillFileTree({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <FiFolder className="h-4 w-4 text-gray-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          <span className="text-xs font-normal uppercase tracking-wider text-gray-500 dark:text-gray-400">
             Skill Files
           </span>
         </div>
@@ -292,7 +292,7 @@ export default function SkillFileTree({
 
         <div className="min-w-0 rounded-sm border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-gray-200 pb-3 dark:border-gray-800">
-            <span className="truncate font-mono text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <span className="truncate font-mono text-xs font-normal text-gray-600 dark:text-gray-300">
               {selectedPath}
             </span>
             {selected && (

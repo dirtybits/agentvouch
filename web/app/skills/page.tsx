@@ -841,7 +841,7 @@ export default function MarketplacePage() {
               <div className="bg-white dark:bg-gray-900 rounded-sm border border-gray-200 dark:border-gray-800 overflow-hidden sticky top-6">
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                   <FiActivity className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Recent Activity
                   </span>
                   {feedLoading && (
@@ -876,12 +876,12 @@ export default function MarketplacePage() {
                                 public_slug: item.publicSlug,
                                 public_author_slug: item.publicAuthorSlug,
                               })}
-                              className="font-semibold text-gray-900 dark:text-white hover:text-[var(--sea-accent)] transition"
+                              className="font-normal text-gray-900 dark:text-white hover:text-[var(--sea-accent)] transition"
                             >
                               &ldquo;{item.skillName}&rdquo;
                             </Link>
                           ) : (
-                            <span className="font-semibold text-gray-900 dark:text-white">
+                            <span className="font-normal text-gray-900 dark:text-white">
                               &ldquo;{item.skillName}&rdquo;
                             </span>
                           )}{" "}
@@ -982,7 +982,7 @@ export default function MarketplacePage() {
                           href={listing.account.skillUri}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`${navButtonInlineClass} font-semibold bg-green-600 hover:bg-green-700 text-white transition`}
+                          className={`${navButtonInlineClass} font-normal bg-green-600 hover:bg-green-700 text-white transition`}
                         >
                           <span className="inline-flex items-center gap-1">
                             <FiDownload /> Download

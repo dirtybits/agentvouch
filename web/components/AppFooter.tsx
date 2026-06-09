@@ -11,7 +11,7 @@ export function AppFooter() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-500 dark:text-gray-400">
         <Link
           href="/"
-          className="font-heading font-semibold text-gray-900 dark:text-white"
+          className="font-heading font-normal text-gray-900 dark:text-white"
         >
           AgentVouch
         </Link>

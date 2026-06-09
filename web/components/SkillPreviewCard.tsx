@@ -11,7 +11,6 @@ import {
   FiShield,
   FiUsers,
 } from "react-icons/fi";
-import { LiaCoinsSolid } from "react-icons/lia";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
@@ -69,7 +68,7 @@ interface SkillPreviewCardProps {
   purchaseBlocked: boolean;
   purchasePreflightStatus?: PurchasePreflightStatus;
   descriptionFallback?: string | null;
-  onPurchase: () => void;
+  onPurchase?: () => void;
 }
 
 type Verdict = "allow" | "review" | "avoid" | "unknown";
@@ -91,10 +90,6 @@ function truncateAtWord(value: string, maxChars: number): string {
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-}
-
-function formatUsdc(micros: number): string {
-  return `${formatUsdcMicros(micros) ?? "0"} USDC`;
 }
 
 // Mirrors the server-side getRecommendedAction, with one intentional softening:
@@ -327,53 +322,29 @@ export default function SkillPreviewCard({
   const skillHref = getPublicSkillPath(skill);
 
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
+    <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
       {/* verdict accent rail */}
       <span
         className={`absolute inset-y-0 left-0 w-1 ${verdictMeta.dot} opacity-0 transition-opacity duration-200 group-hover:opacity-100`}
         aria-hidden
       />
 
-      <div className="flex flex-1 flex-col p-4">
-        {/* Top strip: app icon + action pill */}
-        <div className="flex items-start justify-between gap-3">
-          <Link
-            href={skillHref}
-            className="transition-transform duration-200 group-hover:scale-[1.03]"
-            aria-label={skill.name}
-          >
-            <SkillIcon
-              seed={authorSeed}
-              size={40}
-              ringClass={verdictMeta.ring}
-              badge={<VerdictDot verdict={verdict} meta={verdictMeta} />}
-            />
-          </Link>
-
-          <Link
-            href={skillHref}
-            className={`mt-0.5 shrink-0 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
-              PILL_VARIANT[pill.variant]
-            }`}
-            title={
-              isListingRequired ? "Paid skill setup is incomplete" : pill.label
-            }
-          >
-            {PillIcon && <PillIcon className="h-3.5 w-3.5" />}
-            {pill.label}
-          </Link>
-        </div>
-
-        {/* Title (hero — full width, up to two lines) + author */}
-        <div className="mt-3">
-          <Link
-            href={skillHref}
-            className="block font-heading text-[18px] font-bold leading-snug text-gray-900 line-clamp-2 break-words transition group-hover:text-[var(--lobster-accent)] dark:text-white"
-            title={skill.name}
-          >
-            {skill.name}
-          </Link>
-          <div className="mt-1 flex items-center gap-1.5">
+      <div className="flex flex-1 flex-col gap-2.5 p-4">
+        {/* Byline cluster (author icon + handle) + verdict chip */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              href={skillHref}
+              aria-label={skill.name}
+              className="shrink-0 transition-transform duration-200 group-hover:scale-[1.03]"
+            >
+              <SkillIcon
+                seed={authorSeed}
+                size={30}
+                ringClass={verdictMeta.ring}
+                badge={<VerdictDot verdict={verdict} meta={verdictMeta} />}
+              />
+            </Link>
             {authorHref?.startsWith("http") ? (
               <a
                 href={authorHref}
@@ -410,21 +381,36 @@ export default function SkillPreviewCard({
               </span>
             )}
           </div>
+          <span
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${verdictMeta.chip}`}
+            title={verdictMeta.title}
+          >
+            <verdictMeta.Icon className="h-3 w-3" />
+            {verdictMeta.label}
+          </span>
         </div>
 
-        {/* Description */}
+        {/* Title — serif, unbolded */}
+        <Link
+          href={skillHref}
+          className="block break-words font-display text-[20px] leading-snug text-gray-900 line-clamp-2 transition group-hover:text-[var(--lobster-accent)] dark:text-white"
+          title={skill.name}
+        >
+          {skill.name}
+        </Link>
+
+        {/* Description — serif */}
         {displayDescription && (
           <p
-            className="mt-3 line-clamp-2 min-h-[2.5rem] text-[13px] leading-5 text-gray-500 dark:text-gray-400"
+            className="font-article line-clamp-2 min-h-[2.5rem] text-[14px] leading-snug text-gray-500 dark:text-gray-400"
             title={description}
           >
             {displayDescription}
           </p>
         )}
 
-        {/* One trust line — the App Store rating, translated to skin-in-the-game.
-            Full backing/self/aggregate breakdown lives on the skill detail page. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        {/* Signals + tags */}
+        <div className="flex flex-wrap items-center gap-1.5">
           {scanMeta && (
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
@@ -443,81 +429,82 @@ export default function SkillPreviewCard({
               Unscanned executable code
             </span>
           )}
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${verdictMeta.chip}`}
-            title={verdictMeta.title}
-          >
-            <verdictMeta.Icon className="h-3 w-3" />
-            {verdictMeta.label}
-          </span>
-          {registered && trust ? (
-            <>
-              <span
-                className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400"
-                title="Reputation combines public backing, endorsements, and dispute history."
-              >
-                <FiShield className="h-3.5 w-3.5" />
-                {trust.reputationScore.toLocaleString("en-US")}
-              </span>
-              <span
-                className="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"
-                title="Total stake at risk — outside backing plus the author's own first-loss bond."
-              >
-                <LiaCoinsSolid className="h-3.5 w-3.5" />
-                {formatUsdc(trust.totalStakeAtRisk)}
-              </span>
-              <span
-                className="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"
-                title="Vouches are outside endorsements staked behind the author."
-              >
-                <FiUsers className="h-3.5 w-3.5" />
-                {trust.totalVouchesReceived.toLocaleString("en-US")}
-              </span>
-              {hasDisputeFlag && authorReports && (
-                <span
-                  className={`inline-flex items-center gap-1 text-[12px] font-medium ${authorReports.color}`}
-                  title="Current or historical dispute status against this author."
-                >
-                  <FiAlertTriangle className="h-3.5 w-3.5" />
-                  {authorReports.label}
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="text-[12px] text-gray-400 dark:text-gray-500">
-              No trust profile yet
+          {hasDisputeFlag && authorReports && (
+            <span
+              className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${authorReports.color}`}
+              title="Current or historical dispute status against this author."
+            >
+              <FiAlertTriangle className="h-3 w-3" />
+              {authorReports.label}
             </span>
           )}
+          {skill.tags.slice(0, 3).map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-[var(--lobster-accent)]"
+              title="Tags summarize the skill's core capabilities."
+            >
+              {tag}
+            </span>
+          ))}
         </div>
 
-        {/* Footer: tags · installs, bottom-aligned across the grid */}
-        <div className="mt-auto flex items-end justify-between gap-3 pt-3">
-          <div className="flex min-w-0 flex-wrap gap-1.5">
-            {skill.tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-                title="Tags summarize the skill's core capabilities."
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-          <span
-            className="shrink-0 inline-flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500"
-            title="Successful installs and raw downloads."
+        {/* Bottom stats — anchored: action/price · rep · vouches · downloads */}
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+          <Link
+            href={skillHref}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+              PILL_VARIANT[pill.variant]
+            }`}
+            title={
+              isListingRequired ? "Paid skill setup is incomplete" : pill.label
+            }
           >
-            <FiDownload className="h-3 w-3" />
-            {downloads.toLocaleString("en-US")}
-          </span>
+            {PillIcon && <PillIcon className="h-3.5 w-3.5" />}
+            {pill.label}
+          </Link>
+          <div className="flex items-center gap-3 font-mono text-[12px]">
+            {registered && trust ? (
+              <>
+                <span
+                  className="inline-flex items-center gap-1 font-normal text-emerald-600 dark:text-emerald-400"
+                  title="Reputation — public backing, endorsements, and dispute history."
+                >
+                  <FiShield className="h-3.5 w-3.5" />
+                  {trust.reputationScore.toLocaleString("en-US")}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                  title="Vouches — outside accounts staking USDC behind this author."
+                >
+                  <FiUsers className="h-3.5 w-3.5" />
+                  {trust.totalVouchesReceived.toLocaleString("en-US")}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                  title="Successful installs and downloads."
+                >
+                  <FiDownload className="h-3.5 w-3.5" />
+                  {downloads.toLocaleString("en-US")}
+                </span>
+              </>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                title="Successful installs and downloads."
+              >
+                <FiDownload className="h-3.5 w-3.5" />
+                {downloads.toLocaleString("en-US")}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Purchase risk warning */}
         {skill.purchaseRiskWarning &&
           hasUsdcPrimary &&
           !isListingRequired &&
           !hasPurchased && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <div className="mt-3 flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
               <FiInfo className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{skill.purchaseRiskWarning}</span>
             </div>

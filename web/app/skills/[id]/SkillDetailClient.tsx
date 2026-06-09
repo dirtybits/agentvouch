@@ -1242,7 +1242,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
               (displaySummaryLine &&
                 displaySummaryLine !== skill.description)) && (
               <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-6 dark:border-gray-800 dark:bg-gray-900/50">
-                <h2 className="mb-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                <h2 className="mb-4 flex items-center gap-2 text-[11px] font-normal uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                   <FiFileText className="h-4 w-4 text-[var(--sea-accent)]" />
                   What it does
                 </h2>
@@ -1285,7 +1285,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
               <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-6 dark:border-gray-800 dark:bg-gray-900/50">
                 <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4 dark:border-gray-800">
                   <FiFileText className="h-4 w-4 text-gray-400" />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <span className="text-xs font-normal uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     SKILL.md Content
                   </span>
                 </div>
@@ -1306,7 +1306,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
             )}
             {/* Developer & API (collapsed by default) */}
             <details className="group/dev mb-6 rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-[11px] font-normal uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                 <span className="flex items-center gap-2">
                   <FiTerminal className="h-4 w-4 text-[var(--sea-accent)]" />
                   Developer &amp; API
@@ -1317,7 +1317,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                 {/* Install Command */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Install
                     </span>
                     <button
@@ -1339,7 +1339,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                 {/* Agent API */}
                 <div className="border-t border-gray-100 pt-5 dark:border-gray-800">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Agent API
                     </span>
                   </div>
@@ -1372,7 +1372,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                     <div className="mt-3 space-y-3">
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Signed Message
                           </span>
                           <button
@@ -1398,7 +1398,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             X-AgentVouch-Auth
                           </span>
                           <button
@@ -1443,7 +1443,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                 <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-2">
                     <FiGitCommit className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Version History
                     </span>
                   </div>
@@ -1461,7 +1461,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                   <div className="mb-4 p-4 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)]">
                     <div className="flex items-center justify-between gap-4 mb-3">
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                        <h3 className="text-sm font-normal text-gray-900 dark:text-white">
                           Publish New Version
                         </h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -1855,7 +1855,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
             />
             {/* Trust Section */}
             <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-6 mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <FiShield className="w-4 h-4" />
                 Author Trust Signals
               </h2>
@@ -2002,7 +2002,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
               skill.ipfs_cid ||
               skill.skill_uri) && (
               <details className="mb-6">
-                <summary className="mb-3 cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <summary className="mb-3 cursor-pointer list-none select-none text-xs font-normal uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   On-chain provenance
                 </summary>
                 {/* Content Verification */}
@@ -2057,7 +2057,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FiShield className="w-4 h-4 text-green-500" />
-                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           Content Hash (IPFS)
                         </span>
                       </div>
@@ -2089,7 +2089,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FiExternalLink className="w-4 h-4 text-[var(--sea-accent)]" />
-                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           Skill Source
                         </span>
                       </div>
@@ -2193,7 +2193,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
                     </p>
                     <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
                       Withdrawable{" "}
-                      <span className="font-semibold text-gray-900 dark:text-white">
+                      <span className="font-normal text-gray-900 dark:text-white">
                         {formatUsdcMicros(
                           settlementSummary.withdrawableUsdcMicros.toString()
                         ) ?? "0"}{" "}
@@ -2359,7 +2359,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
             <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <UsdcIcon className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                <span className="text-sm font-normal text-gray-900 dark:text-white">
                   List on Marketplace
                 </span>
               </div>
@@ -2427,7 +2427,7 @@ export default function SkillDetailPage({ id }: { id: string }) {
           >
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                <div className="text-sm font-normal text-gray-900 dark:text-white">
                   Author Actions
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

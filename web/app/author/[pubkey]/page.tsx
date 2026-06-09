@@ -1269,7 +1269,7 @@ export default function AuthorProfilePage() {
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="space-y-2">
                         <div>
-                          <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                          <div className="text-sm font-normal text-gray-900 dark:text-white">
                             {candidate.displayName ||
                               `Agent ${shortAddr(candidate.coreAssetPubkey)}`}
                           </div>
@@ -1623,7 +1623,7 @@ export default function AuthorProfilePage() {
               <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-1">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                    <div className="text-sm font-normal text-gray-900 dark:text-white">
                       Author-wide reward pool
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -1719,11 +1719,11 @@ export default function AuthorProfilePage() {
                         {skill.name}
                       </h3>
                       {skill.price_usdc_micros ? (
-                        <span className="text-xs font-semibold text-gray-900 dark:text-white shrink-0">
+                        <span className="text-xs font-normal text-gray-900 dark:text-white shrink-0">
                           {formatUsdc(skill.price_usdc_micros)} USDC
                         </span>
                       ) : skill.price_lamports && skill.price_lamports > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                        <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-600 dark:text-gray-300 shrink-0">
                           Legacy SOL
                         </span>
                       ) : null}
@@ -1771,11 +1771,11 @@ export default function AuthorProfilePage() {
                           {skill.name || "Untitled"}
                         </h3>
                         {priceUsdcMicros ? (
-                          <span className="text-xs font-semibold text-gray-900 dark:text-white shrink-0">
+                          <span className="text-xs font-normal text-gray-900 dark:text-white shrink-0">
                             {formatUsdc(priceUsdcMicros)} USDC
                           </span>
                         ) : legacySolPrice > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                          <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-600 dark:text-gray-300 shrink-0">
                             Legacy SOL
                           </span>
                         ) : null}

@@ -47,7 +47,7 @@ export function AgentIdentityPanel({
         <div className="flex items-center gap-2">
           <FiLink2 className="w-4 h-4 text-[var(--sea-accent)]" />
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-sm font-normal text-gray-900 dark:text-white">
               {title}
             </h2>
             {identity.displayName && (

@@ -1,21 +1,17 @@
-"use client";
-
-import { useState, useEffect } from "react";
+import { headers } from "next/headers";
+import Link from "next/link";
 import TypewriterText from "@/components/TypewriterText";
-import { ClientWalletButton } from "@/components/ClientWalletButton";
+import { HomeInstallCard } from "@/components/HomeInstallCard";
 import SkillPreviewCard from "@/components/SkillPreviewCard";
 import type { TrustData } from "@/components/TrustBadge";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
-import Link from "next/link";
 import { formatUsdcMicros } from "@/lib/pricing";
 import {
   FiArrowRight,
-  FiCheck,
   FiCheckCircle,
-  FiCopy,
   FiExternalLink,
   FiGitBranch,
   FiLayers,
@@ -28,9 +24,10 @@ import {
 import { SITE_URL } from "@/lib/site";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 
-type ToggleMode = "none" | "human" | "agent";
 type FeaturedSkill = {
   id: string;
+  public_slug?: string | null;
+  skill_id?: string | null;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_handle?: string | null;
@@ -53,29 +50,30 @@ type FeaturedSkill = {
     | "listing-required"
     | "x402-usdc"
     | "direct-purchase-skill";
-  on_chain_address?: string;
-  price_lamports?: number;
-  total_installs?: number;
-  total_downloads?: number;
+  on_chain_address?: string | null;
+  price_lamports?: number | null;
+  total_installs?: number | null;
+  total_downloads?: number | null;
   purchaseRiskWarning?: string | null;
   buyerHasPurchased?: boolean;
 };
-type LandingResponse = {
-  metrics: {
-    agents: number;
-    authors: number;
-    skills: number;
-    revenue: number;
-    staked: number;
-    onChainDownloads: number;
-    downloads: number;
-  };
+
+type LandingMetrics = {
+  agents: number;
+  authors: number;
+  skills: number;
+  revenue: number;
+  staked: number;
+  onChainDownloads: number;
+  downloads: number;
 };
+
+type LandingResponse = {
+  metrics: LandingMetrics;
+};
+
 type SkillsListResponse = {
   skills?: FeaturedSkill[];
-};
-type SkillsHydrateResponse = {
-  skills?: Record<string, Partial<FeaturedSkill>>;
 };
 
 const homepageJsonLd = {
@@ -105,93 +103,53 @@ const homepageJsonLd = {
   ],
 };
 
-function formatUsdc(micros: number | bigint | string | null | undefined) {
-  return `${formatUsdcMicros(micros) ?? "0"} USDC`;
+function formatUsdcMetric(micros: number | bigint | string | null | undefined) {
+  return formatUsdcMicros(micros) ?? "0";
 }
 
-const agentInstallInstructions = `1. Agent: load the AgentVouch skill
-curl -s https://agentvouch.xyz/skill.md
-2. Follow the returned skill.md.
-3. If wallet access or payment is required, ask the human to approve the connection or signature.`;
+async function getRequestOrigin() {
+  const requestHeaders = await headers();
+  const forwardedHost = requestHeaders.get("x-forwarded-host");
+  const host = forwardedHost ?? requestHeaders.get("host");
 
-export default function Home() {
-  const [toggle, setToggle] = useState<ToggleMode>("none");
-  const [copied, setCopied] = useState<string | null>(null);
+  if (!host) {
+    return SITE_URL;
+  }
 
-  const copyCmd = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  };
-  const [landingMetrics, setLandingMetrics] = useState<{
-    agents: number;
-    authors: number;
-    skills: number;
-    revenue: number;
-    staked: number;
-    downloads: number;
-  } | null>(null);
-  const [featuredSkills, setFeaturedSkills] = useState<FeaturedSkill[]>([]);
+  const forwardedProto = requestHeaders.get("x-forwarded-proto");
+  const proto =
+    forwardedProto ??
+    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
 
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/landing")
-      .then((r) => (r.ok ? (r.json() as Promise<LandingResponse>) : null))
-      .then((landingRes) => {
-        if (!active || !landingRes) return;
-        if (landingRes) {
-          setLandingMetrics({
-            agents: landingRes.metrics.agents,
-            authors: landingRes.metrics.authors,
-            skills: landingRes.metrics.skills,
-            revenue: landingRes.metrics.revenue,
-            staked: landingRes.metrics.staked,
-            downloads: landingRes.metrics.downloads,
-          });
-        }
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to load landing metrics:", error);
-      });
+  return `${proto}://${host}`;
+}
 
-    void fetch("/api/skills?sort=trusted&mode=fast&pageSize=3")
-      .then((r) => (r.ok ? (r.json() as Promise<SkillsListResponse>) : null))
-      .then((skillsRes) => {
-        if (!active) return;
-        if (skillsRes?.skills) {
-          const featured = skillsRes.skills.slice(0, 3);
-          setFeaturedSkills(featured);
-          const skillIds = featured.map((skill) => skill.id).filter(Boolean);
-          if (skillIds.length > 0) {
-            void fetch("/api/skills/hydrate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ skillIds, includeBuyerStatus: false }),
-            })
-              .then((r) =>
-                r.ok ? (r.json() as Promise<SkillsHydrateResponse>) : null
-              )
-              .then((hydrated) => {
-                if (!active || !hydrated?.skills) return;
-                setFeaturedSkills((prev) =>
-                  prev.map((skill) =>
-                    hydrated.skills?.[skill.id]
-                      ? { ...skill, ...hydrated.skills[skill.id] }
-                      : skill
-                  )
-                );
-              })
-              .catch(() => null);
-          }
-        }
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to load featured skills:", error);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+async function fetchHomepageJson<T>(
+  origin: string,
+  path: string
+): Promise<T | null> {
+  try {
+    const response = await fetch(`${origin}${path}`, {
+      next: { revalidate: 30 },
+    });
+    return response.ok ? ((await response.json()) as T) : null;
+  } catch (error) {
+    console.error(`Failed to load homepage data from ${path}:`, error);
+    return null;
+  }
+}
+
+export default async function Home() {
+  const origin = await getRequestOrigin();
+  const [landingRes, skillsRes] = await Promise.all([
+    fetchHomepageJson<LandingResponse>(origin, "/api/landing"),
+    fetchHomepageJson<SkillsListResponse>(
+      origin,
+      "/api/skills?sort=trusted&mode=fast&pageSize=3"
+    ),
+  ]);
+  const landingMetrics = landingRes?.metrics ?? null;
+  const featuredSkills = skillsRes?.skills?.slice(0, 3) ?? [];
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -199,28 +157,28 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(homepageJsonLd) }}
       />
-      {/* Hero */}
-      <section className="px-6 pt-10 pb-8 md:pt-16 md:pb-10">
-        <div className="max-w-4xl mx-auto grid gap-8 md:grid-cols-[minmax(0,1fr)_360px] md:items-end">
-          <div className="min-w-0">
-            <span className="inline-block px-4 py-1.5 mb-4 text-xs font-semibold tracking-widest uppercase rounded-full border border-[var(--lobster-accent-border)] text-[var(--lobster-accent)] bg-[var(--lobster-accent-soft)]">
+
+      <section className="px-6 pt-12 pb-10 md:pt-16 md:pb-12">
+        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
+          <div className="flex min-w-0 flex-col items-start gap-3">
+            <span className="inline-block rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-4 py-1.5 text-xs font-normal uppercase tracking-widest text-[var(--lobster-accent)]">
               Agent Reputation Oracle
             </span>
 
-            <h1 className="text-4xl md:text-5xl font-display text-gray-900 dark:text-white leading-tight mb-3">
+            <h1 className="font-display text-5xl leading-none text-gray-900 dark:text-white md:text-[68px] md:leading-[0.98]">
               AgentVouch
             </h1>
 
-            <h2 className="text-xl md:text-2xl font-heading font-medium text-gray-500 dark:text-gray-300 leading-tight mb-4 break-words">
+            <h2 className="min-h-[2rem] break-words font-display text-xl leading-tight text-gray-500 dark:text-gray-300 md:text-2xl">
               <TypewriterText text="Trusted Skills for AI Agents" />
             </h2>
 
-            <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mb-6">
+            <p className="max-w-[52ch] text-xs leading-5 text-gray-500 dark:text-gray-400 md:text-sm">
               Buy and sell reputation-backed skills for AI agents. Inspect
               Author trust scores. Put your cash where your claw is.
             </p>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="mt-1 flex flex-wrap gap-3">
               <Link href="/skills" className={navButtonPrimaryInlineClass}>
                 Browse Skills <FiArrowRight />
               </Link>
@@ -230,229 +188,141 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Getting Started Card */}
-          <div className="w-full rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
-            {/* Tab toggle */}
-            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1 mb-3">
-              <button
-                onClick={() => setToggle("agent")}
-                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition ${
-                  toggle === "agent" || toggle === "none"
-                    ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)] shadow-sm"
-                    : "text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
-                }`}
-              >
-                For agents
-              </button>
-              <button
-                onClick={() => setToggle("human")}
-                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition ${
-                  toggle === "human"
-                    ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)] shadow-sm"
-                    : "text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
-                }`}
-              >
-                For humans
-              </button>
-            </div>
+          <HomeInstallCard />
+        </div>
+      </section>
 
-            {/* Tab content */}
-            <div className="rounded-md bg-gray-50 dark:bg-gray-800/50 mb-3">
-              {(toggle === "agent" || toggle === "none") && (
-                <div>
-                  <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3 py-2">
-                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                      Agent instructions
-                    </span>
-                    <button
-                      onClick={() =>
-                        copyCmd(agentInstallInstructions, "agent-instructions")
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-semibold text-gray-500 hover:text-[var(--sea-accent)] transition"
-                      title="Copy agent instructions"
-                    >
-                      {copied === "agent-instructions" ? (
-                        <>
-                          <FiCheck className="w-3.5 h-3.5 text-[var(--sea-accent)]" />
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <FiCopy className="w-3.5 h-3.5" />
-                          Copy
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
-                    <code>{agentInstallInstructions}</code>
-                  </pre>
-                </div>
-              )}
-              {toggle === "human" && (
-                <ol className="list-decimal list-inside space-y-1.5 p-3 text-xs text-gray-600 dark:text-gray-300">
-                  <li>Connect your wallet</li>
-                  <li>Your Solana profile is created on-chain</li>
-                  <li>Browse skills and start vouching</li>
-                </ol>
-              )}
+      {featuredSkills.length > 0 && (
+        <section className="px-6 pb-10">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="font-display text-2xl text-gray-900 dark:text-white md:text-[28px]">
+                Featured skills
+              </h2>
+              <Link
+                href="/skills"
+                className="font-display text-[15px] text-[var(--lobster-accent)] transition hover:text-[var(--lobster-accent-strong)] md:text-[17px]"
+              >
+                See all →
+              </Link>
             </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {featuredSkills.map((skill) => {
+                const downloads =
+                  (skill.total_installs ?? 0) + (skill.total_downloads ?? 0);
+                const listingPubkey = skill.on_chain_address ?? null;
+                const legacySolLamports =
+                  skill.price_usdc_micros || listingPubkey
+                    ? 0
+                    : skill.price_lamports ?? 0;
+                const hasAccessPath =
+                  skill.source === "repo" || Boolean(listingPubkey);
 
-            {/* Wallet CTA */}
-            <div className="landing-wallet-cta [&>div]:w-full [&>div>button]:w-full">
-              <ClientWalletButton />
+                return (
+                  <SkillPreviewCard
+                    key={skill.id}
+                    skill={skill}
+                    hasAccessPath={hasAccessPath}
+                    legacySolLamports={legacySolLamports}
+                    downloads={downloads}
+                    connected={false}
+                    isOwn={false}
+                    hasPurchased={Boolean(skill.buyerHasPurchased)}
+                    isPurchasing={false}
+                    purchaseBlocked={false}
+                  />
+                );
+              })}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Marketplace CTA */}
-      <section className="px-6 pb-8">
-        <div className="max-w-4xl mx-auto rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
-          <Link
-            href="/skills"
-            className="w-full flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 md:p-6 text-left group hover:bg-gray-50/60 dark:hover:bg-gray-800/20 transition"
-          >
-            <div className="w-10 h-10 rounded-sm bg-[var(--lobster-accent-soft)] flex items-center justify-center text-[var(--lobster-accent)] text-xl shrink-0">
-              <FiShoppingBag />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-base font-heading font-bold text-[var(--lobster-accent-strong)] mb-0.5">
-                Marketplace
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Browse and buy AI agent skills with on-chain trust scores.
-              </p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--lobster-accent)] shrink-0 group-hover:gap-2.5 transition-all">
-              Explore <FiArrowRight />
-            </span>
-          </Link>
-
-          {featuredSkills.length > 0 && (
-            <div className="border-t border-gray-200 dark:border-gray-800 p-5 md:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-xs font-semibold tracking-wide uppercase text-gray-500 dark:text-gray-400">
-                  Featured Skills
-                </h4>
-                <Link
-                  href="/skills"
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--lobster-accent)] hover:gap-2 transition-all"
-                >
-                  See all <FiArrowRight />
-                </Link>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {featuredSkills.map((skill) => {
-                  const downloads =
-                    (skill.total_installs ?? 0) + (skill.total_downloads ?? 0);
-                  const listingPubkey = skill.on_chain_address ?? null;
-                  const legacySolLamports =
-                    skill.price_usdc_micros || listingPubkey
-                      ? 0
-                      : skill.price_lamports ?? 0;
-                  const hasAccessPath =
-                    skill.source === "repo" || Boolean(listingPubkey);
-                  return (
-                    <SkillPreviewCard
-                      key={skill.id}
-                      skill={skill}
-                      hasAccessPath={hasAccessPath}
-                      legacySolLamports={legacySolLamports}
-                      downloads={downloads}
-                      connected={false}
-                      isOwn={false}
-                      hasPurchased={Boolean(skill.buyerHasPurchased)}
-                      isPurchasing={false}
-                      purchaseBlocked={false}
-                      onPurchase={() => {}}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Network Metrics */}
       <section className="px-6 pb-10">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              {
-                label: "Agents",
-                value: landingMetrics?.agents,
-                format: (v: number) => v.toLocaleString(),
-              },
-              {
-                label: "Authors",
-                value: landingMetrics?.authors,
-                format: (v: number) => v.toLocaleString(),
-              },
-              {
-                label: "Skills Published",
-                value: landingMetrics?.skills,
-                format: (v: number) => v.toLocaleString(),
-              },
-              {
-                label: "Skills Downloaded",
-                value: landingMetrics?.downloads,
-                format: (v: number) => v.toLocaleString(),
-              },
-              {
-                label: "Revenue",
-                value: landingMetrics?.revenue,
-                format: (v: number) => formatUsdc(v),
-              },
-              {
-                label: "USDC Staked",
-                value: landingMetrics?.staked,
-                format: (v: number) => formatUsdc(v),
-              },
-            ].map((m) => (
-              <div
-                key={m.label}
-                className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 text-center"
-              >
-                <div className="text-2xl font-heading font-bold text-gray-900 dark:text-white mb-1">
-                  {landingMetrics ? m.format(m.value!) : "—"}
+        <div className="mx-auto max-w-6xl">
+          <div className="rounded-sm border border-gray-200 bg-white px-4 py-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="grid grid-cols-2 gap-y-6 md:grid-cols-3 lg:grid-cols-6">
+              {[
+                {
+                  label: "Agents",
+                  value: landingMetrics?.agents,
+                  format: (v: number) => v.toLocaleString(),
+                },
+                {
+                  label: "Authors",
+                  value: landingMetrics?.authors,
+                  format: (v: number) => v.toLocaleString(),
+                },
+                {
+                  label: "Skills",
+                  value: landingMetrics?.skills,
+                  format: (v: number) => v.toLocaleString(),
+                },
+                {
+                  label: "USDC Revenue",
+                  value: landingMetrics?.revenue,
+                  format: (v: number) => formatUsdcMetric(v),
+                  accent: true,
+                },
+                {
+                  label: "USDC Staked",
+                  value: landingMetrics?.staked,
+                  format: (v: number) => formatUsdcMetric(v),
+                  accent: true,
+                },
+                {
+                  label: "Downloads",
+                  value: landingMetrics?.downloads,
+                  format: (v: number) => v.toLocaleString(),
+                },
+              ].map((m) => (
+                <div key={m.label} className="px-3 text-center">
+                  <div
+                    className={`mb-1 font-display text-3xl leading-none ${
+                      m.accent
+                        ? "text-[var(--lobster-accent)]"
+                        : "text-gray-900 dark:text-white"
+                    }`}
+                  >
+                    {landingMetrics && m.value !== undefined
+                      ? m.format(m.value)
+                      : "—"}
+                  </div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-400 dark:text-gray-500">
+                    {m.label}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide">
-                  {m.label}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Doc shortcuts */}
       <section className="px-6 pb-8">
-        <div className="max-w-4xl mx-auto grid gap-3 md:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-3">
           <Link
             href="/docs/trusted-agent-skills"
-            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
               What are trusted agent skills?
             </span>
             How skills carry install-time trust context.
           </Link>
           <Link
             href="/docs/what-is-an-agent-reputation-oracle"
-            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
               What is an agent reputation oracle?
             </span>
             How agents query trust before delegation.
           </Link>
           <Link
             href="/docs/skill-md-security"
-            className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
               Why skill.md security matters
             </span>
             Why unsigned skill files create a supply-chain problem.
@@ -460,9 +330,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Feature badges */}
       <section className="px-6 pb-10">
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-3 md:grid-cols-3">
           {[
             {
               icon: <FiZap />,
@@ -497,9 +366,9 @@ export default function Home() {
           ].map((f) => (
             <div
               key={f.label}
-              className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 hover:border-gray-300 dark:hover:border-gray-700 transition"
+              className="rounded-sm border border-gray-200 bg-white p-4 transition hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
             >
-              <div className="flex items-center gap-2 mb-1 text-gray-900 dark:text-white font-semibold text-sm">
+              <div className="mb-1 flex items-center gap-2 font-display text-[15px] text-gray-900 dark:text-white">
                 <span className="text-[var(--lobster-accent)]">{f.icon}</span>{" "}
                 {f.label}
               </div>
@@ -511,17 +380,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How It Works */}
       <section className="px-6 pb-8">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-heading font-bold text-gray-900 dark:text-white mb-2">
-            How It Works
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-2 font-display text-2xl text-gray-900 dark:text-white md:text-3xl">
+            How it works
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-8">
+          <p className="mb-8 text-gray-500 dark:text-gray-400">
             Three steps to get started.
           </p>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid gap-4 md:grid-cols-3">
             {[
               {
                 step: "1",
@@ -544,15 +412,15 @@ export default function Home() {
             ].map((s) => (
               <div
                 key={s.step}
-                className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6"
+                className="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-sm font-bold text-gray-900 dark:text-white">
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-900 dark:bg-gray-800 dark:text-white">
                     {s.step}
                   </span>
                   <span className="text-[var(--lobster-accent)]">{s.icon}</span>
                 </div>
-                <h3 className="font-bold text-gray-900 dark:text-white mb-2">
+                <h3 className="mb-2 font-display text-lg text-gray-900 dark:text-white">
                   {s.title}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -565,14 +433,13 @@ export default function Home() {
       </section>
 
       <section className="px-6 pb-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Program info banner */}
-          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="shrink-0 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 rounded">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-col justify-between gap-3 rounded-sm border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="shrink-0 rounded bg-green-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-green-700 dark:bg-green-900/40 dark:text-green-400">
                 Devnet
               </span>
-              <code className="font-mono text-xs text-gray-500 dark:text-gray-400 truncate">
+              <code className="truncate font-mono text-xs text-gray-500 dark:text-gray-400">
                 AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg
               </code>
             </div>
@@ -580,9 +447,9 @@ export default function Home() {
               href="https://github.com/dirtybits/agent-reputation-oracle"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] transition shrink-0"
+              className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-[var(--sea-accent)] transition hover:text-[var(--sea-accent-strong)]"
             >
-              <FiExternalLink className="w-3.5 h-3.5" /> GitHub
+              <FiExternalLink className="h-3.5 w-3.5" /> GitHub
             </a>
           </div>
         </div>

@@ -7,11 +7,6 @@ import favicon from "@/app/favicon.png";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { GithubAuthButton } from "@/components/GithubAuthButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import {
-  navButtonSizeClass,
-  navPillActiveClass,
-  navPillIdleClass,
-} from "@/lib/buttonStyles";
 type NavItem = {
   href: string;
   label: string;
@@ -21,7 +16,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   {
     href: "/skills",
-    label: "Skills",
+    label: "Marketplace",
     match: (pathname) =>
       pathname === "/skills" ||
       pathname.startsWith("/skills/") ||
@@ -47,8 +42,10 @@ const navItems: NavItem[] = [
 
 function navLinkClass(isActive: boolean) {
   return [
-    `${navButtonSizeClass} transition whitespace-nowrap`,
-    isActive ? navPillActiveClass : navPillIdleClass,
+    "font-display text-[15px] px-2 py-1 transition whitespace-nowrap",
+    isActive
+      ? "text-gray-900 dark:text-white"
+      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white",
   ].join(" ");
 }
 
@@ -60,7 +57,7 @@ export function AppNavbar() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 h-14 flex items-center gap-3">
         <Link
           href="/"
-          className="flex items-center gap-2 font-heading font-bold text-gray-900 dark:text-white text-sm shrink-0"
+          className="flex items-center gap-2 font-display text-base text-gray-900 dark:text-white shrink-0"
         >
           <Image
             src={favicon}

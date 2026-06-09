@@ -68,7 +68,7 @@ export default function TrustBadge({
   if (compact) {
     return (
       <div className="flex flex-wrap items-center gap-3 text-xs">
-        <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-semibold">
+        <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-normal">
           <FiShield className="w-3.5 h-3.5" />
           {trust.reputationScore}
         </span>

@@ -12,27 +12,28 @@ import {
   getCachedTrust,
   partitionAuthorsByTrustFreshness,
   scheduleBackgroundTrustRefresh,
+  type CachedTrustRow,
 } from "@/lib/authorTrustView";
 
 const trust = { reputationScore: 10 };
 const fresh = () => new Date().toISOString();
 const old = () => new Date(Date.now() - 60 * 60_000).toISOString();
 
-function repoRow(overrides: Record<string, unknown>) {
+function repoRow(overrides: Record<string, unknown>): CachedTrustRow {
   return {
     author_pubkey: "AuthorX",
     source: "repo",
     cached_author_trust: trust,
     cached_trust_refreshed_at: fresh(),
     ...overrides,
-  };
+  } as unknown as CachedTrustRow;
 }
 
 describe("getCachedTrust", () => {
   it("parses a JSON-string snapshot and ignores non-repo rows", () => {
-    expect(getCachedTrust(repoRow({ cached_author_trust: JSON.stringify(trust) }))).toEqual(
-      trust
-    );
+    expect(
+      getCachedTrust(repoRow({ cached_author_trust: JSON.stringify(trust) }))
+    ).toEqual(trust);
     expect(getCachedTrust(repoRow({ source: "chain" }))).toBeNull();
     expect(getCachedTrust(repoRow({ cached_author_trust: null }))).toBeNull();
   });
@@ -51,14 +52,21 @@ describe("partitionAuthorsByTrustFreshness", () => {
 
   it("treats an unparseable refreshed_at as stale", () => {
     const { stale } = partitionAuthorsByTrustFreshness([
-      repoRow({ author_pubkey: "Bad", cached_trust_refreshed_at: "not-a-date" }),
+      repoRow({
+        author_pubkey: "Bad",
+        cached_trust_refreshed_at: "not-a-date",
+      }),
     ]);
     expect(stale).toEqual(["Bad"]);
   });
 
   it("dedupes an author across rows, preferring the cached entry", () => {
     const { missing, stale } = partitionAuthorsByTrustFreshness([
-      { author_pubkey: "Dupe", source: "chain", cached_author_trust: null },
+      repoRow({
+        author_pubkey: "Dupe",
+        source: "chain",
+        cached_author_trust: null,
+      }),
       repoRow({ author_pubkey: "Dupe", cached_trust_refreshed_at: fresh() }),
     ]);
     expect(missing).toEqual([]);

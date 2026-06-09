@@ -917,7 +917,7 @@ function PublishSkillPageInner() {
 
           {/* Metadata form */}
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            <h3 className="text-sm font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
               Skill Metadata
             </h3>
 
@@ -1047,7 +1047,7 @@ function PublishSkillPageInner() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <UsdcIcon className="w-4 h-4 text-[var(--lobster-accent)]" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Listing Mode
                   </span>
                 </div>
@@ -1062,7 +1062,7 @@ function PublishSkillPageInner() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <FiGithub className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      <span className="text-sm font-normal text-gray-900 dark:text-white">
                         GitHub publisher
                       </span>
                     </div>
@@ -1098,7 +1098,7 @@ function PublishSkillPageInner() {
               <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <UsdcIcon className="w-4 h-4 text-[var(--lobster-accent)]" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Primary price
                   </span>
                 </div>
@@ -1134,7 +1134,7 @@ function PublishSkillPageInner() {
               <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <FiDollarSign className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Protocol currency
                   </span>
                 </div>

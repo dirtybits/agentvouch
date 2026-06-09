@@ -187,7 +187,7 @@ export default function SettingsPage() {
                 <div className="flex items-start gap-3">
                   <FiAlertTriangle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-green-800 dark:text-green-300 mb-1">
+                    <p className="text-sm font-normal text-green-800 dark:text-green-300 mb-1">
                       API key created — copy it now!
                     </p>
                     <p className="text-xs text-green-600 dark:text-green-400 mb-2">
@@ -223,7 +223,7 @@ export default function SettingsPage() {
 
             {/* Create key */}
             <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <FiPlus className="w-4 h-4" />
                 Create API Key
               </h2>
@@ -264,7 +264,7 @@ export default function SettingsPage() {
 
             {/* Active keys */}
             <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <FiShield className="w-4 h-4" />
                 Active Keys ({activeKeys.length})
               </h2>
@@ -285,7 +285,7 @@ export default function SettingsPage() {
                     >
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          <span className="text-sm font-normal text-gray-900 dark:text-white">
                             {key.name}
                           </span>
                           <code className="text-xs font-mono text-[var(--sea-accent)] bg-[var(--sea-accent-soft)] px-1.5 py-0.5 rounded border border-[var(--sea-accent-border)]">
@@ -326,7 +326,7 @@ export default function SettingsPage() {
             {/* Revoked keys */}
             {revokedKeys.length > 0 && (
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+                <h2 className="text-sm font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
                   Revoked Keys ({revokedKeys.length})
                 </h2>
                 <div className="space-y-2">

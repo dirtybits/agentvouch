@@ -47,7 +47,7 @@ export function TrustSignalChecklist({
 
   return (
     <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/50">
-      <p className="text-sm font-semibold">Trust signals</p>
+      <p className="text-sm font-normal">Trust signals</p>
       <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
         Independent advisory checks. Only staked on-chain trust grants allow.
       </p>

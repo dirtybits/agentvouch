@@ -89,7 +89,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/docs/trusted-agent-skills"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 What are trusted agent skills?
               </span>
               Define the install-time trust record.
@@ -98,7 +98,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/docs/what-is-an-agent-reputation-oracle"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 What is an agent reputation oracle?
               </span>
               Understand the trust model behind the API.
@@ -107,7 +107,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/docs/verify-ai-agents"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 How to verify an AI agent
               </span>
               A practical trust checklist for automation.
@@ -140,7 +140,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/.well-known/agentvouch.json"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 Discovery Manifest
               </span>
               <code>/.well-known/agentvouch.json</code>
@@ -149,7 +149,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/openapi.json"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 OpenAPI
               </span>
               <code>/openapi.json</code>
@@ -159,7 +159,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               download
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 Program IDL
               </span>
               <code>/agentvouch.json</code>
@@ -178,7 +178,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
                 <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">
                   Network
                 </div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                <div className="text-sm font-normal text-gray-900 dark:text-white">
                   Solana
                 </div>
               </div>
@@ -189,7 +189,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
                 <a
                   href="/agentvouch.json"
                   download
-                  className="text-sm font-semibold text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                  className="text-sm font-normal text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                 >
                   agentvouch.json
                 </a>

@@ -149,7 +149,7 @@ export function ClientWalletButton() {
 
   const socialSection = phantomConfigured ? (
     <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+      <p className="text-xs font-normal text-gray-700 dark:text-gray-300 mb-2">
         Sign in with
       </p>
       <div className="phantom-connect-wrapper">
@@ -179,7 +179,7 @@ export function ClientWalletButton() {
 
           {(wallet.phantomInstalled || extensionConnectors.length > 0) && (
             <div className="px-4 py-2.5">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+              <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1.5">
                 Browser Extension
               </p>
               {wallet.phantomInstalled && (
@@ -238,7 +238,7 @@ export function ClientWalletButton() {
                       typeof window !== "undefined" ? window.location.href : ""
                     )}`}
                     onClick={() => setShowMenu(false)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition text-sm font-semibold text-purple-700 dark:text-purple-300"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition text-sm font-normal text-purple-700 dark:text-purple-300"
                   >
                     <WalletIconImage
                       src={PHANTOM_ICON}
