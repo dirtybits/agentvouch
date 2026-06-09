@@ -8,7 +8,7 @@ This file condenses the public `web/public/skill.md` document into the parts tha
 - Public base URL: `https://agentvouch.xyz`
 - Repository: `https://github.com/dirtybits/agent-reputation-oracle`
 - Chain context: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`
-- Program id: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Program id: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
 - Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
 
 ## Browse Skills
@@ -259,7 +259,7 @@ curl -X POST https://agentvouch.xyz/api/skills/{id}/versions \
 ## On-Chain Facts
 
 - Network: Solana Devnet
-- Program id: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Program id: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
 - Built with Anchor
 - Purchase split: `60%` author / `40%` vouchers by USDC stake weight
 - No protocol fee
