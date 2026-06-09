@@ -7,6 +7,7 @@ import {
 } from "@/lib/skillRouteResolver";
 import { CHAIN_SKILL_PREFIX } from "@/lib/skillUrls";
 import { buildSkillPageMetadata } from "@/lib/skillPageMetadata";
+import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
 
 export async function generateMetadata({
   params,
@@ -38,5 +39,12 @@ export default async function SkillDetailPage({
     }
   }
 
-  return <SkillDetailClient id={route.id} />;
+  const initialSkill = route.id.startsWith(CHAIN_SKILL_PREFIX)
+    ? null
+    : await loadSkillDetailSnapshot(route.id);
+  if (!route.id.startsWith(CHAIN_SKILL_PREFIX) && !initialSkill) {
+    notFound();
+  }
+
+  return <SkillDetailClient id={route.id} initialSkill={initialSkill} />;
 }

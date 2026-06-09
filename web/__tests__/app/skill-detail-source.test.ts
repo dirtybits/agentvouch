@@ -65,4 +65,23 @@ describe("skill detail source", () => {
 
     expect(source).toContain("skillName={skill.name}");
   });
+
+  it("renders from an initial server snapshot before buyer hydration", () => {
+    const clientSource = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
+      "utf8"
+    );
+    const pageSource = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/[skill]/page.tsx"),
+      "utf8"
+    );
+
+    expect(clientSource).toContain("initialSkill?: SkillDetail | null");
+    expect(clientSource).toContain("useState<SkillDetail | null>(initialSkill)");
+    expect(clientSource).toContain("useState(!initialSkill)");
+    expect(clientSource).toContain("refreshSkill({ includeBuyer: false })");
+    expect(clientSource).toContain("refreshSkill({ includeBuyer: true })");
+    expect(pageSource).toContain("loadSkillDetailSnapshot(route.id)");
+    expect(pageSource).toContain("initialSkill={initialSkill}");
+  });
 });

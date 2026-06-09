@@ -128,6 +128,7 @@ interface SkillDetail {
   author_trust: TrustData | null;
   author_identity: AgentIdentitySummary | null;
   content_verification: ContentVerification | null;
+  content?: string | null;
   files: SkillFileTreeEntry[] | null;
   tree_hash: string | null;
   storage_backend: string | null;
@@ -284,7 +285,13 @@ async function fetchSignedRawSkill({
   return rawRes.text();
 }
 
-export default function SkillDetailPage({ id }: { id: string }) {
+export default function SkillDetailPage({
+  id,
+  initialSkill = null,
+}: {
+  id: string;
+  initialSkill?: SkillDetail | null;
+}) {
   const searchParams = useSearchParams();
   const { status, account, walletName } = useAgentVouchWallet();
   const {
@@ -299,9 +306,11 @@ export default function SkillDetailPage({ id }: { id: string }) {
     connected && walletName === PHANTOM_EMBEDDED_WALLET_NAME;
   const oracle = useReputationOracle();
 
-  const [skill, setSkill] = useState<SkillDetail | null>(null);
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [skill, setSkill] = useState<SkillDetail | null>(initialSkill);
+  const [content, setContent] = useState<string | null>(
+    initialSkill?.content ?? null
+  );
+  const [loading, setLoading] = useState(!initialSkill);
   const [copied, setCopied] = useState<string | null>(null);
 
   const [listPrice, setListPrice] = useState(String(PRICING.USDC.defaultPrice));
@@ -377,11 +386,13 @@ export default function SkillDetailPage({ id }: { id: string }) {
     aiCapabilities.length > 0 ? aiCapabilities : capabilityBullets;
   const requestedAuthorAction = searchParams.get("authorAction");
 
-  const refreshSkill = useCallback(async () => {
+  const refreshSkill = useCallback(async (options?: { includeBuyer?: boolean }) => {
     try {
-      const params = new URLSearchParams({ include: "trust" });
-      if (walletAddress) params.set("buyer", String(walletAddress));
-      const detailRes = await fetch(`/api/skills/${id}?${params}`);
+      const params = new URLSearchParams();
+      const includeBuyer = options?.includeBuyer ?? Boolean(walletAddress);
+      if (includeBuyer && walletAddress) params.set("buyer", String(walletAddress));
+      const query = params.toString();
+      const detailRes = await fetch(`/api/skills/${id}${query ? `?${query}` : ""}`);
       if (!detailRes.ok) throw new Error("Skill not found");
       const data = await detailRes.json();
       setSkill(data);
@@ -396,8 +407,14 @@ export default function SkillDetailPage({ id }: { id: string }) {
   }, [id, walletAddress]);
 
   useEffect(() => {
-    void refreshSkill();
-  }, [refreshSkill]);
+    if (skill) return;
+    void refreshSkill({ includeBuyer: false });
+  }, [refreshSkill, skill]);
+
+  useEffect(() => {
+    if (!walletAddress || !skill) return;
+    void refreshSkill({ includeBuyer: true });
+  }, [refreshSkill, skill?.id, walletAddress]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);

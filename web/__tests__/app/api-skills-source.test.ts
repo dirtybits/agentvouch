@@ -74,4 +74,34 @@ describe("skills api source", () => {
     expect(source).toContain("price_usdc_micros");
     expect(source).toContain("payment_flow");
   });
+
+  it("serves skill detail from snapshots before buyer-specific checks", () => {
+    const detailSource = fs.readFileSync(
+      path.join(process.cwd(), "app/api/skills/[id]/route.ts"),
+      "utf8"
+    );
+    const snapshotSource = fs.readFileSync(
+      path.join(process.cwd(), "lib/skillDetailSnapshot.ts"),
+      "utf8"
+    );
+
+    expect(detailSource).toContain("loadSkillDetailSnapshot(skillDbId)");
+    expect(detailSource).toContain("if (!buyerAddress)");
+    expect(detailSource).toContain("buildPublicCacheControl");
+    expect(detailSource).not.toContain("fetchOnChainSkillListing(skill.on_chain_address");
+    expect(snapshotSource).toContain("author_trust_snapshots");
+    expect(snapshotSource).toContain("latest_content");
+    expect(snapshotSource).toContain("scheduleSnapshotTrustRefresh");
+  });
+
+  it("uses skill detail snapshots for metadata instead of live price lookup", () => {
+    const metadataSource = fs.readFileSync(
+      path.join(process.cwd(), "lib/metadataData.ts"),
+      "utf8"
+    );
+
+    expect(metadataSource).toContain("loadSkillDetailSnapshot(route.id)");
+    expect(metadataSource).toContain("buildSkillDetailSnapshotMetadata");
+    expect(metadataSource).not.toContain("getOnChainUsdcPrice");
+  });
 });

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
-import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
-import { SCAN_MODEL } from "@/lib/ai/gateway";
 import { resolveAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
@@ -35,16 +33,9 @@ import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
-import {
-  getSkillPaymentFlow,
-  normalizeUsdcMicros,
-} from "@/lib/listingContract";
-import {
-  buildSecurityScanFromFields,
-  type SkillScanFieldRow,
-  type SkillSecurityScan,
-} from "@/lib/securityScan";
+import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
+import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
 
 const CHAIN_PREFIX = "chain-";
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -80,34 +71,6 @@ type SkillRow = {
   created_at: string;
   updated_at: string;
 };
-
-type SkillVersionRow = {
-  id: string;
-  version: number;
-  content: string;
-  ipfs_cid: string | null;
-  changelog: string | null;
-  files: unknown;
-  tree_hash: string | null;
-  storage_backend: string | null;
-  has_executable: boolean;
-  created_at: string;
-};
-
-type SkillScanRow = Required<
-  Pick<
-    SkillScanFieldRow,
-    | "scan_verdict"
-    | "scan_risk"
-    | "scan_findings"
-    | "scan_truncated"
-    | "scan_scanned_at"
-    | "scan_model"
-    | "scan_rubric_version"
-    | "scan_source"
-    | "scan_generated_by_model"
-  >
->;
 
 export async function GET(
   request: NextRequest,
@@ -258,151 +221,62 @@ export async function GET(
     }
     const skillDbId = route.id;
 
-    const rows = await sql()<SkillRow>`
-      SELECT * FROM skills WHERE id = ${skillDbId}::uuid
-    `;
-
-    if (rows.length === 0) {
+    const snapshot = await loadSkillDetailSnapshot(skillDbId);
+    if (!snapshot) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
-    const skill = rows[0];
-    skill.chain_context = normalizePersistedChainContext(skill.chain_context);
-
-    if (skill.on_chain_address) {
-      const listing = await fetchOnChainSkillListing(skill.on_chain_address, {
-        useCache: false,
+    const priceUsdcMicros = snapshot.price_usdc_micros;
+    const paymentFlow = snapshot.payment_flow;
+    if (!buyerAddress) {
+      return NextResponse.json(snapshot, {
+        headers: {
+          "Cache-Control": buildPublicCacheControl(
+            PUBLIC_ROUTE_CACHE_SECONDS.skillDetail,
+            PUBLIC_ROUTE_STALE_SECONDS.skillDetail
+          ),
+        },
       });
-      if (!listing) {
-        skill.on_chain_address = null;
-        skill.on_chain_protocol_version = null;
-        skill.on_chain_program_id = null;
-      } else {
-        skill.price_usdc_micros = String(listing.data.priceUsdcMicros);
-        skill.currency_mint ??= getConfiguredUsdcMint();
-        skill.on_chain_protocol_version = AGENTVOUCH_PROTOCOL_VERSION;
-        skill.on_chain_program_id = getAgentVouchProgramId();
-      }
     }
 
-    const versions = await sql()<SkillVersionRow>`
-      SELECT
-        id,
-        version,
-        content,
-        ipfs_cid,
-        changelog,
-        files,
-        tree_hash,
-        storage_backend,
-        has_executable,
-        created_at
-      FROM skill_versions
-      WHERE skill_id = ${skillDbId}::uuid
-      ORDER BY version DESC
-    `;
-
-    const latestContent = versions[0]?.content ?? null;
-
-    let author_trust = null;
-    if (includeTrust && skill.author_pubkey) {
-      author_trust = await resolveAuthorTrust(skill.author_pubkey);
-    }
-    let author_identity = null;
-    if (skill.author_pubkey) {
-      try {
-        author_identity = await resolveAgentIdentityByWallet(skill.author_pubkey, {
-          hasAgentProfile: author_trust?.isRegistered ?? false,
-        });
-      } catch (error) {
-        console.error("Failed to resolve author identity for repo skill:", error);
-      }
-    }
-
-    const latestVersion = versions[0];
-    let security_scan: SkillSecurityScan | null = null;
-    if (latestVersion?.tree_hash) {
-      const scanRows = await sql()<SkillScanRow>`
-        SELECT
-          verdict AS scan_verdict,
-          risk AS scan_risk,
-          findings AS scan_findings,
-          truncated AS scan_truncated,
-          scanned_at AS scan_scanned_at,
-          model AS scan_model,
-          rubric_version AS scan_rubric_version,
-          scan_source AS scan_source,
-          generated_by_model AS scan_generated_by_model
-        FROM skill_scans
-        WHERE tree_hash = ${latestVersion.tree_hash}
-          AND rubric_version = ${SCAN_RUBRIC_VERSION}
-          AND model = ${SCAN_MODEL}
-        LIMIT 1
-      `;
-      security_scan = scanRows[0]
-        ? buildSecurityScanFromFields(scanRows[0])
-        : null;
-    }
-    const allPinned = versions.every((version) => !!version.ipfs_cid);
-    const currentCidMatch = latestVersion?.ipfs_cid === skill.ipfs_cid;
-    const content_verification = {
-      has_ipfs: !!skill.ipfs_cid,
-      all_versions_pinned: allPinned,
-      current_cid_consistent: currentCidMatch,
-      status: !skill.ipfs_cid
-        ? "unverified"
-        : allPinned && currentCidMatch
-        ? "verified"
-        : "drift_detected",
-    };
-
-    const versionsWithoutContent = versions.map((version) => {
-      const rest = { ...version };
-      delete (rest as { content?: unknown }).content;
-      return rest;
-    });
     const preflightContext = await createPurchasePreflightContext({
       rpc,
       buyer: buyerAddress,
       usdcMint: address(getConfiguredUsdcMint()),
       authors:
-        skill.author_pubkey && isAddress(skill.author_pubkey)
-          ? [address(skill.author_pubkey)]
+        snapshot.author_pubkey && isAddress(snapshot.author_pubkey)
+          ? [address(snapshot.author_pubkey)]
           : [],
     });
-    const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
     const preflight = serializePurchasePreflight(
       assessPurchasePreflight({
         context: preflightContext,
         priceUsdcMicros: priceUsdcMicros ? BigInt(priceUsdcMicros) : 0n,
         author:
-          skill.author_pubkey && isAddress(skill.author_pubkey)
-            ? address(skill.author_pubkey)
+          snapshot.author_pubkey && isAddress(snapshot.author_pubkey)
+            ? address(snapshot.author_pubkey)
             : null,
         authorBackingUsdcMicros:
-          skill.on_chain_address && priceUsdcMicros
-            ? BigInt(author_trust?.totalStakeAtRisk ?? 0)
+          snapshot.on_chain_address && priceUsdcMicros
+            ? BigInt(snapshot.author_trust?.totalStakeAtRisk ?? 0)
             : null,
       })
     );
     const buyerHasPurchased = buyerAddress
       ? priceUsdcMicros
-        ? skill.on_chain_address
+        ? snapshot.on_chain_address
           ? await hasOnChainPurchase(
               String(buyerAddress),
-              String(skill.on_chain_address)
+              String(snapshot.on_chain_address)
             ).catch(() => false)
           : await hasUsdcPurchaseEntitlement(
               skillDbId,
               String(buyerAddress)
             ).catch(() => false)
-        : getSkillPaymentFlow({
-            legacySolLamports: skill.price_lamports,
-            allowLegacySol: true,
-          }) === "legacy-sol" && skill.on_chain_address
+        : paymentFlow === "legacy-sol" && snapshot.on_chain_address
         ? await hasOnChainPurchase(
             String(buyerAddress),
-            String(skill.on_chain_address)
+            String(snapshot.on_chain_address)
           ).catch(() => false)
         : false
       : false;
@@ -413,54 +287,16 @@ export async function GET(
             String(buyerAddress)
           ).catch(() => null)
         : null;
-    const author_trust_summary = author_trust
-      ? buildAgentTrustSummary({
-          walletPubkey: skill.author_pubkey!,
-          trust: author_trust,
-          identity: author_identity,
-        })
-      : null;
-    const paymentFlow = getSkillPaymentFlow({
-      priceUsdcMicros,
-      onChainAddress: skill.on_chain_address,
-      legacySolLamports: skill.price_lamports,
-      allowLegacySol: true,
-    });
-    // Content wall: full content is returned only for free skills. Paid content
-    // is gated to the signature-verified raw/archive download, so the detail
-    // surface can't be used to bypass the paywall. Gating on the unauthenticated
-    // `buyer` param would be spoofable, so entitlement is NOT used here.
-    const canViewContent = paymentFlow === "free";
-
     return NextResponse.json(
       {
-        ...skill,
-        price_usdc_micros: priceUsdcMicros,
-        payment_flow: paymentFlow,
-        content: canViewContent ? latestContent : null,
-        files: latestVersion?.files ?? null,
-        tree_hash: latestVersion?.tree_hash ?? null,
-        storage_backend: latestVersion?.storage_backend ?? null,
-        has_executable: latestVersion?.has_executable ?? false,
-        security_scan,
-        signals: buildTrustSignals({ trust: author_trust, scan: security_scan }),
-        versions: versionsWithoutContent,
-        author_trust,
-        author_trust_summary,
-        author_identity,
+        ...snapshot,
         buyerHasPurchased,
         buyerPurchaseSummary,
-        content_verification,
         ...preflight,
       },
       {
         headers: {
-          "Cache-Control": buyer
-            ? PRIVATE_NO_STORE_CACHE_CONTROL
-            : buildPublicCacheControl(
-                PUBLIC_ROUTE_CACHE_SECONDS.skillDetail,
-                PUBLIC_ROUTE_STALE_SECONDS.skillDetail
-              ),
+          "Cache-Control": PRIVATE_NO_STORE_CACHE_CONTROL,
         },
       }
     );
