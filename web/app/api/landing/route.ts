@@ -81,35 +81,59 @@ function isStale(refreshedAt: string): boolean {
   return Date.now() - refreshedMs > SNAPSHOT_STALE_MS;
 }
 
-async function getLandingPayload(): Promise<LandingPayload> {
+async function getLandingPayload(): Promise<{
+  payload: LandingPayload;
+  source: "snapshot-hit" | "snapshot-stale" | "live-compute" | "snapshot-error";
+  snapshotMs: number;
+  computeMs: number;
+}> {
   let snapshot: Awaited<ReturnType<typeof readPlatformMetricsSnapshot>> = null;
+  let source: "snapshot-hit" | "snapshot-stale" | "live-compute" | "snapshot-error" =
+    "live-compute";
+  const snapshotStart = Date.now();
   try {
     snapshot = await readPlatformMetricsSnapshot();
   } catch (error) {
+    source = "snapshot-error";
     console.error(
       "Failed to read platform metrics snapshot; falling back to live compute:",
       error
     );
   }
+  const snapshotMs = Date.now() - snapshotStart;
 
   if (snapshot) {
-    if (isStale(snapshot.refreshedAt)) {
-      scheduleSnapshotRefresh();
-    }
-    return { metrics: snapshot.metrics };
+    const stale = isStale(snapshot.refreshedAt);
+    if (stale) scheduleSnapshotRefresh();
+    return {
+      payload: { metrics: snapshot.metrics },
+      source: stale ? "snapshot-stale" : "snapshot-hit",
+      snapshotMs,
+      computeMs: 0,
+    };
   }
 
-  return computeLandingPayloadOnce();
+  const computeStart = Date.now();
+  const payload = await computeLandingPayloadOnce();
+  return { payload, source, snapshotMs, computeMs: Date.now() - computeStart };
 }
 
 export async function GET() {
   try {
-    return NextResponse.json(await getLandingPayload(), {
+    const { payload, source, snapshotMs, computeMs } = await getLandingPayload();
+    return NextResponse.json(payload, {
       headers: {
         "Cache-Control": buildPublicCacheControl(
           PUBLIC_ROUTE_CACHE_SECONDS.landing,
           PUBLIC_ROUTE_STALE_SECONDS.landing
         ),
+        // Diagnostics: `snapshot-hit` is the fast Postgres path; `live-compute`
+        // / `snapshot-error` mean the slow on-chain fallback was taken.
+        "X-AgentVouch-Source": source,
+        "Server-Timing": [
+          `snapshot;dur=${snapshotMs}`,
+          `compute;dur=${computeMs}`,
+        ].join(", "),
       },
     });
   } catch (error: unknown) {
