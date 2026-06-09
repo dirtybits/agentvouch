@@ -1,5 +1,7 @@
 # Database Cutover Runbook
 
+> **Status: executed.** The `v0.2.0` cutover this runbook covers is complete (see the dated Executed Cutover section at the bottom). Kept as the reference procedure for any future cutover.
+
 This runbook covers the `v0.2.0` database cutover for AgentVouch.
 
 Use a fresh Neon branch or database for `v0.2.0`. Keep the current database as a read-only archive and rollback target. Do not create long-lived `*_v2` tables in the old database.

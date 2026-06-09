@@ -4,7 +4,7 @@ overview: "Fix the 44 standalone `tsc` errors in packages/agentvouch-cli (which 
 todos:
   - id: add-typecheck-script
     content: Add a `typecheck` npm script to packages/agentvouch-cli and capture the baseline (44 errors).
-    status: pending
+    status: done
   - id: fix-http-response-union
     content: Introduce a readJsonOrThrow<T> helper in src/lib/http.ts and route every fetch method through it (clears ~18 union-narrowing errors).
     status: pending
@@ -33,7 +33,7 @@ isProject: false
 
 ## Scope
 - In scope: `packages/agentvouch-cli/src/lib/{http,solana,install}.ts`, `packages/agentvouch-cli/test/{publish,update}.test.ts`, and `packages/agentvouch-cli/package.json`.
-- Out of scope: behavior changes to CLI commands, the web app, and the trust-signal follow-ups (separate plan: `trust-signals-surface-followups.plan.md`).
+- Out of scope: behavior changes to CLI commands, the web app, and the trust-signal follow-ups (shipped; their plan file was removed).
 
 ## Error inventory (baseline: 44)
 Capture with: `cd packages/agentvouch-cli && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "error TS"`.
