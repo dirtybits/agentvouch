@@ -69,6 +69,7 @@ interface SkillPreviewCardProps {
   purchasePreflightStatus?: PurchasePreflightStatus;
   descriptionFallback?: string | null;
   onPurchase?: () => void;
+  onTagClick?: (tag: string) => void;
 }
 
 type Verdict = "allow" | "review" | "avoid" | "unknown";
@@ -259,6 +260,7 @@ export default function SkillPreviewCard({
   hasPurchased,
   isOwn,
   descriptionFallback,
+  onTagClick,
 }: SkillPreviewCardProps) {
   // Author copy stays primary; AI summaries fill gaps for thin listings.
   const description =
@@ -438,15 +440,27 @@ export default function SkillPreviewCard({
               {authorReports.label}
             </span>
           )}
-          {skill.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-[var(--lobster-accent)]"
-              title="Tags summarize the skill's core capabilities."
-            >
-              {tag}
-            </span>
-          ))}
+          {skill.tags.slice(0, 3).map((tag) =>
+            onTagClick ? (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => onTagClick(tag)}
+                className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-[var(--lobster-accent)] transition hover:border-[var(--lobster-accent)] hover:bg-white dark:hover:bg-gray-900"
+                title={`Show all skills tagged ${tag}`}
+              >
+                {tag}
+              </button>
+            ) : (
+              <span
+                key={tag}
+                className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-[var(--lobster-accent)]"
+                title="Tags summarize the skill's core capabilities."
+              >
+                {tag}
+              </span>
+            )
+          )}
         </div>
 
         {/* Bottom stats — anchored: action/price · rep · vouches · downloads */}

@@ -252,6 +252,7 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOption>("trusted");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -331,6 +332,7 @@ export default function MarketplacePage() {
     try {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("q", debouncedSearch);
+      if (selectedTag) params.set("tags", selectedTag);
       params.set("mode", "fast");
       params.set("sort", sort);
       params.set("page", String(page));
@@ -353,7 +355,7 @@ export default function MarketplacePage() {
         setLoading(false);
       }
     }
-  }, [debouncedSearch, hydrateVisibleSkills, page, sort]);
+  }, [debouncedSearch, hydrateVisibleSkills, page, selectedTag, sort]);
 
   const loadFeed = useCallback(async () => {
     setFeedLoading(true);
@@ -502,6 +504,13 @@ export default function MarketplacePage() {
     setDebouncedSearch(search.trim());
     setPage(1);
   };
+
+  const handleTagClick = useCallback((tag: string) => {
+    setSelectedTag(tag);
+    setSearch("");
+    setDebouncedSearch("");
+    setPage(1);
+  }, []);
 
   const handlePurchase = async (listingPubkey: Address, authorKey: Address) => {
     if (!connected) return;
@@ -751,6 +760,26 @@ export default function MarketplacePage() {
                   ))}
                 </div>
               </div>
+              {selectedTag && (
+                <div className="mb-6 flex flex-wrap items-center gap-2 font-mono text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">
+                    Showing tag
+                  </span>
+                  <span className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2.5 py-1 lowercase tracking-wide text-[var(--lobster-accent)]">
+                    {selectedTag}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTag(null);
+                      setPage(1);
+                    }}
+                    className="text-gray-500 underline-offset-2 transition hover:text-[var(--sea-accent)] hover:underline dark:text-gray-400"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
 
               {/* Skill Cards */}
               {loading ? (
@@ -818,6 +847,7 @@ export default function MarketplacePage() {
                           descriptionFallback={getCapabilityFallback(
                             skill.tags ?? []
                           )}
+                          onTagClick={handleTagClick}
                           onPurchase={() => {
                             if (!listingPubkey) return;
                             if (!skill.author_pubkey) return;

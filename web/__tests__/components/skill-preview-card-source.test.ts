@@ -21,4 +21,15 @@ describe("SkillPreviewCard source", () => {
       source.indexOf("if (params.hasUsdcPrimary)")
     );
   });
+
+  it("renders skill tags as clickable filters when a handler is provided", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/SkillPreviewCard.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("onTagClick?: (tag: string) => void");
+    expect(source).toContain("onClick={() => onTagClick(tag)}");
+    expect(source).toContain("Show all skills tagged");
+  });
 });

@@ -46,6 +46,21 @@ describe("skills page source", () => {
     expect(source).not.toContain("if (search) params.set(\"q\", search)");
   });
 
+  it("filters marketplace cards by clicked skill tags", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("selectedTag");
+    expect(source).toContain('params.set("tags", selectedTag)');
+    expect(source).toContain("const handleTagClick");
+    expect(source).toContain("setSelectedTag(tag)");
+    expect(source).toContain("onTagClick={handleTagClick}");
+    expect(source).toContain("Showing tag");
+    expect(source).toContain("Clear");
+  });
+
   it("shows USDC purchase preflight warnings for paid skills", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/page.tsx"),
