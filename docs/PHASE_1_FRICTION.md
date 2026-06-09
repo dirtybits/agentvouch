@@ -1,5 +1,7 @@
 # Phase 1 — Friction Removal for Buyers and Sellers
 
+> **Status (2026-06-09):** Track A (paid-listing collapse to `listing-required`) and Track B (stock-ATA settlement instruction + x402 settlement bridge behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`) have shipped. The gap inventory and scoping tables below are the original planning record and are superseded by the dated decision sections from 2026-05-11 onward.
+
 Living scope doc for the "remove the wallet-exists wall" effort. Phase 2 (Stripe + custodial fiat) is out of scope here; this phase stays on Solana / USDC rails and is fully testable on devnet.
 
 ## Goal

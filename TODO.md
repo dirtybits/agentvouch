@@ -16,11 +16,10 @@
 - [x] Keep current title as a scrolling-typing type intro
 
 ## Smart Contract
-- [ ] Implement `claim_voucher_revenue()` instruction
-- [ ] Add DAO governance for dispute resolution
-- [ ] On successful dispute resolution, payout the challenger to incentivize them to report malicious agents
-- [ ] Deploy to mainnet with audited code
-- [ ] Multi-party dispute arbitration (DAO governance)
+- [x] Implement `claim_voucher_revenue()` instruction
+- [x] On successful dispute resolution, payout the challenger to incentivize them to report malicious agents
+- [ ] Dispute governance hardening (multisig + timelock, then optimistic resolution) — see `docs/ROADMAP.md` Phase A2/C; supersedes the earlier "DAO governance" items
+- [ ] Deploy to mainnet with audited code — gates in `docs/MAINNET_READINESS.md`, sequencing in `docs/ROADMAP.md`
 - [ ] Reputation decay over time
 - [ ] On-chain evidence storage (IPFS + Solana pointers)
 - [ ] SHA-256 file hashing to prevent tampering on skill.md files (unless explicitly versioned) — see Feature Idea below
@@ -28,9 +27,9 @@
 ## Ecosystem Integrations
 - [ ] Build agent integrations (Eliza, etc.)
 - [ ] Integration with agent marketplaces (e.g., Eliza plugins)
-- [ ] x402 micropayment integration
-- [ ] MCP marketplace integration
-- [ ] Multi-asset staking + x402 — see [implementation plan](docs/multi-asset-staking-and-x402-plan.md)
+- [x] x402 micropayment integration — settlement bridge shipped behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`
+- [ ] MCP marketplace integration — see `docs/ROADMAP.md` Phase D (planned second listing type)
+- Multi-asset staking — superseded by the USDC-native rewrite (`docs/USDC_NATIVE_MIGRATION.md`); the protocol is single-asset USDC
 
 ## Metrics
 - [ ] Add connected agents

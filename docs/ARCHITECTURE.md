@@ -44,8 +44,8 @@ Agent or human
           |
           v
 Solana Anchor program: agentvouch
-  - 16 instructions
-  - 9 Anchor account structs
+  - 23 instructions
+  - 14 Anchor account structs
   - SPL Token vaults for USDC custody
           |
           v
@@ -184,8 +184,8 @@ Repo-backed skills keep content and versions in Postgres. Optional on-chain list
 
 ```text
 programs/agentvouch/           Anchor program
-├── src/instructions/          16 instruction handlers
-├── src/state/                 9 Anchor account structs
+├── src/instructions/          23 instruction handlers
+├── src/state/                 14 Anchor account structs
 ├── src/events.rs              On-chain events
 └── src/lib.rs                 Program entry point
 
