@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { useAgentVouchWallet } from "@/components/WalletContextProvider";
@@ -26,20 +19,16 @@ import type { TrustData } from "@/components/TrustBadge";
 import type { Purchase } from "../../generated/agentvouch/src/generated/accounts/purchase";
 import type { SkillListing } from "../../generated/agentvouch/src/generated/accounts/skillListing";
 import {
-  FiActivity,
   FiAlertTriangle,
   FiBookOpen,
   FiBox,
   FiCheckCircle,
-  FiClock,
   FiDownload,
   FiEdit2,
   FiGitCommit,
   FiLoader,
-  FiPackage,
   FiPlus,
   FiSearch,
-  FiShield,
   FiShoppingCart,
   FiTrendingUp,
   FiXCircle,
@@ -290,7 +279,6 @@ export default function MarketplacePage() {
 
   // Feed state
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [feedLoading, setFeedLoading] = useState(false);
   const purchasedSkillListingKeys = useMemo(
     () =>
       new Set([
@@ -299,6 +287,24 @@ export default function MarketplacePage() {
       ]),
     [myPurchases, purchasedKeys]
   );
+  const aggregateLabel = useMemo(() => {
+    const weekAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
+    const weeklyPurchases = feedItems.filter(
+      (item) => item.type === "purchase" && item.timestamp >= weekAgo
+    );
+    if (weeklyPurchases.length > 0) {
+      const volumeMicros = weeklyPurchases.reduce(
+        (sum, item) => sum + BigInt(item.priceUsdcMicros ?? 0),
+        0n
+      );
+      const sold = `${weeklyPurchases.length} sold this week`;
+      return volumeMicros > 0n
+        ? `${sold} · ${formatUsdcMicros(volumeMicros)} USDC volume`
+        : sold;
+    }
+    // Low-volume fallback: a durable cumulative stat reads better than "0 sold".
+    return total > 0 ? `${total} skills listed` : null;
+  }, [feedItems, total]);
 
   const hydrateVisibleSkills = useCallback(
     async (visibleSkills: SkillRow[]) => {
@@ -367,7 +373,6 @@ export default function MarketplacePage() {
   }, [debouncedSearch, hydrateVisibleSkills, page, selectedTag, sort]);
 
   const loadFeed = useCallback(async () => {
-    setFeedLoading(true);
     try {
       const activityRes = await fetch("/api/skills/activity");
       if (!activityRes.ok) {
@@ -412,8 +417,6 @@ export default function MarketplacePage() {
       setFeedItems(items);
     } catch (e) {
       console.error("Failed to load feed:", e);
-    } finally {
-      setFeedLoading(false);
     }
   }, []);
 
@@ -554,96 +557,110 @@ export default function MarketplacePage() {
     }
   };
 
-  const sortOptions: {
-    value: SortOption;
-    label: string;
-    icon: React.ReactNode;
-  }[] = [
-    {
-      value: "trusted",
-      label: "Most Trusted",
-      icon: <FiShield className="w-3.5 h-3.5" />,
-    },
-    {
-      value: "newest",
-      label: "Newest",
-      icon: <FiClock className="w-3.5 h-3.5" />,
-    },
-    {
-      value: "installs",
-      label: "Most Installed",
-      icon: <FiTrendingUp className="w-3.5 h-3.5" />,
-    },
-    {
-      value: "name",
-      label: "Name",
-      icon: <FiBookOpen className="w-3.5 h-3.5" />,
-    },
+  const sortOptions: { value: SortOption; label: string }[] = [
+    { value: "trusted", label: "Trusted" },
+    { value: "newest", label: "Newest" },
+    { value: "installs", label: "Installs" },
+    { value: "name", label: "Name" },
   ];
 
-  const tabs: { key: PageTab; label: string; icon: ReactNode }[] = [
-    {
-      key: "browse",
-      label: "Browse",
-      icon: <FiBookOpen className="inline-block mr-1" />,
-    },
-    {
-      key: "my-purchases",
-      label: "My Purchases",
-      icon: <FiShoppingCart className="inline-block mr-1" />,
-    },
-    {
-      key: "my-listings",
-      label: "My Listings",
-      icon: <FiPackage className="inline-block mr-1" />,
-    },
+  const tabs: { key: PageTab; label: string }[] = [
+    { key: "browse", label: "Browse" },
+    { key: "my-purchases", label: "My purchases" },
+    { key: "my-listings", label: "My listings" },
   ];
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-8">
         {/* Header */}
-        <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1 lg:pr-6">
-            <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-1">
-              Trusted AI Agent Skills Marketplace
-            </h1>
-            <p className="max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-              Browse AI agent skills with on-chain author trust context. Inspect
-              stake, peer vouches, and dispute history before you install or
-              pay.
-              {total > 0 && activeTab === "browse" && (
-                <span className="ml-2 text-gray-400">({total} skills)</span>
-              )}
-            </p>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-1">
+            Marketplace
+          </h1>
+          <p className="max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+            Reputation-backed skills for AI agents — inspect stake, peer
+            vouches, and dispute history before you install or pay.{" "}
+            <Link
+              href="/docs/trusted-agent-skills"
+              className="text-[var(--sea-accent)] underline decoration-dotted underline-offset-4 hover:text-[var(--sea-accent-strong)]"
+            >
+              How trust works ↗
+            </Link>
+            {total > 0 && (
+              <span className="ml-2 text-gray-400 dark:text-gray-500">
+                · {total} skills
+              </span>
+            )}
+          </p>
         </div>
 
-        <div className="mb-6 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 text-sm text-gray-600 dark:text-gray-300">
-          AgentVouch is a trusted skills marketplace for AI agents. New here?
-          Read{" "}
-          <Link
-            href="/docs/trusted-agent-skills"
-            className="text-[var(--lobster-accent)] hover:underline"
-          >
-            what trusted agent skills are
-          </Link>
-          ,{" "}
-          <Link
-            href="/docs/what-is-an-agent-reputation-oracle"
-            className="text-[var(--lobster-accent)] hover:underline"
-          >
-            what an agent reputation oracle is
-          </Link>
-          , and why{" "}
-          <Link
-            href="/docs/skill-md-security"
-            className="text-[var(--lobster-accent)] hover:underline"
-          >
-            skill.md security
-          </Link>{" "}
-          matters before install.
-        </div>
+        {/* Live activity strip */}
+        {(feedItems.length > 0 || aggregateLabel) && (
+          <div className="mb-8 flex h-11 items-center gap-3.5 overflow-hidden rounded-sm border border-gray-200 bg-white px-3.5 dark:border-gray-800 dark:bg-gray-900">
+            {feedItems.length > 0 && (
+              <>
+                <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                  Live
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-6 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(90deg,#000_calc(100%-32px),transparent)]">
+                  {feedItems.slice(0, 2).map((item, index) => (
+                    <span
+                      key={item.id}
+                      className={`${
+                        index > 0 ? "hidden xl:inline-flex" : "inline-flex"
+                      } items-center gap-1.5 font-mono text-xs text-gray-500 dark:text-gray-400`}
+                    >
+                      <span
+                        className={
+                          item.type === "purchase"
+                            ? "text-[var(--lobster-accent)]"
+                            : "text-[var(--sea-accent)]"
+                        }
+                      >
+                        ●
+                      </span>
+                      <ActorLink pubkey={item.actor} />
+                      {item.type === "purchase" ? "bought" : "listed"}
+                      {item.skillRepoId ? (
+                        <Link
+                          href={getPublicSkillPath({
+                            id: item.skillRepoId,
+                            skill_id: item.skillName,
+                            public_slug: item.publicSlug,
+                            public_author_slug: item.publicAuthorSlug,
+                          })}
+                          className="font-display text-sm text-gray-900 hover:text-[var(--sea-accent)] dark:text-white"
+                        >
+                          {item.skillName}
+                        </Link>
+                      ) : (
+                        <span className="font-display text-sm text-gray-900 dark:text-white">
+                          {item.skillName}
+                        </span>
+                      )}
+                      {item.type === "purchase" && item.priceUsdcMicros ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-[var(--lobster-accent)]">
+                          <UsdcIcon className="h-3 w-3" />
+                          {formatUsdcMicros(item.priceUsdcMicros)} USDC
+                        </span>
+                      ) : null}
+                      <span className="text-gray-400 dark:text-gray-500">
+                        {timeAgo(item.timestamp)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+            {aggregateLabel && (
+              <span className="ml-auto shrink-0 border-l border-gray-100 pl-3.5 font-mono text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+                {aggregateLabel}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Toast notifications */}
         {txSuccess && (
@@ -709,13 +726,13 @@ export default function MarketplacePage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2.5 font-medium whitespace-nowrap transition text-sm border-b-2 -mb-[2px] ${
+                className={`px-4 py-2 font-display text-[17px] whitespace-nowrap transition border-b-2 -mb-[2px] ${
                   activeTab === tab.key
-                    ? "border-[var(--sea-accent)] text-[var(--sea-accent-strong)]"
-                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-[var(--sea-accent)]"
+                    ? "border-[var(--sea-accent)] text-gray-900 dark:text-white"
+                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                 }`}
               >
-                {tab.icon} {tab.label}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -732,8 +749,8 @@ export default function MarketplacePage() {
 
         {/* ===== BROWSE TAB ===== */}
         {activeTab === "browse" && (
-          <div className="flex gap-8 items-start">
-            <div className="flex-1 min-w-0">
+          <div>
+            <div className="min-w-0">
               {/* Search + Sort */}
               <div className="flex flex-col sm:flex-row gap-3 mb-8">
                 <form onSubmit={handleSearch} className="flex-1 relative">
@@ -763,7 +780,6 @@ export default function MarketplacePage() {
                           : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600"
                       }`}
                     >
-                      {opt.icon}
                       {opt.label}
                     </button>
                   ))}
@@ -895,86 +911,6 @@ export default function MarketplacePage() {
                 </>
               )}
             </div>
-
-            {/* Activity Feed sidebar */}
-            <aside className="hidden lg:block w-72 flex-shrink-0">
-              <div className="bg-white dark:bg-gray-900 rounded-sm border border-gray-200 dark:border-gray-800 overflow-hidden sticky top-6">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-                  <FiActivity className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  <span className="text-sm font-normal text-gray-900 dark:text-white">
-                    Recent Activity
-                  </span>
-                  {feedLoading && (
-                    <span className="ml-auto">
-                      <FiLoader className="w-3 h-3 text-gray-400 animate-spin" />
-                    </span>
-                  )}
-                </div>
-
-                {feedItems.length === 0 && !feedLoading ? (
-                  <div className="px-4 py-8 text-center">
-                    <FiClock className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-700" />
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      No recent activity yet.
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="divide-y divide-gray-50 dark:divide-gray-800/50 max-h-[520px] overflow-y-auto">
-                    {feedItems.map((item) => (
-                      <li
-                        key={item.id}
-                        className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition"
-                      >
-                        <p className="text-xs text-gray-900 dark:text-gray-100 leading-relaxed">
-                          <ActorLink pubkey={item.actor} />{" "}
-                          {item.type === "listing" ? "listed " : "bought "}
-                          {item.skillRepoId ? (
-                            <Link
-                              href={getPublicSkillPath({
-                                id: item.skillRepoId,
-                                skill_id: item.skillName,
-                                public_slug: item.publicSlug,
-                                public_author_slug: item.publicAuthorSlug,
-                              })}
-                              className="font-normal text-gray-900 dark:text-white hover:text-[var(--sea-accent)] transition"
-                            >
-                              &ldquo;{item.skillName}&rdquo;
-                            </Link>
-                          ) : (
-                            <span className="font-normal text-gray-900 dark:text-white">
-                              &ldquo;{item.skillName}&rdquo;
-                            </span>
-                          )}{" "}
-                          {item.type === "purchase" && item.author ? (
-                            <>
-                              from{" "}
-                              <ActorLink pubkey={item.author} />
-                            </>
-                          ) : null}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-gray-400 dark:text-gray-500 inline-flex items-center gap-1">
-                            <FiClock className="w-3 h-3" />
-                            {timeAgo(item.timestamp)}
-                          </span>
-                          {item.priceUsdcMicros ? (
-                            <span className="text-xs font-mono text-[var(--lobster-accent)] inline-flex items-center gap-1">
-                              <UsdcIcon className="w-3 h-3" />
-                              {formatUsdcMicros(item.priceUsdcMicros)} USDC
-                            </span>
-                          ) : item.legacySolLamports &&
-                            item.legacySolLamports > 0 ? (
-                            <span className="text-xs font-mono text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
-                              Legacy SOL
-                            </span>
-                          ) : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </aside>
           </div>
         )}
 
@@ -986,7 +922,7 @@ export default function MarketplacePage() {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
                   <FiShoppingCart />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
                   Connect Wallet
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -998,7 +934,7 @@ export default function MarketplacePage() {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
                   <FiShoppingCart />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
                   No purchases yet
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -1025,7 +961,7 @@ export default function MarketplacePage() {
                       className="bg-white dark:bg-gray-900 rounded-sm p-5 border border-gray-200 dark:border-gray-800 flex items-center justify-between"
                     >
                       <div>
-                        <h3 className="font-heading font-bold text-gray-900 dark:text-white">
+                        <h3 className="font-display text-lg text-gray-900 dark:text-white">
                           {listing?.account.name || "Unknown Skill"}
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1065,7 +1001,7 @@ export default function MarketplacePage() {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
                   <FiBox />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
                   Connect Wallet
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1077,7 +1013,7 @@ export default function MarketplacePage() {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
                   <FiBox />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
                   No skills published
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -1116,7 +1052,7 @@ export default function MarketplacePage() {
                       className="bg-white dark:bg-gray-900 rounded-sm p-5 border border-gray-200 dark:border-gray-800"
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-heading font-bold text-gray-900 dark:text-white">
+                        <h3 className="font-display text-lg text-gray-900 dark:text-white">
                           {listing.account.name}
                         </h3>
                         <span className="text-green-600 dark:text-green-400 font-mono font-bold">
