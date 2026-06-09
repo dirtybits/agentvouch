@@ -156,6 +156,58 @@ describe("GET /api/skills cache headers", () => {
     expect(mockCreatePurchasePreflightContext).not.toHaveBeenCalled();
   });
 
+  it("orders searched skills by search rank before sort tie-breakers", async () => {
+    const lowerRankAlphabeticalFirst = {
+      id: "11111111-1111-4111-8111-111111111111",
+      skill_id: "aaa-lower-rank",
+      author_pubkey: "2DGYWtztLvPB6GxgGXT16gjCoEf56jEmwSxjMwK21Pg3",
+      name: "AAA Lower Rank",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      search_rank: 0.1,
+      created_at: "2026-05-11T00:00:00.000Z",
+      updated_at: "2026-05-11T00:00:00.000Z",
+    };
+    const higherRankAlphabeticalSecond = {
+      id: "22222222-2222-4222-8222-222222222222",
+      skill_id: "zzz-higher-rank",
+      author_pubkey: "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+      name: "ZZZ Higher Rank",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      search_rank: 0.9,
+      created_at: "2026-05-10T00:00:00.000Z",
+      updated_at: "2026-05-10T00:00:00.000Z",
+    };
+    mockSql.mockReturnValue(
+      vi
+        .fn()
+        .mockResolvedValue([
+          lowerRankAlphabeticalFirst,
+          higherRankAlphabeticalSecond,
+        ])
+    );
+
+    const res = await GET(makeRequest("?q=ranked&sort=name&mode=fast"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
+    expect(
+      body.skills.map((skill: { skill_id: string }) => skill.skill_id)
+    ).toEqual(["zzz-higher-rank", "aaa-lower-rank"]);
+  });
+
   it("disables shared caching for buyer-status responses", async () => {
     const res = await GET(
       makeRequest(

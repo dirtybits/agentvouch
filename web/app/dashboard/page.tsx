@@ -64,12 +64,25 @@ type AgentProfileData = NonNullable<
 type VouchRecord = Awaited<
   ReturnType<ReputationOracle["getAllVouchesForAgent"]>
 >[number];
-type PurchaseRecord = Awaited<
-  ReturnType<ReputationOracle["getPurchasesByBuyer"]>
->[number];
-type SkillListingRecord = Awaited<
-  ReturnType<ReputationOracle["getAllSkillListings"]>
->[number];
+type PurchaseRecord = {
+  publicKey: string;
+  account: {
+    skillListing: string;
+    purchasedAt: string;
+    pricePaidUsdcMicros: string;
+  };
+};
+type SkillListingRecord = {
+  publicKey: string;
+  account: {
+    name: string;
+    skillUri: string;
+  };
+};
+type DashboardPurchasesResponse = {
+  purchases?: PurchaseRecord[];
+  listings?: SkillListingRecord[];
+};
 type AgentListingRecord = Awaited<
   ReturnType<ReputationOracle["getAllAgents"]>
 >[number];
@@ -346,21 +359,29 @@ export default function DashboardPage() {
   const loadPurchases = async () => {
     if (!publicKey) return;
     try {
-      const [purchaseList, listings] = await Promise.all([
-        oracle.getPurchasesByBuyer(publicKey),
-        oracle.getAllSkillListings(),
-      ]);
-      let authoredMarketplaceSkills: MarketplaceListingRow[] = [];
-      try {
-        const response = await fetch(
+      const [dashboardPurchases, marketplaceResponse] = await Promise.all([
+        fetch(
+          `/api/dashboard/purchases?buyer=${encodeURIComponent(
+            String(publicKey)
+          )}`
+        ).then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Failed to fetch dashboard purchases");
+          }
+          return (await response.json()) as DashboardPurchasesResponse;
+        }),
+        fetch(
           `/api/skills?author=${encodeURIComponent(
             String(publicKey)
           )}&sort=newest`
-        );
-        if (!response.ok) {
+        ),
+      ]);
+      let authoredMarketplaceSkills: MarketplaceListingRow[] = [];
+      try {
+        if (!marketplaceResponse.ok) {
           throw new Error("Failed to fetch marketplace listings");
         }
-        const data = await response.json();
+        const data = await marketplaceResponse.json();
         authoredMarketplaceSkills = (data.skills ?? []).filter(
           (skill: MarketplaceListingRow) => !!skill.on_chain_address
         );
@@ -372,6 +393,8 @@ export default function DashboardPage() {
           "Marketplace listing health could not be refreshed right now."
         );
       }
+      const purchaseList = dashboardPurchases.purchases ?? [];
+      const listings = dashboardPurchases.listings ?? [];
       setPurchases(
         [...purchaseList].sort(
           (a, b) =>

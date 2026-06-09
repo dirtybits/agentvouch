@@ -126,6 +126,7 @@ type RepoSkillRow = SkillScanFieldRow & {
   tree_hash?: string | null;
   has_executable?: boolean | null;
   security_scan?: SkillSecurityScan | null;
+  search_rank?: number | string | null;
   cached_author_trust?: AuthorTrust | string | null;
   cached_author_trust_summary?: AgentTrustSummary | string | null;
   cached_reputation_score?: number | string | null;
@@ -411,8 +412,14 @@ async function loadRepoSkillRows(input: {
       `;
     }
 
-    if (input.q) {
+    const query = input.q?.trim();
+    if (query) {
       return sql()<RepoSkillRow & Record<string, unknown>>`
+        WITH search AS (
+          SELECT
+            websearch_to_tsquery('english', ${query}) AS query,
+            lower(${query}) AS raw_query
+        )
         SELECT
           s.*,
           latest.tree_hash,
@@ -429,8 +436,65 @@ async function loadRepoSkillRows(input: {
           ats.author_trust AS cached_author_trust,
           ats.author_trust_summary AS cached_author_trust_summary,
           ats.reputation_score AS cached_reputation_score,
-          ats.refreshed_at AS cached_trust_refreshed_at
+          ats.refreshed_at AS cached_trust_refreshed_at,
+          (
+            CASE
+              WHEN numnode(search.query) > 0 THEN ts_rank_cd(
+                agentvouch_skill_search_tsvector(
+                  s.name,
+                  s.skill_id,
+                  s.public_slug,
+                  s.tags,
+                  s.description,
+                  s.author_handle,
+                  s.author_display_name
+                ),
+                search.query
+              )
+              ELSE 0
+            END
+            +
+            GREATEST(
+              similarity(
+                agentvouch_skill_search_text(
+                  s.name,
+                  s.skill_id,
+                  s.public_slug,
+                  s.tags,
+                  s.description,
+                  s.author_handle,
+                  s.author_display_name
+                ),
+                search.raw_query
+              ),
+              word_similarity(
+                search.raw_query,
+                agentvouch_skill_search_text(
+                  s.name,
+                  s.skill_id,
+                  s.public_slug,
+                  s.tags,
+                  s.description,
+                  s.author_handle,
+                  s.author_display_name
+                )
+              ),
+              CASE
+                WHEN agentvouch_skill_search_text(
+                  s.name,
+                  s.skill_id,
+                  s.public_slug,
+                  s.tags,
+                  s.description,
+                  s.author_handle,
+                  s.author_display_name
+                ) LIKE '%' || search.raw_query || '%' THEN 0.15
+                ELSE 0
+              END
+            )
+          ) AS search_rank
         FROM skills s
+        CROSS JOIN search
         LEFT JOIN LATERAL (
           SELECT tree_hash, has_executable
           FROM skill_versions
@@ -445,9 +509,50 @@ async function loadRepoSkillRows(input: {
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
           AND ats.chain_context = ${configuredSolanaChainContext}
-        WHERE to_tsvector('english', s.name || ' ' || COALESCE(s.description, '')) @@ plainto_tsquery('english', ${
-          input.q
-        })
+        WHERE (
+          (
+            numnode(search.query) > 0 AND
+            agentvouch_skill_search_tsvector(
+              s.name,
+              s.skill_id,
+              s.public_slug,
+              s.tags,
+              s.description,
+              s.author_handle,
+              s.author_display_name
+            ) @@ search.query
+          )
+          OR agentvouch_skill_search_text(
+            s.name,
+            s.skill_id,
+            s.public_slug,
+            s.tags,
+            s.description,
+            s.author_handle,
+            s.author_display_name
+          ) LIKE '%' || search.raw_query || '%'
+          OR agentvouch_skill_search_text(
+            s.name,
+            s.skill_id,
+            s.public_slug,
+            s.tags,
+            s.description,
+            s.author_handle,
+            s.author_display_name
+          ) % search.raw_query
+          OR word_similarity(
+            search.raw_query,
+            agentvouch_skill_search_text(
+              s.name,
+              s.skill_id,
+              s.public_slug,
+              s.tags,
+              s.description,
+              s.author_handle,
+              s.author_display_name
+            )
+          ) >= 0.6
+        )
         ${input.author ? sql()`AND s.author_pubkey = ${input.author}` : sql()``}
         ${
           input.tags
@@ -570,29 +675,44 @@ function buildEnrichedSkillRows(input: {
   });
 }
 
-function sortEnrichedSkills(skills: EnrichedSkillRow[], sort: string) {
+function compareEnrichedSkillsBySort(
+  a: EnrichedSkillRow,
+  b: EnrichedSkillRow,
+  sort: string
+) {
   if (sort === "trusted") {
-    skills.sort(
-      (a, b) =>
-        (b.author_trust?.reputationScore ?? 0) -
-          (a.author_trust?.reputationScore ?? 0) ||
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  } else if (sort === "installs") {
-    skills.sort(
-      (a, b) =>
-        b.total_installs +
-        (b.total_downloads ?? 0) -
-        (a.total_installs + (a.total_downloads ?? 0))
-    );
-  } else if (sort === "name") {
-    skills.sort((a, b) => a.name.localeCompare(b.name));
-  } else {
-    skills.sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    return (
+      (b.author_trust?.reputationScore ?? 0) -
+        (a.author_trust?.reputationScore ?? 0) ||
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }
+  if (sort === "installs") {
+    return (
+      b.total_installs +
+      (b.total_downloads ?? 0) -
+      (a.total_installs + (a.total_downloads ?? 0))
+    );
+  }
+  if (sort === "name") {
+    return a.name.localeCompare(b.name);
+  }
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
+function sortEnrichedSkills(
+  skills: EnrichedSkillRow[],
+  sort: string,
+  options?: { hasSearchQuery?: boolean }
+) {
+  skills.sort((a, b) => {
+    if (options?.hasSearchQuery) {
+      const rankDelta =
+        Number(b.search_rank ?? 0) - Number(a.search_rank ?? 0);
+      if (rankDelta !== 0) return rankDelta;
+    }
+    return compareEnrichedSkillsBySort(a, b, sort);
+  });
 }
 
 async function resolveLiveSkillTrust(input: {
@@ -812,7 +932,7 @@ export async function GET(request: NextRequest) {
   try {
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
-    const q = searchParams.get("q");
+    const q = searchParams.get("q")?.trim() || null;
     const sort = searchParams.get("sort") || "trusted";
     const author = searchParams.get("author");
     const buyer = searchParams.get("buyer");
@@ -882,7 +1002,7 @@ export async function GET(request: NextRequest) {
       identityMap: live.identityMap,
       useCachedTrust: true,
     });
-    sortEnrichedSkills(enriched, sort);
+    sortEnrichedSkills(enriched, sort, { hasSearchQuery: Boolean(q) });
 
     const total = enriched.length;
     const offset = (page - 1) * pageSize;

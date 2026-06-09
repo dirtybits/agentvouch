@@ -168,6 +168,8 @@ type FeedItem = {
 
 type SortOption = "newest" | "installs" | "trusted" | "name";
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 function formatUsdc(
   micros: number | bigint | string | null | undefined
 ): string {
@@ -249,6 +251,7 @@ export default function MarketplacePage() {
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("trusted");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -272,6 +275,7 @@ export default function MarketplacePage() {
   const [myListingDetails, setMyListingDetails] = useState<
     Map<string, SkillRow>
   >(new Map());
+  const browseRequestRef = useRef(0);
   const purchaseStateWalletRef = useRef<string | null>(null);
   const hydrationRequestRef = useRef(0);
 
@@ -322,10 +326,11 @@ export default function MarketplacePage() {
   );
 
   const fetchSkills = useCallback(async () => {
+    const requestId = ++browseRequestRef.current;
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (search) params.set("q", search);
+      if (debouncedSearch) params.set("q", debouncedSearch);
       params.set("mode", "fast");
       params.set("sort", sort);
       params.set("page", String(page));
@@ -333,18 +338,22 @@ export default function MarketplacePage() {
       const res = await fetch(`/api/skills?${params}`);
       if (!res.ok) throw new Error("Failed to fetch skills");
       const data: ApiResponse = await res.json();
+      if (browseRequestRef.current !== requestId) return;
 
       setSkills(data.skills);
       setTotalPages(data.pagination.totalPages);
       setTotal(data.pagination.total);
       void hydrateVisibleSkills(data.skills);
     } catch (err) {
+      if (browseRequestRef.current !== requestId) return;
       console.error("Error fetching skills:", err);
       setSkills([]);
     } finally {
-      setLoading(false);
+      if (browseRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
-  }, [hydrateVisibleSkills, page, search, sort]);
+  }, [debouncedSearch, hydrateVisibleSkills, page, sort]);
 
   const loadFeed = useCallback(async () => {
     setFeedLoading(true);
@@ -464,6 +473,15 @@ export default function MarketplacePage() {
   }, [oracle, publicKey]);
 
   useEffect(() => {
+    const nextSearch = search.trim();
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearch(nextSearch);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
   useEffect(() => {
@@ -481,8 +499,8 @@ export default function MarketplacePage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setDebouncedSearch(search.trim());
     setPage(1);
-    fetchSkills();
   };
 
   const handlePurchase = async (listingPubkey: Address, authorKey: Address) => {
@@ -706,7 +724,10 @@ export default function MarketplacePage() {
                     type="text"
                     placeholder="Search skills..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
                     className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sea-focus-ring)] focus:border-[var(--sea-accent)] transition"
                   />
                 </form>

@@ -36,6 +36,29 @@ describe("skills api source", () => {
     expect(hydrateSource).toContain("scheduleBackgroundTrustRefresh");
   });
 
+  it("uses ranked expanded Postgres search with trigram fallback", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/api/skills/route.ts"),
+      "utf8"
+    );
+    const dbSource = fs.readFileSync(path.join(process.cwd(), "lib/db.ts"), "utf8");
+
+    expect(source).toContain("websearch_to_tsquery");
+    expect(source).toContain("ts_rank_cd");
+    expect(source).toContain("search_rank");
+    expect(source).toContain("similarity(");
+    expect(source).toContain("word_similarity(");
+    expect(source).toContain("% search.raw_query");
+    expect(source).toContain("agentvouch_skill_search_tsvector");
+    expect(source).toContain("agentvouch_skill_search_text");
+    expect(dbSource).toContain("CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector");
+    expect(dbSource).toContain("array_to_string(COALESCE(tags");
+    expect(source).toContain("author_display_name");
+    expect(dbSource).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    expect(dbSource).toContain("idx_skills_search_v2");
+    expect(dbSource).toContain("idx_skills_search_trgm");
+  });
+
   it("exposes repo listing activity plus recent USDC receipts", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/api/skills/activity/route.ts"),

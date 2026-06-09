@@ -648,6 +648,60 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE EXTENSION IF NOT EXISTS pg_trgm
+  `;
+
+  await db`
+    CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector(
+      skill_name text,
+      skill_id text,
+      public_slug text,
+      tags text[],
+      description text,
+      author_handle text,
+      author_display_name text
+    )
+    RETURNS tsvector
+    LANGUAGE sql
+    IMMUTABLE
+    PARALLEL SAFE
+    AS $$
+      SELECT
+        setweight(to_tsvector('english', COALESCE(skill_name, '')), 'A') ||
+        setweight(to_tsvector('english', COALESCE(skill_id, '') || ' ' || COALESCE(public_slug, '')), 'A') ||
+        setweight(to_tsvector('english', array_to_string(COALESCE(tags, ARRAY[]::text[]), ' ')), 'B') ||
+        setweight(to_tsvector('english', COALESCE(description, '') || ' ' || COALESCE(author_handle, '') || ' ' || COALESCE(author_display_name, '')), 'C')
+    $$
+  `;
+
+  await db`
+    CREATE OR REPLACE FUNCTION agentvouch_skill_search_text(
+      skill_name text,
+      skill_id text,
+      public_slug text,
+      tags text[],
+      description text,
+      author_handle text,
+      author_display_name text
+    )
+    RETURNS text
+    LANGUAGE sql
+    IMMUTABLE
+    PARALLEL SAFE
+    AS $$
+      SELECT lower(
+        COALESCE(skill_name, '') || ' ' ||
+        COALESCE(skill_id, '') || ' ' ||
+        COALESCE(public_slug, '') || ' ' ||
+        COALESCE(description, '') || ' ' ||
+        array_to_string(COALESCE(tags, ARRAY[]::text[]), ' ') || ' ' ||
+        COALESCE(author_handle, '') || ' ' ||
+        COALESCE(author_display_name, '')
+      )
+    $$
+  `;
+
+  await db`
     CREATE INDEX IF NOT EXISTS idx_usdc_purchase_receipts_skill_buyer
     ON usdc_purchase_receipts(skill_db_id, buyer_pubkey)
   `;
@@ -655,6 +709,36 @@ export async function initializeDatabase() {
   await db`
     CREATE INDEX IF NOT EXISTS idx_skills_search ON skills
     USING GIN (to_tsvector('english', name || ' ' || COALESCE(description, '')))
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_search_v2 ON skills
+    USING GIN (
+      agentvouch_skill_search_tsvector(
+        name,
+        skill_id,
+        public_slug,
+        tags,
+        description,
+        author_handle,
+        author_display_name
+      )
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_search_trgm ON skills
+    USING GIN (
+      agentvouch_skill_search_text(
+        name,
+        skill_id,
+        public_slug,
+        tags,
+        description,
+        author_handle,
+        author_display_name
+      ) gin_trgm_ops
+    )
   `;
 
   await db`

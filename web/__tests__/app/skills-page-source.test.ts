@@ -32,6 +32,20 @@ describe("skills page source", () => {
     expect(source).not.toContain("oracle.getPurchasedSkillListingKeys");
   });
 
+  it("debounces search, resets pagination, and ignores stale browse responses", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("SEARCH_DEBOUNCE_MS");
+    expect(source).toContain("debouncedSearch");
+    expect(source).toContain("setPage(1);");
+    expect(source).toContain("browseRequestRef");
+    expect(source).toContain("browseRequestRef.current !== requestId");
+    expect(source).not.toContain("if (search) params.set(\"q\", search)");
+  });
+
   it("shows USDC purchase preflight warnings for paid skills", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/page.tsx"),

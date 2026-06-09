@@ -18,6 +18,17 @@ describe("dashboard profile source", () => {
     expect(source).toContain("USDC");
   });
 
+  it("loads purchased skill data through the server dashboard API", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/dashboard/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("/api/dashboard/purchases?buyer=");
+    expect(source).not.toContain("oracle.getPurchasesByBuyer(publicKey)");
+    expect(source).not.toContain("oracle.getAllSkillListings()");
+  });
+
   it("links marketplace listings into author edit and version publish actions", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/dashboard/page.tsx"),
