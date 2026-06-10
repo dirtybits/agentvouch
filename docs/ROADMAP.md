@@ -21,7 +21,8 @@ Design locked 2026-06-09 — implementation plan in `.agents/plans/a1-voucher-sl
 - Slash the disputed listing's linked vouch positions at `slash_percentage` in **pages** (new permissionless `slash_dispute_vouches` instruction; `resolve(Upheld)` parks the dispute in `SlashingVouchers` until the last page) — atomic resolve-time slashing doesn't fit tx limits at 32 positions.
 - Slashed funds are **ring-fenced** in `ListingSettlement.slashed_deposit_usdc_micros`: refund-pool-only, excluded from author withdrawals and the challenger-reward base.
 - Slashed vouches become dead positions (`VouchStatus::Slashed`, no backing, no rewards); residual stake reclaimable via `revoke_vouch` after the dispute closes.
-- Freeze slash-set membership: `link_vouch_to_listing` and `unlink_vouch_from_listing` blocked while the settlement is dispute-locked (keeps the existing `revoke_vouch` money lock honest).
+- Freeze slash-set membership via a `SkillListing.locked_by_dispute` mirror: `link_vouch_to_listing`, `unlink_vouch_from_listing`, revision bumps, and new-settlement init all blocked while dispute-locked (a settlement-only check is bypassable by rotating to a fresh settlement — the same rotation also let authors keep selling mid-dispute).
+- Guard `accrue_author_rewards` against non-live vouches so slashed residual stake stops earning (reward-vault solvency).
 
 ### A2. Dispute governance v1 (P0.2)
 
