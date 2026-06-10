@@ -146,6 +146,7 @@ pub fn handler(
     skill_listing.created_at = clock.unix_timestamp;
     skill_listing.updated_at = clock.unix_timestamp;
     skill_listing.status = SkillStatus::Active;
+    skill_listing.locked_by_dispute = None;
     skill_listing.bump = ctx.bumps.skill_listing;
     skill_listing.reward_vault_bump = 0;
 
@@ -160,6 +161,7 @@ pub fn handler(
     listing_settlement.withdrawable_author_proceeds_usdc_micros = 0;
     listing_settlement.withdrawn_author_proceeds_usdc_micros = 0;
     listing_settlement.refunded_author_proceeds_usdc_micros = 0;
+    listing_settlement.slashed_deposit_usdc_micros = 0;
     listing_settlement.locked_by_dispute = None;
     listing_settlement.created_at = clock.unix_timestamp;
     listing_settlement.updated_at = clock.unix_timestamp;

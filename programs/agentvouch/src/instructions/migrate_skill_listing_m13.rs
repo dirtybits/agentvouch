@@ -183,6 +183,7 @@ pub fn handler(ctx: Context<MigrateSkillListingM13>) -> Result<()> {
         created_at: legacy.created_at,
         updated_at: clock.unix_timestamp,
         status: legacy.status,
+        locked_by_dispute: None,
         bump: legacy.bump,
         reward_vault_bump: legacy.reward_vault_bump,
     };
@@ -206,6 +207,7 @@ pub fn handler(ctx: Context<MigrateSkillListingM13>) -> Result<()> {
     settlement.withdrawable_author_proceeds_usdc_micros = 0;
     settlement.withdrawn_author_proceeds_usdc_micros = 0;
     settlement.refunded_author_proceeds_usdc_micros = 0;
+    settlement.slashed_deposit_usdc_micros = 0;
     settlement.locked_by_dispute = None;
     settlement.created_at = clock.unix_timestamp;
     settlement.updated_at = clock.unix_timestamp;

@@ -4,34 +4,34 @@ overview: "Implement resolve-time voucher slashing (roadmap A1 / readiness P0.1)
 todos:
   - id: state-changes
     content: Add SlashingVouchers dispute status, slashed_deposit_usdc_micros to ListingSettlement, rent_payer to AuthorDisputeVouchLink, and locked_by_dispute mirror to SkillListing; adjust LEN constants
-    status: pending
+    status: completed
   - id: freeze-membership
     content: Set/clear the SkillListing.locked_by_dispute mirror and enforce it in link_vouch_to_listing, unlink_vouch_from_listing, update_skill_listing (revision bumps), and initialize_listing_settlement — closes the settlement-rotation bypass
-    status: pending
+    status: completed
   - id: reward-accrual-guard
     content: Add a non-live status guard to accrue_author_rewards so Slashed/Revoked vouches stop accruing author-wide rewards on residual stake (prevents reward-vault insolvency)
-    status: pending
+    status: completed
   - id: resolve-parks-dispute
     content: Rework resolve_author_dispute(Upheld) to park paid disputes with active positions in SlashingVouchers and defer open_author_disputes decrement
-    status: pending
+    status: completed
   - id: slash-instruction
     content: Add permissionless slash_dispute_vouches instruction (start at ≤4 positions per call — 5 remaining accounts per position; link-PDA init as double-slash guard, transfers to author proceeds vault, finalization on last page)
-    status: pending
+    status: completed
   - id: ring-fence-refund-pool
     content: Update create_refund_pool and withdraw_author_proceeds so slashed_deposit_usdc_micros is refund-pool-only and excluded from the challenger reward base; relax the available>0 require so slashed-only pools work
-    status: pending
+    status: completed
   - id: residual-reclaim
     content: Allow revoke_vouch to reclaim residual stake from a Slashed vouch once the author has no open disputes
-    status: pending
+    status: completed
   - id: events-and-clients
     content: Add VoucherSlashed and AuthorDisputeSlashingFinalized events, register instructions in lib.rs, rebuild IDL, regenerate web client
-    status: pending
+    status: completed
   - id: tests
     content: Add Anchor test coverage per the test matrix (happy path, multi-page, dodge attempts incl. settlement rotation, double-crank, dismissed no-op, stale-position skip, residual reclaim, ring-fence, post-slash reward accrual)
-    status: pending
+    status: completed
   - id: docs-sync
     content: Update MAINNET_READINESS.md P0.1 design note and AGENTS.md liability-scope fact to match the decided design
-    status: pending
+    status: completed
 ---
 
 # A1 — Voucher Slashing
@@ -139,7 +139,7 @@ Verification commands: `NO_DNA=1 anchor build`, `anchor test` (full suite — bo
 
 ## Rollout
 
-Devnet clean break per AGENTS.md — the `SkillListing.locked_by_dispute` mirror (R1) changes the layout of **every existing listing account**, so a clean break (fresh program ID + DB cleanup, established process) is effectively forced; an M15-style migration would have to touch all listings and isn't worth it while devnet-only. `ListingSettlement` and `AuthorDisputeVouchLink` layout changes ride along (`AuthorDisputeVouchLink` has zero existing instances).
+**Decided 2026-06-09 (with Andy): full clean break — new program ID, no migration instructions.** Rationale: the `SkillListing.locked_by_dispute` mirror (R1) changes the layout of **every existing listing account**, so a bare same-ID upgrade would break deserialization of all live listings and settlements; M15-style migration instructions would have to realloc/backfill every `SkillListing` and `ListingSettlement` and then be carried as dead code — not worth it for disposable devnet state. `AuthorDisputeVouchLink` layout changes ride along (zero existing instances). Execution per the AGENTS.md clean-break runbook: deploy under a fresh program ID, wipe and re-seed devnet state, update the program ID in web config and DB (same process as the `AGNt...yVdg` change).
 
 ## Rollback
 
@@ -151,3 +151,20 @@ Pre-mainnet, devnet-only: redeploy previous program build and restore DB links p
 - ~~`accrue_author_rewards` interaction~~ resolved by R2 (2026-06-09 review): status guard in `accrue_author_rewards`; slashed voucher keeps pre-slash `pending_rewards` (both vouch-level and position-level) — assert in tests 1 and 10.
 - A2 will redirect the author-bond slash destination (challenger → refund pool). This plan deliberately leaves the bond destination unchanged to keep A1 reviewable; do not "fix" it here.
 - Pre-existing hole noted during review (R1 side effect, fixed here): settlement rotation also let authors keep selling mid-dispute on a fresh settlement, escaping the refund lock. The R1 guards close it; if A1 slips, consider shipping the rotation guards alone as a hotfix.
+
+## Outcome (2026-06-09, implementation complete)
+
+All todos done. `NO_DNA=1 anchor build` clean, full Anchor suite green (29 passing: 21 pre-existing + 8 new slashing tests), `web/` typecheck and workspace build green after client regen (one call-site fix in `web/hooks/useReputationOracle.ts` for the new `skill_listing` account on resolve).
+
+Measured: a 4-position slash page = **31 accounts** — fits the tx limit, so `MAX_DISPUTE_POSITIONS_PER_TX = 4` stands (R3 confirmed; did not attempt 5).
+
+Divergences from the plan body, all small:
+
+- Slash time also decrements `author_profile.total_vouches_received` (it feeds `compute_reputation`'s vouch component — leaving it inflated would have understated the slash). Reclaim via `revoke_vouch` then touches only the voucher's own `total_vouches_given`; vouchee aggregates are untouched by reclaim (asserted in tests).
+- `resolved_at` stays `None` while parked in `SlashingVouchers` and is set on the final slash page — the resolve-time `AuthorDisputeResolved` event still fires with `voucher_slashed = 0`; indexers should use `AuthorDisputeSlashingFinalized` for totals (as planned).
+- The link-PDA init handles lamport-pre-funding griefing (transfer/allocate/assign path instead of bare `create_account`) — without this, 1 lamport sent to a link address would have bricked dispute finalization permanently.
+- The unused `AuthorDisputeVouchLinked` event is now emitted per link creation.
+- The `initialize_listing_settlement` dispute guard is defense-in-depth only: it is unreachable through the public flow (revision bumps are blocked first, and the current-revision settlement PDA already exists), so it has no direct test.
+- `web/public/skill.md` deliberately **not** updated: it describes the live devnet program, and the branch is not deployed. Update it as part of the clean-break redeploy.
+
+Follow-ups (not in this plan): devnet clean-break deploy per Rollout; A2 dispute governance; cleanup instruction for stale Revoked-vouch positions (skip-settle handles them inside disputes, but they still linger on undisputed listings).

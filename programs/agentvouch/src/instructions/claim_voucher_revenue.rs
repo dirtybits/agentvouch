@@ -127,7 +127,11 @@ pub(crate) fn accrue_author_rewards(
         .reward_index_usdc_micros_x1e12
         .checked_sub(vouch.entry_author_reward_index_x1e12)
         .ok_or(ClaimError::RewardIndexUnderflow)?;
-    if index_delta == 0 || vouch.stake_usdc_micros == 0 {
+    // Non-live vouches must not accrue: their stake was already removed from
+    // the profile aggregate that denominates the reward index, so accruing on
+    // residual stake would over-distribute and drain the reward vault.
+    // Pre-slash pending rewards stay claimable.
+    if index_delta == 0 || vouch.stake_usdc_micros == 0 || !vouch.status.is_live() {
         vouch.entry_author_reward_index_x1e12 = author_profile.reward_index_usdc_micros_x1e12;
         return Ok(());
     }

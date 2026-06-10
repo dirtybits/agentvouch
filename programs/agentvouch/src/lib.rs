@@ -86,6 +86,12 @@ pub mod agentvouch {
         instructions::resolve_author_dispute::handler(ctx, dispute_id, ruling)
     }
 
+    pub fn slash_dispute_vouches<'info>(
+        ctx: Context<'_, '_, 'info, 'info, SlashDisputeVouches<'info>>,
+    ) -> Result<()> {
+        instructions::slash_dispute_vouches::handler(ctx)
+    }
+
     pub fn create_skill_listing(
         ctx: Context<CreateSkillListing>,
         skill_id: String,

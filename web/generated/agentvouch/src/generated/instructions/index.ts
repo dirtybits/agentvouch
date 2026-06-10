@@ -24,6 +24,7 @@ export * from "./removeSkillListing";
 export * from "./resolveAuthorDispute";
 export * from "./revokeVouch";
 export * from "./settleX402Purchase";
+export * from "./slashDisputeVouches";
 export * from "./unlinkVouchFromListing";
 export * from "./updateSkillListing";
 export * from "./vouch";

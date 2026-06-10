@@ -56,6 +56,12 @@ pub struct UnlinkVouchFromListing<'info> {
 }
 
 pub fn handler(ctx: Context<UnlinkVouchFromListing>) -> Result<()> {
+    // Slash-set membership is frozen while the listing is dispute-locked:
+    // without this, vouchers could exit the slash set mid-dispute.
+    require!(
+        !ctx.accounts.skill_listing.is_dispute_locked(),
+        UnlinkError::ListingDisputeLocked
+    );
     accrue_position_rewards(
         &ctx.accounts.skill_listing,
         &mut ctx.accounts.listing_vouch_position,
@@ -141,4 +147,6 @@ pub enum UnlinkError {
     RewardStakeUnderflow,
     #[msg("Reward position count underflowed")]
     RewardPositionCountUnderflow,
+    #[msg("Listing is locked by an open dispute")]
+    ListingDisputeLocked,
 }

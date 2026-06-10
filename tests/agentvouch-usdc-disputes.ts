@@ -113,6 +113,7 @@ describe("agentvouch usdc disputes", () => {
         .accountsStrict({
           authorDispute: dispute.authorDispute,
           authorProfile: author.profile,
+          skillListing: listing.skillListing,
           config: ctx.config,
           authority: unauthorized.keypair.publicKey,
           usdcMint: ctx.usdcMint,
@@ -174,6 +175,7 @@ describe("agentvouch usdc disputes", () => {
         .accountsStrict({
           authorDispute: dispute.authorDispute,
           authorProfile: author.profile,
+          skillListing: listing.skillListing,
           config: ctx.config,
           authority: ctx.configAdmin.publicKey,
           usdcMint: ctx.usdcMint,

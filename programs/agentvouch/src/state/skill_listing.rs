@@ -1,7 +1,10 @@
 use anchor_lang::prelude::*;
 
 pub const MAX_ACTIVE_REWARD_POSITIONS_PER_LISTING: u32 = 32;
-pub const MAX_DISPUTE_POSITIONS_PER_TX: usize = 8;
+// 5 remaining accounts per position (position, vouch, vouch vault, vault
+// authority, link PDA) — 4 positions plus the fixed accounts stays under the
+// 1232-byte transaction limit.
+pub const MAX_DISPUTE_POSITIONS_PER_TX: usize = 4;
 pub const REWARD_INDEX_SCALE: u128 = 1_000_000_000_000;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +37,12 @@ pub struct SkillListing {
     pub created_at: i64,     // Unix timestamp
     pub updated_at: i64,     // Last update timestamp
     pub status: SkillStatus, // Active, Suspended, or Removed
-    pub bump: u8,            // PDA bump seed
+    /// Mirror of the current settlement's dispute lock, kept at the listing
+    /// level so it survives settlement rotation: while set, vouch positions
+    /// cannot be linked/unlinked, the revision cannot be bumped, and no new
+    /// settlement can be initialized for this listing.
+    pub locked_by_dispute: Option<Pubkey>,
+    pub bump: u8, // PDA bump seed
     pub reward_vault_bump: u8,
 }
 
@@ -65,8 +73,13 @@ impl SkillListing {
         8 + // created_at
         8 + // updated_at
         1 + // status
+        (1 + 32) + // locked_by_dispute
         1 + // bump
         1; // reward_vault_bump
+
+    pub fn is_dispute_locked(&self) -> bool {
+        self.locked_by_dispute.is_some()
+    }
 
     pub fn is_free_price(price_usdc_micros: u64) -> bool {
         price_usdc_micros == 0

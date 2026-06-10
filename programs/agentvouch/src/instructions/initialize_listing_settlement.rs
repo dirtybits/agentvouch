@@ -68,6 +68,12 @@ pub fn handler(ctx: Context<InitializeListingSettlement>) -> Result<()> {
         !ctx.accounts.config.paused,
         InitializeSettlementError::ProtocolPaused
     );
+    // While a dispute locks the listing, a fresh settlement would arrive
+    // unlocked and let the author rotate out of the dispute lock.
+    require!(
+        !ctx.accounts.skill_listing.is_dispute_locked(),
+        InitializeSettlementError::ListingDisputeLocked
+    );
     let clock = Clock::get()?;
 
     let settlement = &mut ctx.accounts.listing_settlement;
@@ -81,6 +87,7 @@ pub fn handler(ctx: Context<InitializeListingSettlement>) -> Result<()> {
     settlement.withdrawable_author_proceeds_usdc_micros = 0;
     settlement.withdrawn_author_proceeds_usdc_micros = 0;
     settlement.refunded_author_proceeds_usdc_micros = 0;
+    settlement.slashed_deposit_usdc_micros = 0;
     settlement.locked_by_dispute = None;
     settlement.created_at = clock.unix_timestamp;
     settlement.updated_at = clock.unix_timestamp;
@@ -108,6 +115,8 @@ pub fn handler(ctx: Context<InitializeListingSettlement>) -> Result<()> {
 pub enum InitializeSettlementError {
     #[msg("Protocol is paused")]
     ProtocolPaused,
+    #[msg("Listing is locked by an open dispute")]
+    ListingDisputeLocked,
     #[msg("Only the author can initialize settlement for this listing")]
     NotAuthor,
     #[msg("Cannot initialize settlement for a removed listing")]

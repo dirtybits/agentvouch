@@ -89,6 +89,12 @@ pub fn handler(
     skill_listing.description = description;
     skill_listing.price_usdc_micros = price_usdc_micros;
     if revision_changed {
+        // A revision bump rotates to a fresh (unlocked) settlement, which
+        // would bypass the dispute lock — block it while disputed.
+        require!(
+            !skill_listing.is_dispute_locked(),
+            UpdateSkillError::ListingDisputeLocked
+        );
         skill_listing.current_revision = skill_listing
             .current_revision
             .checked_add(1)
@@ -189,4 +195,6 @@ pub enum UpdateSkillError {
     ProtocolPaused,
     #[msg("Listing revision overflowed")]
     RevisionOverflow,
+    #[msg("Listing is locked by an open dispute")]
+    ListingDisputeLocked,
 }
