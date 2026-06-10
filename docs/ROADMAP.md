@@ -16,11 +16,12 @@ Blocks mainnet. Maps to the P0/P1 findings in `docs/MAINNET_READINESS.md`.
 
 ### A1. Voucher slashing (P0.1)
 
-Implement the resolve-time slash loop per the 2026-06-09 design note in the readiness doc:
+Design locked 2026-06-09 — implementation plan in `.agents/plans/a1-voucher-slashing.plan.md`, design rationale in the readiness doc's P0.1 note. In brief:
 
-- Slash linked vouches at `slash_percentage` (partial; residual stays staked), set `VouchStatus::Slashed`, create `AuthorDisputeVouchLink` records, and recompute `voucher_slashed_usdc_micros`.
-- Slashed funds deposit into the author proceeds vault and ride the existing `create_refund_pool` split — no new config or vault.
-- Keep the `revoke_vouch` open-dispute lock (already in source).
+- Slash the disputed listing's linked vouch positions at `slash_percentage` in **pages** (new permissionless `slash_dispute_vouches` instruction; `resolve(Upheld)` parks the dispute in `SlashingVouchers` until the last page) — atomic resolve-time slashing doesn't fit tx limits at 32 positions.
+- Slashed funds are **ring-fenced** in `ListingSettlement.slashed_deposit_usdc_micros`: refund-pool-only, excluded from author withdrawals and the challenger-reward base.
+- Slashed vouches become dead positions (`VouchStatus::Slashed`, no backing, no rewards); residual stake reclaimable via `revoke_vouch` after the dispute closes.
+- Freeze slash-set membership: `link_vouch_to_listing` and `unlink_vouch_from_listing` blocked while the settlement is dispute-locked (keeps the existing `revoke_vouch` money lock honest).
 
 ### A2. Dispute governance v1 (P0.2)
 
