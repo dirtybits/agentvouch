@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "crypto";
 import { initializeDatabase, sql } from "@/lib/db";
 import { runReviewSafe } from "@/lib/ai/review";
 import { putSkillTree } from "@/lib/skillStorage";

@@ -6,7 +6,7 @@ import {
   x402HTTPClient,
 } from "@x402/fetch";
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
-import { createSignedDownloadAuthPayload } from "@/lib/auth";
+import { createSignedDownloadAuthPayload } from "@/lib/authPayload";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 import type { TransactionSignerCapabilities } from "@solana/connector/headless";
 

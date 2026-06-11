@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildDownloadRawMessage,
   createSignedDownloadAuthPayload,
-} from "@/lib/auth";
+} from "@/lib/authPayload";
 import { decodeBase64 } from "@/lib/base64";
 
 describe("createSignedDownloadAuthPayload", () => {

@@ -20,7 +20,7 @@ import {
   buildDownloadRawMessage,
   buildSignMessage,
   createSignedDownloadAuthPayload,
-} from "@/lib/auth";
+} from "@/lib/authPayload";
 import { encodeBase64 } from "@/lib/base64";
 import { buildPaidSkillDownloadRequiredMessage } from "@/lib/skillFlowMessages";
 import {
