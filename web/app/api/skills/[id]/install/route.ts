@@ -6,6 +6,7 @@ import { hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
+import { recordInstallAndDownloadEvent } from "@/lib/skillRawAccess";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -110,19 +111,17 @@ export async function POST(
             () => false
           );
       if (purchased) {
-        const [updated] = await sql()<
-          Required<Pick<InstallSkillRow, "id" | "total_installs">>
-        >`
-          UPDATE skills
-          SET total_installs = total_installs + 1, updated_at = NOW()
-          WHERE id = ${id}::uuid
-          RETURNING id, total_installs
-        `;
+        const totalInstalls = await recordInstallAndDownloadEvent(id, {
+          kind: "install",
+          request,
+          walletPubkey: verification.pubkey,
+          authPresent: true,
+        });
 
         return NextResponse.json({
           success: true,
-          skill_id: updated.id,
-          total_installs: updated.total_installs,
+          skill_id: id,
+          total_installs: totalInstalls,
           installed_by: verification.pubkey,
         });
       }
@@ -157,19 +156,17 @@ export async function POST(
       );
     }
 
-    const [updated] = await sql()<
-      Required<Pick<InstallSkillRow, "id" | "total_installs">>
-    >`
-      UPDATE skills
-      SET total_installs = total_installs + 1, updated_at = NOW()
-      WHERE id = ${id}::uuid
-      RETURNING id, total_installs
-    `;
+    const totalInstalls = await recordInstallAndDownloadEvent(id, {
+      kind: "install",
+      request,
+      walletPubkey: verification.pubkey,
+      authPresent: true,
+    });
 
     return NextResponse.json({
       success: true,
-      skill_id: updated.id,
-      total_installs: updated.total_installs,
+      skill_id: id,
+      total_installs: totalInstalls,
       installed_by: verification.pubkey,
     });
   } catch (error: unknown) {

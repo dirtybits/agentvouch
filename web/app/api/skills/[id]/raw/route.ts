@@ -9,7 +9,8 @@ import {
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
 import {
-  incrementInstalls,
+  getOptionalDownloadAuthPubkey,
+  recordInstallAndDownloadEvent,
   resolveSkillAccess,
   validateDownloadAuth,
   type RawSkillContentRow,
@@ -140,7 +141,19 @@ export async function GET(
       );
     }
 
-    await incrementInstalls(skill.id);
+    await recordInstallAndDownloadEvent(skill.id, {
+      kind: "raw",
+      request,
+      requestedPath,
+      walletPubkey: getOptionalDownloadAuthPubkey(
+        request,
+        id,
+        skill.on_chain_address
+      ),
+      authPresent: Boolean(request.headers.get("x-agentvouch-auth")),
+      skillVersionId: skill.version_id,
+      skillVersion: skill.version,
+    });
     return serveSkillContent(skill, access.headers);
   } catch (error: unknown) {
     console.error("GET /api/skills/[id]/raw error:", error);
