@@ -10,7 +10,10 @@ import SkillFileTree, {
   type SkillFileTreeEntry,
 } from "@/components/SkillFileTree";
 import type { SkillSecurityScan } from "@/lib/securityScan";
-import type { TrustSignal } from "@/lib/trustSignals";
+import {
+  recommendedActionFromSignals,
+  type TrustSignal,
+} from "@/lib/trustSignals";
 import TrustSignalChecklist from "@/components/TrustSignalChecklist";
 import InfoTip from "@/components/InfoTip";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
@@ -1103,25 +1106,34 @@ export default function SkillDetailPage({
   const trustVerdict = (() => {
     const sigs = skill.signals ?? [];
     if (sigs.length === 0) return null;
-    if (sigs.some((s) => s.status === "fail"))
+    const action = recommendedActionFromSignals(sigs);
+
+    if (action === "avoid") {
       return {
         word: "Avoid",
         text: "text-red-700 dark:text-red-300",
         box: "border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-900/10",
         sub: "A trust signal failed. Review the signals before installing.",
       };
-    if (sigs.some((s) => s.status === "warn" || s.status === "unknown"))
+    }
+
+    if (action === "allow") {
       return {
-        word: "Review",
-        text: "text-amber-700 dark:text-amber-300",
-        box: "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/10",
-        sub: "Advisory findings or unestablished signals to weigh before installing.",
+        word: "Trusted",
+        text: "text-emerald-700 dark:text-emerald-300",
+        box: "border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10",
+        sub: "Staked on-chain trust and clean advisory checks back this listing.",
       };
+    }
+
     return {
-      word: "Trusted",
-      text: "text-emerald-700 dark:text-emerald-300",
-      box: "border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10",
-      sub: "Staked on-chain trust and clean advisory checks back this listing.",
+      word: "Review",
+      text: "text-amber-700 dark:text-amber-300",
+      box: "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/10",
+      sub:
+        action === "unknown"
+          ? "Trust data is incomplete. Review the signals before installing."
+          : "Advisory findings or unestablished signals to weigh before installing.",
     };
   })();
 

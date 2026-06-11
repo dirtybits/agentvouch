@@ -37,6 +37,7 @@ describe("skill detail source", () => {
     expect(source).toContain("Sign & Download");
     expect(source).toContain("buildDownloadRawMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");
+    expect(source).toContain("recommendedActionFromSignals(sigs)");
     expect(source).toContain("@/lib/authPayload");
     expect(source).not.toContain("@/lib/auth\"");
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
