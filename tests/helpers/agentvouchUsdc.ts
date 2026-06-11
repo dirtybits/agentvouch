@@ -1063,6 +1063,7 @@ export async function resolveAuthorDispute(
     .accountsStrict({
       authorDispute: dispute.authorDispute,
       authorProfile: author.profile,
+      skillListing: disputeAccount.skillListing,
       config: ctx.config,
       authority: ctx.configAdmin.publicKey,
       usdcMint: ctx.usdcMint,
@@ -1153,6 +1154,84 @@ export async function claimPurchaseRefund(
     .signers([buyer.keypair])
     .rpc();
   return claim;
+}
+
+export function disputeVouchLinkPda(
+  program: Program<Agentvouch>,
+  authorDispute: PublicKey,
+  vouch: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("dispute_vouch_link"),
+    authorDispute.toBuffer(),
+    vouch.toBuffer(),
+  ]);
+}
+
+export type SlashPositionAccounts = {
+  position: PublicKey;
+  vouch: PublicKey;
+  voucherProfile: PublicKey;
+};
+
+export async function slashDisputeVouches(
+  ctx: TestContext,
+  author: TestActor,
+  dispute: { authorDispute: PublicKey },
+  skillListing: PublicKey,
+  positions: SlashPositionAccounts[],
+  cranker: TestActor,
+  label?: string
+) {
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    skillListing
+  );
+  const settlement = listingAccount.currentSettlement;
+  const remainingAccounts = positions.flatMap((entry) => [
+    { pubkey: entry.position, isWritable: true, isSigner: false },
+    { pubkey: entry.vouch, isWritable: true, isSigner: false },
+    {
+      pubkey: vouchVault(ctx.program, entry.voucherProfile, author.profile),
+      isWritable: true,
+      isSigner: false,
+    },
+    {
+      pubkey: vouchVaultAuthority(
+        ctx.program,
+        entry.voucherProfile,
+        author.profile
+      ),
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: disputeVouchLinkPda(
+        ctx.program,
+        dispute.authorDispute,
+        entry.vouch
+      ),
+      isWritable: true,
+      isSigner: false,
+    },
+  ]);
+  const builder = ctx.program.methods
+    .slashDisputeVouches()
+    .accountsStrict({
+      authorDispute: dispute.authorDispute,
+      authorProfile: author.profile,
+      skillListing,
+      listingSettlement: settlement,
+      config: ctx.config,
+      usdcMint: ctx.usdcMint,
+      authorProceedsVault: listingAccount.currentAuthorProceedsVault,
+      cranker: cranker.keypair.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts(remainingAccounts)
+    .signers([cranker.keypair]);
+  if (label) await sendWithMetrics(ctx, label, builder);
+  else await builder.rpc();
 }
 
 export async function setupPaidListingWithVouch(

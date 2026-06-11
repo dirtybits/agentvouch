@@ -88,7 +88,7 @@ export type CreateRefundPoolInstruction<
         ? ReadonlyAccount<TAccountAuthorDispute>
         : TAccountAuthorDispute,
       TAccountSkillListing extends string
-        ? ReadonlyAccount<TAccountSkillListing>
+        ? WritableAccount<TAccountSkillListing>
         : TAccountSkillListing,
       TAccountListingSettlement extends string
         ? WritableAccount<TAccountListingSettlement>
@@ -268,7 +268,7 @@ export async function getCreateRefundPoolInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     authorDispute: { value: input.authorDispute ?? null, isWritable: false },
-    skillListing: { value: input.skillListing ?? null, isWritable: false },
+    skillListing: { value: input.skillListing ?? null, isWritable: true },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
@@ -493,7 +493,7 @@ export function getCreateRefundPoolInstruction<
   // Original accounts.
   const originalAccounts = {
     authorDispute: { value: input.authorDispute ?? null, isWritable: false },
-    skillListing: { value: input.skillListing ?? null, isWritable: false },
+    skillListing: { value: input.skillListing ?? null, isWritable: true },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,

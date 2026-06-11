@@ -11,7 +11,7 @@ pub struct RevokeVouch<'info> {
         seeds = [b"vouch", voucher_profile.key().as_ref(), vouchee_profile.key().as_ref()],
         bump = vouch.bump,
         constraint = vouch.voucher == voucher_profile.key() @ ErrorCode::UnauthorizedVouchRevocation,
-        constraint = vouch.status.is_live() @ ErrorCode::VouchNotRevocable
+        constraint = matches!(vouch.status, VouchStatus::Active | VouchStatus::Slashed) @ ErrorCode::VouchNotRevocable
     )]
     pub vouch: Box<Account<'info, Vouch>>,
 
@@ -71,16 +71,22 @@ pub struct RevokeVouch<'info> {
 }
 
 pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
-    // Escape-hatch lock: a voucher cannot pull stake while the author they back has
-    // an open dispute, otherwise they could dodge slashing. Mirrors the same guard
-    // on withdraw_author_bond. The dispute resolves atomically (slash happens in
-    // resolve), so there is no window between resolution and slashing.
+    // Escape-hatch lock: a voucher cannot pull stake while the author they back
+    // has an open dispute, otherwise they could dodge slashing. Mirrors the same
+    // guard on withdraw_author_bond. Upheld paid disputes settle voucher slashing
+    // in pages (SlashingVouchers), and open_author_disputes stays > 0 until the
+    // final page, so this guard also covers the mid-slash window. For a Slashed
+    // vouch this acts as residual reclaim: the slash already happened, the
+    // voucher takes back what is left once the author has no open disputes.
     require!(
         ctx.accounts.vouchee_profile.open_author_disputes == 0,
         ErrorCode::VoucheeHasOpenDispute
     );
 
     let vouch = &mut ctx.accounts.vouch;
+    let was_live = vouch.status.is_live();
+    // No-op for a Slashed vouch (non-live vouches stopped accruing at slash
+    // time); pre-slash pending rewards remain claimable via claim_voucher_revenue.
     accrue_author_rewards(&ctx.accounts.vouchee_profile, vouch)?;
     let stake_usdc_micros = vouch.stake_usdc_micros;
 
@@ -112,16 +118,20 @@ pub fn handler(ctx: Context<RevokeVouch>) -> Result<()> {
         ctx.accounts.usdc_mint.decimals,
     )?;
 
-    // Update profiles
+    // Update profiles. A Slashed vouch was already removed from the vouchee's
+    // aggregates (full pre-slash stake and received count) at slash time —
+    // only the voucher's own given count still needs to come down.
     let voucher_profile = &mut ctx.accounts.voucher_profile;
     voucher_profile.total_vouches_given = voucher_profile.total_vouches_given.saturating_sub(1);
 
     let vouchee_profile = &mut ctx.accounts.vouchee_profile;
-    vouchee_profile.total_vouches_received =
-        vouchee_profile.total_vouches_received.saturating_sub(1);
-    vouchee_profile.total_vouch_stake_usdc_micros = vouchee_profile
-        .total_vouch_stake_usdc_micros
-        .saturating_sub(stake_usdc_micros);
+    if was_live {
+        vouchee_profile.total_vouches_received =
+            vouchee_profile.total_vouches_received.saturating_sub(1);
+        vouchee_profile.total_vouch_stake_usdc_micros = vouchee_profile
+            .total_vouch_stake_usdc_micros
+            .saturating_sub(stake_usdc_micros);
+    }
 
     // Recompute reputation
     let config = &ctx.accounts.config;

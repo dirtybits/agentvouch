@@ -84,6 +84,27 @@ pub struct AuthorDisputeVouchLinked {
 }
 
 #[event]
+pub struct VoucherSlashed {
+    pub author_dispute: Pubkey,
+    pub vouch: Pubkey,
+    pub voucher: Pubkey,
+    pub vouchee: Pubkey,
+    pub listing_vouch_position: Pubkey,
+    pub slash_usdc_micros: u64,
+    pub residual_stake_usdc_micros: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct AuthorDisputeSlashingFinalized {
+    pub author_dispute: Pubkey,
+    pub author: Pubkey,
+    pub processed_vouch_count: u32,
+    pub voucher_slashed_usdc_micros: u64,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct SkillListingCreated {
     pub skill_listing: Pubkey,
     pub author: Pubkey,

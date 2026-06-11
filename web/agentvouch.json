@@ -433,7 +433,8 @@
           "name": "author_dispute"
         },
         {
-          "name": "skill_listing"
+          "name": "skill_listing",
+          "writable": true
         },
         {
           "name": "listing_settlement",
@@ -2031,7 +2032,8 @@
           }
         },
         {
-          "name": "skill_listing"
+          "name": "skill_listing",
+          "writable": true
         },
         {
           "name": "purchase",
@@ -2606,6 +2608,10 @@
         },
         {
           "name": "author_profile",
+          "writable": true
+        },
+        {
+          "name": "skill_listing",
           "writable": true
         },
         {
@@ -3271,6 +3277,99 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "slash_dispute_vouches",
+      "discriminator": [
+        147,
+        175,
+        122,
+        126,
+        201,
+        40,
+        216,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "author_dispute",
+          "writable": true
+        },
+        {
+          "name": "author_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "author_profile.authority",
+                "account": "AgentProfile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "skill_listing",
+          "writable": true
+        },
+        {
+          "name": "listing_settlement",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "author_proceeds_vault",
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless: anyone may crank a recorded ruling. The cranker only",
+            "pays rent for the dispute-vouch-link accounts."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "unlink_vouch_from_listing",
@@ -4360,6 +4459,19 @@
       ]
     },
     {
+      "name": "AuthorDisputeSlashingFinalized",
+      "discriminator": [
+        178,
+        8,
+        34,
+        143,
+        107,
+        61,
+        197,
+        99
+      ]
+    },
+    {
       "name": "AuthorDisputeVouchLinked",
       "discriminator": [
         134,
@@ -4529,6 +4641,19 @@
       ]
     },
     {
+      "name": "VoucherSlashed",
+      "discriminator": [
+        81,
+        37,
+        95,
+        2,
+        46,
+        178,
+        209,
+        201
+      ]
+    },
+    {
       "name": "X402PurchaseSettled",
       "discriminator": [
         41,
@@ -4545,68 +4670,63 @@
   "errors": [
     {
       "code": 6000,
+      "name": "StakeBelowMinimum",
+      "msg": "Stake amount is below minimum"
+    },
+    {
+      "code": 6001,
+      "name": "CannotVouchForSelf",
+      "msg": "Cannot vouch for yourself"
+    },
+    {
+      "code": 6002,
+      "name": "StakeOverflow",
+      "msg": "Stake amount overflowed the existing vouch"
+    },
+    {
+      "code": 6003,
+      "name": "VouchAccountMismatch",
+      "msg": "Vouch account does not match the expected voucher/vouchee pair"
+    },
+    {
+      "code": 6004,
+      "name": "VouchNotReusable",
+      "msg": "This vouch relationship cannot accept new stake in its current state"
+    },
+    {
+      "code": 6005,
       "name": "ProtocolPaused",
       "msg": "Protocol is paused"
     },
     {
-      "code": 6001,
-      "name": "NotAuthor",
-      "msg": "Only the listing author can withdraw proceeds"
-    },
-    {
-      "code": 6002,
-      "name": "InvalidAmount",
-      "msg": "Withdrawal amount must be positive"
-    },
-    {
-      "code": 6003,
-      "name": "SettlementMismatch",
-      "msg": "Listing settlement account does not match the listing"
-    },
-    {
-      "code": 6004,
-      "name": "AuthorProceedsVaultMismatch",
-      "msg": "Author proceeds vault does not match settlement state"
-    },
-    {
-      "code": 6005,
-      "name": "ProceedsLocked",
-      "msg": "Author proceeds are still locked"
-    },
-    {
       "code": 6006,
-      "name": "SettlementLocked",
-      "msg": "Author proceeds are locked by an open dispute"
-    },
-    {
-      "code": 6007,
-      "name": "InsufficientWithdrawableProceeds",
-      "msg": "Insufficient withdrawable author proceeds"
-    },
-    {
-      "code": 6008,
-      "name": "LockOverflow",
-      "msg": "Author proceeds lock calculation overflowed"
-    },
-    {
-      "code": 6009,
-      "name": "WithdrawalOverflow",
-      "msg": "Withdrawal accounting overflowed"
-    },
-    {
-      "code": 6010,
       "name": "InvalidUsdcMint",
       "msg": "USDC mint does not match config"
     },
     {
-      "code": 6011,
+      "code": 6007,
       "name": "InvalidTokenMint",
       "msg": "Token account mint does not match config"
     },
     {
-      "code": 6012,
+      "code": 6008,
       "name": "InvalidTokenOwner",
       "msg": "Token account owner is invalid"
+    },
+    {
+      "code": 6009,
+      "name": "AuthorRewardVaultMismatch",
+      "msg": "Author reward vault does not match author profile"
+    },
+    {
+      "code": 6010,
+      "name": "RewardIndexUnderflow",
+      "msg": "Reward index underflowed"
+    },
+    {
+      "code": 6011,
+      "name": "RewardOverflow",
+      "msg": "Reward amount overflowed"
     }
   ],
   "types": [
@@ -5091,6 +5211,34 @@
       }
     },
     {
+      "name": "AuthorDisputeSlashingFinalized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "author_dispute",
+            "type": "pubkey"
+          },
+          {
+            "name": "author",
+            "type": "pubkey"
+          },
+          {
+            "name": "processed_vouch_count",
+            "type": "u32"
+          },
+          {
+            "name": "voucher_slashed_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "AuthorDisputeStatus",
       "type": {
         "kind": "enum",
@@ -5100,6 +5248,9 @@
           },
           {
             "name": "Resolved"
+          },
+          {
+            "name": "SlashingVouchers"
           }
         ]
       }
@@ -5199,6 +5350,15 @@
           },
           {
             "name": "refunded_author_proceeds_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "slashed_deposit_usdc_micros",
+            "docs": [
+              "Voucher stake slashed into the author proceeds vault by an upheld",
+              "dispute. Ring-fenced: refund-pool-only, never author-withdrawable,",
+              "excluded from the challenger reward base."
+            ],
             "type": "u64"
           },
           {
@@ -5885,6 +6045,18 @@
             }
           },
           {
+            "name": "locked_by_dispute",
+            "docs": [
+              "Mirror of the current settlement's dispute lock, kept at the listing",
+              "level so it survives settlement rotation: while set, vouch positions",
+              "cannot be linked/unlinked, the revision cannot be bumped, and no new",
+              "settlement can be initialized for this listing."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
             "name": "bump",
             "type": "u8"
           },
@@ -6165,6 +6337,46 @@
           },
           {
             "name": "Slashed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoucherSlashed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "author_dispute",
+            "type": "pubkey"
+          },
+          {
+            "name": "vouch",
+            "type": "pubkey"
+          },
+          {
+            "name": "voucher",
+            "type": "pubkey"
+          },
+          {
+            "name": "vouchee",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing_vouch_position",
+            "type": "pubkey"
+          },
+          {
+            "name": "slash_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "residual_stake_usdc_micros",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }

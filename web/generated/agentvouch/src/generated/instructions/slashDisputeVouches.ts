@@ -7,8 +7,6 @@
  */
 
 import {
-  addDecoderSizePrefix,
-  addEncoderSizePrefix,
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
@@ -16,21 +14,15 @@ import {
   getBytesEncoder,
   getStructDecoder,
   getStructEncoder,
-  getU32Decoder,
-  getU32Encoder,
-  getU64Decoder,
-  getU64Encoder,
-  getUtf8Decoder,
-  getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
   type Address,
-  type Codec,
-  type Decoder,
-  type Encoder,
+  type FixedSizeCodec,
+  type FixedSizeDecoder,
+  type FixedSizeEncoder,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
@@ -46,37 +38,27 @@ import {
 } from "@solana/program-client-core";
 import { findConfigPda } from "../pdas";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
-import {
-  getAuthorDisputeReasonDecoder,
-  getAuthorDisputeReasonEncoder,
-  type AuthorDisputeReason,
-  type AuthorDisputeReasonArgs,
-} from "../types";
 
-export const OPEN_AUTHOR_DISPUTE_DISCRIMINATOR = new Uint8Array([
-  37, 162, 204, 185, 218, 143, 241, 119,
+export const SLASH_DISPUTE_VOUCHES_DISCRIMINATOR = new Uint8Array([
+  147, 175, 122, 126, 201, 40, 216, 32,
 ]);
 
-export function getOpenAuthorDisputeDiscriminatorBytes() {
+export function getSlashDisputeVouchesDiscriminatorBytes() {
   return fixEncoderSize(getBytesEncoder(), 8).encode(
-    OPEN_AUTHOR_DISPUTE_DISCRIMINATOR,
+    SLASH_DISPUTE_VOUCHES_DISCRIMINATOR,
   );
 }
 
-export type OpenAuthorDisputeInstruction<
+export type SlashDisputeVouchesInstruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
   TAccountAuthorDispute extends string | AccountMeta<string> = string,
   TAccountAuthorProfile extends string | AccountMeta<string> = string,
-  TAccountConfig extends string | AccountMeta<string> = string,
   TAccountSkillListing extends string | AccountMeta<string> = string,
-  TAccountPurchase extends string | AccountMeta<string> = string,
   TAccountListingSettlement extends string | AccountMeta<string> = string,
+  TAccountConfig extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
-  TAccountChallengerUsdcAccount extends string | AccountMeta<string> = string,
-  TAccountDisputeBondVaultAuthority extends string | AccountMeta<string> =
-    string,
-  TAccountDisputeBondVault extends string | AccountMeta<string> = string,
-  TAccountChallenger extends string | AccountMeta<string> = string,
+  TAccountAuthorProceedsVault extends string | AccountMeta<string> = string,
+  TAccountCranker extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -92,34 +74,25 @@ export type OpenAuthorDisputeInstruction<
       TAccountAuthorProfile extends string
         ? WritableAccount<TAccountAuthorProfile>
         : TAccountAuthorProfile,
-      TAccountConfig extends string
-        ? ReadonlyAccount<TAccountConfig>
-        : TAccountConfig,
       TAccountSkillListing extends string
         ? WritableAccount<TAccountSkillListing>
         : TAccountSkillListing,
-      TAccountPurchase extends string
-        ? ReadonlyAccount<TAccountPurchase>
-        : TAccountPurchase,
       TAccountListingSettlement extends string
         ? WritableAccount<TAccountListingSettlement>
         : TAccountListingSettlement,
+      TAccountConfig extends string
+        ? ReadonlyAccount<TAccountConfig>
+        : TAccountConfig,
       TAccountUsdcMint extends string
         ? ReadonlyAccount<TAccountUsdcMint>
         : TAccountUsdcMint,
-      TAccountChallengerUsdcAccount extends string
-        ? WritableAccount<TAccountChallengerUsdcAccount>
-        : TAccountChallengerUsdcAccount,
-      TAccountDisputeBondVaultAuthority extends string
-        ? ReadonlyAccount<TAccountDisputeBondVaultAuthority>
-        : TAccountDisputeBondVaultAuthority,
-      TAccountDisputeBondVault extends string
-        ? WritableAccount<TAccountDisputeBondVault>
-        : TAccountDisputeBondVault,
-      TAccountChallenger extends string
-        ? WritableSignerAccount<TAccountChallenger> &
-            AccountSignerMeta<TAccountChallenger>
-        : TAccountChallenger,
+      TAccountAuthorProceedsVault extends string
+        ? WritableAccount<TAccountAuthorProceedsVault>
+        : TAccountAuthorProceedsVault,
+      TAccountCranker extends string
+        ? WritableSignerAccount<TAccountCranker> &
+            AccountSignerMeta<TAccountCranker>
+        : TAccountCranker,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -130,129 +103,103 @@ export type OpenAuthorDisputeInstruction<
     ]
   >;
 
-export type OpenAuthorDisputeInstructionData = {
+export type SlashDisputeVouchesInstructionData = {
   discriminator: ReadonlyUint8Array;
-  disputeId: bigint;
-  reason: AuthorDisputeReason;
-  evidenceUri: string;
 };
 
-export type OpenAuthorDisputeInstructionDataArgs = {
-  disputeId: number | bigint;
-  reason: AuthorDisputeReasonArgs;
-  evidenceUri: string;
-};
+export type SlashDisputeVouchesInstructionDataArgs = {};
 
-export function getOpenAuthorDisputeInstructionDataEncoder(): Encoder<OpenAuthorDisputeInstructionDataArgs> {
+export function getSlashDisputeVouchesInstructionDataEncoder(): FixedSizeEncoder<SlashDisputeVouchesInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([
-      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["disputeId", getU64Encoder()],
-      ["reason", getAuthorDisputeReasonEncoder()],
-      ["evidenceUri", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
-    ]),
-    (value) => ({ ...value, discriminator: OPEN_AUTHOR_DISPUTE_DISCRIMINATOR }),
+    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    (value) => ({
+      ...value,
+      discriminator: SLASH_DISPUTE_VOUCHES_DISCRIMINATOR,
+    }),
   );
 }
 
-export function getOpenAuthorDisputeInstructionDataDecoder(): Decoder<OpenAuthorDisputeInstructionData> {
+export function getSlashDisputeVouchesInstructionDataDecoder(): FixedSizeDecoder<SlashDisputeVouchesInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["disputeId", getU64Decoder()],
-    ["reason", getAuthorDisputeReasonDecoder()],
-    ["evidenceUri", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
   ]);
 }
 
-export function getOpenAuthorDisputeInstructionDataCodec(): Codec<
-  OpenAuthorDisputeInstructionDataArgs,
-  OpenAuthorDisputeInstructionData
+export function getSlashDisputeVouchesInstructionDataCodec(): FixedSizeCodec<
+  SlashDisputeVouchesInstructionDataArgs,
+  SlashDisputeVouchesInstructionData
 > {
   return combineCodec(
-    getOpenAuthorDisputeInstructionDataEncoder(),
-    getOpenAuthorDisputeInstructionDataDecoder(),
+    getSlashDisputeVouchesInstructionDataEncoder(),
+    getSlashDisputeVouchesInstructionDataDecoder(),
   );
 }
 
-export type OpenAuthorDisputeAsyncInput<
+export type SlashDisputeVouchesAsyncInput<
   TAccountAuthorDispute extends string = string,
   TAccountAuthorProfile extends string = string,
-  TAccountConfig extends string = string,
   TAccountSkillListing extends string = string,
-  TAccountPurchase extends string = string,
   TAccountListingSettlement extends string = string,
+  TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountChallengerUsdcAccount extends string = string,
-  TAccountDisputeBondVaultAuthority extends string = string,
-  TAccountDisputeBondVault extends string = string,
-  TAccountChallenger extends string = string,
+  TAccountAuthorProceedsVault extends string = string,
+  TAccountCranker extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   authorDispute: Address<TAccountAuthorDispute>;
   authorProfile: Address<TAccountAuthorProfile>;
-  config?: Address<TAccountConfig>;
   skillListing: Address<TAccountSkillListing>;
-  purchase?: Address<TAccountPurchase>;
-  listingSettlement?: Address<TAccountListingSettlement>;
+  listingSettlement: Address<TAccountListingSettlement>;
+  config?: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
-  challengerUsdcAccount: Address<TAccountChallengerUsdcAccount>;
-  disputeBondVaultAuthority: Address<TAccountDisputeBondVaultAuthority>;
-  disputeBondVault: Address<TAccountDisputeBondVault>;
-  challenger: TransactionSigner<TAccountChallenger>;
+  authorProceedsVault: Address<TAccountAuthorProceedsVault>;
+  /**
+   * Permissionless: anyone may crank a recorded ruling. The cranker only
+   * pays rent for the dispute-vouch-link accounts.
+   */
+  cranker: TransactionSigner<TAccountCranker>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
-  disputeId: OpenAuthorDisputeInstructionDataArgs["disputeId"];
-  reason: OpenAuthorDisputeInstructionDataArgs["reason"];
-  evidenceUri: OpenAuthorDisputeInstructionDataArgs["evidenceUri"];
 };
 
-export async function getOpenAuthorDisputeInstructionAsync<
+export async function getSlashDisputeVouchesInstructionAsync<
   TAccountAuthorDispute extends string,
   TAccountAuthorProfile extends string,
-  TAccountConfig extends string,
   TAccountSkillListing extends string,
-  TAccountPurchase extends string,
   TAccountListingSettlement extends string,
+  TAccountConfig extends string,
   TAccountUsdcMint extends string,
-  TAccountChallengerUsdcAccount extends string,
-  TAccountDisputeBondVaultAuthority extends string,
-  TAccountDisputeBondVault extends string,
-  TAccountChallenger extends string,
+  TAccountAuthorProceedsVault extends string,
+  TAccountCranker extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
-  input: OpenAuthorDisputeAsyncInput<
+  input: SlashDisputeVouchesAsyncInput<
     TAccountAuthorDispute,
     TAccountAuthorProfile,
-    TAccountConfig,
     TAccountSkillListing,
-    TAccountPurchase,
     TAccountListingSettlement,
+    TAccountConfig,
     TAccountUsdcMint,
-    TAccountChallengerUsdcAccount,
-    TAccountDisputeBondVaultAuthority,
-    TAccountDisputeBondVault,
-    TAccountChallenger,
+    TAccountAuthorProceedsVault,
+    TAccountCranker,
     TAccountTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  OpenAuthorDisputeInstruction<
+  SlashDisputeVouchesInstruction<
     TProgramAddress,
     TAccountAuthorDispute,
     TAccountAuthorProfile,
-    TAccountConfig,
     TAccountSkillListing,
-    TAccountPurchase,
     TAccountListingSettlement,
+    TAccountConfig,
     TAccountUsdcMint,
-    TAccountChallengerUsdcAccount,
-    TAccountDisputeBondVaultAuthority,
-    TAccountDisputeBondVault,
-    TAccountChallenger,
+    TAccountAuthorProceedsVault,
+    TAccountCranker,
     TAccountTokenProgram,
     TAccountSystemProgram
   >
@@ -264,27 +211,18 @@ export async function getOpenAuthorDisputeInstructionAsync<
   const originalAccounts = {
     authorDispute: { value: input.authorDispute ?? null, isWritable: true },
     authorProfile: { value: input.authorProfile ?? null, isWritable: true },
-    config: { value: input.config ?? null, isWritable: false },
     skillListing: { value: input.skillListing ?? null, isWritable: true },
-    purchase: { value: input.purchase ?? null, isWritable: false },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
     },
+    config: { value: input.config ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    challengerUsdcAccount: {
-      value: input.challengerUsdcAccount ?? null,
+    authorProceedsVault: {
+      value: input.authorProceedsVault ?? null,
       isWritable: true,
     },
-    disputeBondVaultAuthority: {
-      value: input.disputeBondVaultAuthority ?? null,
-      isWritable: false,
-    },
-    disputeBondVault: {
-      value: input.disputeBondVault ?? null,
-      isWritable: true,
-    },
-    challenger: { value: input.challenger ?? null, isWritable: true },
+    cranker: { value: input.cranker ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
@@ -292,9 +230,6 @@ export async function getOpenAuthorDisputeInstructionAsync<
     keyof typeof originalAccounts,
     ResolvedInstructionAccount
   >;
-
-  // Original args.
-  const args = { ...input };
 
   // Resolve default values.
   if (!accounts.config.value) {
@@ -314,121 +249,96 @@ export async function getOpenAuthorDisputeInstructionAsync<
     accounts: [
       getAccountMeta("authorDispute", accounts.authorDispute),
       getAccountMeta("authorProfile", accounts.authorProfile),
-      getAccountMeta("config", accounts.config),
       getAccountMeta("skillListing", accounts.skillListing),
-      getAccountMeta("purchase", accounts.purchase),
       getAccountMeta("listingSettlement", accounts.listingSettlement),
+      getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("challengerUsdcAccount", accounts.challengerUsdcAccount),
-      getAccountMeta(
-        "disputeBondVaultAuthority",
-        accounts.disputeBondVaultAuthority,
-      ),
-      getAccountMeta("disputeBondVault", accounts.disputeBondVault),
-      getAccountMeta("challenger", accounts.challenger),
+      getAccountMeta("authorProceedsVault", accounts.authorProceedsVault),
+      getAccountMeta("cranker", accounts.cranker),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
-    data: getOpenAuthorDisputeInstructionDataEncoder().encode(
-      args as OpenAuthorDisputeInstructionDataArgs,
-    ),
+    data: getSlashDisputeVouchesInstructionDataEncoder().encode({}),
     programAddress,
-  } as OpenAuthorDisputeInstruction<
+  } as SlashDisputeVouchesInstruction<
     TProgramAddress,
     TAccountAuthorDispute,
     TAccountAuthorProfile,
-    TAccountConfig,
     TAccountSkillListing,
-    TAccountPurchase,
     TAccountListingSettlement,
+    TAccountConfig,
     TAccountUsdcMint,
-    TAccountChallengerUsdcAccount,
-    TAccountDisputeBondVaultAuthority,
-    TAccountDisputeBondVault,
-    TAccountChallenger,
+    TAccountAuthorProceedsVault,
+    TAccountCranker,
     TAccountTokenProgram,
     TAccountSystemProgram
   >);
 }
 
-export type OpenAuthorDisputeInput<
+export type SlashDisputeVouchesInput<
   TAccountAuthorDispute extends string = string,
   TAccountAuthorProfile extends string = string,
-  TAccountConfig extends string = string,
   TAccountSkillListing extends string = string,
-  TAccountPurchase extends string = string,
   TAccountListingSettlement extends string = string,
+  TAccountConfig extends string = string,
   TAccountUsdcMint extends string = string,
-  TAccountChallengerUsdcAccount extends string = string,
-  TAccountDisputeBondVaultAuthority extends string = string,
-  TAccountDisputeBondVault extends string = string,
-  TAccountChallenger extends string = string,
+  TAccountAuthorProceedsVault extends string = string,
+  TAccountCranker extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   authorDispute: Address<TAccountAuthorDispute>;
   authorProfile: Address<TAccountAuthorProfile>;
-  config: Address<TAccountConfig>;
   skillListing: Address<TAccountSkillListing>;
-  purchase?: Address<TAccountPurchase>;
-  listingSettlement?: Address<TAccountListingSettlement>;
+  listingSettlement: Address<TAccountListingSettlement>;
+  config: Address<TAccountConfig>;
   usdcMint: Address<TAccountUsdcMint>;
-  challengerUsdcAccount: Address<TAccountChallengerUsdcAccount>;
-  disputeBondVaultAuthority: Address<TAccountDisputeBondVaultAuthority>;
-  disputeBondVault: Address<TAccountDisputeBondVault>;
-  challenger: TransactionSigner<TAccountChallenger>;
+  authorProceedsVault: Address<TAccountAuthorProceedsVault>;
+  /**
+   * Permissionless: anyone may crank a recorded ruling. The cranker only
+   * pays rent for the dispute-vouch-link accounts.
+   */
+  cranker: TransactionSigner<TAccountCranker>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
-  disputeId: OpenAuthorDisputeInstructionDataArgs["disputeId"];
-  reason: OpenAuthorDisputeInstructionDataArgs["reason"];
-  evidenceUri: OpenAuthorDisputeInstructionDataArgs["evidenceUri"];
 };
 
-export function getOpenAuthorDisputeInstruction<
+export function getSlashDisputeVouchesInstruction<
   TAccountAuthorDispute extends string,
   TAccountAuthorProfile extends string,
-  TAccountConfig extends string,
   TAccountSkillListing extends string,
-  TAccountPurchase extends string,
   TAccountListingSettlement extends string,
+  TAccountConfig extends string,
   TAccountUsdcMint extends string,
-  TAccountChallengerUsdcAccount extends string,
-  TAccountDisputeBondVaultAuthority extends string,
-  TAccountDisputeBondVault extends string,
-  TAccountChallenger extends string,
+  TAccountAuthorProceedsVault extends string,
+  TAccountCranker extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
-  input: OpenAuthorDisputeInput<
+  input: SlashDisputeVouchesInput<
     TAccountAuthorDispute,
     TAccountAuthorProfile,
-    TAccountConfig,
     TAccountSkillListing,
-    TAccountPurchase,
     TAccountListingSettlement,
+    TAccountConfig,
     TAccountUsdcMint,
-    TAccountChallengerUsdcAccount,
-    TAccountDisputeBondVaultAuthority,
-    TAccountDisputeBondVault,
-    TAccountChallenger,
+    TAccountAuthorProceedsVault,
+    TAccountCranker,
     TAccountTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): OpenAuthorDisputeInstruction<
+): SlashDisputeVouchesInstruction<
   TProgramAddress,
   TAccountAuthorDispute,
   TAccountAuthorProfile,
-  TAccountConfig,
   TAccountSkillListing,
-  TAccountPurchase,
   TAccountListingSettlement,
+  TAccountConfig,
   TAccountUsdcMint,
-  TAccountChallengerUsdcAccount,
-  TAccountDisputeBondVaultAuthority,
-  TAccountDisputeBondVault,
-  TAccountChallenger,
+  TAccountAuthorProceedsVault,
+  TAccountCranker,
   TAccountTokenProgram,
   TAccountSystemProgram
 > {
@@ -439,27 +349,18 @@ export function getOpenAuthorDisputeInstruction<
   const originalAccounts = {
     authorDispute: { value: input.authorDispute ?? null, isWritable: true },
     authorProfile: { value: input.authorProfile ?? null, isWritable: true },
-    config: { value: input.config ?? null, isWritable: false },
     skillListing: { value: input.skillListing ?? null, isWritable: true },
-    purchase: { value: input.purchase ?? null, isWritable: false },
     listingSettlement: {
       value: input.listingSettlement ?? null,
       isWritable: true,
     },
+    config: { value: input.config ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
-    challengerUsdcAccount: {
-      value: input.challengerUsdcAccount ?? null,
+    authorProceedsVault: {
+      value: input.authorProceedsVault ?? null,
       isWritable: true,
     },
-    disputeBondVaultAuthority: {
-      value: input.disputeBondVaultAuthority ?? null,
-      isWritable: false,
-    },
-    disputeBondVault: {
-      value: input.disputeBondVault ?? null,
-      isWritable: true,
-    },
-    challenger: { value: input.challenger ?? null, isWritable: true },
+    cranker: { value: input.cranker ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
@@ -467,9 +368,6 @@ export function getOpenAuthorDisputeInstruction<
     keyof typeof originalAccounts,
     ResolvedInstructionAccount
   >;
-
-  // Original args.
-  const args = { ...input };
 
   // Resolve default values.
   if (!accounts.tokenProgram.value) {
@@ -486,44 +384,33 @@ export function getOpenAuthorDisputeInstruction<
     accounts: [
       getAccountMeta("authorDispute", accounts.authorDispute),
       getAccountMeta("authorProfile", accounts.authorProfile),
-      getAccountMeta("config", accounts.config),
       getAccountMeta("skillListing", accounts.skillListing),
-      getAccountMeta("purchase", accounts.purchase),
       getAccountMeta("listingSettlement", accounts.listingSettlement),
+      getAccountMeta("config", accounts.config),
       getAccountMeta("usdcMint", accounts.usdcMint),
-      getAccountMeta("challengerUsdcAccount", accounts.challengerUsdcAccount),
-      getAccountMeta(
-        "disputeBondVaultAuthority",
-        accounts.disputeBondVaultAuthority,
-      ),
-      getAccountMeta("disputeBondVault", accounts.disputeBondVault),
-      getAccountMeta("challenger", accounts.challenger),
+      getAccountMeta("authorProceedsVault", accounts.authorProceedsVault),
+      getAccountMeta("cranker", accounts.cranker),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
-    data: getOpenAuthorDisputeInstructionDataEncoder().encode(
-      args as OpenAuthorDisputeInstructionDataArgs,
-    ),
+    data: getSlashDisputeVouchesInstructionDataEncoder().encode({}),
     programAddress,
-  } as OpenAuthorDisputeInstruction<
+  } as SlashDisputeVouchesInstruction<
     TProgramAddress,
     TAccountAuthorDispute,
     TAccountAuthorProfile,
-    TAccountConfig,
     TAccountSkillListing,
-    TAccountPurchase,
     TAccountListingSettlement,
+    TAccountConfig,
     TAccountUsdcMint,
-    TAccountChallengerUsdcAccount,
-    TAccountDisputeBondVaultAuthority,
-    TAccountDisputeBondVault,
-    TAccountChallenger,
+    TAccountAuthorProceedsVault,
+    TAccountCranker,
     TAccountTokenProgram,
     TAccountSystemProgram
   >);
 }
 
-export type ParsedOpenAuthorDisputeInstruction<
+export type ParsedSlashDisputeVouchesInstruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -531,35 +418,36 @@ export type ParsedOpenAuthorDisputeInstruction<
   accounts: {
     authorDispute: TAccountMetas[0];
     authorProfile: TAccountMetas[1];
-    config: TAccountMetas[2];
-    skillListing: TAccountMetas[3];
-    purchase?: TAccountMetas[4] | undefined;
-    listingSettlement?: TAccountMetas[5] | undefined;
-    usdcMint: TAccountMetas[6];
-    challengerUsdcAccount: TAccountMetas[7];
-    disputeBondVaultAuthority: TAccountMetas[8];
-    disputeBondVault: TAccountMetas[9];
-    challenger: TAccountMetas[10];
-    tokenProgram: TAccountMetas[11];
-    systemProgram: TAccountMetas[12];
+    skillListing: TAccountMetas[2];
+    listingSettlement: TAccountMetas[3];
+    config: TAccountMetas[4];
+    usdcMint: TAccountMetas[5];
+    authorProceedsVault: TAccountMetas[6];
+    /**
+     * Permissionless: anyone may crank a recorded ruling. The cranker only
+     * pays rent for the dispute-vouch-link accounts.
+     */
+    cranker: TAccountMetas[7];
+    tokenProgram: TAccountMetas[8];
+    systemProgram: TAccountMetas[9];
   };
-  data: OpenAuthorDisputeInstructionData;
+  data: SlashDisputeVouchesInstructionData;
 };
 
-export function parseOpenAuthorDisputeInstruction<
+export function parseSlashDisputeVouchesInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedOpenAuthorDisputeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 13) {
+): ParsedSlashDisputeVouchesInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 13,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -569,29 +457,22 @@ export function parseOpenAuthorDisputeInstruction<
     accountIndex += 1;
     return accountMeta;
   };
-  const getNextOptionalAccount = () => {
-    const accountMeta = getNextAccount();
-    return accountMeta.address === AGENTVOUCH_PROGRAM_ADDRESS
-      ? undefined
-      : accountMeta;
-  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       authorDispute: getNextAccount(),
       authorProfile: getNextAccount(),
-      config: getNextAccount(),
       skillListing: getNextAccount(),
-      purchase: getNextOptionalAccount(),
-      listingSettlement: getNextOptionalAccount(),
+      listingSettlement: getNextAccount(),
+      config: getNextAccount(),
       usdcMint: getNextAccount(),
-      challengerUsdcAccount: getNextAccount(),
-      disputeBondVaultAuthority: getNextAccount(),
-      disputeBondVault: getNextAccount(),
-      challenger: getNextAccount(),
+      authorProceedsVault: getNextAccount(),
+      cranker: getNextAccount(),
       tokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
     },
-    data: getOpenAuthorDisputeInstructionDataDecoder().decode(instruction.data),
+    data: getSlashDisputeVouchesInstructionDataDecoder().decode(
+      instruction.data,
+    ),
   };
 }

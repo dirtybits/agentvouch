@@ -14,64 +14,60 @@ import {
 } from "@solana/kit";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
+/** StakeBelowMinimum: Stake amount is below minimum */
+export const AGENTVOUCH_ERROR__STAKE_BELOW_MINIMUM = 0x1770; // 6000
+/** CannotVouchForSelf: Cannot vouch for yourself */
+export const AGENTVOUCH_ERROR__CANNOT_VOUCH_FOR_SELF = 0x1771; // 6001
+/** StakeOverflow: Stake amount overflowed the existing vouch */
+export const AGENTVOUCH_ERROR__STAKE_OVERFLOW = 0x1772; // 6002
+/** VouchAccountMismatch: Vouch account does not match the expected voucher/vouchee pair */
+export const AGENTVOUCH_ERROR__VOUCH_ACCOUNT_MISMATCH = 0x1773; // 6003
+/** VouchNotReusable: This vouch relationship cannot accept new stake in its current state */
+export const AGENTVOUCH_ERROR__VOUCH_NOT_REUSABLE = 0x1774; // 6004
 /** ProtocolPaused: Protocol is paused */
-export const AGENTVOUCH_ERROR__PROTOCOL_PAUSED = 0x1770; // 6000
-/** NotAuthor: Only the listing author can withdraw proceeds */
-export const AGENTVOUCH_ERROR__NOT_AUTHOR = 0x1771; // 6001
-/** InvalidAmount: Withdrawal amount must be positive */
-export const AGENTVOUCH_ERROR__INVALID_AMOUNT = 0x1772; // 6002
-/** SettlementMismatch: Listing settlement account does not match the listing */
-export const AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH = 0x1773; // 6003
-/** AuthorProceedsVaultMismatch: Author proceeds vault does not match settlement state */
-export const AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH = 0x1774; // 6004
-/** ProceedsLocked: Author proceeds are still locked */
-export const AGENTVOUCH_ERROR__PROCEEDS_LOCKED = 0x1775; // 6005
-/** SettlementLocked: Author proceeds are locked by an open dispute */
-export const AGENTVOUCH_ERROR__SETTLEMENT_LOCKED = 0x1776; // 6006
-/** InsufficientWithdrawableProceeds: Insufficient withdrawable author proceeds */
-export const AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS = 0x1777; // 6007
-/** LockOverflow: Author proceeds lock calculation overflowed */
-export const AGENTVOUCH_ERROR__LOCK_OVERFLOW = 0x1778; // 6008
-/** WithdrawalOverflow: Withdrawal accounting overflowed */
-export const AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW = 0x1779; // 6009
+export const AGENTVOUCH_ERROR__PROTOCOL_PAUSED = 0x1775; // 6005
 /** InvalidUsdcMint: USDC mint does not match config */
-export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x177a; // 6010
+export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x1776; // 6006
 /** InvalidTokenMint: Token account mint does not match config */
-export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x177b; // 6011
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x1777; // 6007
 /** InvalidTokenOwner: Token account owner is invalid */
-export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x177c; // 6012
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x1778; // 6008
+/** AuthorRewardVaultMismatch: Author reward vault does not match author profile */
+export const AGENTVOUCH_ERROR__AUTHOR_REWARD_VAULT_MISMATCH = 0x1779; // 6009
+/** RewardIndexUnderflow: Reward index underflowed */
+export const AGENTVOUCH_ERROR__REWARD_INDEX_UNDERFLOW = 0x177a; // 6010
+/** RewardOverflow: Reward amount overflowed */
+export const AGENTVOUCH_ERROR__REWARD_OVERFLOW = 0x177b; // 6011
 
 export type AgentvouchError =
-  | typeof AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH
-  | typeof AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS
-  | typeof AGENTVOUCH_ERROR__INVALID_AMOUNT
+  | typeof AGENTVOUCH_ERROR__AUTHOR_REWARD_VAULT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__CANNOT_VOUCH_FOR_SELF
   | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_MINT
   | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER
   | typeof AGENTVOUCH_ERROR__INVALID_USDC_MINT
-  | typeof AGENTVOUCH_ERROR__LOCK_OVERFLOW
-  | typeof AGENTVOUCH_ERROR__NOT_AUTHOR
-  | typeof AGENTVOUCH_ERROR__PROCEEDS_LOCKED
   | typeof AGENTVOUCH_ERROR__PROTOCOL_PAUSED
-  | typeof AGENTVOUCH_ERROR__SETTLEMENT_LOCKED
-  | typeof AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH
-  | typeof AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW;
+  | typeof AGENTVOUCH_ERROR__REWARD_INDEX_UNDERFLOW
+  | typeof AGENTVOUCH_ERROR__REWARD_OVERFLOW
+  | typeof AGENTVOUCH_ERROR__STAKE_BELOW_MINIMUM
+  | typeof AGENTVOUCH_ERROR__STAKE_OVERFLOW
+  | typeof AGENTVOUCH_ERROR__VOUCH_ACCOUNT_MISMATCH
+  | typeof AGENTVOUCH_ERROR__VOUCH_NOT_REUSABLE;
 
 let agentvouchErrorMessages: Record<AgentvouchError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
   agentvouchErrorMessages = {
-    [AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH]: `Author proceeds vault does not match settlement state`,
-    [AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS]: `Insufficient withdrawable author proceeds`,
-    [AGENTVOUCH_ERROR__INVALID_AMOUNT]: `Withdrawal amount must be positive`,
+    [AGENTVOUCH_ERROR__AUTHOR_REWARD_VAULT_MISMATCH]: `Author reward vault does not match author profile`,
+    [AGENTVOUCH_ERROR__CANNOT_VOUCH_FOR_SELF]: `Cannot vouch for yourself`,
     [AGENTVOUCH_ERROR__INVALID_TOKEN_MINT]: `Token account mint does not match config`,
     [AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER]: `Token account owner is invalid`,
     [AGENTVOUCH_ERROR__INVALID_USDC_MINT]: `USDC mint does not match config`,
-    [AGENTVOUCH_ERROR__LOCK_OVERFLOW]: `Author proceeds lock calculation overflowed`,
-    [AGENTVOUCH_ERROR__NOT_AUTHOR]: `Only the listing author can withdraw proceeds`,
-    [AGENTVOUCH_ERROR__PROCEEDS_LOCKED]: `Author proceeds are still locked`,
     [AGENTVOUCH_ERROR__PROTOCOL_PAUSED]: `Protocol is paused`,
-    [AGENTVOUCH_ERROR__SETTLEMENT_LOCKED]: `Author proceeds are locked by an open dispute`,
-    [AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH]: `Listing settlement account does not match the listing`,
-    [AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW]: `Withdrawal accounting overflowed`,
+    [AGENTVOUCH_ERROR__REWARD_INDEX_UNDERFLOW]: `Reward index underflowed`,
+    [AGENTVOUCH_ERROR__REWARD_OVERFLOW]: `Reward amount overflowed`,
+    [AGENTVOUCH_ERROR__STAKE_BELOW_MINIMUM]: `Stake amount is below minimum`,
+    [AGENTVOUCH_ERROR__STAKE_OVERFLOW]: `Stake amount overflowed the existing vouch`,
+    [AGENTVOUCH_ERROR__VOUCH_ACCOUNT_MISMATCH]: `Vouch account does not match the expected voucher/vouchee pair`,
+    [AGENTVOUCH_ERROR__VOUCH_NOT_REUSABLE]: `This vouch relationship cannot accept new stake in its current state`,
   };
 }
 

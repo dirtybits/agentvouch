@@ -61,6 +61,11 @@ pub struct LinkVouchToListing<'info> {
 
 pub fn handler(ctx: Context<LinkVouchToListing>) -> Result<()> {
     require!(!ctx.accounts.config.paused, LinkError::ProtocolPaused);
+    // Slash-set membership is frozen while the listing is dispute-locked.
+    require!(
+        !ctx.accounts.skill_listing.is_dispute_locked(),
+        LinkError::ListingDisputeLocked
+    );
     require!(
         ctx.accounts.skill_listing.active_reward_position_count
             < MAX_ACTIVE_REWARD_POSITIONS_PER_LISTING,
@@ -134,4 +139,6 @@ pub enum LinkError {
     RewardStakeOverflow,
     #[msg("Reward position count overflowed")]
     RewardPositionCountOverflow,
+    #[msg("Listing is locked by an open dispute")]
+    ListingDisputeLocked,
 }

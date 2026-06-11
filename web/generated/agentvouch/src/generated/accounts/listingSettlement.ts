@@ -67,6 +67,12 @@ export type ListingSettlement = {
   withdrawableAuthorProceedsUsdcMicros: bigint;
   withdrawnAuthorProceedsUsdcMicros: bigint;
   refundedAuthorProceedsUsdcMicros: bigint;
+  /**
+   * Voucher stake slashed into the author proceeds vault by an upheld
+   * dispute. Ring-fenced: refund-pool-only, never author-withdrawable,
+   * excluded from the challenger reward base.
+   */
+  slashedDepositUsdcMicros: bigint;
   lockedByDispute: Option<Address>;
   createdAt: bigint;
   updatedAt: bigint;
@@ -85,6 +91,12 @@ export type ListingSettlementArgs = {
   withdrawableAuthorProceedsUsdcMicros: number | bigint;
   withdrawnAuthorProceedsUsdcMicros: number | bigint;
   refundedAuthorProceedsUsdcMicros: number | bigint;
+  /**
+   * Voucher stake slashed into the author proceeds vault by an upheld
+   * dispute. Ring-fenced: refund-pool-only, never author-withdrawable,
+   * excluded from the challenger reward base.
+   */
+  slashedDepositUsdcMicros: number | bigint;
   lockedByDispute: OptionOrNullable<Address>;
   createdAt: number | bigint;
   updatedAt: number | bigint;
@@ -107,6 +119,7 @@ export function getListingSettlementEncoder(): Encoder<ListingSettlementArgs> {
       ["withdrawableAuthorProceedsUsdcMicros", getU64Encoder()],
       ["withdrawnAuthorProceedsUsdcMicros", getU64Encoder()],
       ["refundedAuthorProceedsUsdcMicros", getU64Encoder()],
+      ["slashedDepositUsdcMicros", getU64Encoder()],
       ["lockedByDispute", getOptionEncoder(getAddressEncoder())],
       ["createdAt", getI64Encoder()],
       ["updatedAt", getI64Encoder()],
@@ -131,6 +144,7 @@ export function getListingSettlementDecoder(): Decoder<ListingSettlement> {
     ["withdrawableAuthorProceedsUsdcMicros", getU64Decoder()],
     ["withdrawnAuthorProceedsUsdcMicros", getU64Decoder()],
     ["refundedAuthorProceedsUsdcMicros", getU64Decoder()],
+    ["slashedDepositUsdcMicros", getU64Decoder()],
     ["lockedByDispute", getOptionDecoder(getAddressDecoder())],
     ["createdAt", getI64Decoder()],
     ["updatedAt", getI64Decoder()],

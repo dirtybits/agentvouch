@@ -1573,6 +1573,7 @@ export function useReputationOracle() {
       const ix = getResolveAuthorDisputeInstruction({
         authorDispute,
         authorProfile,
+        skillListing: maybeAuthorDisputeAccount.data.skillListing,
         config: configInfo.config,
         authority: signer,
         usdcMint: configInfo.data.usdcMint,

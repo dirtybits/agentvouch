@@ -12,6 +12,10 @@ pub struct ListingSettlement {
     pub withdrawable_author_proceeds_usdc_micros: u64,
     pub withdrawn_author_proceeds_usdc_micros: u64,
     pub refunded_author_proceeds_usdc_micros: u64,
+    /// Voucher stake slashed into the author proceeds vault by an upheld
+    /// dispute. Ring-fenced: refund-pool-only, never author-withdrawable,
+    /// excluded from the challenger reward base.
+    pub slashed_deposit_usdc_micros: u64,
     pub locked_by_dispute: Option<Pubkey>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -31,6 +35,7 @@ impl ListingSettlement {
         8 + // withdrawable_author_proceeds_usdc_micros
         8 + // withdrawn_author_proceeds_usdc_micros
         8 + // refunded_author_proceeds_usdc_micros
+        8 + // slashed_deposit_usdc_micros
         (1 + 32) + // locked_by_dispute
         8 + // created_at
         8 + // updated_at

@@ -13,6 +13,7 @@ pub struct CreateRefundPool<'info> {
     pub author_dispute: Box<Account<'info, AuthorDispute>>,
 
     #[account(
+        mut,
         constraint = skill_listing.key() == author_dispute.skill_listing @ CreateRefundPoolError::SkillListingMismatch,
     )]
     pub skill_listing: Box<Account<'info, SkillListing>>,
@@ -122,27 +123,46 @@ pub fn handler(
         CreateRefundPoolError::InvalidRefundPoolAmount
     );
 
-    let available = ctx
+    // Two buckets fund the pool: withdrawable author proceeds and the
+    // ring-fenced slashed voucher deposits. The challenger reward is computed
+    // on proceeds only — slashed stake never inflates the challenger prize.
+    let available_proceeds = ctx
         .accounts
         .listing_settlement
         .withdrawable_author_proceeds_usdc_micros;
-    require!(available > 0, CreateRefundPoolError::NoRefundableProceeds);
+    let slashed_deposit = ctx
+        .accounts
+        .listing_settlement
+        .slashed_deposit_usdc_micros;
+    require!(
+        available_proceeds
+            .checked_add(slashed_deposit)
+            .ok_or(CreateRefundPoolError::RewardOverflow)?
+            > 0,
+        CreateRefundPoolError::NoRefundableProceeds
+    );
 
-    let max_challenger_reward = available
+    let max_challenger_reward = available_proceeds
         .checked_mul(ctx.accounts.config.challenger_reward_bps as u64)
         .ok_or(CreateRefundPoolError::RewardOverflow)?
         .checked_div(10_000)
         .ok_or(CreateRefundPoolError::RewardOverflow)?
         .min(ctx.accounts.config.challenger_reward_cap_usdc_micros);
-    let refund_pool_amount = requested_refund_pool_usdc_micros.min(
-        available
-            .checked_sub(max_challenger_reward)
-            .ok_or(CreateRefundPoolError::RewardOverflow)?,
-    );
+    let pool_capacity = available_proceeds
+        .checked_sub(max_challenger_reward)
+        .ok_or(CreateRefundPoolError::RewardOverflow)?
+        .checked_add(slashed_deposit)
+        .ok_or(CreateRefundPoolError::RewardOverflow)?;
+    let refund_pool_amount = requested_refund_pool_usdc_micros.min(pool_capacity);
     require!(
         refund_pool_amount > 0,
         CreateRefundPoolError::InvalidRefundPoolAmount
     );
+    // Ring-fenced money is the first money out of the vault.
+    let slashed_used = slashed_deposit.min(refund_pool_amount);
+    let proceeds_used = refund_pool_amount
+        .checked_sub(slashed_used)
+        .ok_or(CreateRefundPoolError::RewardOverflow)?;
 
     let settlement_key = ctx.accounts.listing_settlement.key();
     let signer_bump = [ctx.bumps.author_proceeds_vault_authority];
@@ -203,19 +223,28 @@ pub fn handler(
     };
 
     let settlement = &mut ctx.accounts.listing_settlement;
-    let total_debit = refund_pool_amount
+    let proceeds_debit = proceeds_used
         .checked_add(max_challenger_reward)
         .ok_or(CreateRefundPoolError::RewardOverflow)?;
     settlement.withdrawable_author_proceeds_usdc_micros = settlement
         .withdrawable_author_proceeds_usdc_micros
-        .checked_sub(total_debit)
+        .checked_sub(proceeds_debit)
+        .ok_or(CreateRefundPoolError::NoRefundableProceeds)?;
+    settlement.slashed_deposit_usdc_micros = settlement
+        .slashed_deposit_usdc_micros
+        .checked_sub(slashed_used)
         .ok_or(CreateRefundPoolError::NoRefundableProceeds)?;
     settlement.refunded_author_proceeds_usdc_micros = settlement
         .refunded_author_proceeds_usdc_micros
-        .checked_add(refund_pool_amount)
+        .checked_add(proceeds_used)
         .ok_or(CreateRefundPoolError::RewardOverflow)?;
     settlement.locked_by_dispute = None;
     settlement.updated_at = clock.unix_timestamp;
+
+    if ctx.accounts.skill_listing.locked_by_dispute == Some(ctx.accounts.author_dispute.key()) {
+        ctx.accounts.skill_listing.locked_by_dispute = None;
+        ctx.accounts.skill_listing.updated_at = clock.unix_timestamp;
+    }
 
     let refund_pool = &mut ctx.accounts.refund_pool;
     refund_pool.author_dispute = ctx.accounts.author_dispute.key();

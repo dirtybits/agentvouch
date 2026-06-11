@@ -18,6 +18,7 @@ import {
 export enum AuthorDisputeStatus {
   Open,
   Resolved,
+  SlashingVouchers,
 }
 
 export type AuthorDisputeStatusArgs = AuthorDisputeStatus;
