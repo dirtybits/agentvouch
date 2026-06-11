@@ -1,6 +1,6 @@
 # Devnet Deployment State
 
-Living record of the active `agentvouch` devnet deployment after the Track B x402 settlement bridge cutover. Update this file whenever the program is upgraded, the config authority rotates, or the canonical smoke fixture changes.
+Living record of the active `agentvouch` devnet deployment after the Track B x402 settlement bridge cutover and A1 voucher-slashing upgrade. Update this file whenever the program is upgraded, the config authority rotates, or the canonical smoke fixture changes.
 
 ## Active program
 
@@ -17,14 +17,14 @@ Living record of the active `agentvouch` devnet deployment after the Track B x40
 | Protocol treasury vault | `3LihXhStfS7jx3gmzK2NALCWr5fAmgtJrJU2ZKffK6hT` |
 | x402 settlement vault authority | `3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj` |
 | x402 settlement vault ATA | `3Z7VPVVA4ehG7hcsdGbKJcZgvAfPNbSSbFGJCyEFbzdr` |
-| Last deploy slot | `462610464` |
-| Last deploy tx | `4YgndRgBoqmBZ4jWcVc6rhomZWcjr9Td7Yg2Vh18SDQS2mUZ5kqJnFznTa5G2cwL9Ns59HJBNNku435L9cnZuoGo` |
+| Last deploy slot | `468574856` |
+| Last deploy tx | `2FYWJ3QfJLLTKr157tmkRFcQJs4fpRATiZWEs3MAQMZVwvbW8tcqUeGjGWVugKHasuu8qVJfEkBbRSGyyuU7Shrg` |
 | Config init tx | `4sabP2jqmF8dNqnCxrdL25NMUijSx5f6TBLcMs7qu6spwcJj5rJkPP9TJ8rjNQ6vkaZ5w24EAk2tdteAMj4sgJJp` |
-| Local `.so` sha256 | `a4df8de1f8727950832aff46729951a36b02032110d052a37b31f3f2da2a40ae` |
+| Local `.so` sha256 | `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1` |
 | USDC mint (devnet) | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
 | Chain context (CAIP-2) | `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` |
 
-The deployed program includes the Track B protocol layer: `settle_x402_purchase`, x402 receipt/signature idempotency guards, and the stock-compatible x402 settlement vault ATA. The on-chain IDL was uploaded with the deploy; clients should still read the synced repo IDL (`target/idl/agentvouch.json`, `web/agentvouch.json`, and `web/generated/agentvouch/`) so local builds stay deterministic.
+The deployed program includes the Track B protocol layer (`settle_x402_purchase`, x402 receipt/signature idempotency guards, and the stock-compatible x402 settlement vault ATA) plus the A1 voucher-slashing layer. Upheld paid disputes with linked voucher positions can park in `SlashingVouchers`, be cranked permissionlessly through `slash_dispute_vouches`, ring-fence slashed deposits for refund pools, and keep listing membership/removal/close flows locked until settlement clears the dispute lock. The on-chain IDL was uploaded with the deploy; clients should still read the synced repo IDL (`target/idl/agentvouch.json`, `web/agentvouch.json`, and `web/generated/agentvouch/`) so local builds stay deterministic.
 
 To re-verify the binary match locally:
 
@@ -38,9 +38,9 @@ head -c $LOCAL_LEN /tmp/agentvouch_devnet.so | shasum -a 256
 
 The trimmed hash must match the local `.so` hash; the trailing bytes on the dump are zero padding inserted by the BPF loader and do not affect equality.
 
-## Instruction surface (23 instructions)
+## Instruction surface (24 instructions)
 
-`claim_purchase_refund`, `claim_voucher_revenue`, `close_skill_listing`, `create_refund_pool`, `create_skill_listing`, `deposit_author_bond`, `initialize_config`, `initialize_listing_settlement`, `link_vouch_to_listing`, `migrate_config_m13`, `migrate_skill_listing_m13`, `open_author_dispute`, `purchase_skill`, `register_agent`, `remove_skill_listing`, `resolve_author_dispute`, `revoke_vouch`, `settle_x402_purchase`, `unlink_vouch_from_listing`, `update_skill_listing`, `vouch`, `withdraw_author_bond`, `withdraw_author_proceeds`.
+`claim_purchase_refund`, `claim_voucher_revenue`, `close_skill_listing`, `create_refund_pool`, `create_skill_listing`, `deposit_author_bond`, `initialize_config`, `initialize_listing_settlement`, `link_vouch_to_listing`, `migrate_config_m13`, `migrate_skill_listing_m13`, `open_author_dispute`, `purchase_skill`, `register_agent`, `remove_skill_listing`, `resolve_author_dispute`, `revoke_vouch`, `settle_x402_purchase`, `slash_dispute_vouches`, `unlink_vouch_from_listing`, `update_skill_listing`, `vouch`, `withdraw_author_bond`, `withdraw_author_proceeds`.
 
 Error codes were renumbered after `NoActiveAuthorBacking` was removed; downstream consumers that parse Anchor error variants by index must use the synced IDL rather than hard-coded numbers.
 
@@ -51,39 +51,60 @@ Error codes were renumbered after `NoActiveAuthorBacking` was removed; downstrea
 - When no external vouch stake exists, the full payment routes to author proceeds escrow; no voucher reward pool is created.
 - `settle_x402_purchase` uses the same split rules, but transfers from the protocol x402 settlement vault ATA after an off-chain x402 payment has already settled into that vault.
 - Author proceeds are held in a per-listing `ListingSettlement` escrow until `withdraw_author_proceeds` is called. Upheld disputes against the listing can convert escrowed proceeds into a bounded buyer refund pool via `create_refund_pool` + `claim_purchase_refund` (Milestone 13 mechanics).
+- Upheld paid-listing disputes can slash linked voucher positions at `slash_percentage` through `slash_dispute_vouches`; slashed deposits are refund-pool-only and excluded from the challenger reward base.
 - Floors: `0.01 USDC` paid listing minimum, `1.00 USDC` minimum vouch stake, `1.00 USDC` minimum author bond *for free listings only*, `0.50 USDC` dispute bond. Protocol fee: `0%`.
 
 ## Canonical smoke fixture
 
 | Field | Value |
 | --- | --- |
-| State dir | `.agent-keys/track-b-devnet-smoke/` (gitignored) |
-| `skill_id` | `m11smoke-mp7dye2i` |
-| Last verified | `2026-05-15` |
+| State dir | `.agent-keys/a1-devnet-dispute-smoke/` (gitignored) |
+| `skill_id` | `a1smoke-20260611` |
+| Last verified | `2026-06-11` |
 
 Latest end-to-end smoke transactions on the active program:
 
 | Step | Tx |
 | --- | --- |
-| `fund-author-sol` | `3X7MjHJqC36GwJmvBTrtqQXa5KZqDVpKknkPmQXGoTyJDMGs7M2htcrc3nCmqLabDfCNxgvC4crFaCXUNSj4crLn` |
-| `fund-actor-sol` | `2ECNRPbJFPLcbQrufm2zxmHsNbkqUHGf2cPsS7YrWxw7eppuqwScFQGicLobuxojVWoTXuPHATTReFMwmwM6CRMR` |
-| `prepare-author-usdc` | `5LVtASeVYyUCXLxs4B3RXs4AeKXr2m3qapcZ5CDGGoj88vBWNHKspeXvWKcojPZy6a6cHNPfcHuwLFEwPmwa1Vrt` |
-| `prepare-actor-usdc` | `W9kN8kdLJk9RMoTihgrLqHpUYHRAJDPjYYefcQcC7JQXiJDBuz9XjC4crMYzB97Vp6ny8WmkV1K5N3Hh5nR9vMn` |
-| `register-actor-profile` | `Z2WigCDtdg1RKfnC1fc2HQZFWsggX1uzfvjmWcE7cQHtYjy5mxRMKpanukGGK8HUgfQ3SKdpq7wR26DyoojnAym` |
-| `register-author-profile` | `RwDfpZyWGkJNzawEUXg7bwXiXSJ2p6E5JpnmkipMWs7kCR5yAXtTqwyrNTDjpm4AFw1nGJ616jeHN8dTQVz2d9h` |
-| `deposit-author-bond` | `5foWaZQjDpkYmUgEQpWFK6iW7wjtkQVdaqyFxRNYh3t2CnLzQn8nywBTdE6au9neRGvvKtnzjjyoTd4cS2QcNf1T` |
-| `create-skill-listing` (+ settlement) | `3yytPbYLGRXS4gaDu1gHs3boFaYStHfttWcqyNzEU1U8GXeoJaMz96MKtmmkBYZocoM1u432Zr4wSQjFMuhjyRUn` |
-| `create-vouch` | `24pA82W3QKBf21odndxWRyGd2wjkrqewSeRk1qFoJLyeKKEuzV5ubraRKSESq4s8gUegnmVeSvYFR2mbKWAnjwAi` |
-| `purchase-skill` | `5oD2PnAtvqJqCKCCNCdGXaYd98ZGfQXzXmwvRG627cVG2gCXc2TeQ5Bd6w9NzccteRjmyc6Qx69CACoPezwN78ZK` |
-| `claim-voucher-revenue` | `3pJFsMDs96DHG6w37jsUFmZadVhf77D4cqntV3v23hGwhYhKNvbJbxpYwCTDa2mhExZLnsebrHPnTBTnG2xTsLSc` |
+| `fund-author-sol` | `2dWY2vmokyAQHaNpR1N1AKNVEuNL3LUxXsdD6RjUW3G2mkjZ5TWmJqbxnxbKPs4J7RVHvf2byAdsMJnmBhwAsVc8` |
+| `fund-actor-sol` | `4wvR7oAVdstXNQvcviPZjsVSGjQk2srWS2KcZoyKFWFWRtsu9u5XCBnCGhvW5NjHmZBqBhLmgACgD3bqhtkqr6v4` |
+| `prepare-author-usdc` | `3pWxGgL8XoNtdHPnbTeA45N19tmyGT4MZZRm8r3Bxub3QkUZwaQbgMGEbi8C3DXZpyJi2d3jhoYaeXerL5nGTehW` |
+| `prepare-actor-usdc` | `q4qLy9LDp9uq8Dz51p8LCdc1AAkhVsZErWfYssgq1WHNTe4eFgjZhoJkEHfjcqJHqQXjdVURWVqUdRsqVRH1Csi` |
+| `register-actor-profile` | `31nhpEP42Hp4Jyqs6yJs3f2sUqWm9dLQKkEkRsBc5LgjM4H4FN4SzR8vxeUiH3kgGVtG4oWMCr7yQKrJcD4pDvFx` |
+| `register-author-profile` | `3DvuXTAYFsdTzuv51dvb46QyBzfEkcNtkBvFFf3z4L1RMh2aabaRLQp42aEcYrYnKq577515CTn3wgxjwMwC8Zv6` |
+| `deposit-author-bond` | `eZ5FvNSx5xWLiAg9jkV8BsusCXLAG3P5uyFCo7qs8Ypk1dRFmTYQWwRBXgFs4dGotd7TdoSZK6Z9ug65arfzowp` |
+| `create-skill-listing` (+ settlement) | `4tLtqfnW3zZvVNdWTvuwC9sM3bVm34EUqgnzHFHbRoYwJmQTfCt53RxaqwvdEWEmctCG7hCVzhdnARu949thbtak` |
+| `create-vouch` | `4dS3wEnMYXwpAehuuzsya3CXJ1cBsrEbR2LSoS1k3JiXUDF1AtYDcgwtVNAGZS7BkMd5eEbZptyhw6TY4Z3Q9Y6N` |
+| `link-vouch-to-listing` | `3sQhmJgxXsV8aZiHdee3tncfx85LJT4pzmPdvWB59y5hzHKm8b3iy1YPP2Krpkn57tyu6Equ6t7rnh14Cx1zNuRr` |
+| `purchase-skill` | `29gBwV2TuV8AsZkrSNhgupN1cB8D91EFmuwqvBowwf3W9Q6HAbiKhurczs1k1DmuHziQNHCqsjbxakeQZey2kaBN` |
+| `claim-voucher-revenue` | `3bimBSZcT3CrEQR2Y94fCQcnTeudQo2WpHH7QT9V9WoxMLx1habNM2YoirUwjCrz9prxEUqJjmqbb44PQQ5U6zbJ` |
+| `open-author-dispute` | `2bRrA2gTa9QMWnsMzaeLdeHN2sBNp8voKKZyv5WGHSm7J1XCkPWZhpgP61WrE7nVgiQeDuw7UgRxW6K1Qw7RMBFF` |
+| `resolve-author-dispute-upheld` | `3AaQmZHWvEFgJMMuFVGzw2VABWo8Y7HHF7ziQdS3c8EBYPPmQboekxxHfa2CzTNKKbhf3nBrjvrsE7kqCidEMDhX` |
+| `slash-dispute-vouches` | `3rmuiizS8HX6hvAZvi4ycUY2q4CHRviWiWn4uERz4mPvFFvMGgeKpkBL3hr82frVcUTBzE8bPnevY1JjdEJR3pHS` |
+| `create-refund-pool` | `wxUCry9JrWofknFF6D9RcBoFSGEnKsWoYD3UxmkEErhH83sKwwSa7YGZiebc8GUSK2i2TDdgyd25R4QG6uauzCL` |
+| `claim-purchase-refund` | `pcSRsNq6JTVJEHSbDeZ6ad3korPhXCNkzGtttFmkcp5o2fzG5Fe4Jr4CkZvEFgbwPa3HSc2kKhJPGCFiFbeCPH8` |
 
-Post-state confirms the 60/40 split:
+Post-state confirms the full A1 path:
 
-- Author proceeds escrow: `600_000` micro-USDC (60% of a 1 USDC purchase)
-- Voucher cumulative revenue: `400_000` micro-USDC (40%)
-- Listing total downloads: `1`, total revenue: `1_000_000` micro-USDC
+- The 1 USDC purchase split `600_000` micro-USDC to author proceeds and `400_000` micro-USDC to voucher rewards, then the voucher reward was claimed.
+- The upheld dispute slashed `500_000` micro-USDC from the author bond and `500_000` micro-USDC from the linked vouch.
+- The vouch is `slashed`, active listing reward positions fell to `0`, and the residual vouch vault holds `500_000` micro-USDC for later reclaim.
+- `create_refund_pool` built a `1_000_000` micro-USDC refund pool; `claim_purchase_refund` claimed all `1_000_000`, leaving `0` in the refund pool.
+- The listing settlement dispute lock cleared (`locked_by_dispute = null`), with `40_000` micro-USDC left in author proceeds after the configured challenger reward.
 
-`resolve_author_dispute` was skipped in this run because `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR` was not set; the dispute path is exercised by `anchor test`. The canonical smoke fixture verifies direct `purchase_skill`; the local bridge-enabled smoke below verifies `settle_x402_purchase` through `/api/skills/{id}/raw`.
+The canonical smoke fixture now verifies direct `purchase_skill`, paid-listing vouch linking, authority-keyed `resolve_author_dispute`, permissionless `slash_dispute_vouches`, refund-pool creation, and buyer refund claim. The local bridge-enabled smoke below separately verifies `settle_x402_purchase` through `/api/skills/{id}/raw`.
+
+## A1 deploy verification
+
+The 2026-06-10 A1 deploy was verified with:
+
+- `NO_DNA=1 anchor test` — 31 passing, including voucher slashing, multi-page crank, stale-position skip-settle, remove/close dispute-lock, and refund-pool paths.
+- `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=/Users/andysustic/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` — passed on 2026-06-11 with live open → upheld resolve → slash → refund-pool → refund-claim path.
+- Binary match: `target/deploy/agentvouch.so` and `solana program dump` both hashed to `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1`.
+- On-chain IDL: upgraded at IDL account `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4`; fetched IDL semantically matches `target/idl/agentvouch.json` / `web/agentvouch.json`.
+- Web and CLI: `npm run test --workspace @agentvouch/web` (65 files, 332 tests), `npm run test --workspace @agentvouch/cli` (10 files, 50 tests), `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed.
+- x402 bridge POC: `npm run x402:bridge-poc --workspace @agentvouch/web -- --strict` passed with production bridge support still feature-flagged off.
+- Public flow surface: `npm run smoke:flow-surface` passed after the web deployment/promotion.
 
 ## Track B x402 bridge smoke
 
@@ -108,13 +129,13 @@ This proves `/api/skills/{id}/raw` can return an x402 requirement for a protocol
 
 ## Reusing or rotating the smoke fixture
 
-Reuse `.agent-keys/track-b-devnet-smoke/` as-is for read-only checks. If a fresh, isolated fixture is required (rare; usually only when a smoke run has poisoned the per-listing settlement state or you need a clean reputation graph), pass a new `--skill-id` and let the script create a fresh `ListingSettlement`:
+Reuse `.agent-keys/a1-devnet-dispute-smoke/` as-is for read-only checks. If a fresh, isolated fixture is required (rare; usually only when a smoke run has poisoned the per-listing settlement state or you need a clean reputation graph), pass a new `--state-dir` and `--skill-id` and let the script create a fresh `ListingSettlement`:
 
 ```bash
-npm run smoke:devnet-usdc -- --apply --skill-id "trackbsmoke-$(date +%s)"
+AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=~/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir ".agent-keys/a1-devnet-dispute-smoke-$(date +%s)" --skill-id "a1smoke-$(date +%s)"
 ```
 
-A new keypair set is generated under a fresh `.agent-keys/...` directory if `AGENTVOUCH_SMOKE_STATE_DIR` is overridden. Do **not** revive any of the historic state dirs (`v02-devnet-smoke-*`, `fresh-reset-smoke-*`, `m11-devnet-smoke`); those predate the current Program ID and will fail decoding the current layout.
+A new keypair set is generated under a fresh `.agent-keys/...` directory if `AGENTVOUCH_SMOKE_STATE_DIR` is overridden. Do **not** revive any of the historic state dirs (`v02-devnet-smoke-*`, `fresh-reset-smoke-*`); those predate the current Program ID and will fail decoding the current layout.
 
 ## Draining before deletion
 
@@ -153,7 +174,7 @@ rm -rf "$STALE_DIR"
 
 If the directory holds USDC ATAs as well (the smoke fixtures typically do), also close them with `spl-token close <ata>` against each owner keypair before deletion so the rent-exempt SOL is reclaimed. Skipping this step is what stranded the SOL in the `v02-devnet-smoke-1778533434`, `v02-devnet-smoke-1778533564`, and `fresh-reset-smoke-20260511` directories deleted during the M14 cutover — devnet only, but the procedural lesson applies anywhere.
 
-The current `track-b-devnet-smoke` fixture is **active**, not stale; do not drain it unless you are explicitly retiring it (and re-run the smoke against a fresh `--skill-id` first to confirm a replacement fixture exists).
+The current `a1-devnet-dispute-smoke` fixture is **active**, not stale; do not drain it unless you are explicitly retiring it (and re-run the smoke against a fresh `--state-dir` and `--skill-id` first to confirm a replacement fixture exists).
 
 ## Stale-fixture hazards
 
