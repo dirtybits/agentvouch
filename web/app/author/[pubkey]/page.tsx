@@ -13,7 +13,7 @@ import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { useAgentVouchWallet } from "@/components/WalletContextProvider";
-import type { AuthPayload } from "@/lib/auth";
+import type { AuthPayload } from "@/lib/authPayload";
 import type { AuthorDisputeRecord } from "@/lib/authorDisputes";
 import {
   navButtonPrimaryFlexClass,

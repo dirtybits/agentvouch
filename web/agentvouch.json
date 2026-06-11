@@ -4670,63 +4670,68 @@
   "errors": [
     {
       "code": 6000,
-      "name": "StakeBelowMinimum",
-      "msg": "Stake amount is below minimum"
-    },
-    {
-      "code": 6001,
-      "name": "CannotVouchForSelf",
-      "msg": "Cannot vouch for yourself"
-    },
-    {
-      "code": 6002,
-      "name": "StakeOverflow",
-      "msg": "Stake amount overflowed the existing vouch"
-    },
-    {
-      "code": 6003,
-      "name": "VouchAccountMismatch",
-      "msg": "Vouch account does not match the expected voucher/vouchee pair"
-    },
-    {
-      "code": 6004,
-      "name": "VouchNotReusable",
-      "msg": "This vouch relationship cannot accept new stake in its current state"
-    },
-    {
-      "code": 6005,
       "name": "ProtocolPaused",
       "msg": "Protocol is paused"
     },
     {
+      "code": 6001,
+      "name": "NotAuthor",
+      "msg": "Only the listing author can withdraw proceeds"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidAmount",
+      "msg": "Withdrawal amount must be positive"
+    },
+    {
+      "code": 6003,
+      "name": "SettlementMismatch",
+      "msg": "Listing settlement account does not match the listing"
+    },
+    {
+      "code": 6004,
+      "name": "AuthorProceedsVaultMismatch",
+      "msg": "Author proceeds vault does not match settlement state"
+    },
+    {
+      "code": 6005,
+      "name": "ProceedsLocked",
+      "msg": "Author proceeds are still locked"
+    },
+    {
       "code": 6006,
+      "name": "SettlementLocked",
+      "msg": "Author proceeds are locked by an open dispute"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientWithdrawableProceeds",
+      "msg": "Insufficient withdrawable author proceeds"
+    },
+    {
+      "code": 6008,
+      "name": "LockOverflow",
+      "msg": "Author proceeds lock calculation overflowed"
+    },
+    {
+      "code": 6009,
+      "name": "WithdrawalOverflow",
+      "msg": "Withdrawal accounting overflowed"
+    },
+    {
+      "code": 6010,
       "name": "InvalidUsdcMint",
       "msg": "USDC mint does not match config"
     },
     {
-      "code": 6007,
+      "code": 6011,
       "name": "InvalidTokenMint",
       "msg": "Token account mint does not match config"
     },
     {
-      "code": 6008,
+      "code": 6012,
       "name": "InvalidTokenOwner",
       "msg": "Token account owner is invalid"
-    },
-    {
-      "code": 6009,
-      "name": "AuthorRewardVaultMismatch",
-      "msg": "Author reward vault does not match author profile"
-    },
-    {
-      "code": 6010,
-      "name": "RewardIndexUnderflow",
-      "msg": "Reward index underflowed"
-    },
-    {
-      "code": 6011,
-      "name": "RewardOverflow",
-      "msg": "Reward amount overflowed"
     }
   ],
   "types": [
