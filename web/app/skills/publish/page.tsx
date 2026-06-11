@@ -898,7 +898,7 @@ function PublishSkillPageInner() {
             <div className="p-4">
               {showPreview ? (
                 content ? (
-                  <MarkdownRenderer content={content} />
+                  <MarkdownRenderer content={content} variant="skill" />
                 ) : (
                   <p className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">
                     Nothing to preview yet

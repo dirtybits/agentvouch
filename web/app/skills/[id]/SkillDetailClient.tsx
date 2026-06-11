@@ -1313,9 +1313,7 @@ export default function SkillDetailPage({
                     SKILL.md Content
                   </span>
                 </div>
-                <div className="font-article">
-                  <MarkdownRenderer content={content} />
-                </div>
+                <MarkdownRenderer content={content} variant="skill" />
               </div>
             ) : (
               isChainOnly &&

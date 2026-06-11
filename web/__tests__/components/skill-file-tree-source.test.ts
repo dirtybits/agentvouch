@@ -26,4 +26,14 @@ describe("SkillFileTree source", () => {
     expect(source).toContain("getSkillTreeRootName(skillName)");
     expect(source).not.toContain('name: "my-skill"');
   });
+
+  it("renders SKILL.md as compact technical markdown", () => {
+    const source = readFileSync(
+      join(process.cwd(), "components/SkillFileTree.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain('variant="skill"');
+    expect(source).not.toContain('<div className="font-article">');
+  });
 });
