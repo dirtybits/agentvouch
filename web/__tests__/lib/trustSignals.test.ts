@@ -100,15 +100,27 @@ describe("buildTrustSignals", () => {
     ).toBe("fail");
   });
 
-  it("marks author signals unknown for an unregistered author but registered=fail", () => {
+  it("marks unregistered authors as review-worthy, not failed", () => {
     const signals = buildTrustSignals({
       trust: trust({ isRegistered: false }),
       scan: scan(),
     });
-    expect(statusOf(signals, "registered")).toBe("fail");
+    expect(statusOf(signals, "registered")).toBe("warn");
     expect(statusOf(signals, "vouched")).toBe("unknown");
     expect(statusOf(signals, "author_bonded")).toBe("unknown");
     expect(statusOf(signals, "dispute_free")).toBe("unknown");
+  });
+
+  it("warns instead of failing when registered authors lack vouch stake or self-bond", () => {
+    const signals = buildTrustSignals({
+      trust: trust({ totalStakedFor: 0, authorBondUsdcMicros: 0 }),
+      scan: scan(),
+    });
+
+    expect(statusOf(signals, "registered")).toBe("pass");
+    expect(statusOf(signals, "vouched")).toBe("warn");
+    expect(statusOf(signals, "author_bonded")).toBe("warn");
+    expect(recommendedActionFromSignals(signals)).toBe("review");
   });
 
   it("warns on active disputes and fails on upheld disputes", () => {

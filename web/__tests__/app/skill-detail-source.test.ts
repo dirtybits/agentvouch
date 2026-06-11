@@ -37,12 +37,26 @@ describe("skill detail source", () => {
     expect(source).toContain("Sign & Download");
     expect(source).toContain("buildDownloadRawMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");
+    expect(source).toContain("recommendedActionFromSignals(sigs)");
     expect(source).toContain("@/lib/authPayload");
     expect(source).not.toContain("@/lib/auth\"");
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
     expect(source).toContain("fetchSignedRawSkill");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
+  });
+
+  it("lets free skills download without forcing wallet connection", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("handleFreeDownload");
+    expect(source).toContain("fetch(`/api/skills/${id}/raw`)");
+    expect(source).toContain("Download SKILL.md");
+    expect(source).toContain("without connecting a wallet");
+    expect(source).not.toContain("Connect wallet to install");
   });
 
   it("keeps repo-backed listing edits and repo version publishing as separate author actions", () => {

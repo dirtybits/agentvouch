@@ -77,12 +77,19 @@ function aiScanSignal(scan: SkillSecurityScan | null): TrustSignal {
 // Author-scoped signals require an on-chain profile to be meaningful. Without a
 // registered author there is no record to read, so they report `unknown` rather
 // than a misleading `fail` (absence of data is not evidence of bad standing).
+//
+// Status discipline across every signal: `fail` is reserved for active adverse
+// evidence — a scan that flagged concrete risk, or an upheld dispute. The
+// absence of a positive signal (no on-chain identity, no vouch stake, no
+// self-bond) is `warn`: something to weigh before installing, not a failed
+// check. A brand-new honest skill should never read the same red as one whose
+// author lost a dispute.
 function authorSignals(trust: AuthorTrust | null): TrustSignal[] {
   const registered: TrustSignal = {
     id: "registered",
     label: "On-chain identity",
     scope: "author",
-    status: !trust ? "unknown" : trust.isRegistered ? "pass" : "fail",
+    status: !trust ? "unknown" : trust.isRegistered ? "pass" : "warn",
     detail: !trust
       ? "No author wallet supplied."
       : trust.isRegistered
@@ -104,18 +111,18 @@ function authorSignals(trust: AuthorTrust | null): TrustSignal[] {
     id: "vouched",
     label: "Vouched by others",
     scope: "author",
-    status: trust.totalStakedFor > 0 ? "pass" : "fail",
+    status: trust.totalStakedFor > 0 ? "pass" : "warn",
     detail:
       trust.totalStakedFor > 0
         ? "Other accounts have staked USDC vouching for this author."
-        : "No external vouch stake.",
+        : "No external vouch stake yet.",
   };
 
   const authorBonded: TrustSignal = {
     id: "author_bonded",
     label: "Author bond",
     scope: "author",
-    status: trust.authorBondUsdcMicros > 0 ? "pass" : "fail",
+    status: trust.authorBondUsdcMicros > 0 ? "pass" : "warn",
     detail:
       trust.authorBondUsdcMicros > 0
         ? "Author posted a USDC self-bond (skin in the game)."

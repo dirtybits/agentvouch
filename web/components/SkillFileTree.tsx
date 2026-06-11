@@ -324,8 +324,8 @@ export default function SkillFileTree({
               {error}
             </p>
           ) : selectedPath === "SKILL.md" ? (
-            <div className="font-article">
-              <MarkdownRenderer content={selectedContent} />
+            <div className="max-h-[620px] overflow-auto pr-1">
+              <MarkdownRenderer content={selectedContent} variant="skill" />
             </div>
           ) : (
             <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-gray-700 dark:text-gray-300">

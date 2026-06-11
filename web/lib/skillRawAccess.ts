@@ -67,6 +67,8 @@ export type RawSkillContentRow = {
   skill_id: string;
   name: string;
   content: string;
+  version_id?: string | null;
+  version?: number | null;
   files: SkillFileManifestEntry[] | null;
   tree_hash: string | null;
   storage_backend: string | null;
@@ -92,6 +94,18 @@ type WalletBackedRawSkillContentRow = RawSkillContentRow & {
 
 type ProtocolListedRawSkillContentRow = WalletBackedRawSkillContentRow & {
   on_chain_address: string;
+};
+
+export type SkillDownloadEventKind = "raw" | "archive" | "install";
+
+export type SkillDownloadEventInput = {
+  kind: SkillDownloadEventKind;
+  request?: NextRequest;
+  requestedPath?: string | null;
+  walletPubkey?: string | null;
+  authPresent?: boolean;
+  skillVersionId?: string | null;
+  skillVersion?: number | null;
 };
 
 async function deriveAssociatedTokenAccount(
@@ -122,9 +136,74 @@ function accessDenied(response: NextResponse): SkillAccessResult {
 }
 
 export async function incrementInstalls(skillDbId: string) {
-  await sql()`
-    UPDATE skills SET total_installs = total_installs + 1 WHERE id = ${skillDbId}::uuid
+  const rows = await sql()<{
+    total_installs: number;
+  }>`
+    UPDATE skills
+    SET total_installs = total_installs + 1,
+        updated_at = NOW()
+    WHERE id = ${skillDbId}::uuid
+    RETURNING total_installs
   `;
+  const updated = rows?.[0];
+  return updated?.total_installs ?? null;
+}
+
+export async function recordSkillDownloadEvent(
+  skillDbId: string,
+  event: SkillDownloadEventInput
+) {
+  const request = event.request;
+  await sql()`
+    INSERT INTO skill_download_events (
+      skill_db_id,
+      skill_version_id,
+      skill_version,
+      event_kind,
+      requested_path,
+      wallet_pubkey,
+      auth_present,
+      user_agent,
+      referrer
+    )
+    VALUES (
+      ${skillDbId}::uuid,
+      ${event.skillVersionId ?? null}::uuid,
+      ${event.skillVersion ?? null},
+      ${event.kind},
+      ${event.requestedPath ?? null},
+      ${event.walletPubkey ?? null},
+      ${event.authPresent ?? false},
+      ${request?.headers.get("user-agent") ?? null},
+      ${request?.headers.get("referer") ?? null}
+    )
+  `;
+}
+
+export async function recordInstallAndDownloadEvent(
+  skillDbId: string,
+  event: SkillDownloadEventInput
+) {
+  const totalInstalls = await incrementInstalls(skillDbId);
+  try {
+    await recordSkillDownloadEvent(skillDbId, event);
+  } catch (error) {
+    console.error("Failed to record skill download event:", error);
+  }
+  return totalInstalls;
+}
+
+export function getOptionalDownloadAuthPubkey(
+  request: NextRequest,
+  skillDbId: string,
+  listingAddress?: string | null
+) {
+  const authHeader = request.headers.get("x-agentvouch-auth");
+  if (!authHeader) return null;
+
+  const authResult = validateDownloadAuth(authHeader, skillDbId, listingAddress);
+  if ("response" in authResult) return null;
+  return authResult.buyerPubkey;
 }
 
 function getResourceInfo(request: NextRequest, skillName: string) {
@@ -896,6 +975,8 @@ export async function resolveSkillAccess(
       s.chain_context,
       s.on_chain_protocol_version,
       s.on_chain_program_id,
+      sv.id AS version_id,
+      sv.version,
       sv.content,
       sv.files,
       sv.tree_hash,

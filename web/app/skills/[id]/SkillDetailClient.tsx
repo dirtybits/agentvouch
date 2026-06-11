@@ -10,7 +10,10 @@ import SkillFileTree, {
   type SkillFileTreeEntry,
 } from "@/components/SkillFileTree";
 import type { SkillSecurityScan } from "@/lib/securityScan";
-import type { TrustSignal } from "@/lib/trustSignals";
+import {
+  recommendedActionFromSignals,
+  type TrustSignal,
+} from "@/lib/trustSignals";
 import TrustSignalChecklist from "@/components/TrustSignalChecklist";
 import InfoTip from "@/components/InfoTip";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
@@ -517,41 +520,36 @@ export default function SkillDetailPage({
     }
   };
 
-  const handleFreeInstall = async () => {
-    if (!connected || !walletAddress || !signMessage || !skill) return;
+  const handleFreeDownload = async () => {
+    if (!skill) return;
     setInstalling(true);
     setInstallResult(null);
     try {
-      const timestamp = Date.now();
-      const message = `AgentVouch Skill Repo\nAction: install-skill\nTimestamp: ${timestamp}`;
-      const msgBytes = new TextEncoder().encode(message);
-      const sigBytes = await signMessage(msgBytes);
-      const signature = encodeBase64(sigBytes);
-
-      const res = await fetch(`/api/skills/${id}/install`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          auth: { pubkey: walletAddress, signature, message, timestamp },
-        }),
-      });
-      const data = await res.json();
+      const res = await fetch(`/api/skills/${id}/raw`);
       if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          error?: string;
+          message?: string;
+        } | null;
         setInstallResult({
           success: false,
-          message: data.error || "Install failed",
+          message: data?.error || data?.message || "Download failed",
         });
         return;
       }
+      const markdown = await res.text();
+      downloadSkillFile(skill.skill_id, markdown);
       setInstallResult({
         success: true,
-        message: "Skill installed successfully!",
+        message: "Downloaded SKILL.md.",
       });
-      setSkill((s) => (s ? { ...s, total_installs: data.total_installs } : s));
+      setSkill((s) =>
+        s ? { ...s, total_installs: (s.total_installs ?? 0) + 1 } : s
+      );
     } catch (error: unknown) {
       setInstallResult({
         success: false,
-        message: getErrorMessage(error, "Install failed"),
+        message: getErrorMessage(error, "Download failed"),
       });
     } finally {
       setInstalling(false);
@@ -1075,7 +1073,7 @@ export default function SkillDetailPage({
     ? "Paid Skill"
     : "Free Skill";
   const purchaseDescription = !isPaidSkill
-    ? "Install with a wallet signature — no transaction fee."
+    ? "Download this free skill without connecting a wallet. Downloads are counted, but anonymous downloads are not wallet-attributed."
     : isListingRequired
     ? isAuthor
       ? `This paid skill is priced at ${usdcPriceLabel}, but it is not purchasable until you create and link its on-chain SkillListing.`
@@ -1096,37 +1094,46 @@ export default function SkillDetailPage({
       : `This listing is priced in ${usdcPriceLabel}. This wallet cannot use browser x402; use direct purchase or the agent/API fallback below.`
     : hasLegacySolPrice
     ? "This historical SOL-priced listing is not available for new USDC checkout."
-    : "Install with a wallet signature.";
+    : "Download this free skill without connecting a wallet.";
   const connectWalletLabel = primaryUsdcPrice
     ? isListingRequired
       ? "Listing setup required before purchase"
       : "Connect wallet to pay with USDC"
     : isPaidSkill
     ? "Connect wallet to buy and unlock"
-    : "Connect wallet to install";
+    : "Wallet optional for free downloads";
 
   const trustVerdict = (() => {
     const sigs = skill.signals ?? [];
     if (sigs.length === 0) return null;
-    if (sigs.some((s) => s.status === "fail"))
+    const action = recommendedActionFromSignals(sigs);
+
+    if (action === "avoid") {
       return {
         word: "Avoid",
         text: "text-red-700 dark:text-red-300",
         box: "border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-900/10",
         sub: "A trust signal failed. Review the signals before installing.",
       };
-    if (sigs.some((s) => s.status === "warn" || s.status === "unknown"))
+    }
+
+    if (action === "allow") {
       return {
-        word: "Review",
-        text: "text-amber-700 dark:text-amber-300",
-        box: "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/10",
-        sub: "Advisory findings or unestablished signals to weigh before installing.",
+        word: "Trusted",
+        text: "text-emerald-700 dark:text-emerald-300",
+        box: "border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10",
+        sub: "Staked on-chain trust and clean advisory checks back this listing.",
       };
+    }
+
     return {
-      word: "Trusted",
-      text: "text-emerald-700 dark:text-emerald-300",
-      box: "border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10",
-      sub: "Staked on-chain trust and clean advisory checks back this listing.",
+      word: "Review",
+      text: "text-amber-700 dark:text-amber-300",
+      box: "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/10",
+      sub:
+        action === "unknown"
+          ? "Trust data is incomplete. Review the signals before installing."
+          : "Advisory findings or unestablished signals to weigh before installing.",
     };
   })();
 
@@ -1306,9 +1313,7 @@ export default function SkillDetailPage({
                     SKILL.md Content
                   </span>
                 </div>
-                <div className="font-article">
-                  <MarkdownRenderer content={content} />
-                </div>
+                <MarkdownRenderer content={content} variant="skill" />
               </div>
             ) : (
               isChainOnly &&
@@ -1651,26 +1656,26 @@ export default function SkillDetailPage({
                 </div>
 
                 <div className="mt-4">
-                  {connected ? (
-                    !isPaidSkill ? (
-                      <button
-                        onClick={handleFreeInstall}
-                        disabled={installing}
-                        className={`${navButtonPrimaryInlineClass} w-full justify-center`}
-                      >
-                        {installing ? (
-                          <>
-                            <FiLoader className="w-4 h-4 animate-spin" />
-                            Installing…
-                          </>
-                        ) : (
-                          <>
-                            <FiDownload className="w-4 h-4" />
-                            Install
-                          </>
-                        )}
-                      </button>
-                    ) : isAuthor ? (
+                  {!isPaidSkill ? (
+                    <button
+                      onClick={handleFreeDownload}
+                      disabled={installing}
+                      className={`${navButtonPrimaryInlineClass} w-full justify-center`}
+                    >
+                      {installing ? (
+                        <>
+                          <FiLoader className="w-4 h-4 animate-spin" />
+                          Downloading…
+                        </>
+                      ) : (
+                        <>
+                          <FiDownload className="w-4 h-4" />
+                          Download SKILL.md
+                        </>
+                      )}
+                    </button>
+                  ) : connected ? (
+                    isAuthor ? (
                       <Link
                         href="#author-actions"
                         className={`${navButtonSecondaryInlineClass} w-full justify-center`}
