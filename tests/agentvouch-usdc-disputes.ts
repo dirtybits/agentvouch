@@ -7,6 +7,7 @@ import {
   authorBondVaultAuthority,
   createActor,
   createSkillListing,
+  depositAuthorBond,
   expectFailure,
   getTestContext,
   openAuthorDispute,
@@ -20,6 +21,81 @@ import {
 } from "./helpers/agentvouchUsdc";
 
 describe("agentvouch usdc disputes", () => {
+  it("resolves a free-listing (AuthorBondOnly) dispute through the bond-only path without parking for voucher slashing", async () => {
+    // Free listings carry AuthorBondOnly liability: open_author_dispute does not
+    // lock the listing or settlement, and resolve must reach Resolved directly
+    // (never SlashingVouchers, which is the paid AuthorBondThenVouchers path).
+    // Guards this terminal branch of the slashing-aware resolve rewrite against
+    // regression, since every other dispute/slashing test uses paid listings.
+    const ctx = await getTestContext();
+    const author = await createActor(ctx);
+    const challenger = await createActor(ctx);
+    await registerAgent(ctx, author);
+    await registerAgent(ctx, challenger);
+    const bond = await depositAuthorBond(ctx, author, 4 * ONE_USDC);
+    const listing = await createSkillListing(
+      ctx,
+      author,
+      uniqueSkillId("free"),
+      0,
+      bond.authorBond
+    );
+
+    const disputeId = u64(Date.now() + 50);
+    const dispute = await openAuthorDispute(
+      ctx,
+      challenger,
+      author,
+      listing.skillListing,
+      null,
+      disputeId
+    );
+
+    // Free dispute leaves the listing unlocked (AuthorBondOnly).
+    const listingAtOpen = await ctx.program.account.skillListing.fetch(
+      listing.skillListing
+    );
+    assert.isNull(listingAtOpen.lockedByDispute);
+
+    const challengerBefore = await tokenAmount(ctx, challenger.usdc);
+    await resolveAuthorDispute(
+      ctx,
+      author,
+      challenger,
+      disputeId,
+      dispute,
+      { upheld: {} },
+      [
+        { pubkey: bond.authorBond, isWritable: true, isSigner: false },
+        { pubkey: bond.vault, isWritable: true, isSigner: false },
+      ]
+    );
+
+    // Resolved in one shot: no SlashingVouchers park, dispute count cleared,
+    // author bond slashed (50%) to the challenger.
+    const disputeAccount = await ctx.program.account.authorDispute.fetch(
+      dispute.authorDispute
+    );
+    assert.deepEqual(disputeAccount.ruling, { upheld: {} });
+    assert.deepEqual(disputeAccount.status, { resolved: {} });
+    assert.isNotNull(disputeAccount.resolvedAt);
+    assert.equal(disputeAccount.linkedVouchCount, 0);
+    assert.equal(Number(disputeAccount.voucherSlashedUsdcMicros), 0);
+
+    const authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
+    );
+    assert.equal(authorProfile.openAuthorDisputes, 0);
+    assert.equal(authorProfile.upheldAuthorDisputes, 1);
+    assert.equal(Number(authorProfile.authorBondUsdcMicros), 2 * ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      challenger.usdc,
+      challengerBefore,
+      2.5 * ONE_USDC
+    );
+  });
+
   it("returns dispute bond to challenger and slashes author bond when upheld", async () => {
     const ctx = await getTestContext();
     const { author, buyer, bond, listing } = await setupPaidListingWithVouch(

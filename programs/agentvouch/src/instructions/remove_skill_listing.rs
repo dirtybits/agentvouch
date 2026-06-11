@@ -25,6 +25,13 @@ pub struct RemoveSkillListing<'info> {
 }
 
 pub fn handler(ctx: Context<RemoveSkillListing>, _skill_id: String) -> Result<()> {
+    // Removal is the first step toward close_skill_listing, which deletes the
+    // account that slash_dispute_vouches and create_refund_pool must read.
+    // Mirrors the membership freeze on link/unlink/update while disputed.
+    require!(
+        !ctx.accounts.skill_listing.is_dispute_locked(),
+        RemoveSkillError::ListingDisputeLocked
+    );
     if crate::state::SkillListing::is_free_price(ctx.accounts.skill_listing.price_usdc_micros) {
         ctx.accounts.author_profile.active_free_skill_listings = ctx
             .accounts
@@ -46,4 +53,6 @@ pub enum RemoveSkillError {
     AlreadyRemoved,
     #[msg("Active free listing count underflowed")]
     FreeListingCountUnderflow,
+    #[msg("Listing is locked by an open dispute")]
+    ListingDisputeLocked,
 }

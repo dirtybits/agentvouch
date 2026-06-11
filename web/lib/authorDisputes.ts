@@ -21,7 +21,11 @@ const CACHE_TTL_MS = IN_MEMORY_CACHE_TTL_MS.authorDisputes;
 const AUTHOR_DISPUTE_VOUCH_LINK_DISCRIMINATOR = new Uint8Array([
   30, 4, 152, 103, 232, 184, 75, 177,
 ]);
-const AUTHOR_DISPUTE_VOUCH_LINK_SIZE = 81;
+// Must match AuthorDisputeVouchLink::LEN in
+// programs/agentvouch/src/state/author_dispute_vouch_link.rs:
+// 8 discriminator + 32 author_dispute + 32 vouch + 32 listing_vouch_position
+// + 1 settled + 32 rent_payer + 8 added_at + 1 bump = 146.
+const AUTHOR_DISPUTE_VOUCH_LINK_SIZE = 146;
 
 const asBase64 = (bytes: Uint8Array) =>
   encodeBase64(bytes) as Base64EncodedBytes;
@@ -114,9 +118,27 @@ export function getAuthorDisputeStatusLabel(
       return "Open";
     case AuthorDisputeStatus.Resolved:
       return "Resolved";
+    case AuthorDisputeStatus.SlashingVouchers:
+      return "Slashing in progress";
     default:
       return "Unknown";
   }
+}
+
+/**
+ * A dispute is still active while enforcement is running: SlashingVouchers
+ * means the ruling is recorded but slash pages are still settling, so the
+ * on-chain locks (revoke, link/unlink, listing removal) are still live and
+ * the author's open_author_disputes count is still > 0. Treating it as
+ * inactive would show an author as dispute-free mid-slashing.
+ */
+export function isActiveAuthorDisputeStatus(
+  status: AuthorDisputeStatus | number
+): boolean {
+  return (
+    status === AuthorDisputeStatus.Open ||
+    status === AuthorDisputeStatus.SlashingVouchers
+  );
 }
 
 export function getAuthorDisputeRulingLabel(
@@ -302,7 +324,7 @@ export async function resolveAuthorDisputeMetrics(
 
   for (const dispute of disputes) {
     metrics.disputesAgainstAuthor += 1;
-    if (dispute.account.status === AuthorDisputeStatus.Open) {
+    if (isActiveAuthorDisputeStatus(dispute.account.status)) {
       metrics.activeDisputesAgainstAuthor += 1;
     }
     if (
@@ -342,7 +364,7 @@ export async function resolveMultipleAuthorDisputeMetrics(
 
     const next = metrics.get(author)!;
     next.disputesAgainstAuthor += 1;
-    if (dispute.account.status === AuthorDisputeStatus.Open) {
+    if (isActiveAuthorDisputeStatus(dispute.account.status)) {
       next.activeDisputesAgainstAuthor += 1;
     }
     if (

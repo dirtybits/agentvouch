@@ -428,6 +428,31 @@ describe("agentvouch usdc voucher slashing", () => {
       "Cannot revoke while the vouched author has an open dispute"
     );
 
+    // Mid-slash: membership is still frozen — the listing stays dispute-locked
+    // until create_refund_pool clears it, so unlink out of and link into the
+    // slash set both remain blocked during the SlashingVouchers window.
+    await expectFailure(
+      unlinkVouchFromListing(
+        ctx,
+        vouchers[0].voucher,
+        author,
+        listing.skillListing,
+        vouchers[0].position,
+        vouchers[0].vouch.vouch
+      ),
+      "Listing is locked by an open dispute"
+    );
+    await expectFailure(
+      linkVouchToListing(
+        ctx,
+        lateVoucher,
+        author,
+        listing.skillListing,
+        lateVouch.vouch
+      ),
+      "Listing is locked by an open dispute"
+    );
+
     const cranker = await createActor(ctx);
     await slashDisputeVouches(
       ctx,
@@ -785,5 +810,94 @@ describe("agentvouch usdc voucher slashing", () => {
       vouchers[0].position,
       vouchers[0].vouch.vouch
     );
+  });
+
+  it("blocks remove/close of a dispute-locked listing until the refund pool clears the lock", async () => {
+    const ctx = await getTestContext();
+    const { author, buyer, challenger, skillId, listing, vouchers } =
+      await setupLinkedVoucherListing(ctx, [2 * ONE_USDC]);
+    const purchase = await purchaseSkill(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      listing.vault
+    );
+    const disputeId = u64(Date.now() + 9_000);
+    const dispute = await openAuthorDispute(
+      ctx,
+      challenger,
+      author,
+      listing.skillListing,
+      purchase,
+      disputeId
+    );
+
+    const removeSkillListing = () =>
+      ctx.program.methods
+        .removeSkillListing(skillId)
+        .accountsStrict({
+          skillListing: listing.skillListing,
+          authorProfile: author.profile,
+          author: author.keypair.publicKey,
+        })
+        .signers([author.keypair])
+        .rpc();
+    const closeSkillListing = () =>
+      ctx.program.methods
+        .closeSkillListing(skillId)
+        .accountsStrict({
+          skillListing: listing.skillListing,
+          authorProfile: author.profile,
+          author: author.keypair.publicKey,
+        })
+        .signers([author.keypair])
+        .rpc();
+
+    // Locked at open: removing (the first step toward close_skill_listing,
+    // which would delete the account slash_dispute_vouches/create_refund_pool
+    // must read) is blocked.
+    await expectFailure(
+      removeSkillListing(),
+      "Listing is locked by an open dispute"
+    );
+
+    await resolveAuthorDispute(ctx, author, challenger, disputeId, dispute, {
+      upheld: {},
+    });
+    const cranker = await createActor(ctx);
+    await slashDisputeVouches(
+      ctx,
+      author,
+      dispute,
+      listing.skillListing,
+      slashAccounts(vouchers),
+      cranker
+    );
+
+    // Resolved but still locked: create_refund_pool, not resolve/slash, clears
+    // the listing lock — so remove stays blocked through this window.
+    const disputeAccount = await ctx.program.account.authorDispute.fetch(
+      dispute.authorDispute
+    );
+    assert.deepEqual(disputeAccount.status, { resolved: {} });
+    await expectFailure(
+      removeSkillListing(),
+      "Listing is locked by an open dispute"
+    );
+
+    await createRefundPool(ctx, author, challenger, dispute, ONE_USDC);
+    const listingAccount = await ctx.program.account.skillListing.fetch(
+      listing.skillListing
+    );
+    assert.isNull(listingAccount.lockedByDispute);
+
+    // Lock cleared: remove then close both succeed and the PDA is reclaimed.
+    await removeSkillListing();
+    await closeSkillListing();
+    const closed = await ctx.program.account.skillListing.fetchNullable(
+      listing.skillListing
+    );
+    assert.isNull(closed);
   });
 });
