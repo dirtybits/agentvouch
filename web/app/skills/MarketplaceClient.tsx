@@ -507,6 +507,17 @@ export default function MarketplaceClient({
     }
   }, [oracle, publicKey]);
 
+  // Seed search from a ?q= deep link (e.g. the homepage search bar's
+  // "see all results"). Read on mount to avoid a useSearchParams Suspense
+  // boundary for a one-time read.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q")?.trim();
+    if (q) {
+      setSearch(q);
+      setDebouncedSearch(q);
+    }
+  }, []);
+
   useEffect(() => {
     const nextSearch = search.trim();
     const timeoutId = setTimeout(() => {
@@ -1060,11 +1071,10 @@ export default function MarketplaceClient({
                   const listingDetail = myListingDetails.get(
                     String(listing.publicKey)
                   );
-                  const detailSkill =
-                    listingDetail ?? {
-                      id: `chain-${String(listing.publicKey)}`,
-                      skill_id: String(listing.publicKey),
-                    };
+                  const detailSkill = listingDetail ?? {
+                    id: `chain-${String(listing.publicKey)}`,
+                    skill_id: String(listing.publicKey),
+                  };
                   const canPublishVersion =
                     !!listingDetail && !detailSkill.id.startsWith("chain-");
                   const price = Number(listing.account.priceUsdcMicros);

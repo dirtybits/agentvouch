@@ -3,6 +3,7 @@ import Link from "next/link";
 import TypewriterText from "@/components/TypewriterText";
 import { HomeInstallCard } from "@/components/HomeInstallCard";
 import SkillPreviewCard from "@/components/SkillPreviewCard";
+import SkillSearchBar from "@/components/SkillSearchBar";
 import type { TrustData } from "@/components/TrustBadge";
 import {
   navButtonPrimaryInlineClass,
@@ -119,7 +120,9 @@ async function getRequestOrigin() {
   const forwardedProto = requestHeaders.get("x-forwarded-proto");
   const proto =
     forwardedProto ??
-    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+    (host.startsWith("localhost") || host.startsWith("127.")
+      ? "http"
+      : "https");
 
   return `${proto}://${host}`;
 }
@@ -195,6 +198,9 @@ export default async function Home() {
       {featuredSkills.length > 0 && (
         <section className="px-6 pb-10">
           <div className="mx-auto max-w-6xl">
+            <div className="mb-6">
+              <SkillSearchBar />
+            </div>
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="font-display text-2xl text-gray-900 dark:text-white md:text-[28px]">
                 Featured skills
