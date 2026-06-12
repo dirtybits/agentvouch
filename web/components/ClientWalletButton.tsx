@@ -153,7 +153,7 @@ export function ClientWalletButton() {
         Sign in with
       </p>
       <div className="phantom-connect-wrapper">
-        <ConnectButton />
+        <ConnectButton fullWidth />
       </div>
     </div>
   ) : null;

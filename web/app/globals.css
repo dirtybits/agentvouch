@@ -95,6 +95,27 @@ body {
   border-radius: 0.375rem;
 }
 
+/* Phantom sets these colors inline, so keep its embedded auth button aligned
+   with AgentVouch's lighter lobster treatment in both themes. */
+.phantom-connect-wrapper button {
+  width: 100% !important;
+  min-height: 2.5rem;
+  border: 1px solid var(--lobster-accent-border) !important;
+  border-radius: 0.375rem !important;
+  background: var(--lobster-accent-soft) !important;
+  color: var(--lobster-accent-contrast) !important;
+  box-shadow: none !important;
+}
+
+.phantom-connect-wrapper button:hover {
+  background: var(--lobster-accent-soft-hover) !important;
+}
+
+.phantom-connect-wrapper button:focus-visible {
+  outline: 2px solid var(--lobster-focus-ring);
+  outline-offset: 2px;
+}
+
 /* Smooth border color transitions on cards */
 [class*="rounded-xl"][class*="border"] {
   transition: border-color 0.2s ease;
@@ -203,4 +224,3 @@ body {
 .dark .code-block-content .hljs-property {
   color: #fbbf24;
 }
-

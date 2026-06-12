@@ -213,7 +213,7 @@ function VerdictDot({
 interface ActionPill {
   label: string;
   Icon?: React.ComponentType<{ className?: string }>;
-  variant: "primary" | "installed" | "muted";
+  variant: "primary" | "price" | "installed" | "muted";
 }
 
 function getActionPill(params: {
@@ -238,7 +238,7 @@ function getActionPill(params: {
         ? `${params.primaryUsdcPrice} USDC`
         : "USDC",
       Icon: UsdcIcon,
-      variant: "primary",
+      variant: "price",
     };
   }
   if (params.hasAccessPath && params.legacySolLamports === 0) {
@@ -253,6 +253,8 @@ function getActionPill(params: {
 const PILL_VARIANT: Record<ActionPill["variant"], string> = {
   primary:
     "bg-[var(--lobster-accent)] text-white shadow-sm hover:bg-[var(--lobster-accent-strong)]",
+  price:
+    "border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] hover:bg-[var(--sea-accent-soft-hover)]",
   installed:
     "border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
   muted:
@@ -342,12 +344,6 @@ export default function SkillPreviewCard({
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
-      {/* verdict accent rail */}
-      <span
-        className={`absolute inset-y-0 left-0 w-1 ${verdictMeta.dot} opacity-0 transition-opacity duration-200 group-hover:opacity-100`}
-        aria-hidden
-      />
-
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         {/* Byline cluster (author icon + handle) + verdict chip */}
         <div className="flex items-center justify-between gap-2">

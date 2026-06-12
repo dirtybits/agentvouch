@@ -17,6 +17,8 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain("primaryUsdcPrice");
     expect(source).toContain("Installed");
     expect(source).toContain("USDC");
+    expect(source).toContain('variant: "price"');
+    expect(source).toContain("bg-[var(--sea-accent-soft)]");
     expect(source.indexOf("if (params.hasPurchased)")).toBeLessThan(
       source.indexOf("if (params.hasUsdcPrimary)")
     );
