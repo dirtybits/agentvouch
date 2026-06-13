@@ -59,3 +59,4 @@ db-inventory*.json
 web/public/skill-mockup.html
 .env*
 __pycache__/
+evals/skill-scan/results.json
