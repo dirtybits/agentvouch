@@ -58,3 +58,4 @@ db-inventory*.json
 .claude/worktrees/
 web/public/skill-mockup.html
 .env*
+__pycache__/
