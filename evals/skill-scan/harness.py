@@ -32,10 +32,14 @@ from collections import Counter, defaultdict
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Vercel AI Gateway, OpenAI-compatible. Same routing path and "provider/model"
+# ids as production (web/lib/ai/gateway.ts); auth via AI_GATEWAY_API_KEY.
+GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions"
 
 DEFAULT_SCANNER_MODEL = {
     "anthropic": "claude-haiku-4-5-20251001",  # cheap, comparable tier to Flash
     "gemini": "gemini-2.5-flash-lite",  # production default (web/lib/ai/gateway.ts SCAN_MODEL)
+    "gateway": "google/gemini-2.5-flash-lite",  # exact production SCAN_MODEL string
     "mock": "mock",
 }
 DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
@@ -123,6 +127,27 @@ def call_anthropic(model, prompt, temperature, api_key, max_tokens=1024):
     }
     data = http_post_json(ANTHROPIC_URL, headers, payload)
     return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+
+
+def call_gateway(model, prompt, temperature, api_key, max_tokens=1024):
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    data = http_post_json(GATEWAY_URL, headers, payload)
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError):
+        raise RuntimeError(f"Unexpected gateway response shape: {json.dumps(data)[:300]}")
+    if isinstance(content, list):  # some providers return content parts
+        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+    return content or ""
 
 
 def call_gemini(model, prompt, temperature, api_key, max_tokens=1024):
@@ -218,6 +243,8 @@ def run_scanner(provider, model, prompt_template, skill_md, temperature, keys):
         raw = call_anthropic(model, prompt, temperature, keys["anthropic"])
     elif provider == "gemini":
         raw = call_gemini(model, prompt, temperature, keys["gemini"])
+    elif provider == "gateway":
+        raw = call_gateway(model, prompt, temperature, keys["gateway"])
     else:
         raise ValueError(provider)
     out = extract_json(raw)
@@ -265,6 +292,9 @@ def is_clean(trial):
 def run_judge(judge, model, skill_md, summary, keys):
     if judge == "mock":
         raw = call_mock_judge(skill_md, summary)
+    elif judge == "gateway":
+        prompt = JUDGE_PROMPT.replace("{SKILL_MD}", skill_md).replace("{SUMMARY}", summary or "(empty)")
+        raw = call_gateway(model, prompt, 0.0, keys["gateway"])
     else:
         prompt = JUDGE_PROMPT.replace("{SKILL_MD}", skill_md).replace("{SUMMARY}", summary or "(empty)")
         raw = call_anthropic(model, prompt, 0.0, keys["anthropic"])
@@ -284,10 +314,12 @@ def main():
     ap = argparse.ArgumentParser(description="AgentVouch skill-scanner eval harness")
     ap.add_argument("--dataset", default="dataset.json")
     ap.add_argument("--split", default="all", choices=["all", "dev", "holdout"])
-    ap.add_argument("--provider", default="anthropic", choices=["anthropic", "gemini", "mock"])
+    ap.add_argument("--provider", default="anthropic",
+                    choices=["anthropic", "gemini", "gateway", "mock"])
     ap.add_argument("--scanner-model", default=None)
-    ap.add_argument("--judge", default=None, choices=["anthropic", "mock"],
-                    help="default: mock if provider is mock, else anthropic")
+    ap.add_argument("--judge", default=None, choices=["anthropic", "gateway", "mock"],
+                    help="default: follows the provider (mock->mock, gateway->gateway, "
+                         "else anthropic)")
     ap.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
     ap.add_argument("--prompt", default="scanner_prompt.txt")
     ap.add_argument("--trials", type=int, default=3)
@@ -301,18 +333,26 @@ def main():
     args = ap.parse_args()
 
     scanner_model = args.scanner_model or DEFAULT_SCANNER_MODEL[args.provider]
-    judge = args.judge or ("mock" if args.provider == "mock" else "anthropic")
+    judge = args.judge or {"mock": "mock", "gateway": "gateway"}.get(args.provider, "anthropic")
+    judge_model = args.judge_model
+    if judge == "gateway" and "/" not in judge_model:
+        judge_model = f"anthropic/{judge_model}"  # gateway ids are provider/model
 
     keys = {
         "anthropic": os.environ.get("ANTHROPIC_API_KEY", ""),
         "gemini": os.environ.get("GEMINI_API_KEY", ""),
+        "gateway": os.environ.get("AI_GATEWAY_API_KEY", ""),
     }
     if args.provider == "anthropic" and not keys["anthropic"]:
         sys.exit("ANTHROPIC_API_KEY not set (it's the same env var gcai uses).")
     if args.provider == "gemini" and not keys["gemini"]:
         sys.exit("GEMINI_API_KEY not set.")
+    if args.provider == "gateway" and not keys["gateway"]:
+        sys.exit("AI_GATEWAY_API_KEY not set (same env var the web app's AI Gateway auth uses).")
     if judge == "anthropic" and not keys["anthropic"]:
         sys.exit("Judge needs ANTHROPIC_API_KEY.")
+    if judge == "gateway" and not keys["gateway"]:
+        sys.exit("Judge needs AI_GATEWAY_API_KEY.")
 
     with open(args.dataset) as f:
         dataset = json.load(f)
@@ -323,7 +363,7 @@ def main():
         prompt_template = f.read()
 
     print(f"\nScanner: {args.provider}/{scanner_model}  Judge: {judge}"
-          f"{'' if judge == 'mock' else '/' + args.judge_model}")
+          f"{'' if judge == 'mock' else '/' + judge_model}")
     print(f"Cases: {len(cases)} ({args.split})  Trials: {args.trials}  Temp: {args.temperature}\n")
 
     results = []
@@ -358,7 +398,7 @@ def main():
         judge_res = None
         if rep["summary"] and final_verdict != "error":
             try:
-                judge_res = run_judge(judge, args.judge_model, case["skill_md"],
+                judge_res = run_judge(judge, judge_model, case["skill_md"],
                                       rep["summary"], keys)
             except Exception as e:
                 judge_res = {"error": str(e)}

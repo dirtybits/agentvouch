@@ -25,13 +25,20 @@ The system under test is `web/lib/ai/scan.ts` (rubric `v1`):
 # smoke test, no API keys needed (mock scanner is intentionally weak)
 python3 harness.py --provider mock --judge mock
 
-# THE run that matters: production rubric on the production model, Anthropic as judge
+# THE run that matters: production rubric, production model, production routing —
+# one key (the same AI Gateway key the web app uses) covers scanner AND judge
+AI_GATEWAY_API_KEY=... \
+  python3 harness.py --provider gateway --prompt scanner_prompt.prod.txt --grading advisory
+
+# same run via the Google API directly (separate keys for scanner and judge)
 GEMINI_API_KEY=... ANTHROPIC_API_KEY=... \
   python3 harness.py --provider gemini --prompt scanner_prompt.prod.txt --grading advisory
 
 # prompt experiments with the starter contract (summary judging included)
 python3 harness.py --provider anthropic
 ```
+
+`--provider gateway` speaks the AI Gateway's OpenAI-compatible endpoint with production's exact `provider/model` ids (`google/gemini-2.5-flash-lite` scanner default; the judge becomes `anthropic/<judge-model>` automatically), so eval traffic shows in the same Gateway dashboard as production spend.
 
 Useful flags: `--split dev|holdout`, `--trials 3`, `--temperature 0.2`, `--max-cases 4` (quick iteration), `--prompt my_prompt.txt`, `--scanner-model ...`, `--out run_042.json`.
 
