@@ -1,4 +1,7 @@
-import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
+import {
+  buildAgentTrustSummary,
+  type AgentTrustSummary,
+} from "@/lib/agentDiscovery";
 import {
   resolveManyAgentIdentitiesByWallet,
   type AgentIdentitySummary,
@@ -13,19 +16,15 @@ import {
 
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
-/**
- * Upsert per-author trust snapshots so the marketplace and homepage can serve
- * trust from Postgres (the `author_trust_snapshots` LEFT JOIN) instead of
- * resolving it from on-chain accounts on the request hot path.
- *
- * Uses a single multi-row `INSERT ... SELECT FROM UNNEST(...)` so a batch of
- * authors is one round-trip rather than N concurrent statements.
- */
-export async function upsertAuthorTrustSnapshots(input: {
-  trustMap: Map<string, AuthorTrust>;
-  identityMap: Map<string, AgentIdentitySummary>;
-}): Promise<void> {
-  const entries = [...input.trustMap.entries()];
+type TrustSnapshotEntry = {
+  walletPubkey: string;
+  trust: AuthorTrust;
+  summary: AgentTrustSummary;
+};
+
+async function upsertTrustSnapshotEntries(
+  entries: TrustSnapshotEntry[]
+): Promise<void> {
   if (entries.length === 0) return;
 
   const wallets: string[] = [];
@@ -33,16 +32,11 @@ export async function upsertAuthorTrustSnapshots(input: {
   const trusts: string[] = [];
   const summaries: string[] = [];
 
-  for (const [walletPubkey, trust] of entries) {
-    const summary = buildAgentTrustSummary({
-      walletPubkey,
-      trust,
-      identity: input.identityMap.get(walletPubkey) ?? null,
-    });
-    wallets.push(walletPubkey);
-    scores.push(trust.reputationScore);
-    trusts.push(JSON.stringify(trust));
-    summaries.push(JSON.stringify(summary));
+  for (const entry of entries) {
+    wallets.push(entry.walletPubkey);
+    scores.push(entry.trust.reputationScore);
+    trusts.push(JSON.stringify(entry.trust));
+    summaries.push(JSON.stringify(entry.summary));
   }
 
   await sql()`
@@ -79,6 +73,42 @@ export async function upsertAuthorTrustSnapshots(input: {
       author_trust_summary = EXCLUDED.author_trust_summary,
       refreshed_at = NOW()
   `;
+}
+
+/**
+ * Upsert per-author trust snapshots so the marketplace and homepage can serve
+ * trust from Postgres (the `author_trust_snapshots` LEFT JOIN) instead of
+ * resolving it from on-chain accounts on the request hot path.
+ *
+ * Uses a single multi-row `INSERT ... SELECT FROM UNNEST(...)` so a batch of
+ * authors is one round-trip rather than N concurrent statements.
+ */
+export async function upsertAuthorTrustSnapshots(input: {
+  trustMap: Map<string, AuthorTrust>;
+  identityMap: Map<string, AgentIdentitySummary>;
+}): Promise<void> {
+  const entries = [...input.trustMap.entries()];
+  if (entries.length === 0) return;
+
+  await upsertTrustSnapshotEntries(
+    entries.map(([walletPubkey, trust]) => ({
+      walletPubkey,
+      trust,
+      summary: buildAgentTrustSummary({
+        walletPubkey,
+        trust,
+        identity: input.identityMap.get(walletPubkey) ?? null,
+      }),
+    }))
+  );
+}
+
+export async function upsertResolvedAuthorTrustSnapshot(input: {
+  walletPubkey: string;
+  trust: AuthorTrust;
+  summary: AgentTrustSummary;
+}): Promise<void> {
+  await upsertTrustSnapshotEntries([input]);
 }
 
 /**

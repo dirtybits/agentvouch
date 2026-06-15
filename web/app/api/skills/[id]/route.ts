@@ -35,11 +35,64 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
-import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
+import {
+  loadSkillDetailSnapshot,
+  type SkillDetailSnapshot,
+} from "@/lib/skillDetailSnapshot";
+import { upsertResolvedAuthorTrustSnapshot } from "@/lib/trustSnapshots";
 
 const CHAIN_PREFIX = "chain-";
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
+
+async function applyLiveAuthorTrust(
+  snapshot: SkillDetailSnapshot
+): Promise<SkillDetailSnapshot> {
+  if (!snapshot.author_pubkey || !isAddress(snapshot.author_pubkey)) {
+    return snapshot;
+  }
+
+  const authorTrust = await resolveAuthorTrust(snapshot.author_pubkey);
+  const authorIdentity =
+    (await resolveAgentIdentityByWallet(snapshot.author_pubkey, {
+      hasAgentProfile: authorTrust.isRegistered,
+    }).catch(() => null)) ?? snapshot.author_identity;
+  const authorTrustSummary = buildAgentTrustSummary({
+    walletPubkey: snapshot.author_pubkey,
+    trust: authorTrust,
+    identity: authorIdentity,
+  });
+
+  try {
+    await upsertResolvedAuthorTrustSnapshot({
+      walletPubkey: snapshot.author_pubkey,
+      trust: authorTrust,
+      summary: authorTrustSummary,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to refresh author trust snapshot from skill detail:",
+      error
+    );
+  }
+
+  return {
+    ...snapshot,
+    author_trust: authorTrust,
+    author_trust_summary: authorTrustSummary,
+    author_identity: authorIdentity,
+    signals: buildTrustSignals({
+      trust: authorTrust,
+      scan: snapshot.security_scan,
+    }),
+    purchaseRiskWarning:
+      snapshot.price_usdc_micros &&
+      BigInt(snapshot.price_usdc_micros) > 0n &&
+      authorTrust.totalStakeAtRisk === 0
+        ? "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution."
+        : null,
+  };
+}
 
 type SkillRow = {
   id: string;
@@ -81,6 +134,7 @@ export async function GET(
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
     const includeTrust = searchParams.get("include") !== "none";
+    const useLiveTrust = searchParams.get("trust") === "live";
     const buyer = searchParams.get("buyer");
     const buyerAddress = buyer && isAddress(buyer) ? address(buyer) : null;
 
@@ -226,15 +280,21 @@ export async function GET(
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
-    const priceUsdcMicros = snapshot.price_usdc_micros;
-    const paymentFlow = snapshot.payment_flow;
+    const skillSnapshot = useLiveTrust
+      ? await applyLiveAuthorTrust(snapshot)
+      : snapshot;
+
+    const priceUsdcMicros = skillSnapshot.price_usdc_micros;
+    const paymentFlow = skillSnapshot.payment_flow;
     if (!buyerAddress) {
-      return NextResponse.json(snapshot, {
+      return NextResponse.json(skillSnapshot, {
         headers: {
-          "Cache-Control": buildPublicCacheControl(
-            PUBLIC_ROUTE_CACHE_SECONDS.skillDetail,
-            PUBLIC_ROUTE_STALE_SECONDS.skillDetail
-          ),
+          "Cache-Control": useLiveTrust
+            ? PRIVATE_NO_STORE_CACHE_CONTROL
+            : buildPublicCacheControl(
+                PUBLIC_ROUTE_CACHE_SECONDS.skillDetail,
+                PUBLIC_ROUTE_STALE_SECONDS.skillDetail
+              ),
         },
       });
     }
@@ -244,8 +304,8 @@ export async function GET(
       buyer: buyerAddress,
       usdcMint: address(getConfiguredUsdcMint()),
       authors:
-        snapshot.author_pubkey && isAddress(snapshot.author_pubkey)
-          ? [address(snapshot.author_pubkey)]
+        skillSnapshot.author_pubkey && isAddress(skillSnapshot.author_pubkey)
+          ? [address(skillSnapshot.author_pubkey)]
           : [],
     });
     const preflight = serializePurchasePreflight(
@@ -253,30 +313,30 @@ export async function GET(
         context: preflightContext,
         priceUsdcMicros: priceUsdcMicros ? BigInt(priceUsdcMicros) : 0n,
         author:
-          snapshot.author_pubkey && isAddress(snapshot.author_pubkey)
-            ? address(snapshot.author_pubkey)
+          skillSnapshot.author_pubkey && isAddress(skillSnapshot.author_pubkey)
+            ? address(skillSnapshot.author_pubkey)
             : null,
         authorBackingUsdcMicros:
-          snapshot.on_chain_address && priceUsdcMicros
-            ? BigInt(snapshot.author_trust?.totalStakeAtRisk ?? 0)
+          skillSnapshot.on_chain_address && priceUsdcMicros
+            ? BigInt(skillSnapshot.author_trust?.totalStakeAtRisk ?? 0)
             : null,
       })
     );
     const buyerHasPurchased = buyerAddress
       ? priceUsdcMicros
-        ? snapshot.on_chain_address
+        ? skillSnapshot.on_chain_address
           ? await hasOnChainPurchase(
               String(buyerAddress),
-              String(snapshot.on_chain_address)
+              String(skillSnapshot.on_chain_address)
             ).catch(() => false)
           : await hasUsdcPurchaseEntitlement(
               skillDbId,
               String(buyerAddress)
             ).catch(() => false)
-        : paymentFlow === "legacy-sol" && snapshot.on_chain_address
+        : paymentFlow === "legacy-sol" && skillSnapshot.on_chain_address
         ? await hasOnChainPurchase(
             String(buyerAddress),
-            String(snapshot.on_chain_address)
+            String(skillSnapshot.on_chain_address)
           ).catch(() => false)
         : false
       : false;
@@ -289,7 +349,7 @@ export async function GET(
         : null;
     return NextResponse.json(
       {
-        ...snapshot,
+        ...skillSnapshot,
         buyerHasPurchased,
         buyerPurchaseSummary,
         ...preflight,
