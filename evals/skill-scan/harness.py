@@ -44,6 +44,12 @@ DEFAULT_SCANNER_MODEL = {
 }
 DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
 
+# Scanner output cap. Production (web/lib/ai/scan.ts) uses generateObject with no
+# explicit limit; the old 1024 default truncated verbose findings JSON on complex
+# skills, which then failed to parse and counted as errors. 4096 fits a full
+# multi-finding response.
+SCANNER_MAX_TOKENS = 4096
+
 # Production scanner schema (web/lib/ai/scan.ts, rubric v1) -> harness vocabulary.
 # Production verdicts are review|avoid only — "allow" is reserved for staked
 # on-chain trust and the model is instructed never to emit it.
@@ -244,11 +250,14 @@ def run_scanner(provider, model, prompt_template, skill_md, temperature, keys):
     if provider == "mock":
         raw = call_mock_scanner(skill_md, temperature)
     elif provider == "anthropic":
-        raw = call_anthropic(model, prompt, temperature, keys["anthropic"])
+        raw = call_anthropic(model, prompt, temperature, keys["anthropic"],
+                             max_tokens=SCANNER_MAX_TOKENS)
     elif provider == "gemini":
-        raw = call_gemini(model, prompt, temperature, keys["gemini"])
+        raw = call_gemini(model, prompt, temperature, keys["gemini"],
+                          max_tokens=SCANNER_MAX_TOKENS)
     elif provider == "gateway":
-        raw = call_gateway(model, prompt, temperature, keys["gateway"])
+        raw = call_gateway(model, prompt, temperature, keys["gateway"],
+                           max_tokens=SCANNER_MAX_TOKENS)
     else:
         raise ValueError(provider)
     out = extract_json(raw)
@@ -431,6 +440,9 @@ def main():
         mark = {"TP": "+", "TN": "+", "FP": "!", "FN": "X", "ERR": "E"}[outcome] if outcome else "?"
         print(f"  [{mark}] {case['id']:<8} truth={truth:<6} got={final_verdict:<12} "
               f"agree={agreement:.0%} {('cats=' + ','.join(rep['categories'])) if rep['categories'] else ''}")
+        trial_errors = sorted({t["error"] for t in trials if t.get("error")})
+        if trial_errors:
+            print(f"          └─ error: {trial_errors[0][:200]}")
 
     if not results:
         print("\nNo cases matched the selected split/filters - nothing to grade.\n")
