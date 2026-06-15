@@ -49,6 +49,7 @@ Decide and document how refunds are backstopped when author proceeds are insuffi
 - Voucher-slashing path tests once A1 lands, extending the existing upheld → bond-slash → refund-claim coverage in `tests/agentvouch-usdc-marketplace.ts` and `tests/agentvouch-usdc-disputes.ts`.
 - At least one API ↔ on-chain integration test proving entitlement/refund bookkeeping matches on-chain truth (web suite is currently fully mocked).
 - External security review of every USDC-moving instruction (Go gate; scope in the readiness doc's Security Review section).
+- Scanner eval harness (`evals/skill-scan/`): track unsafe-recall of the publish-time AI scan (`web/lib/ai/scan.ts`) against the labeled adversarial dataset; add every production miss as a new case (holdout first) and re-run before any rubric or model change. The adversarial set compounds into the evidence behind scanner claims and a reference set for disputes.
 
 ## Phase B: Mainnet Launch
 

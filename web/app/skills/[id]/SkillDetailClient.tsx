@@ -392,10 +392,13 @@ export default function SkillDetailPage({
   const refreshSkill = useCallback(async (options?: { includeBuyer?: boolean }) => {
     try {
       const params = new URLSearchParams();
+      params.set("trust", "live");
       const includeBuyer = options?.includeBuyer ?? Boolean(walletAddress);
       if (includeBuyer && walletAddress) params.set("buyer", String(walletAddress));
       const query = params.toString();
-      const detailRes = await fetch(`/api/skills/${id}${query ? `?${query}` : ""}`);
+      const detailRes = await fetch(`/api/skills/${id}${query ? `?${query}` : ""}`, {
+        cache: "no-store",
+      });
       if (!detailRes.ok) throw new Error("Skill not found");
       const data = await detailRes.json();
       setSkill(data);
@@ -410,9 +413,8 @@ export default function SkillDetailPage({
   }, [id, walletAddress]);
 
   useEffect(() => {
-    if (skill) return;
     void refreshSkill({ includeBuyer: false });
-  }, [refreshSkill, skill]);
+  }, [refreshSkill]);
 
   useEffect(() => {
     if (!walletAddress || !skill) return;

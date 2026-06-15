@@ -58,3 +58,7 @@ db-inventory*.json
 .claude/worktrees/
 web/public/skill-mockup.html
 .env*
+__pycache__/
+# eval run output (generated; curate baselines deliberately, don't commit raw runs)
+evals/skill-scan/results*.json
+evals/skill-scan/run.*.log

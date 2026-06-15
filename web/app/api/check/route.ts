@@ -30,6 +30,7 @@ import {
   recommendedActionFromSignals,
   type OpenWorldAction,
 } from "@/lib/trustSignals";
+import { upsertResolvedAuthorTrustSnapshot } from "@/lib/trustSnapshots";
 
 type CheckRequestBody = {
   author?: unknown;
@@ -291,6 +292,26 @@ async function buildStakedBlock(author: string | null): Promise<{
   };
 }
 
+async function refreshCachedTrustFromCheck(input: {
+  author: string | null;
+  trust: AuthorTrust | null;
+  summary: AgentTrustSummary | null;
+}): Promise<void> {
+  if (!input.author || !input.trust || !input.summary) return;
+  try {
+    await upsertResolvedAuthorTrustSnapshot({
+      walletPubkey: input.author,
+      trust: input.trust,
+      summary: input.summary,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to refresh author trust snapshot from /api/check:",
+      error
+    );
+  }
+}
+
 function scanBlock(scan: SkillSecurityScan | null, extra?: Record<string, unknown>) {
   if (!scan) {
     return {
@@ -441,6 +462,11 @@ export async function POST(request: NextRequest) {
     }
 
     const staked = await buildStakedBlock(author);
+    await refreshCachedTrustFromCheck({
+      author: staked.response.author,
+      trust: staked.response.trust,
+      summary: staked.response.summary,
+    });
     // The checklist is the source of truth; the one-line verdict is derived from
     // it so the two can never drift.
     const signals = buildTrustSignals({

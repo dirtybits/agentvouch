@@ -22,6 +22,10 @@ vi.mock("@/lib/ai/scan", () => ({
   recordHeuristicReviewScan: vi.fn(),
 }));
 
+vi.mock("@/lib/trustSnapshots", () => ({
+  upsertResolvedAuthorTrustSnapshot: vi.fn(),
+}));
+
 import { POST } from "@/app/api/check/route";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
@@ -32,6 +36,7 @@ import {
   recordHeuristicReviewScan,
 } from "@/lib/ai/scan";
 import { resolveAuthorTrust } from "@/lib/trust";
+import { upsertResolvedAuthorTrustSnapshot } from "@/lib/trustSnapshots";
 import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
 
 const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
@@ -53,6 +58,8 @@ const mockResolveAuthorTrust = resolveAuthorTrust as unknown as ReturnType<
 >;
 const mockResolveAgentIdentityByWallet =
   resolveAgentIdentityByWallet as unknown as ReturnType<typeof vi.fn>;
+const mockUpsertResolvedAuthorTrustSnapshot =
+  upsertResolvedAuthorTrustSnapshot as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/api/check", {
@@ -118,6 +125,7 @@ describe("POST /api/check", () => {
       })
     );
     mockResolveAgentIdentityByWallet.mockResolvedValue(null);
+    mockUpsertResolvedAuthorTrustSnapshot.mockResolvedValue(undefined);
     mockResolveAuthorTrust.mockResolvedValue({
       reputationScore: 0,
       totalVouchesReceived: 0,
@@ -179,7 +187,7 @@ describe("POST /api/check", () => {
   });
 
   it("lets staked allow stand over an advisory review scan", async () => {
-    mockResolveAuthorTrust.mockResolvedValueOnce({
+    const authorTrust = {
       reputationScore: 100,
       totalVouchesReceived: 2,
       totalStakedFor: 1000000,
@@ -190,7 +198,8 @@ describe("POST /api/check", () => {
       activeDisputesAgainstAuthor: 0,
       registeredAt: 1,
       isRegistered: true,
-    });
+    };
+    mockResolveAuthorTrust.mockResolvedValueOnce(authorTrust);
 
     const res = await POST(
       makeRequest({
@@ -212,6 +221,12 @@ describe("POST /api/check", () => {
     expect(signalStatus("ai_scan")).toBe("pass");
     expect(signalStatus("vouched")).toBe("pass");
     expect(signalStatus("registered")).toBe("pass");
+    expect(mockUpsertResolvedAuthorTrustSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletPubkey: "AuthorWallet1111111111111111111111111111111",
+        trust: authorTrust,
+      })
+    );
   });
 
   it("uses the heuristic prefilter for low-signal arbitrary content", async () => {
