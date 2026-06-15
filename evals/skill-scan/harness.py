@@ -97,6 +97,45 @@ Respond with ONLY a JSON object, no markdown fences:
 RUBRIC_KEYS = ["captures_capability", "permissions_disclosed", "no_hallucination", "concise"]
 
 
+# ---------------------------------------------------------------- prompt drift guard
+
+def extract_prod_system_prompt(scan_ts_path):
+    """Pull the prod scanner `system:` string out of web/lib/ai/scan.ts so the
+    harness can detect when the prompt it grades has drifted from what ships."""
+    try:
+        src = open(scan_ts_path, encoding="utf-8").read()
+    except OSError:
+        return None
+    m = re.search(r"system:\s*(.*?),\s*\n\s*prompt:", src, re.DOTALL)
+    if not m:
+        return None
+    segs = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))
+    if not segs:
+        return None
+    try:
+        return "".join(json.loads(f'"{s}"') for s in segs).strip()
+    except json.JSONDecodeError:
+        return None
+
+
+def check_prompt_drift(prompt_template, scan_ts_path):
+    """The eval prompt (scanner_prompt.prod.txt) and the prod prompt (scan.ts) are
+    separate copies kept in sync by hand. This is the guard: warn loudly on drift
+    so we never silently grade a prompt prod no longer ships."""
+    prod = extract_prod_system_prompt(scan_ts_path)
+    if not prod:
+        print("  (prompt-sync: could not locate prod system prompt in scan.ts; skipped)")
+        return
+    evald = prompt_template.split("Respond with ONLY", 1)[0].strip()
+    norm = lambda s: " ".join(s.split())
+    if norm(prod) == norm(evald):
+        print("  (prompt-sync OK: matches web/lib/ai/scan.ts)")
+    else:
+        print("\n  *** PROMPT DRIFT *** the scanner system prompt in this eval does NOT match\n"
+              "  web/lib/ai/scan.ts — you may be grading a prompt prod no longer ships.\n"
+              "  Re-sync scanner_prompt.prod.txt with the scan.ts `system:` string.\n")
+
+
 # ---------------------------------------------------------------- HTTP / providers
 
 def http_post_json(url, headers, payload, max_retries=4, timeout=120):
@@ -382,7 +421,14 @@ def main():
 
     print(f"\nScanner: {args.provider}/{scanner_model}  Judge: {judge}"
           f"{'' if judge == 'mock' else '/' + judge_model}")
-    print(f"Cases: {len(cases)} ({args.split})  Trials: {args.trials}  Temp: {args.temperature}\n")
+    print(f"Cases: {len(cases)} ({args.split})  Trials: {args.trials}  Temp: {args.temperature}")
+    if "prod" in os.path.basename(args.prompt):
+        check_prompt_drift(
+            prompt_template,
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "..", "..", "web", "lib", "ai", "scan.ts"),
+        )
+    print()
 
     results = []
     for case in cases:
@@ -476,6 +522,21 @@ def main():
     if err:
         print(f"  Errored cases (excluded from metrics): {err}/{len(results)}")
 
+    # Of caught threats, how many were STRONGLY flagged (unsafe/avoid) vs only
+    # SOFT-flagged (needs_review)? A real threat that lands as needs_review still
+    # counts toward recall, but it's a weak signal hiding inside that 100% — so
+    # surface it as an under-call rather than letting it vanish into the headline.
+    caught_threats = [r for r in results if r["outcome"] == "TP"]
+    soft = [r for r in caught_threats if r["verdict"] == "needs_review"]
+    n_strong = len(caught_threats) - len(soft)
+    if caught_threats:
+        print("\n=== Threat escalation (of caught threats) ===")
+        print(f"  Strongly flagged (unsafe):        {n_strong}/{len(caught_threats)}")
+        print(f"  Only needs_review (under-called): {len(soft)}/{len(caught_threats)}")
+        for r in soft:
+            print(f"    ~ {r['id']} [{','.join(r['expected_categories'])}] - "
+                  f"caught but soft-flagged; {r['notes']}")
+
     # Composite benign breakdown: "clean" = scanner actively judged it clean
     # (safe, or review+low+no findings); "noisy-clean" = not flagged unsafe but
     # hedged with elevated risk or findings — the over-alarmism signal that
@@ -532,7 +593,9 @@ def main():
                                "needs_review_rate": needs_review_rate,
                                "trial_agreement": mean_agreement,
                                "benign_clean": n_clean, "benign_noisy": n_noisy,
-                               "benign_flagged": n_flagged, "benign_total": len(benign)},
+                               "benign_flagged": n_flagged, "benign_total": len(benign),
+                               "threat_caught": len(caught_threats), "threat_soft": len(soft),
+                               "threat_strong": n_strong},
                    "results": results}, f, indent=2)
     print(f"\nFull per-case detail written to {args.out}\n")
 

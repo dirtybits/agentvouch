@@ -15,8 +15,8 @@ The system under test is `web/lib/ai/scan.ts` (rubric `v1`):
 ## Files
 
 - `harness.py` — runner: scans every case, grades verdicts deterministically, grades summaries with an LLM judge, prints metrics, writes `results.json`
-- `dataset.json` — 14 seed cases: 5 benign (incl. 2 false-positive baits), 9 unsafe (incl. 5 hard-middle adversarial cases)
-- `scanner_prompt.prod.txt` — text-mode mirror of the production rubric v1 system prompt + output contract (production enforces the shape with `generateObject`; here it is spelled out in-prompt). **Keep in sync with `web/lib/ai/scan.ts` by hand when the rubric changes.**
+- `dataset.json` — 25 cases: 11 benign (several false-positive baits — protective "never share your seed phrase" warnings, allowlisted/redacted env reads, official-registry installs, own-token read-only access, unsigned-tx construction), 14 unsafe (exfiltration, prompt-injection, malicious tool calls, social engineering, supply-chain, plus obfuscation/adversarial: base64, zero-width chars, HTML & code comments, jailbreak/"developer mode", time-bomb, MCP tool-poisoning)
+- `scanner_prompt.prod.txt` — text-mode mirror of the production rubric v1 system prompt + output contract (production enforces the shape with `generateObject`; here it is spelled out in-prompt). **Keep in sync with `web/lib/ai/scan.ts` when the rubric changes** — the harness auto-checks this on any `*prod*` prompt run (it extracts the `system:` string from `scan.ts` and prints `prompt-sync OK` or a loud `*** PROMPT DRIFT ***`), so a silent divergence can't make you grade a prompt prod no longer ships.
 - `scanner_prompt.txt` — standalone starter prompt with a richer `safe|unsafe|needs_review` contract and an inline summary; useful for prompt experiments unconstrained by the production schema.
 
 ## Quickstart
@@ -50,6 +50,7 @@ Useful flags: `--split dev|holdout`, `--trials 3`, `--temperature 0.2`, `--max-c
 - Precision/FP-rate is the cost dial — watch it on the `bv-*` bait cases.
 - `needs_review rate` tells you how much human triage load the scanner generates.
 - `trial agreement` measures verdict stability across repeated runs at the same temperature.
+- **Threat escalation** splits *caught* threats into strongly-flagged (`avoid`/unsafe) vs only-`needs_review` (under-called). A real threat that lands as `needs_review` still counts toward recall, so this surfaces the weak signal otherwise hidden inside a 100% — watch it for reviewer-manipulation cases like `inj-003`, which flash-lite tends to soft-flag.
 
 **Benign breakdown (composite grading).** Because production never returns safe, the verdict alone can't distinguish "actively judged clean" from "hedging." The harness therefore grades benign cases on the composite `(verdict, risk, findings)`:
 
