@@ -1,7 +1,4 @@
-import {
-  createSolanaRpcClient,
-  createTransactionHelper,
-} from "@solana/client";
+import { createSolanaRpcClient, createTransactionHelper } from "@solana/client";
 
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";

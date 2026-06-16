@@ -42,7 +42,8 @@ export default async function BlogPostPage({
   if (!post) notFound();
 
   const canonicalUrl = getCanonicalUrl(`/blog/${slug}`);
-  const description = post.subtitle ?? `${post.title} — from the AgentVouch blog.`;
+  const description =
+    post.subtitle ?? `${post.title} — from the AgentVouch blog.`;
   const blogPostingJsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",

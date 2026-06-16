@@ -65,7 +65,10 @@ describe("buildTrustSignals", () => {
 
   it("passes a fully-trusted, cleanly-scanned skill", () => {
     const signals = buildTrustSignals({
-      trust: trust({ totalStakedFor: 1_000_000, authorBondUsdcMicros: 25_000_000 }),
+      trust: trust({
+        totalStakedFor: 1_000_000,
+        authorBondUsdcMicros: 25_000_000,
+      }),
       scan: scan(),
     });
     expect(statusOf(signals, "ai_scan")).toBe("pass");
@@ -77,7 +80,10 @@ describe("buildTrustSignals", () => {
 
   it("warns (not fails) when a scan has findings or is truncated", () => {
     expect(
-      statusOf(buildTrustSignals({ trust: null, scan: scan({ truncated: true }) }), "ai_scan")
+      statusOf(
+        buildTrustSignals({ trust: null, scan: scan({ truncated: true }) }),
+        "ai_scan"
+      )
     ).toBe("warn");
     expect(
       statusOf(
@@ -85,7 +91,13 @@ describe("buildTrustSignals", () => {
           trust: null,
           scan: scan({
             findings: [
-              { severity: "low", category: "scope", detail: "d", evidence: "e", file: "SKILL.md" },
+              {
+                severity: "low",
+                category: "scope",
+                detail: "d",
+                evidence: "e",
+                file: "SKILL.md",
+              },
             ],
           }),
         }),
@@ -96,7 +108,10 @@ describe("buildTrustSignals", () => {
 
   it("fails the scan signal on an avoid verdict", () => {
     expect(
-      statusOf(buildTrustSignals({ trust: null, scan: scan({ verdict: "avoid" }) }), "ai_scan")
+      statusOf(
+        buildTrustSignals({ trust: null, scan: scan({ verdict: "avoid" }) }),
+        "ai_scan"
+      )
     ).toBe("fail");
   });
 
@@ -126,13 +141,19 @@ describe("buildTrustSignals", () => {
   it("warns on active disputes and fails on upheld disputes", () => {
     expect(
       statusOf(
-        buildTrustSignals({ trust: trust({ activeDisputesAgainstAuthor: 1 }), scan: null }),
+        buildTrustSignals({
+          trust: trust({ activeDisputesAgainstAuthor: 1 }),
+          scan: null,
+        }),
         "dispute_free"
       )
     ).toBe("warn");
     expect(
       statusOf(
-        buildTrustSignals({ trust: trust({ disputesUpheldAgainstAuthor: 1 }), scan: null }),
+        buildTrustSignals({
+          trust: trust({ disputesUpheldAgainstAuthor: 1 }),
+          scan: null,
+        }),
         "dispute_free"
       )
     ).toBe("fail");
@@ -163,7 +184,13 @@ describe("recommendedActionFromSignals", () => {
       trust: trust({ totalStakedFor: 1_000_000 }),
       scan: scan({
         findings: [
-          { severity: "low", category: "scope", detail: "d", evidence: "e", file: "SKILL.md" },
+          {
+            severity: "low",
+            category: "scope",
+            detail: "d",
+            evidence: "e",
+            file: "SKILL.md",
+          },
         ],
       }),
       expected: "allow",
@@ -176,13 +203,19 @@ describe("recommendedActionFromSignals", () => {
     },
     {
       name: "upheld dispute -> avoid",
-      trust: trust({ totalStakedFor: 1_000_000, disputesUpheldAgainstAuthor: 1 }),
+      trust: trust({
+        totalStakedFor: 1_000_000,
+        disputesUpheldAgainstAuthor: 1,
+      }),
       scan: scan(),
       expected: "avoid",
     },
     {
       name: "active dispute -> review",
-      trust: trust({ totalStakedFor: 1_000_000, activeDisputesAgainstAuthor: 1 }),
+      trust: trust({
+        totalStakedFor: 1_000_000,
+        activeDisputesAgainstAuthor: 1,
+      }),
       scan: scan(),
       expected: "review",
     },
@@ -213,8 +246,14 @@ describe("recommendedActionFromSignals", () => {
   });
 
   it("never emits allow without a registered, staked, dispute-free author", () => {
-    const noStake = buildTrustSignals({ trust: trust({ totalStakedFor: 0 }), scan: scan() });
-    const unregistered = buildTrustSignals({ trust: trust({ isRegistered: false }), scan: scan() });
+    const noStake = buildTrustSignals({
+      trust: trust({ totalStakedFor: 0 }),
+      scan: scan(),
+    });
+    const unregistered = buildTrustSignals({
+      trust: trust({ isRegistered: false }),
+      scan: scan(),
+    });
     expect(recommendedActionFromSignals(noStake)).not.toBe("allow");
     expect(recommendedActionFromSignals(unregistered)).not.toBe("allow");
   });
@@ -240,7 +279,10 @@ describe("fuseActions", () => {
     { staked: "unknown", scan: "allow", expected: "unknown" },
   ];
 
-  it.each(cases)("staked=$staked + scan=$scan -> $expected", ({ staked, scan, expected }) => {
-    expect(fuseActions({ staked, scan })).toBe(expected);
-  });
+  it.each(cases)(
+    "staked=$staked + scan=$scan -> $expected",
+    ({ staked, scan, expected }) => {
+      expect(fuseActions({ staked, scan })).toBe(expected);
+    }
+  );
 });

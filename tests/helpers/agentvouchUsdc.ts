@@ -277,10 +277,7 @@ export function x402SettlementReceiptPda(
   program: Program<Agentvouch>,
   paymentRefHash: Buffer
 ) {
-  return pda(program, [
-    Buffer.from("x402_settlement_receipt"),
-    paymentRefHash,
-  ]);
+  return pda(program, [Buffer.from("x402_settlement_receipt"), paymentRefHash]);
 }
 
 export function x402SettlementSignatureGuardPda(

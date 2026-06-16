@@ -641,7 +641,9 @@ export async function verifySettledUsdcTransfer(opts: {
       return key.pubkey === opts.expectedPayer && key.signer === true;
     });
     if (!payerSigned) {
-      throw new Error("Settled transaction was not signed by the expected payer");
+      throw new Error(
+        "Settled transaction was not signed by the expected payer"
+      );
     }
   }
 
@@ -671,7 +673,9 @@ export async function verifySettledUsdcTransfer(opts: {
       ) ?? false;
 
     if (!memoMatchedInstruction && !memoMatchedLog) {
-      throw new Error("Settled transaction memo does not match x402 requirement");
+      throw new Error(
+        "Settled transaction memo does not match x402 requirement"
+      );
     }
   }
   const destinationIndex = accountKeys.findIndex(

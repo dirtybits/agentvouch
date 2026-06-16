@@ -41,7 +41,11 @@ function logVerificationFailure(input: {
   listing?: string | null;
 }) {
   console.warn(
-    `[purchase-verify] failed reason=${input.reason} skill=${input.skillId} listing=${input.listing ?? "unknown"} buyer=${input.buyer ?? "unknown"} tx=${input.signature ?? "unknown"}`
+    `[purchase-verify] failed reason=${input.reason} skill=${
+      input.skillId
+    } listing=${input.listing ?? "unknown"} buyer=${
+      input.buyer ?? "unknown"
+    } tx=${input.signature ?? "unknown"}`
   );
 }
 
@@ -64,7 +68,8 @@ export async function POST(
 
   const signature = stringOrNull(body.signature);
   const buyer = stringOrNull(body.buyer);
-  const listing = stringOrNull(body.listingAddress) ?? stringOrNull(body.listing);
+  const listing =
+    stringOrNull(body.listingAddress) ?? stringOrNull(body.listing);
 
   if (!signature) {
     return NextResponse.json(

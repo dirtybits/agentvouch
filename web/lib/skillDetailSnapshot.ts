@@ -11,7 +11,10 @@ import {
   scheduleBackgroundTrustRefresh,
   type CachedTrustRow,
 } from "@/lib/authorTrustView";
-import { getConfiguredSolanaChainContext, normalizePersistedChainContext } from "@/lib/chains";
+import {
+  getConfiguredSolanaChainContext,
+  normalizePersistedChainContext,
+} from "@/lib/chains";
 import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
@@ -194,7 +197,8 @@ function parseFileTree(value: unknown): SkillFileTreeEntry[] | null {
 
 function parseBindingMetadata(value: unknown): Record<string, unknown> | null {
   if (!value) return null;
-  if (typeof value === "string") return parseJson<Record<string, unknown>>(value);
+  if (typeof value === "string")
+    return parseJson<Record<string, unknown>>(value);
   if (typeof value === "object") return value as Record<string, unknown>;
   return null;
 }
@@ -202,16 +206,23 @@ function parseBindingMetadata(value: unknown): Record<string, unknown> | null {
 function buildGithubProfile(
   bindings: AgentIdentityBinding[]
 ): AgentGithubProfile | null {
-  const binding = bindings.find((candidate) => candidate.bindingType === "github_profile");
+  const binding = bindings.find(
+    (candidate) => candidate.bindingType === "github_profile"
+  );
   const metadata = parseBindingMetadata(binding?.metadata ?? null);
-  if (!metadata || typeof metadata.id !== "string" || typeof metadata.login !== "string") {
+  if (
+    !metadata ||
+    typeof metadata.id !== "string" ||
+    typeof metadata.login !== "string"
+  ) {
     return null;
   }
   return {
     id: metadata.id,
     login: metadata.login,
     name: typeof metadata.name === "string" ? metadata.name : null,
-    avatarUrl: typeof metadata.avatarUrl === "string" ? metadata.avatarUrl : null,
+    avatarUrl:
+      typeof metadata.avatarUrl === "string" ? metadata.avatarUrl : null,
     url:
       typeof metadata.url === "string"
         ? metadata.url
@@ -219,7 +230,9 @@ function buildGithubProfile(
   };
 }
 
-function buildAuthorIdentity(row: SkillDetailSnapshotRow): AgentIdentitySummary | null {
+function buildAuthorIdentity(
+  row: SkillDetailSnapshotRow
+): AgentIdentitySummary | null {
   if (!row.agent_id || !row.canonical_agent_id || !row.identity_source) {
     return null;
   }
@@ -229,7 +242,8 @@ function buildAuthorIdentity(row: SkillDetailSnapshotRow): AgentIdentitySummary 
       metadata: parseBindingMetadata(binding.metadata),
     })) ?? [];
   const ownerWallet =
-    bindings.find((binding) => binding.bindingType === "wallet_owner")?.bindingRef ??
+    bindings.find((binding) => binding.bindingType === "wallet_owner")
+      ?.bindingRef ??
     row.author_pubkey ??
     null;
   const operationalWallet =
@@ -260,7 +274,9 @@ function buildAuthorIdentity(row: SkillDetailSnapshotRow): AgentIdentitySummary 
   };
 }
 
-function buildDefaultPriceDisclosure(priceUsdcMicros: string | null): string | null {
+function buildDefaultPriceDisclosure(
+  priceUsdcMicros: string | null
+): string | null {
   if (!priceUsdcMicros || BigInt(priceUsdcMicros) <= 0n) return null;
   return "Buying this skill transfers USDC and creates an on-chain purchase receipt, so your wallet still needs a small amount of SOL for rent and network fees.";
 }
@@ -419,7 +435,8 @@ export async function loadSkillDetailSnapshot(
   const securityScan = buildSecurityScanFromFields(row);
   const allVersionsPinned = Boolean(row.all_versions_pinned);
   const currentCidMatch = row.latest_ipfs_cid === row.ipfs_cid;
-  const versions = parseJson<SkillDetailSnapshot["versions"]>(row.versions) ?? [];
+  const versions =
+    parseJson<SkillDetailSnapshot["versions"]>(row.versions) ?? [];
 
   return {
     id: row.id,
@@ -482,13 +499,17 @@ export async function loadSkillDetailSnapshot(
     },
     priceDisclosure: buildDefaultPriceDisclosure(priceUsdcMicros),
     purchaseRiskWarning:
-      priceUsdcMicros && BigInt(priceUsdcMicros) > 0n && authorTrust?.totalStakeAtRisk === 0
+      priceUsdcMicros &&
+      BigInt(priceUsdcMicros) > 0n &&
+      authorTrust?.totalStakeAtRisk === 0
         ? "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution."
         : null,
   } as SkillDetailSnapshot;
 }
 
-export function buildSkillDetailSnapshotMetadata(snapshot: SkillDetailSnapshot) {
+export function buildSkillDetailSnapshotMetadata(
+  snapshot: SkillDetailSnapshot
+) {
   return {
     id: snapshot.id,
     public_slug: snapshot.public_slug,

@@ -145,7 +145,9 @@ export default function SettingsPage() {
 
   const loadGithubSession = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/github/session", { cache: "no-store" });
+      const res = await fetch("/api/auth/github/session", {
+        cache: "no-store",
+      });
       if (!res.ok) return;
       setGithubSession(await res.json());
     } catch {
@@ -436,7 +438,10 @@ export default function SettingsPage() {
                     <div className="space-y-3">
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         Signed in as{" "}
-                        <span className="font-mono">@{githubSession.user?.login}</span>.
+                        <span className="font-mono">
+                          @{githubSession.user?.login}
+                        </span>
+                        .
                       </p>
                       <button
                         type="button"
@@ -461,7 +466,8 @@ export default function SettingsPage() {
                   ) : (
                     <div className="space-y-3">
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Sign in with GitHub, then link that profile to this wallet.
+                        Sign in with GitHub, then link that profile to this
+                        wallet.
                       </p>
                       <a
                         href={`/api/auth/github/start?returnTo=${githubReturnTo}`}

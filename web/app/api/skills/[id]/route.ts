@@ -402,7 +402,10 @@ export async function PATCH(
     if (rows.length === 0) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
-    if (!rows[0].author_pubkey || rows[0].author_pubkey !== verification.pubkey) {
+    if (
+      !rows[0].author_pubkey ||
+      rows[0].author_pubkey !== verification.pubkey
+    ) {
       return NextResponse.json(
         { error: "Not the skill author" },
         { status: 403 }

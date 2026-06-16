@@ -260,7 +260,7 @@ describe("POST /api/check", () => {
     const res = await POST(
       makeRequest({
         content:
-          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
       })
     );
 
@@ -288,7 +288,7 @@ describe("POST /api/check", () => {
     const res = await POST(
       makeRequest({
         content:
-          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
       })
     );
     const body = await res.json();
@@ -296,9 +296,7 @@ describe("POST /api/check", () => {
     expect(res.status).toBe(200);
     expect(mockEnsureSkillScan).not.toHaveBeenCalled();
     expect(body.scan.verdict).toBe("unknown");
-    expect(body.scan.unavailable_reason).toBe(
-      "daily_scan_budget_exhausted"
-    );
+    expect(body.scan.unavailable_reason).toBe("daily_scan_budget_exhausted");
   });
 
   it("refunds the reserved budget when model generation fails", async () => {
@@ -318,7 +316,7 @@ describe("POST /api/check", () => {
     const res = await POST(
       makeRequest({
         content:
-          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
       })
     );
 
@@ -367,7 +365,7 @@ describe("POST /api/check", () => {
       makeRequest({
         author: "AuthorWallet1111111111111111111111111111111",
         content:
-          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
       })
     );
     const body = await res.json();

@@ -4,8 +4,7 @@ let schemaReady: Promise<void> | null = null;
 
 export const REPO_X402_PAYMENT_FLOW = "repo-x402-usdc";
 export const DIRECT_PURCHASE_PAYMENT_FLOW = "direct-purchase-skill";
-export const X402_BRIDGE_PURCHASE_PAYMENT_FLOW =
-  "x402-bridge-purchase-skill";
+export const X402_BRIDGE_PURCHASE_PAYMENT_FLOW = "x402-bridge-purchase-skill";
 
 export async function ensureUsdcPurchaseSchema() {
   if (schemaReady) {
@@ -552,8 +551,7 @@ export async function recordUsdcPurchaseReceipt(input: {
   const settlementPda = input.settlementPda ?? null;
   const authorProceedsVault = input.authorProceedsVault ?? null;
   const x402PaymentRefHash = input.x402PaymentRefHash ?? null;
-  const x402SettlementSignatureHash =
-    input.x402SettlementSignatureHash ?? null;
+  const x402SettlementSignatureHash = input.x402SettlementSignatureHash ?? null;
   const x402SettlementReceiptPda = input.x402SettlementReceiptPda ?? null;
   const x402SettlementVault = input.x402SettlementVault ?? null;
   const refundStatus = input.refundStatus ?? "none";

@@ -19,10 +19,7 @@ vi.mock("@/lib/trust", () => ({
   verifyAuthorTrust: vi.fn(),
 }));
 
-import {
-  GET,
-  PATCH,
-} from "@/app/api/agents/[pubkey]/identity/route";
+import { GET, PATCH } from "@/app/api/agents/[pubkey]/identity/route";
 import { POST as POST_GITHUB } from "@/app/api/agents/[pubkey]/identity/github/route";
 import { verifyWalletSignature } from "@/lib/auth";
 import {
@@ -37,12 +34,15 @@ const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockResolveIdentity =
   resolveAgentIdentityByWallet as unknown as ReturnType<typeof vi.fn>;
-const mockUpdateUsername =
-  updateAgentUsername as unknown as ReturnType<typeof vi.fn>;
-const mockLinkGithub =
-  linkGithubProfileToAgent as unknown as ReturnType<typeof vi.fn>;
-const mockGithubSession =
-  getGithubSessionFromRequest as unknown as ReturnType<typeof vi.fn>;
+const mockUpdateUsername = updateAgentUsername as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockLinkGithub = linkGithubProfileToAgent as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockGithubSession = getGithubSessionFromRequest as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockVerifyAuthorTrust = verifyAuthorTrust as unknown as ReturnType<
   typeof vi.fn
 >;

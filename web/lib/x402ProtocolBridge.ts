@@ -25,8 +25,7 @@ import {
   type X402PaymentRequirements,
 } from "@/lib/x402";
 
-export const X402_BRIDGE_PURCHASE_PAYMENT_FLOW =
-  "x402-bridge-purchase-skill";
+export const X402_BRIDGE_PURCHASE_PAYMENT_FLOW = "x402-bridge-purchase-skill";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -112,9 +111,7 @@ function buildPaymentRef(input: {
   ].join("|");
 }
 
-function buildBridgeMemo(input: {
-  paymentRefHashHex: string;
-}) {
+function buildBridgeMemo(input: { paymentRefHashHex: string }) {
   const memo = input.paymentRefHashHex.slice(0, 32);
 
   if (new TextEncoder().encode(memo).byteLength > MAX_MEMO_BYTES) {
@@ -223,7 +220,9 @@ export function validateProtocolX402PaymentPayload(
 function loadSettlementAuthority(): Keypair {
   const raw = process.env.AGENTVOUCH_X402_SETTLEMENT_AUTHORITY_SECRET_KEY;
   if (!raw) {
-    throw new Error("AGENTVOUCH_X402_SETTLEMENT_AUTHORITY_SECRET_KEY is not set");
+    throw new Error(
+      "AGENTVOUCH_X402_SETTLEMENT_AUTHORITY_SECRET_KEY is not set"
+    );
   }
 
   const trimmed = raw.trim();
@@ -319,7 +318,9 @@ export async function settleProtocolX402Purchase(input: {
     configAccount.data.settlementAuthority !==
     (settlementAuthority.publicKey.toBase58() as Address)
   ) {
-    throw new Error("Configured settlement authority does not match backend key");
+    throw new Error(
+      "Configured settlement authority does not match backend key"
+    );
   }
 
   const listing = await fetchOnChainSkillListing(input.skillListingAddress, {
@@ -365,7 +366,9 @@ export async function settleProtocolX402Purchase(input: {
     x402SettlementVault.toBase58() !==
     configAccount.data.x402SettlementVault.toString()
   ) {
-    throw new Error("Configured x402 settlement vault does not match authority ATA");
+    throw new Error(
+      "Configured x402 settlement vault does not match authority ATA"
+    );
   }
   const authorProceedsVaultAuthority = pda(
     "author_proceeds_vault_authority",
@@ -375,7 +378,10 @@ export async function settleProtocolX402Purchase(input: {
     "author_reward_vault_authority",
     authorProfile.toBuffer()
   );
-  const authorRewardVault = pda("author_reward_vault", authorProfile.toBuffer());
+  const authorRewardVault = pda(
+    "author_reward_vault",
+    authorProfile.toBuffer()
+  );
   const x402SettlementReceipt = pda(
     "x402_settlement_receipt",
     input.paymentRefHashBytes
@@ -464,7 +470,11 @@ export async function settleProtocolX402Purchase(input: {
     throw new Error(
       `settle_x402_purchase simulation failed: ${JSON.stringify(
         simulation.value.err
-      )}${simulation.value.logs ? ` logs=${simulation.value.logs.join(" | ")}` : ""}`
+      )}${
+        simulation.value.logs
+          ? ` logs=${simulation.value.logs.join(" | ")}`
+          : ""
+      }`
     );
   }
 

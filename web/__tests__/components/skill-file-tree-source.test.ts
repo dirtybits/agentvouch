@@ -10,7 +10,9 @@ describe("SkillFileTree source", () => {
     );
 
     expect(source).toContain("type TreeDirectoryNode");
-    expect(source).toContain("buildTree(files, getSkillTreeRootName(skillName))");
+    expect(source).toContain(
+      "buildTree(files, getSkillTreeRootName(skillName))"
+    );
     expect(source).toContain("aria-expanded");
     expect(source).toContain("renderNode(child, depth + 1)");
     expect(source).not.toContain("function fileGroup");

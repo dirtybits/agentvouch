@@ -38,7 +38,11 @@ export function fuseActions(input: {
 }
 
 function aiScanSignal(scan: SkillSecurityScan | null): TrustSignal {
-  const base = { id: "ai_scan" as const, label: "AI security scan", scope: "skill" as const };
+  const base = {
+    id: "ai_scan" as const,
+    label: "AI security scan",
+    scope: "skill" as const,
+  };
   if (!scan) {
     return {
       ...base,
@@ -93,17 +97,35 @@ function authorSignals(trust: AuthorTrust | null): TrustSignal[] {
     detail: !trust
       ? "No author wallet supplied."
       : trust.isRegistered
-        ? "Author is registered on-chain."
-        : "Author has no on-chain agent profile.",
+      ? "Author is registered on-chain."
+      : "Author has no on-chain agent profile.",
   };
 
   if (!trust || !trust.isRegistered) {
     const unknownDetail = "Requires an on-chain author profile.";
     return [
       registered,
-      { id: "vouched", label: "Vouched by others", scope: "author", status: "unknown", detail: unknownDetail },
-      { id: "author_bonded", label: "Author bond", scope: "author", status: "unknown", detail: unknownDetail },
-      { id: "dispute_free", label: "Dispute history", scope: "author", status: "unknown", detail: unknownDetail },
+      {
+        id: "vouched",
+        label: "Vouched by others",
+        scope: "author",
+        status: "unknown",
+        detail: unknownDetail,
+      },
+      {
+        id: "author_bonded",
+        label: "Author bond",
+        scope: "author",
+        status: "unknown",
+        detail: unknownDetail,
+      },
+      {
+        id: "dispute_free",
+        label: "Dispute history",
+        scope: "author",
+        status: "unknown",
+        detail: unknownDetail,
+      },
     ];
   }
 
@@ -137,14 +159,14 @@ function authorSignals(trust: AuthorTrust | null): TrustSignal[] {
       trust.disputesUpheldAgainstAuthor > 0
         ? "fail"
         : trust.activeDisputesAgainstAuthor > 0
-          ? "warn"
-          : "pass",
+        ? "warn"
+        : "pass",
     detail:
       trust.disputesUpheldAgainstAuthor > 0
         ? `${trust.disputesUpheldAgainstAuthor} dispute(s) upheld against this author.`
         : trust.activeDisputesAgainstAuthor > 0
-          ? `${trust.activeDisputesAgainstAuthor} active dispute(s) pending against this author.`
-          : "No disputes against this author.",
+        ? `${trust.activeDisputesAgainstAuthor} active dispute(s) pending against this author.`
+        : "No disputes against this author.",
   };
 
   return [registered, vouched, authorBonded, disputeFree];

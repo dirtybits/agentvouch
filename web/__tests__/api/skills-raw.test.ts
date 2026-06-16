@@ -133,12 +133,10 @@ const mockBuildMsg = buildDownloadRawMessage as unknown as ReturnType<
 const mockHasPurchase = hasOnChainPurchase as unknown as ReturnType<
   typeof vi.fn
 >;
-const mockHasUsdcEntitlement = hasUsdcPurchaseEntitlement as unknown as ReturnType<
-  typeof vi.fn
->;
-const mockRecordUsdcReceipt = recordUsdcPurchaseReceipt as unknown as ReturnType<
-  typeof vi.fn
->;
+const mockHasUsdcEntitlement =
+  hasUsdcPurchaseEntitlement as unknown as ReturnType<typeof vi.fn>;
+const mockRecordUsdcReceipt =
+  recordUsdcPurchaseReceipt as unknown as ReturnType<typeof vi.fn>;
 const mockBridgeEnabled = isProtocolX402BridgeEnabled as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -595,7 +593,9 @@ describe("GET /api/skills/[id]/raw", () => {
         listingAddress: string | null | undefined,
         timestamp: number
       ) =>
-        `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${listingAddress ?? "x402-usdc-direct"}\nTimestamp: ${timestamp}`
+        `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${
+          listingAddress ?? "x402-usdc-direct"
+        }\nTimestamp: ${timestamp}`
     );
     mockHasUsdcEntitlement.mockResolvedValue(true);
 

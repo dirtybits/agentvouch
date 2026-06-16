@@ -65,8 +65,20 @@ describe("computeLandingPayloadFromChain", () => {
   it("aggregates listings + an injected agent scan", async () => {
     mockSql.mockResolvedValue([{ total_installs: "4" }]);
     mockListOnChainSkillListings.mockResolvedValue([
-      { data: { author: "Author1", totalDownloads: 5n, totalRevenueUsdcMicros: 2000000n } },
-      { data: { author: "Author1", totalDownloads: 3n, totalRevenueUsdcMicros: 3000000n } },
+      {
+        data: {
+          author: "Author1",
+          totalDownloads: 5n,
+          totalRevenueUsdcMicros: 2000000n,
+        },
+      },
+      {
+        data: {
+          author: "Author1",
+          totalDownloads: 3n,
+          totalRevenueUsdcMicros: 3000000n,
+        },
+      },
     ]);
 
     const { metrics } = await computeLandingPayloadFromChain({

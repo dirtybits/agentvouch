@@ -92,7 +92,10 @@ export async function POST(
 
     const skill = rows[0];
     let onChainPriceResolved = false;
-    if (skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)) {
+    if (
+      skill.on_chain_address &&
+      !normalizeUsdcMicros(skill.price_usdc_micros)
+    ) {
       const listing = await getOnChainUsdcPrice(skill.on_chain_address);
       if (listing) {
         onChainPriceResolved = true;

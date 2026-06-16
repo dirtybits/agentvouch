@@ -80,7 +80,9 @@ describe("skillStorage", () => {
 
   it("rejects uncompressed tar bombs", () => {
     expect(() =>
-      ingestTarArchive(maliciousTarHeader("assets/big.bin", "0", 2 * 1024 * 1024))
+      ingestTarArchive(
+        maliciousTarHeader("assets/big.bin", "0", 2 * 1024 * 1024)
+      )
     ).toThrow(/exceeds cap/i);
   });
 });

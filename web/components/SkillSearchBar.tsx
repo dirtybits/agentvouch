@@ -32,18 +32,30 @@ export default function SkillSearchBar() {
     setHighlighted(-1);
   }, []);
 
+  const handleQueryChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const nextQuery = event.target.value;
+      const nextSearch = nextQuery.trim();
+      setQuery(nextQuery);
+      abortRef.current?.abort();
+      if (!nextSearch) {
+        setResults([]);
+        setLoading(false);
+        close();
+        return;
+      }
+      setLoading(true);
+    },
+    [close]
+  );
+
   // Debounced fetch; aborts in-flight requests so stale responses never
   // overwrite newer ones.
   useEffect(() => {
     const q = query.trim();
     if (!q) {
-      abortRef.current?.abort();
-      setResults([]);
-      setLoading(false);
-      close();
       return;
     }
-    setLoading(true);
     const timer = setTimeout(() => {
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -69,7 +81,7 @@ export default function SkillSearchBar() {
         });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, close]);
+  }, [query]);
 
   // Close when clicking outside.
   useEffect(() => {
@@ -136,7 +148,7 @@ export default function SkillSearchBar() {
           aria-label="Search for skills"
           placeholder="Search for skills"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={handleQueryChange}
           onFocus={() => {
             if (query.trim() && results.length > 0) setOpen(true);
           }}

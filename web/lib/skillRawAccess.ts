@@ -53,9 +53,7 @@ import { normalizeUsdcMicros } from "@/lib/listingContract";
 import type { SkillFileManifestEntry } from "@/lib/skillStorage";
 
 const CHAIN_PREFIX = "chain-";
-const TOKEN_PROGRAM_ID = address(
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-);
+const TOKEN_PROGRAM_ID = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ASSOCIATED_TOKEN_PROGRAM_ID = address(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 );
@@ -201,7 +199,11 @@ export function getOptionalDownloadAuthPubkey(
   const authHeader = request.headers.get("x-agentvouch-auth");
   if (!authHeader) return null;
 
-  const authResult = validateDownloadAuth(authHeader, skillDbId, listingAddress);
+  const authResult = validateDownloadAuth(
+    authHeader,
+    skillDbId,
+    listingAddress
+  );
   if ("response" in authResult) return null;
   return authResult.buyerPubkey;
 }
@@ -236,7 +238,8 @@ function listingRequired402(skill: RawSkillContentRow, priceMicros: bigint) {
       amount_micros: priceMicros.toString(),
       currency_mint: skill.currency_mint ?? getConfiguredUsdcMint(),
       chain_context: skill.chain_context ?? getAgentVouchChainContext(),
-      on_chain_program_id: skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      on_chain_program_id:
+        skill.on_chain_program_id ?? getAgentVouchProgramId(),
       protocol_version:
         skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
       on_chain_address: null,
@@ -285,7 +288,8 @@ function protocolBridgeAuthRequired402(
       amount_micros: priceMicros.toString(),
       currency_mint: skill.currency_mint,
       chain_context: skill.chain_context ?? getAgentVouchChainContext(),
-      on_chain_program_id: skill.on_chain_program_id ?? getAgentVouchProgramId(),
+      on_chain_program_id:
+        skill.on_chain_program_id ?? getAgentVouchProgramId(),
       protocol_version:
         skill.on_chain_protocol_version ?? AGENTVOUCH_PROTOCOL_VERSION,
       on_chain_address: skill.on_chain_address,
@@ -571,8 +575,7 @@ async function handleProtocolX402Bridge(input: {
       x402PaymentRefHash: bridge.paymentRefHashHex,
       x402SettlementSignatureHash:
         protocolSettlement.x402SettlementSignatureHashHex,
-      x402SettlementReceiptPda:
-        protocolSettlement.x402SettlementReceiptPda,
+      x402SettlementReceiptPda: protocolSettlement.x402SettlementReceiptPda,
       x402SettlementVault: protocolSettlement.x402SettlementVault,
       refundStatus: "none",
       legacyRefundEligible: false,
@@ -604,7 +607,13 @@ async function handleProtocolX402Bridge(input: {
   }
 
   console.info(
-    `[x402-bridge] settled protocol purchase: skill=${input.skillDbId} listing=${input.skill.on_chain_address} buyer=${input.buyerPubkey} x402Tx=${settle.transaction} programTx=${protocolSettlement.programSettlementSignature ?? "existing"}`
+    `[x402-bridge] settled protocol purchase: skill=${
+      input.skillDbId
+    } listing=${input.skill.on_chain_address} buyer=${
+      input.buyerPubkey
+    } x402Tx=${settle.transaction} programTx=${
+      protocolSettlement.programSettlementSignature ?? "existing"
+    }`
   );
 
   const settleResponse: X402SettleResponse = {
@@ -617,14 +626,16 @@ async function handleProtocolX402Bridge(input: {
       ...(settle.extensions ?? {}),
       payment_flow: X402_BRIDGE_PURCHASE_PAYMENT_FLOW,
       purchase_pda: protocolSettlement.purchasePda,
-      x402_settlement_receipt_pda:
-        protocolSettlement.x402SettlementReceiptPda,
+      x402_settlement_receipt_pda: protocolSettlement.x402SettlementReceiptPda,
       program_settlement_signature:
         protocolSettlement.programSettlementSignature,
     },
   };
 
-  return accessGranted(input.skill, buildPaymentResponseHeaders(settleResponse));
+  return accessGranted(
+    input.skill,
+    buildPaymentResponseHeaders(settleResponse)
+  );
 }
 
 async function handleUsdcDirect(

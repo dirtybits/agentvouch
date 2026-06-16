@@ -129,7 +129,9 @@ async function readBoundedJsonBody(
   }
 
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as CheckRequestBody;
+    return JSON.parse(
+      Buffer.concat(chunks).toString("utf8")
+    ) as CheckRequestBody;
   } catch {
     throw new CheckRequestError("Invalid JSON body", 400);
   }
@@ -142,9 +144,9 @@ function resetWindowIfNeeded(window: RateWindow, now: number) {
   }
 }
 
-function takeGenerationSlot(request: NextRequest):
-  | { ok: true }
-  | { ok: false; reason: string; retryAfterSeconds: number } {
+function takeGenerationSlot(
+  request: NextRequest
+): { ok: true } | { ok: false; reason: string; retryAfterSeconds: number } {
   const now = Date.now();
   pruneIpWindows(now);
   const ip = clientIp(request);
@@ -312,7 +314,10 @@ async function refreshCachedTrustFromCheck(input: {
   }
 }
 
-function scanBlock(scan: SkillSecurityScan | null, extra?: Record<string, unknown>) {
+function scanBlock(
+  scan: SkillSecurityScan | null,
+  extra?: Record<string, unknown>
+) {
   if (!scan) {
     return {
       verdict: "unknown" as const,

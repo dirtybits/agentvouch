@@ -89,7 +89,10 @@ describe("updateSkill", () => {
       installed_at: new Date().toISOString(),
     });
 
-    vi.spyOn(AgentVouchApiClient.prototype, "checkSkillUpdate").mockResolvedValue({
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "checkSkillUpdate"
+    ).mockResolvedValue({
       id: "595f5534-07ae-4839-a45a-b6858ab731fe",
       skill_slug: "calendar-agent",
       source: "repo",
@@ -151,7 +154,10 @@ describe("updateSkill", () => {
       installed_at: new Date().toISOString(),
     });
 
-    vi.spyOn(AgentVouchApiClient.prototype, "checkSkillUpdate").mockResolvedValue({
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "checkSkillUpdate"
+    ).mockResolvedValue({
       id: "595f5534-07ae-4839-a45a-b6858ab731fe",
       skill_slug: "calendar-agent",
       source: "repo",
@@ -236,7 +242,10 @@ describe("updateSkill", () => {
       installed_at: new Date().toISOString(),
     });
 
-    vi.spyOn(AgentVouchApiClient.prototype, "checkSkillUpdate").mockResolvedValue({
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "checkSkillUpdate"
+    ).mockResolvedValue({
       id: "595f5534-07ae-4839-a45a-b6858ab731fe",
       skill_slug: "calendar-agent",
       source: "repo",
@@ -283,7 +292,10 @@ describe("updateSkill", () => {
         status: 200,
         content: "# paid updated\n",
       });
-    vi.spyOn(AgentVouchSolanaClient.prototype, "purchaseSkill").mockResolvedValue({
+    vi.spyOn(
+      AgentVouchSolanaClient.prototype,
+      "purchaseSkill"
+    ).mockResolvedValue({
       tx: "purchase-tx-1",
       alreadyPurchased: false,
       purchase: "purchase-pda",
@@ -309,7 +321,10 @@ describe("updateSkill", () => {
     const outputPath = path.join(tempDir, "SKILL.md");
     await writeFile(outputPath, "# legacy\n", "utf8");
 
-    vi.spyOn(AgentVouchApiClient.prototype, "checkSkillUpdate").mockResolvedValue({
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "checkSkillUpdate"
+    ).mockResolvedValue({
       id: "595f5534-07ae-4839-a45a-b6858ab731fe",
       skill_slug: "calendar-agent",
       source: "repo",

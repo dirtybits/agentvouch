@@ -12,3 +12,6 @@ test-ledger
 .next
 **/.next
 web/generated
+web/agentvouch.json
+.claude
+.cursor

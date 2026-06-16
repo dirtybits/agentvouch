@@ -118,7 +118,10 @@ export function buildRegistryCanonicalAgentId(
 }
 
 export function buildFallbackAgentUsername(walletPubkey: string): string {
-  const suffix = walletPubkey.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toLowerCase();
+  const suffix = walletPubkey
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(-6)
+    .toLowerCase();
   return `wallet-${suffix || "agent"}`;
 }
 
@@ -149,7 +152,11 @@ function parseBindingMetadata(
 function githubProfileFromMetadata(
   metadata: Record<string, unknown> | null
 ): AgentGithubProfile | null {
-  if (!metadata || typeof metadata.id !== "string" || typeof metadata.login !== "string") {
+  if (
+    !metadata ||
+    typeof metadata.id !== "string" ||
+    typeof metadata.login !== "string"
+  ) {
     return null;
   }
   return {
@@ -169,12 +176,18 @@ async function ensureUniqueUsername(
   requestedUsername: string,
   agentId?: string | null
 ): Promise<string> {
-  const base = normalizeAgentUsername(requestedUsername).slice(0, USERNAME_MAX_LENGTH);
+  const base = normalizeAgentUsername(requestedUsername).slice(
+    0,
+    USERNAME_MAX_LENGTH
+  );
   for (let attempt = 0; attempt < 25; attempt += 1) {
     const candidate =
       attempt === 0
         ? base
-        : `${base.slice(0, USERNAME_MAX_LENGTH - String(attempt + 1).length - 1)}-${attempt + 1}`;
+        : `${base.slice(
+            0,
+            USERNAME_MAX_LENGTH - String(attempt + 1).length - 1
+          )}-${attempt + 1}`;
     const rows = await sql()<DbAgent>`
       SELECT id, canonical_agent_id, identity_source, home_chain_context, status, display_name, username, username_source
       FROM agents
@@ -186,7 +199,9 @@ async function ensureUniqueUsername(
       return candidate;
     }
   }
-  throw new Error("Unable to reserve a unique username. Please choose another one.");
+  throw new Error(
+    "Unable to reserve a unique username. Please choose another one."
+  );
 }
 
 async function ensureAgentUsername(
@@ -237,7 +252,7 @@ export async function ensureAgentIdentitySchema(): Promise<void> {
 }
 
 async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
-    await db`
+  await db`
       CREATE TABLE IF NOT EXISTS agents (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         canonical_agent_id TEXT NOT NULL UNIQUE,
@@ -252,7 +267,7 @@ async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
       )
     `;
 
-    await db`
+  await db`
       CREATE TABLE IF NOT EXISTS agent_identity_bindings (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
@@ -271,22 +286,22 @@ async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
       )
     `;
 
-    await db`
+  await db`
       ALTER TABLE agents
       ADD COLUMN IF NOT EXISTS username VARCHAR(32)
     `;
 
-    await db`
+  await db`
       ALTER TABLE agents
       ADD COLUMN IF NOT EXISTS username_source VARCHAR(16) NOT NULL DEFAULT 'fallback'
     `;
 
-    await db`
+  await db`
       ALTER TABLE agent_identity_bindings
       ADD COLUMN IF NOT EXISTS metadata JSONB
     `;
 
-    await db`
+  await db`
       WITH fallback_usernames AS (
         SELECT
           a.id,
@@ -311,29 +326,29 @@ async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
       WHERE a.id = fallback_usernames.id
     `;
 
-    await db`
+  await db`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_username_lower
       ON agents(lower(username))
       WHERE username IS NOT NULL
     `;
 
-    await db`
+  await db`
       CREATE INDEX IF NOT EXISTS idx_agent_identity_bindings_lookup
       ON agent_identity_bindings(binding_type, chain_context, binding_ref)
     `;
 
-    await db`
+  await db`
       CREATE INDEX IF NOT EXISTS idx_agent_identity_bindings_agent
       ON agent_identity_bindings(agent_id)
     `;
 
-    await db`
+  await db`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_identity_bindings_unique_identity_surface
       ON agent_identity_bindings(chain_context, binding_ref)
       WHERE binding_type IN ('solana_8004_asset', 'agent_profile_pda', 'evm_8004_token')
     `;
 
-    await db`
+  await db`
       CREATE INDEX IF NOT EXISTS idx_agent_identity_bindings_github_profile
       ON agent_identity_bindings(agent_id, binding_type)
       WHERE binding_type = 'github_profile'
@@ -943,16 +958,18 @@ export async function linkGithubProfileToAgent(params: {
     },
   });
 
-  const refreshedAgent =
-    (await getAgentByWallet(params.walletPubkey, chainContext)) ?? {
-      id: currentAgent.id,
-      canonical_agent_id: currentAgent.canonicalAgentId,
-      identity_source: currentAgent.identitySource,
-      home_chain_context: currentAgent.homeChainContext,
-      status: currentAgent.status,
-      display_name: currentAgent.displayName,
-      username: currentAgent.username,
-      username_source: currentAgent.usernameSource,
-    };
+  const refreshedAgent = (await getAgentByWallet(
+    params.walletPubkey,
+    chainContext
+  )) ?? {
+    id: currentAgent.id,
+    canonical_agent_id: currentAgent.canonicalAgentId,
+    identity_source: currentAgent.identitySource,
+    home_chain_context: currentAgent.homeChainContext,
+    status: currentAgent.status,
+    display_name: currentAgent.displayName,
+    username: currentAgent.username,
+    username_source: currentAgent.usernameSource,
+  };
   return loadAgentSummary(refreshedAgent);
 }

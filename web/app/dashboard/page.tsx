@@ -221,14 +221,15 @@ export default function DashboardPage() {
       const rewardIndex = toBigInt(
         authorProfileData?.rewardIndexUsdcMicrosX1e12
       );
-      const entryIndex = toBigInt(
-        vouch.account.entryAuthorRewardIndexX1e12
-      );
-      const indexDelta = rewardIndex > entryIndex ? rewardIndex - entryIndex : 0n;
+      const entryIndex = toBigInt(vouch.account.entryAuthorRewardIndexX1e12);
+      const indexDelta =
+        rewardIndex > entryIndex ? rewardIndex - entryIndex : 0n;
       const stakeUsdcMicros = toBigInt(vouch.account.stakeUsdcMicros);
       const accruedSinceLastTouch =
         (stakeUsdcMicros * indexDelta) / REWARD_INDEX_SCALE;
-      const pendingUsdcMicros = toBigInt(vouch.account.pendingRewardsUsdcMicros);
+      const pendingUsdcMicros = toBigInt(
+        vouch.account.pendingRewardsUsdcMicros
+      );
       const estimatedClaimableUsdcMicros =
         pendingUsdcMicros + accruedSinceLastTouch;
 
@@ -578,7 +579,8 @@ export default function DashboardPage() {
       setStatusTx(tx);
       await loadAgentProfile();
       setAuthorBondSuccess({
-        message: "Author bond deposit confirmed. Your profile balance is refreshed.",
+        message:
+          "Author bond deposit confirmed. Your profile balance is refreshed.",
         tx,
       });
     } catch (error: unknown) {
@@ -677,7 +679,10 @@ export default function DashboardPage() {
         void loadVouches();
       }, VOUCHER_REVENUE_REFRESH_DELAY_MS);
     } catch (error: unknown) {
-      const message = getErrorMessage(error, "Failed to claim voucher revenue.");
+      const message = getErrorMessage(
+        error,
+        "Failed to claim voucher revenue."
+      );
       console.error("[voucher-revenue-claim] failed", error);
       setVoucherRevenueStatus({
         success: false,
@@ -1167,7 +1172,9 @@ export default function DashboardPage() {
                                   {listing?.account.name ?? "Purchased skill"}
                                 </span>
                                 <span className="text-xs text-green-600 dark:text-green-400 font-mono">
-                                  {formatUsdc(purchase.account.pricePaidUsdcMicros)}
+                                  {formatUsdc(
+                                    purchase.account.pricePaidUsdcMicros
+                                  )}
                                 </span>
                               </div>
                               {listing?.account.skillUri ? (
@@ -1230,7 +1237,8 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-3">
                     {marketplaceListings.map((listing) => {
-                      const canPublishVersion = !listing.id.startsWith("chain-");
+                      const canPublishVersion =
+                        !listing.id.startsWith("chain-");
                       const listingPriceUsdcMicros =
                         listing.price_usdc_micros ?? "0";
                       const downloads =
@@ -1271,7 +1279,10 @@ export default function DashboardPage() {
                             </div>
                             <div className="flex flex-wrap items-center gap-2 shrink-0">
                               <Link
-                                href={getAuthorActionHref(listing, "edit-listing")}
+                                href={getAuthorActionHref(
+                                  listing,
+                                  "edit-listing"
+                                )}
                                 className={navButtonSecondaryInlineClass}
                               >
                                 <FiEdit2 className="w-3.5 h-3.5" />
@@ -1307,12 +1318,12 @@ export default function DashboardPage() {
               {agentProfile && (
                 <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                   <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-                    <FiDollarSign className="text-[var(--sea-accent)]" /> Voucher
-                    Revenue
+                    <FiDollarSign className="text-[var(--sea-accent)]" />{" "}
+                    Voucher Revenue
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                    Revenue earned from paid purchases routed through authors you
-                    vouch for.
+                    Revenue earned from paid purchases routed through authors
+                    you vouch for.
                   </p>
 
                   <div className="grid gap-3 md:grid-cols-3 mb-4">
@@ -1321,7 +1332,9 @@ export default function DashboardPage() {
                         Active Backing
                       </p>
                       <p className="mt-1 font-mono text-base font-bold text-gray-900 dark:text-white">
-                        {formatUsdc(voucherRevenueTotals.activeBackingUsdcMicros)}
+                        {formatUsdc(
+                          voucherRevenueTotals.activeBackingUsdcMicros
+                        )}
                       </p>
                     </div>
                     <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
@@ -1378,9 +1391,9 @@ export default function DashboardPage() {
 
                   {voucherRevenueRows.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      No voucher revenue yet. Revenue appears here after you vouch
-                      for authors and their paid listings generate voucher-share
-                      rewards.
+                      No voucher revenue yet. Revenue appears here after you
+                      vouch for authors and their paid listings generate
+                      voucher-share rewards.
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -1406,7 +1419,9 @@ export default function DashboardPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="mb-2 flex flex-wrap items-center gap-2">
                                   <span className="font-mono text-base font-bold text-green-600 dark:text-green-400">
-                                    {formatUsdc(row.estimatedClaimableUsdcMicros)}
+                                    {formatUsdc(
+                                      row.estimatedClaimableUsdcMicros
+                                    )}
                                   </span>
                                   <span className="text-xs text-gray-400 dark:text-gray-500">
                                     claimable
@@ -1437,7 +1452,9 @@ export default function DashboardPage() {
                                   <span>
                                     Claimed:{" "}
                                     <span className="font-mono text-gray-900 dark:text-white">
-                                      {formatUsdc(row.lifetimeClaimedUsdcMicros)}
+                                      {formatUsdc(
+                                        row.lifetimeClaimedUsdcMicros
+                                      )}
                                     </span>
                                   </span>
                                   <span>
@@ -1898,7 +1915,9 @@ export default function DashboardPage() {
                                 </span>
                                 <span className="inline-flex items-center gap-1">
                                   <FiDollarSign />{" "}
-                                  {formatUsdc(agent.account.totalVouchStakeUsdcMicros)}
+                                  {formatUsdc(
+                                    agent.account.totalVouchStakeUsdcMicros
+                                  )}
                                 </span>
                               </div>
                             </div>

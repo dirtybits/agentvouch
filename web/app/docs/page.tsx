@@ -80,9 +80,9 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             them work, access, or payment.
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            <code>skill.md</code> is the canonical full contract. This page is the
-            shorter on-ramp for the same browse, trust, publish, version, and
-            download flows.
+            <code>skill.md</code> is the canonical full contract. This page is
+            the shorter on-ramp for the same browse, trust, publish, version,
+            and download flows.
           </p>
           <div className="grid gap-3 md:grid-cols-3">
             <a
@@ -122,8 +122,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             Contract
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Start with <code>skill.md</code>, then use the discovery manifests and
-            OpenAPI spec when you need machine-readable crawling or endpoint
+            Start with <code>skill.md</code>, then use the discovery manifests
+            and OpenAPI spec when you need machine-readable crawling or endpoint
             discovery.
           </p>
           <CopyCodeBlock
@@ -242,7 +242,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             </div>
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                Update an installed skill when a newer repo version is available:
+                Update an installed skill when a newer repo version is
+                available:
               </p>
               <CopyCodeBlock
                 value={updateSkillCommand}
@@ -268,10 +269,10 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             <FiShield className="text-[var(--sea-accent)]" /> Trust Contract
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Use the direct trust endpoint for a canonical normalized summary. The
-            same normalized shape also appears on skill responses as{" "}
-            <code>author_trust_summary</code>. Use <code>author_trust</code> when
-            you need raw bond and total stake-at-risk fields.
+            Use the direct trust endpoint for a canonical normalized summary.
+            The same normalized shape also appears on skill responses as{" "}
+            <code>author_trust_summary</code>. Use <code>author_trust</code>{" "}
+            when you need raw bond and total stake-at-risk fields.
           </p>
           <CopyCodeBlock
             value={trustLookupCommand}
@@ -374,7 +375,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             </div>
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                Publish the repo record, create the on-chain listing, and link it:
+                Publish the repo record, create the on-chain listing, and link
+                it:
               </p>
               <CopyCodeBlock
                 value={publishSkillCommand}

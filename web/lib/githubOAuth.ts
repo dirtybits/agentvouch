@@ -76,7 +76,10 @@ function encodeSignedPayload(payload: unknown, secret: string) {
   return `${encoded}.${sign(encoded, secret)}`;
 }
 
-function decodeSignedPayload<T>(value: string | undefined, secret: string): T | null {
+function decodeSignedPayload<T>(
+  value: string | undefined,
+  secret: string
+): T | null {
   if (!value || !secret) return null;
   const [encoded, signature] = value.split(".");
   if (!encoded || !signature) return null;
@@ -166,13 +169,17 @@ export function setGithubSessionCookie(
   session: GithubSession,
   secret: string
 ) {
-  response.cookies.set(GITHUB_SESSION_COOKIE, encodeSignedPayload(session, secret), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
+  response.cookies.set(
+    GITHUB_SESSION_COOKIE,
+    encodeSignedPayload(session, secret),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    }
+  );
 }
 
 export function clearGithubSessionCookie(response: NextResponse) {
@@ -211,19 +218,22 @@ export async function exchangeGithubCodeForSession(input: {
   clientSecret: string;
   redirectUri: string;
 }): Promise<GithubSession> {
-  const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      client_id: input.clientId,
-      client_secret: input.clientSecret,
-      code: input.code,
-      redirect_uri: input.redirectUri,
-    }),
-  });
+  const tokenResponse = await fetch(
+    "https://github.com/login/oauth/access_token",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: input.clientId,
+        client_secret: input.clientSecret,
+        code: input.code,
+        redirect_uri: input.redirectUri,
+      }),
+    }
+  );
 
   if (!tokenResponse.ok) {
     throw new Error("GitHub OAuth token exchange failed");
@@ -234,7 +244,9 @@ export async function exchangeGithubCodeForSession(input: {
     error_description?: string;
   };
   if (!tokenBody.access_token) {
-    throw new Error(tokenBody.error_description || "GitHub OAuth returned no token");
+    throw new Error(
+      tokenBody.error_description || "GitHub OAuth returned no token"
+    );
   }
 
   const userResponse = await fetch("https://api.github.com/user", {
@@ -263,4 +275,3 @@ export async function exchangeGithubCodeForSession(input: {
     createdAt: Date.now(),
   };
 }
-

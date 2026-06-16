@@ -32,7 +32,10 @@ function splitFrontmatter(content: string): {
 
   return {
     frontmatter: lines.slice(1, closeIndex).join("\n").trim(),
-    body: lines.slice(closeIndex + 1).join("\n").trimStart(),
+    body: lines
+      .slice(closeIndex + 1)
+      .join("\n")
+      .trimStart(),
   };
 }
 

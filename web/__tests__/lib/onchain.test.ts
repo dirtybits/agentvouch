@@ -8,7 +8,9 @@ import {
 describe("on-chain skill listing guards", () => {
   it("accepts current M13 skill listing account size", () => {
     expect(
-      isCurrentSkillListingAccountData(new Uint8Array(SKILL_LISTING_ACCOUNT_SIZE))
+      isCurrentSkillListingAccountData(
+        new Uint8Array(SKILL_LISTING_ACCOUNT_SIZE)
+      )
     ).toBe(true);
   });
 

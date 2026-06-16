@@ -22,7 +22,9 @@ describe("db cutover script source", () => {
     expect(source).toContain("clearPurchaseState");
     expect(source).toContain("DELETE FROM usdc_purchase_entitlements");
     expect(source).toContain("DELETE FROM usdc_purchase_receipts");
-    expect(source).toContain("Receipts and entitlements were intentionally not imported");
+    expect(source).toContain(
+      "Receipts and entitlements were intentionally not imported"
+    );
   });
 
   it("normalizes v0.2 protocol metadata for protocol-listed skills", () => {
@@ -35,7 +37,7 @@ describe("db cutover script source", () => {
 
   it("keeps fresh devnet cleanup dry-run-first", () => {
     expect(source).toContain("cleanupDevnet");
-    expect(source).toContain("mode: apply ? \"apply\" : \"dry-run\"");
+    expect(source).toContain('mode: apply ? "apply" : "dry-run"');
     expect(source).toContain("clearStaleLinkedSkillProgramFields");
     expect(source).toContain("agent_profile_pda");
   });

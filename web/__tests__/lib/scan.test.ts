@@ -24,7 +24,9 @@ import {
   MAX_SCAN_INPUT_BYTES,
 } from "@/lib/ai/scan";
 
-const mockGenerateObject = generateObject as unknown as ReturnType<typeof vi.fn>;
+const mockGenerateObject = generateObject as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockReserveScanBudget = reserveScanBudget as unknown as ReturnType<
   typeof vi.fn

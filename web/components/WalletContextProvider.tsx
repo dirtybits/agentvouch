@@ -322,10 +322,7 @@ function StoredWalletAutoConnectBridge({
         saveStoredWalletName(name);
         wasConnectedRef.current = true;
       }
-    } else if (
-      wallet.status === "disconnected" &&
-      wasConnectedRef.current
-    ) {
+    } else if (wallet.status === "disconnected" && wasConnectedRef.current) {
       clearStoredWalletName();
       wasConnectedRef.current = false;
     }
@@ -336,8 +333,7 @@ function StoredWalletAutoConnectBridge({
     if (attemptedRef.current) return;
     if (wallet.status === "connected" || wallet.status === "connecting") return;
 
-    const storedWalletName =
-      initialWalletName ?? getStoredWalletName();
+    const storedWalletName = initialWalletName ?? getStoredWalletName();
     if (!storedWalletName) return;
     if (storedWalletName === PHANTOM_LEGACY_WALLET_NAME) return;
 
@@ -555,16 +551,17 @@ function AgentVouchWalletBridge({
     ? (connectorWallet.account as Address)
     : null;
 
-  const directConnectorSigner = useMemo<ConnectorTransactionSigner | null>(() => {
-    if (!directConnected || !phantomLegacy || !phantomAccount) return null;
-    const account = getFirstWalletAccount(phantomLegacy, phantomAccount);
-    if (!account) return null;
-    return createTransactionSigner({
-      wallet: phantomLegacy.wallet,
-      account,
-      cluster: CONNECTOR_CLUSTER,
-    });
-  }, [directConnected, phantomAccount, phantomLegacy]);
+  const directConnectorSigner =
+    useMemo<ConnectorTransactionSigner | null>(() => {
+      if (!directConnected || !phantomLegacy || !phantomAccount) return null;
+      const account = getFirstWalletAccount(phantomLegacy, phantomAccount);
+      if (!account) return null;
+      return createTransactionSigner({
+        wallet: phantomLegacy.wallet,
+        account,
+        cluster: CONNECTOR_CLUSTER,
+      });
+    }, [directConnected, phantomAccount, phantomLegacy]);
 
   const directKitSigner = useMemo<KitTransactionSigner | null>(
     () =>

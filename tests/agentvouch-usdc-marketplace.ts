@@ -85,7 +85,10 @@ describe("agentvouch usdc marketplace rewards", () => {
     assert.equal(Number(purchaseAccount.authorShareUsdcMicros), 3 * ONE_USDC);
     assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 2 * ONE_USDC);
     assert.equal(receiptAccount.purchase.toBase58(), purchase.toBase58());
-    assert.deepEqual(Buffer.from(receiptAccount.paymentRefHash), paymentRefHash);
+    assert.deepEqual(
+      Buffer.from(receiptAccount.paymentRefHash),
+      paymentRefHash
+    );
     assert.deepEqual(
       Buffer.from(receiptAccount.settlementTxSignatureHash),
       settlementTxSignatureHash
@@ -294,7 +297,12 @@ describe("agentvouch usdc marketplace rewards", () => {
       listing.vault
     );
 
-    await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      ONE_USDC
+    );
     assert.equal(Number(await tokenAmount(ctx, listing.vault)), 0);
 
     const listingAccount = await ctx.program.account.skillListing.fetch(
@@ -334,7 +342,12 @@ describe("agentvouch usdc marketplace rewards", () => {
       listing.vault
     );
 
-    await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      ONE_USDC
+    );
     assert.equal(Number(await tokenAmount(ctx, listing.vault)), 0);
 
     const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);

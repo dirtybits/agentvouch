@@ -71,8 +71,7 @@ type PhantomWindow = Window & {
 };
 
 function base58ToBytes(base58: string): Uint8Array {
-  const ALPHABET =
-    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const map = new Map<string, number>();
   for (let i = 0; i < ALPHABET.length; i++) {
     map.set(ALPHABET[i], i);
@@ -327,7 +326,9 @@ export function createPhantomLegacyWallet(
             if (!input.transaction) {
               throw new Error("Missing transaction for Phantom signing");
             }
-            signedTransactions.push(await signOneTransaction(input.transaction));
+            signedTransactions.push(
+              await signOneTransaction(input.transaction)
+            );
           }
 
           if (inputs.length === 1 && inputs[0]?.transactions) {

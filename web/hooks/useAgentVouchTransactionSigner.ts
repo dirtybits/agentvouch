@@ -44,11 +44,12 @@ export function useAgentVouchTransactionSigner() {
         for (const transaction of transactions) {
           config?.abortSignal?.throwIfAborted();
           const transactionBytes = transactionEncoder.encode(transaction);
-          const txSignature = await activeConnectorSigner.signAndSendTransaction(
-            transactionBytes as unknown as Parameters<
-              typeof activeConnectorSigner.signAndSendTransaction
-            >[0]
-          );
+          const txSignature =
+            await activeConnectorSigner.signAndSendTransaction(
+              transactionBytes as unknown as Parameters<
+                typeof activeConnectorSigner.signAndSendTransaction
+              >[0]
+            );
           signatures.push(signatureBytes(base58Encoder.encode(txSignature)));
         }
         config?.abortSignal?.throwIfAborted();
@@ -69,7 +70,8 @@ export function useAgentVouchTransactionSigner() {
       partialSigner,
       connectorSigner: activeConnectorSigner,
       capabilities: activeCapabilities,
-      signMessage: direct.signMessage ?? activeConnectorSigner?.signMessage ?? null,
+      signMessage:
+        direct.signMessage ?? activeConnectorSigner?.signMessage ?? null,
       source: direct.source,
       ready: Boolean(sendingSigner ?? partialSigner),
     }),

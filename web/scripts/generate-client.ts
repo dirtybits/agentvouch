@@ -25,7 +25,10 @@ async function main() {
 
   const rootIndexPath = path.join(outputPath, "src/generated/index.ts");
   const rootIndex = fs.readFileSync(rootIndexPath, "utf-8");
-  const programsIndexPath = path.join(outputPath, "src/generated/programs/index.ts");
+  const programsIndexPath = path.join(
+    outputPath,
+    "src/generated/programs/index.ts"
+  );
   const generatedProgramPluginPath = path.join(
     outputPath,
     "src/generated/programs/agentvouch.ts"
@@ -75,7 +78,7 @@ async function main() {
     [
       'import type { Address } from "@solana/kit";',
       "",
-      'export const AGENTVOUCH_PROGRAM_ADDRESS =',
+      "export const AGENTVOUCH_PROGRAM_ADDRESS =",
       `  "${programAddress}" as Address<"${programAddress}">;`,
       "",
     ].join("\n")

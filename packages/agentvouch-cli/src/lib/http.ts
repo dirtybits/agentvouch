@@ -238,7 +238,9 @@ function parsePaymentRequirement(response: Response, body?: unknown) {
   return undefined;
 }
 
-function parseX402PaymentRequired(body?: unknown): X402PaymentRequired | undefined {
+function parseX402PaymentRequired(
+  body?: unknown
+): X402PaymentRequired | undefined {
   if (
     body &&
     typeof body === "object" &&
@@ -433,10 +435,8 @@ export class AgentVouchApiClient {
       ? "/api/index/trusted-authors"
       : "/api/index/authors";
     const response = await fetch(this.url(pathname));
-    return readJsonOrThrow<AuthorListResponse>(
-      response,
-      "list authors",
-      (b) => Array.isArray(b.authors)
+    return readJsonOrThrow<AuthorListResponse>(response, "list authors", (b) =>
+      Array.isArray(b.authors)
     );
   }
 
@@ -538,14 +538,18 @@ export class AgentVouchApiClient {
       listingAddress: string;
     }
   ): Promise<void> {
-    const response = await fetch(this.url(`/api/skills/${id}/purchase/verify`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | { ok?: boolean; error?: string }
-      | null;
+    const response = await fetch(
+      this.url(`/api/skills/${id}/purchase/verify`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      error?: string;
+    } | null;
 
     if (!response.ok || !payload?.ok) {
       throw new CliError(
@@ -565,7 +569,10 @@ export class AgentVouchApiClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    return readJsonOrThrow<PublishedSkillRecord>(response, "publish repo skill");
+    return readJsonOrThrow<PublishedSkillRecord>(
+      response,
+      "publish repo skill"
+    );
   }
 
   async linkSkillListing(

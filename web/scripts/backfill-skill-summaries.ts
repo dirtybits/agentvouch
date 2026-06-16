@@ -24,7 +24,10 @@ function isRateLimit(e: unknown): boolean {
   );
 }
 
-async function withRateLimitRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+async function withRateLimitRetry<T>(
+  fn: () => Promise<T>,
+  label: string
+): Promise<T> {
   let delay = 30_000;
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -85,9 +88,7 @@ async function main() {
     console.log(
       `${res.generated ? "GEN " : res.skipped ? "SKIP" : "HIT "} ${r.name
         .slice(0, 38)
-        .padEnd(38)} → ${
-        res.summary?.slice(0, 90) ?? "(none)"
-      }`
+        .padEnd(38)} → ${res.summary?.slice(0, 90) ?? "(none)"}`
     );
     // Only pace after a real model call; cache hits fly through.
     if (res.generated) await sleep(DELAY_MS);

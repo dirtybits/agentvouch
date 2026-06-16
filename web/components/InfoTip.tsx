@@ -22,8 +22,8 @@ export default function InfoTip({
     align === "left"
       ? "left-0"
       : align === "right"
-        ? "right-0"
-        : "left-1/2 -translate-x-1/2";
+      ? "right-0"
+      : "left-1/2 -translate-x-1/2";
   return (
     <span className="group/tip relative inline-flex align-middle">
       <button

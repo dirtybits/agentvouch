@@ -75,7 +75,10 @@ async function getRepoInstallCount(): Promise<number> {
     `;
     return toSafeMetricNumberFromUnknown(rows[0]?.total_installs ?? 0);
   } catch (error) {
-    console.error("Failed to load repo install count for platform metrics:", error);
+    console.error(
+      "Failed to load repo install count for platform metrics:",
+      error
+    );
     return 0;
   }
 }
@@ -172,10 +175,7 @@ export async function computeLandingPayloadFromChain(opts?: {
     (sum, s) => sum + s.totalRevenueUsdcMicros,
     0
   );
-  const onChainDownloads = skills.reduce(
-    (sum, s) => sum + s.totalDownloads,
-    0
-  );
+  const onChainDownloads = skills.reduce((sum, s) => sum + s.totalDownloads, 0);
 
   return {
     metrics: {
