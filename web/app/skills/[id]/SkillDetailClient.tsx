@@ -427,17 +427,26 @@ export default function SkillDetailPage({
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const downloadSkillFile = useCallback((filename: string, text: string) => {
-    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const triggerBrowserDownload = useCallback((filename: string, blob: Blob) => {
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = href;
-    link.download = `${filename || "SKILL"}.md`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(href);
   }, []);
+
+  const downloadSkillFile = useCallback(
+    (filename: string, text: string) => {
+      triggerBrowserDownload(
+        `${filename || "SKILL"}.md`,
+        new Blob([text], { type: "text/markdown;charset=utf-8" })
+      );
+    },
+    [triggerBrowserDownload]
+  );
 
   const handleListOnMarketplace = async () => {
     if (!connected || !walletAddress || !signMessage || !skill) return;
@@ -527,7 +536,12 @@ export default function SkillDetailPage({
     setInstalling(true);
     setInstallResult(null);
     try {
-      const res = await fetch(`/api/skills/${id}/raw`);
+      // Multi-file skills ship their whole tree as a tar archive; a lone
+      // SKILL.md still downloads as plain markdown.
+      const isMultiFile = (skill.files?.length ?? 0) > 1;
+      const res = await fetch(
+        `/api/skills/${id}/${isMultiFile ? "archive" : "raw"}`
+      );
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
           error?: string;
@@ -539,12 +553,22 @@ export default function SkillDetailPage({
         });
         return;
       }
-      const markdown = await res.text();
-      downloadSkillFile(skill.skill_id, markdown);
-      setInstallResult({
-        success: true,
-        message: "Downloaded SKILL.md.",
-      });
+      if (isMultiFile) {
+        triggerBrowserDownload(
+          `${skill.skill_id || "skill"}.tar`,
+          await res.blob()
+        );
+        setInstallResult({
+          success: true,
+          message: `Downloaded full skill (${skill.files?.length ?? 0} files).`,
+        });
+      } else {
+        downloadSkillFile(skill.skill_id, await res.text());
+        setInstallResult({
+          success: true,
+          message: "Downloaded SKILL.md.",
+        });
+      }
       setSkill((s) =>
         s ? { ...s, total_installs: (s.total_installs ?? 0) + 1 } : s
       );
@@ -1672,7 +1696,9 @@ export default function SkillDetailPage({
                       ) : (
                         <>
                           <FiDownload className="w-4 h-4" />
-                          Download SKILL.md
+                          {(skill.files?.length ?? 0) > 1
+                            ? "Download skill (.tar)"
+                            : "Download SKILL.md"}
                         </>
                       )}
                     </button>
