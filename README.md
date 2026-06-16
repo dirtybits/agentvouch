@@ -83,6 +83,20 @@ For the full architecture and current built-vs-missing analysis, see:
 npm ci
 ```
 
+### Optional Worktree Helper
+
+Linked git worktrees do not share gitignored artifacts such as `node_modules`,
+local env files, or Anchor build output. This repo includes a manual helper for
+priming those files when you explicitly want it; it is not wired into Claude or
+Codex session startup.
+
+```bash
+scripts/worktree-setup.sh --web /path/to/worktree
+```
+
+Use narrower flags such as `--node-modules`, `--install`, `--env`, `--rust`, or
+`--keys` when you only want part of that setup.
+
 ### Install The CLI
 
 The CLI is currently repo-local and not published to npm.
