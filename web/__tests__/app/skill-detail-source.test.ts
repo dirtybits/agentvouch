@@ -39,9 +39,10 @@ describe("skill detail source", () => {
     expect(source).toContain("createSignedDownloadAuthPayload");
     expect(source).toContain("recommendedActionFromSignals(sigs)");
     expect(source).toContain("@/lib/authPayload");
-    expect(source).not.toContain("@/lib/auth\"");
+    expect(source).not.toContain('@/lib/auth"');
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
-    expect(source).toContain("fetchSignedRawSkill");
+    expect(source).toContain("fetchSignedSkill");
+    expect(source).toContain("downloadEntitledSkill");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });
@@ -53,7 +54,7 @@ describe("skill detail source", () => {
     );
 
     expect(source).toContain("handleFreeDownload");
-    expect(source).toContain("fetch(`/api/skills/${id}/raw`)");
+    expect(source).toContain('${isMultiFile ? "archive" : "raw"}');
     expect(source).toContain("Download SKILL.md");
     expect(source).toContain("without connecting a wallet");
     expect(source).not.toContain("Connect wallet to install");
@@ -65,7 +66,9 @@ describe("skill detail source", () => {
       "utf8"
     );
 
-    expect(source).toContain("Repo-backed listings stay pinned to the canonical raw");
+    expect(source).toContain(
+      "Repo-backed listings stay pinned to the canonical raw"
+    );
     expect(source).toContain("endpoint.");
     expect(source).toContain("Publish New Version");
     expect(source).toContain("buildSignMessage");
@@ -93,7 +96,9 @@ describe("skill detail source", () => {
     );
 
     expect(clientSource).toContain("initialSkill?: SkillDetail | null");
-    expect(clientSource).toContain("useState<SkillDetail | null>(initialSkill)");
+    expect(clientSource).toContain(
+      "useState<SkillDetail | null>(initialSkill)"
+    );
     expect(clientSource).toContain("useState(!initialSkill)");
     expect(clientSource).toContain("refreshSkill({ includeBuyer: false })");
     expect(clientSource).toContain("refreshSkill({ includeBuyer: true })");

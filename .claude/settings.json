@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && [ -f .git ] && { [ ! -d node_modules ] || [ ! -f web/.env.local ]; } && bash scripts/worktree-setup.sh >&2 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

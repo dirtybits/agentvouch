@@ -249,17 +249,19 @@ function extractCapabilitySummary(
   );
 }
 
-async function fetchSignedRawSkill({
+async function fetchSignedSkill({
   id,
   walletAddress,
   signMessage,
   skill,
+  archive,
 }: {
   id: string;
   walletAddress: string;
   signMessage: (message: Uint8Array) => Promise<Uint8Array>;
   skill: SkillDetail;
-}): Promise<string> {
+  archive: boolean;
+}): Promise<Response> {
   const authHeader = JSON.stringify(
     await createSignedDownloadAuthPayload({
       walletAddress,
@@ -268,24 +270,21 @@ async function fetchSignedRawSkill({
       listingAddress: skill.on_chain_address ?? undefined,
     })
   );
-  const rawRes = await fetch(`/api/skills/${id}/raw`, {
+  const res = await fetch(`/api/skills/${id}/${archive ? "archive" : "raw"}`, {
     headers: {
       "X-AgentVouch-Auth": authHeader,
     },
   });
-  if (!rawRes.ok) {
-    const rawBody = (await rawRes.json().catch(() => null)) as {
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
       error?: string;
       message?: string;
     } | null;
     throw new Error(
-      rawBody?.error ||
-        rawBody?.message ||
-        "Purchase verified, but download failed"
+      body?.error || body?.message || "Purchase verified, but download failed"
     );
   }
-
-  return rawRes.text();
+  return res;
 }
 
 export default function SkillDetailPage({
@@ -427,17 +426,59 @@ export default function SkillDetailPage({
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const downloadSkillFile = useCallback((filename: string, text: string) => {
-    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const triggerBrowserDownload = useCallback((filename: string, blob: Blob) => {
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = href;
-    link.download = `${filename || "SKILL"}.md`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(href);
   }, []);
+
+  const downloadSkillFile = useCallback(
+    (filename: string, text: string) => {
+      triggerBrowserDownload(
+        `${filename || "SKILL"}.md`,
+        new Blob([text], { type: "text/markdown;charset=utf-8" })
+      );
+    },
+    [triggerBrowserDownload]
+  );
+
+  // Download an entitled skill via signed auth: the full tree as a .tar for
+  // multi-file skills, otherwise SKILL.md. Returns true when the archive was
+  // delivered (used to phrase the success message).
+  const downloadEntitledSkill = useCallback(async (): Promise<boolean> => {
+    if (!skill || !walletAddress || !signMessage) {
+      throw new Error("Connect a wallet to download this skill.");
+    }
+    const isMultiFile = (skill.files?.length ?? 0) > 1;
+    const res = await fetchSignedSkill({
+      id,
+      walletAddress,
+      signMessage,
+      skill,
+      archive: isMultiFile,
+    });
+    if (isMultiFile) {
+      triggerBrowserDownload(
+        `${skill.skill_id || "skill"}.tar`,
+        await res.blob()
+      );
+    } else {
+      downloadSkillFile(skill.skill_id, await res.text());
+    }
+    return isMultiFile;
+  }, [
+    skill,
+    walletAddress,
+    signMessage,
+    id,
+    triggerBrowserDownload,
+    downloadSkillFile,
+  ]);
 
   const handleListOnMarketplace = async () => {
     if (!connected || !walletAddress || !signMessage || !skill) return;
@@ -527,7 +568,12 @@ export default function SkillDetailPage({
     setInstalling(true);
     setInstallResult(null);
     try {
-      const res = await fetch(`/api/skills/${id}/raw`);
+      // Multi-file skills ship their whole tree as a tar archive; a lone
+      // SKILL.md still downloads as plain markdown.
+      const isMultiFile = (skill.files?.length ?? 0) > 1;
+      const res = await fetch(
+        `/api/skills/${id}/${isMultiFile ? "archive" : "raw"}`
+      );
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
           error?: string;
@@ -539,12 +585,22 @@ export default function SkillDetailPage({
         });
         return;
       }
-      const markdown = await res.text();
-      downloadSkillFile(skill.skill_id, markdown);
-      setInstallResult({
-        success: true,
-        message: "Downloaded SKILL.md.",
-      });
+      if (isMultiFile) {
+        triggerBrowserDownload(
+          `${skill.skill_id || "skill"}.tar`,
+          await res.blob()
+        );
+        setInstallResult({
+          success: true,
+          message: `Downloaded full skill (${skill.files?.length ?? 0} files).`,
+        });
+      } else {
+        downloadSkillFile(skill.skill_id, await res.text());
+        setInstallResult({
+          success: true,
+          message: "Downloaded SKILL.md.",
+        });
+      }
       setSkill((s) =>
         s ? { ...s, total_installs: (s.total_installs ?? 0) + 1 } : s
       );
@@ -635,14 +691,8 @@ export default function SkillDetailPage({
           setUsdcPurchaseTx(purchaseResult.tx);
         }
 
-        const markdown = await fetchSignedRawSkill({
-          id,
-          walletAddress,
-          signMessage,
-          skill,
-        });
-
-        downloadSkillFile(skill.skill_id, markdown);
+        const fullTree = await downloadEntitledSkill();
+        const downloaded = fullTree ? "the full skill" : "SKILL.md";
         await refreshSkill();
         setSkill((current) =>
           current ? { ...current, buyerHasPurchased: true } : current
@@ -650,8 +700,8 @@ export default function SkillDetailPage({
         setInstallResult({
           success: true,
           message: purchaseResult.tx
-            ? "USDC purchase confirmed and verified. Downloaded SKILL.md."
-            : "USDC entitlement already active. Downloaded SKILL.md.",
+            ? `USDC purchase confirmed and verified. Downloaded ${downloaded}.`
+            : `USDC entitlement already active. Downloaded ${downloaded}.`,
         });
         return;
       }
@@ -664,16 +714,25 @@ export default function SkillDetailPage({
         return;
       }
 
+      const isMultiFile = (skill.files?.length ?? 0) > 1;
       const purchaseResult = await fetchSkillWithBrowserX402({
         signer: kitSigner,
         walletAddress,
         signMessage,
         skillId: skill.id,
         listingAddress: skill.on_chain_address ?? undefined,
-        rawPath: `/api/skills/${id}/raw`,
+        path: `/api/skills/${id}/${isMultiFile ? "archive" : "raw"}`,
       });
 
-      downloadSkillFile(skill.skill_id, purchaseResult.content);
+      if (isMultiFile) {
+        triggerBrowserDownload(
+          `${skill.skill_id || "skill"}.tar`,
+          purchaseResult.blob
+        );
+      } else {
+        downloadSkillFile(skill.skill_id, await purchaseResult.blob.text());
+      }
+      const downloaded = isMultiFile ? "the full skill" : "SKILL.md";
       await refreshSkill();
       setSkill((current) =>
         current ? { ...current, buyerHasPurchased: true } : current
@@ -681,8 +740,8 @@ export default function SkillDetailPage({
       setInstallResult({
         success: true,
         message: purchaseResult.paymentResponse
-          ? "USDC payment complete. Downloaded SKILL.md."
-          : "USDC entitlement already active. Downloaded SKILL.md.",
+          ? `USDC payment complete. Downloaded ${downloaded}.`
+          : `USDC entitlement already active. Downloaded ${downloaded}.`,
       });
       setUsdcPurchaseTx(purchaseResult.paymentResponse?.transaction ?? null);
     } catch (error: unknown) {
@@ -713,13 +772,7 @@ export default function SkillDetailPage({
     setDownloading(true);
     setDownloadResult(null);
     try {
-      const markdown = await fetchSignedRawSkill({
-        id,
-        walletAddress,
-        signMessage,
-        skill,
-      });
-      downloadSkillFile(skill.skill_id, markdown);
+      await downloadEntitledSkill();
 
       setDownloadResult({
         success: true,
@@ -1672,7 +1725,9 @@ export default function SkillDetailPage({
                       ) : (
                         <>
                           <FiDownload className="w-4 h-4" />
-                          Download SKILL.md
+                          {(skill.files?.length ?? 0) > 1
+                            ? "Download skill (.tar)"
+                            : "Download SKILL.md"}
                         </>
                       )}
                     </button>
