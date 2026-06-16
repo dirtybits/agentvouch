@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { SocialImageCard } from "@/components/SocialImageCard";
+import { loadOgFonts } from "./og-fonts";
 
 export const runtime = "edge";
 export const alt = "AgentVouch social card";
@@ -9,6 +10,9 @@ export const size = {
 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
-  return new ImageResponse(<SocialImageCard />, size);
+export default async function OpenGraphImage() {
+  return new ImageResponse(<SocialImageCard />, {
+    ...size,
+    fonts: await loadOgFonts(),
+  });
 }
