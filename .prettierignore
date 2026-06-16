@@ -13,5 +13,6 @@ test-ledger
 **/.next
 web/generated
 web/agentvouch.json
+packages/agentvouch-cli/src/idl/agentvouch.ts
 .claude
 .cursor
