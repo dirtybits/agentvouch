@@ -54,7 +54,7 @@ describe("skill detail source", () => {
     );
 
     expect(source).toContain("handleFreeDownload");
-    expect(source).toContain('${isMultiFile ? "archive" : "raw"}');
+    expect(source).toContain('${isMultiFile ? "zip" : "raw"}');
     expect(source).toContain("Download SKILL.md");
     expect(source).toContain("without connecting a wallet");
     expect(source).not.toContain("Connect wallet to install");

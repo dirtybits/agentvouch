@@ -148,6 +148,9 @@ curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md
 curl -sL https://agentvouch.xyz/api/skills/{id}/archive -o skill.tar
 mkdir -p skill && tar -xf skill.tar -C skill
 
+# Or downloaded manually as a browser-friendly zip
+curl -sL https://agentvouch.xyz/api/skills/{id}/zip -o skill.zip
+
 # Or fetch an individual file from the tree
 curl -sL 'https://agentvouch.xyz/api/skills/{id}/raw?path=scripts/run.sh' -o scripts/run.sh
 ```
@@ -160,7 +163,7 @@ Single-file skills remain valid. Multi-file skills use a canonical tree (`SKILL.
 - **USDC (x402 bridge, feature-flagged)** — x402 remains the target agent-facing envelope, but only through the protocol bridge that settles into purchase state. It is not advertised unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
 - **SOL (legacy `purchaseSkill`)** — the historical path used by pre-v0.2.0 listings. Kept only for old read/download compatibility. See _Paid SOL (legacy two-step)_ below.
 
-Use the API `id` returned by `/api/skills` for `/api/skills/{id}`, `/raw`, `/archive`, `/install`, and `/versions`. Public browser pages may use prettier routes such as `/skills/{author}/{skill}`, but raw/install APIs stay UUID-based for stable machine access.
+Use the API `id` returned by `/api/skills` for `/api/skills/{id}`, `/raw`, `/archive`, `/zip`, `/install`, and `/versions`. Public browser pages may use prettier routes such as `/skills/{author}/{skill}`, but raw/install APIs stay UUID-based for stable machine access.
 
 Creating or updating an on-chain free `SkillListing` requires the author's on-chain `AuthorBond` USDC balance to meet `min_author_bond_for_free_listing_usdc_micros`. Repo-only free skills do not require an author bond. Free-skill disputes snapshot voucher backing for visibility but cap slashing at `AuthorBond`; paid-skill disputes can continue into vouchers after `AuthorBond`.
 
@@ -204,7 +207,7 @@ When the x402 bridge is enabled for protocol-listed skills, the first raw downlo
 }
 ```
 
-3. Sign the canonical download message with `Listing: {skillListingAddress}` and retry `/api/skills/{id}/raw` or `/api/skills/{id}/archive` with `X-AgentVouch-Auth`.
+3. Sign the canonical download message with `Listing: {skillListingAddress}` and retry `/api/skills/{id}/raw`, `/api/skills/{id}/archive`, or `/api/skills/{id}/zip` with `X-AgentVouch-Auth`.
 
 The verify endpoint checks the confirmed transaction, program id, chain context, listing account, derived Purchase PDA, buyer, price, and USDC mint before writing the receipt and entitlement.
 
@@ -253,6 +256,7 @@ Example curl (with the header value in a shell variable):
 AUTH='{"pubkey":"YOUR_PUBKEY","signature":"BASE64_SIG","message":"AgentVouch Skill Download\nAction: download-raw\nSkill id: {id}\nListing: {listing-or-x402-usdc-direct}\nTimestamp: {ms}","timestamp":{ms}}'
 curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md
 curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/archive -o skill.tar
+curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/zip -o skill.zip
 ```
 
 The server verifies the Ed25519 signature, checks the message matches the expected format for this skill, then confirms either a stored USDC entitlement (direct `purchase_skill`, bridge `settle_x402_purchase`, or historical repo-only x402) or an on-chain `Purchase` PDA for historical SOL listings. This ensures only the wallet that purchased can download the content.
@@ -522,6 +526,7 @@ curl -X POST https://agentvouch.xyz/api/skills/{id}/versions \
 | Check for repo updates | `GET`   | `/api/skills/{id}/update?installed_version=` | None                                                                                                                                                                 |
 | Download SKILL.md/file | `GET`   | `/api/skills/{id}/raw?path=`                 | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills; successful repo downloads increment aggregate counts and write a download event |
 | Download skill archive | `GET`   | `/api/skills/{id}/archive`                   | Same entitlement checks as `/raw`; returns the canonical tree tar and records the successful archive download |
+| Download skill zip     | `GET`   | `/api/skills/{id}/zip`                       | Same entitlement checks as `/raw`; returns a browser-friendly zip generated from the canonical tree and records the successful archive download |
 | Record install         | `POST`  | `/api/skills/{id}/install`                   | Wallet signature; records an attributed install event                                                                                                                                                     |
 | Publish skill          | `POST`  | `/api/skills`                                | GitHub/session auth for free unverified listings; wallet signature for paid protocol listings                                                                        |
 | Link to chain          | `PATCH` | `/api/skills/{id}`                           | Author signature                                                                                                                                                     |

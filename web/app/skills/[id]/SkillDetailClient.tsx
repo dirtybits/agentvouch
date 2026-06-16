@@ -254,13 +254,13 @@ async function fetchSignedSkill({
   walletAddress,
   signMessage,
   skill,
-  archive,
+  format,
 }: {
   id: string;
   walletAddress: string;
   signMessage: (message: Uint8Array) => Promise<Uint8Array>;
   skill: SkillDetail;
-  archive: boolean;
+  format: "raw" | "zip";
 }): Promise<Response> {
   const authHeader = JSON.stringify(
     await createSignedDownloadAuthPayload({
@@ -270,7 +270,7 @@ async function fetchSignedSkill({
       listingAddress: skill.on_chain_address ?? undefined,
     })
   );
-  const res = await fetch(`/api/skills/${id}/${archive ? "archive" : "raw"}`, {
+  const res = await fetch(`/api/skills/${id}/${format}`, {
     headers: {
       "X-AgentVouch-Auth": authHeader,
     },
@@ -454,7 +454,7 @@ export default function SkillDetailPage({
     [triggerBrowserDownload]
   );
 
-  // Download an entitled skill via signed auth: the full tree as a .tar for
+  // Download an entitled skill via signed auth: the full tree as a .zip for
   // multi-file skills, otherwise SKILL.md. Returns true when the archive was
   // delivered (used to phrase the success message).
   const downloadEntitledSkill = useCallback(async (): Promise<boolean> => {
@@ -467,11 +467,11 @@ export default function SkillDetailPage({
       walletAddress,
       signMessage,
       skill,
-      archive: isMultiFile,
+      format: isMultiFile ? "zip" : "raw",
     });
     if (isMultiFile) {
       triggerBrowserDownload(
-        `${skill.skill_id || "skill"}.tar`,
+        `${skill.skill_id || "skill"}.zip`,
         await res.blob()
       );
     } else {
@@ -575,11 +575,11 @@ export default function SkillDetailPage({
     setInstalling(true);
     setInstallResult(null);
     try {
-      // Multi-file skills ship their whole tree as a tar archive; a lone
+      // Multi-file browser downloads use a zip archive; a lone
       // SKILL.md still downloads as plain markdown.
       const isMultiFile = (skill.files?.length ?? 0) > 1;
       const res = await fetch(
-        `/api/skills/${id}/${isMultiFile ? "archive" : "raw"}`
+        `/api/skills/${id}/${isMultiFile ? "zip" : "raw"}`
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
@@ -594,7 +594,7 @@ export default function SkillDetailPage({
       }
       if (isMultiFile) {
         triggerBrowserDownload(
-          `${skill.skill_id || "skill"}.tar`,
+          `${skill.skill_id || "skill"}.zip`,
           await res.blob()
         );
         setInstallResult({
@@ -728,12 +728,12 @@ export default function SkillDetailPage({
         signMessage,
         skillId: skill.id,
         listingAddress: skill.on_chain_address ?? undefined,
-        path: `/api/skills/${id}/${isMultiFile ? "archive" : "raw"}`,
+        path: `/api/skills/${id}/${isMultiFile ? "zip" : "raw"}`,
       });
 
       if (isMultiFile) {
         triggerBrowserDownload(
-          `${skill.skill_id || "skill"}.tar`,
+          `${skill.skill_id || "skill"}.zip`,
           purchaseResult.blob
         );
       } else {
@@ -1733,7 +1733,7 @@ export default function SkillDetailPage({
                         <>
                           <FiDownload className="w-4 h-4" />
                           {(skill.files?.length ?? 0) > 1
-                            ? "Download skill (.tar)"
+                            ? "Download skill (.zip)"
                             : "Download SKILL.md"}
                         </>
                       )}
