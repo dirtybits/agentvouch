@@ -48,7 +48,7 @@ Design target as of 2026-06-16:
 3. **Refund-first routing for paid disputes.** Paid-listing author-bond slash and voucher slashes increase buyer refund capacity before paying a challenger reward. Challenger reward remains capped by config.
 4. **Resolver discretion is bounded.** Refund pool sizing must derive from escrow/proceeds/slashed value and purchase price snapshots, not arbitrary authority input.
 5. **A1 semantics survive.** Upheld paid disputes with active linked positions still park in `SlashingVouchers`, use permissionless `slash_dispute_vouches`, and keep listing/settlement locks until `create_refund_pool` consumes the refund settlement path.
-6. **Free-listing v1 sink is treasury.** `AuthorBondOnly` free-listing disputes have no purchase, settlement, author-proceeds vault, or refund pool. For A2 v1, upheld free-listing author-bond slash routes to `protocol_treasury_vault`; A4 can later define a broader reserve/backstop policy.
+6. **Free-listing v1 has bounded challenger upside.** `AuthorBondOnly` free-listing disputes have no purchase, settlement, author-proceeds vault, or refund pool. For A2 v1, upheld free-listing author-bond slash returns the challenger's dispute-bond principal, pays a capped challenger reward from the slashed author bond, and routes the residual slash to `protocol_treasury_vault`; A4 can later define a broader reserve/backstop policy.
 7. **Settlement locks remain load-bearing.** For paid disputes, `ListingSettlement.locked_by_dispute` and `SkillListing.locked_by_dispute` must remain set across propose -> timelock -> execute -> slash pages -> refund-pool creation. No author proceeds withdrawal is allowed while a resolution is proposed or pending.
 
 ## Scope
@@ -122,7 +122,7 @@ Verified 2026-06-16 against the local worktree:
     - Decrement `open_author_disputes`, increment dismissed count, recompute reputation.
   - For Upheld:
     - Return the challenger’s original dispute bond first, or explicitly route it through treasury/refund if product policy says otherwise. Recommendation: return bond principal to challenger; reward is separate and capped.
-    - Slash author bond if present. For paid `AuthorBondThenVouchers`, transfer the slash into the disputed listing's author proceeds vault and increment `listing_settlement.bond_slashed_deposit_usdc_micros`. For free `AuthorBondOnly`, transfer the slash to `protocol_treasury_vault` because there is no settlement/refund pool.
+    - Slash author bond if present. For paid `AuthorBondThenVouchers`, transfer the slash into the disputed listing's author proceeds vault and increment `listing_settlement.bond_slashed_deposit_usdc_micros`. For free `AuthorBondOnly`, compute a capped challenger reward from the author-bond slash, transfer that reward to the challenger, and route the residual slash to `protocol_treasury_vault` because there is no settlement/refund pool.
     - Increment upheld counters and recompute reputation.
     - If paid and linked vouches exist, set status `SlashingVouchers` as A1 does; final `Resolved` remains the last slash page.
     - If no linked vouches or free-listing `AuthorBondOnly`, move to `Resolved` immediately.
@@ -202,12 +202,13 @@ The exact formula should be locked before implementation. Recommended v1:
 - `max_challenger_reward = min(config.challenger_reward_cap_usdc_micros, proceeds_reward_base * config.challenger_reward_bps / 10_000)`.
 - `proceeds_reward_base = withdrawable_author_proceeds_usdc_micros` only; slashed voucher deposits and paid-listing author-bond refund deposits must not inflate challenger reward.
 - `max_refund_pool = min(requested_refund_pool_usdc_micros, max_purchase_refund_exposure, available_refund_capacity - max_challenger_reward)`.
+- `max_free_listing_challenger_reward = min(config.challenger_reward_cap_usdc_micros, author_bond_slash_usdc_micros * config.challenger_reward_bps / 10_000)` for `AuthorBondOnly` disputes; residual slash goes to treasury/reserve.
 
 Open question: paid listings can have many purchases per revision, but the current `AuthorDispute` stores only one optional `purchase` and one price snapshot. If A2 wants refund capacity for all affected buyers, implementation needs either an indexer-provided affected-volume input with stronger bounds or a later refund-reserve policy (A4). For mainnet-RC v1, keep the formula conservative and tied to the stored purchase/price snapshot unless A4 expands it.
 
 Important A1 interaction: for paid disputes with linked vouches, actual voucher-slash funds are not known until `slash_dispute_vouches` finishes all pages. The proposal should record the ruling and a refund ceiling/intention; `create_refund_pool` must cap against the matured proposal **and** the actual post-slash settlement buckets (`withdrawable_author_proceeds_usdc_micros`, `slashed_deposit_usdc_micros`, and `bond_slashed_deposit_usdc_micros`).
 
-Free-listing v1 answer: `AuthorBondOnly` disputes do not create refund pools. Upheld author-bond slash routes to protocol treasury, with eventing that makes the slash auditable. A4 may later redirect treasury/reserve policy, but A2 should not imply free-skill buyer refunds exist.
+Free-listing v1 answer: `AuthorBondOnly` disputes do not create refund pools. Upheld author-bond slash returns the challenger dispute-bond principal, pays a capped challenger reward from the author-bond slash, and routes the residual slash to protocol treasury/reserve with eventing that makes the split auditable. A4 may later redirect treasury/reserve policy, but A2 should not imply free-skill buyer refunds exist.
 
 ## Implementation Steps
 
@@ -237,7 +238,7 @@ Free-listing v1 answer: `AuthorBondOnly` disputes do not create refund pools. Up
 5. **Route author-bond slash to refund-first capacity.**
    - Stop transferring author-bond slash directly to challenger.
    - Paid disputes: transfer author-bond slash into the disputed listing's author proceeds vault and track it in `bond_slashed_deposit_usdc_micros`.
-   - Free disputes: transfer author-bond slash to `protocol_treasury_vault`; there is no settlement/refund pool to fund.
+   - Free disputes: pay a capped challenger reward from the author-bond slash and transfer only the residual slash to `protocol_treasury_vault`; there is no settlement/refund pool to fund.
    - Document the chosen custody path in readiness docs and tests.
 
 6. **Constrain refund pool creation.**
@@ -264,7 +265,7 @@ Add/extend Anchor tests, likely in `tests/agentvouch-usdc-disputes.ts` plus slas
 2. **Propose only:** proposal records ruling/refund/executable timestamp and moves no USDC; dispute remains unfinalized.
 3. **Timelock and locks:** execution before `executable_at` fails; after clock advance / local validator wait succeeds; author proceeds withdrawal remains blocked during the full proposed/pending window.
 4. **Dismissed execution:** dispute bond moves to treasury, locks clear, counters/reputation update, no refund pool.
-5. **Upheld free-listing:** author bond slash routes to protocol treasury; no voucher slashing; no refund pool; dispute resolves without `SlashingVouchers`.
+5. **Upheld free-listing:** author bond slash returns challenger principal, pays only the capped challenger reward, routes residual slash to protocol treasury, performs no voucher slashing, creates no refund pool, and resolves without `SlashingVouchers`.
 6. **Upheld paid listing with vouchers:** proposal → execute parks in `SlashingVouchers`; slash pages still work; refund pool respects proposal/formula.
 7. **Challenger reward cap:** reward never exceeds bps/cap and excludes slashed voucher/bond refund buckets.
 8. **Refund amount bounds:** impossible overlarge proposed/requested refund fails or clamps per decided behavior.
