@@ -68,7 +68,10 @@ async function linkRepoSkillListing(input: {
   const listingAddress = input.solana
     .getSkillListingAddress(repoSkill.skill_id)
     .toBase58();
-  if (repoSkill.on_chain_address && repoSkill.on_chain_address !== listingAddress) {
+  if (
+    repoSkill.on_chain_address &&
+    repoSkill.on_chain_address !== listingAddress
+  ) {
     throw new CliError(
       `Repo skill ${repoSkill.id} is linked to ${repoSkill.on_chain_address}, expected ${listingAddress}.`
     );
@@ -200,9 +203,13 @@ export async function publishSkill(input: PublishSkillInput) {
     });
   } catch (error) {
     throw new CliError(
-      `Repo skill ${repoSkill.id} was published, but the on-chain listing was not linked: ${getErrorMessage(
+      `Repo skill ${
+        repoSkill.id
+      } was published, but the on-chain listing was not linked: ${getErrorMessage(
         error
-      )}\nRetry with: agentvouch skill link-listing ${repoSkill.id} --price-usdc ${
+      )}\nRetry with: agentvouch skill link-listing ${
+        repoSkill.id
+      } --price-usdc ${
         Number(BigInt(input.priceUsdcMicros)) / 1_000_000
       } --keypair ${input.keypairPath} --base-url ${input.baseUrl} --rpc-url ${
         input.rpcUrl

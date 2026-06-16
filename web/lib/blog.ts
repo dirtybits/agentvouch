@@ -161,7 +161,8 @@ export async function getAllPosts(): Promise<BlogPostMeta[]> {
       const { body, frontmatter } = extractFrontmatter(content);
       const { title, subtitle } = parseTitleAndSubtitle(body);
       const slug = slugFromFile(file);
-      const publishedAt = normalizeDate(frontmatter.date) ?? publishedAtFromFile(file);
+      const publishedAt =
+        normalizeDate(frontmatter.date) ?? publishedAtFromFile(file);
       const image = frontmatter.image ?? parseFirstImage(body);
       return {
         slug,
@@ -186,7 +187,8 @@ export async function getPost(slug: string): Promise<BlogPost | null> {
   const content = await readFile(join(BLOG_DIR, file), "utf8");
   const { body, frontmatter } = extractFrontmatter(content);
   const { title, subtitle } = parseTitleAndSubtitle(body);
-  const publishedAt = normalizeDate(frontmatter.date) ?? publishedAtFromFile(file);
+  const publishedAt =
+    normalizeDate(frontmatter.date) ?? publishedAtFromFile(file);
   const image = frontmatter.image ?? parseFirstImage(body);
   return {
     slug,

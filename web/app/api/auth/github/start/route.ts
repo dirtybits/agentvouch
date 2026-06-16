@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const returnTo = request.nextUrl.searchParams.get("returnTo") ?? "/skills/publish";
+  const returnTo =
+    request.nextUrl.searchParams.get("returnTo") ?? "/skills/publish";
   const state = createGithubOAuthState(returnTo, config.sessionSecret);
   const response = NextResponse.redirect(
     buildGithubAuthorizeUrl({
@@ -30,4 +31,3 @@ export async function GET(request: NextRequest) {
   setGithubOAuthStateCookie(response, state.cookieValue);
   return response;
 }
-

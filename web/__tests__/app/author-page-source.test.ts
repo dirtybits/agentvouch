@@ -35,14 +35,18 @@ describe("author page source", () => {
       "utf8"
     );
 
-    expect(source).toContain("This connected wallet is staking behind this author");
+    expect(source).toContain(
+      "This connected wallet is staking behind this author"
+    );
     expect(source).toContain("REWARD_INDEX_SCALE");
     expect(source).toContain("rewardIndexUsdcMicrosX1e12");
     expect(source).toContain("entryAuthorRewardIndexX1e12");
     expect(source).toContain("pendingRewardsUsdcMicros");
     expect(source).toContain("authorUnclaimedVoucherRevenueUsdcMicros");
     expect(source).toContain("Author-wide reward pool");
-    expect(source).not.toContain("listing.account.unclaimedVoucherRevenueUsdcMicros");
+    expect(source).not.toContain(
+      "listing.account.unclaimedVoucherRevenueUsdcMicros"
+    );
   });
 
   it("shows a username in the author header when identity has one", () => {

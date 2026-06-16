@@ -352,9 +352,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        skills: Object.fromEntries(
-          hydrated.map((skill) => [skill.id, skill])
-        ),
+        skills: Object.fromEntries(hydrated.map((skill) => [skill.id, skill])),
       },
       {
         headers: {

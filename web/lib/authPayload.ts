@@ -16,7 +16,9 @@ export function buildDownloadRawMessage(
   listingAddress: string | null | undefined,
   timestamp: number
 ): string {
-  return `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${listingAddress ?? "x402-usdc-direct"}\nTimestamp: ${timestamp}`;
+  return `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${
+    listingAddress ?? "x402-usdc-direct"
+  }\nTimestamp: ${timestamp}`;
 }
 
 export async function createSignedDownloadAuthPayload(input: {

@@ -11,9 +11,9 @@ describe("GET /api/x402/supported", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.assets.map((asset: { symbol: string }) => asset.symbol)).toEqual([
-      "USDC",
-    ]);
+    expect(
+      body.assets.map((asset: { symbol: string }) => asset.symbol)
+    ).toEqual(["USDC"]);
     expect(body.capabilities.protocol_listed_x402_bridge).toBe(false);
     expect(body.capabilities.repo_x402_usdc).toBe(false);
     expect(body.capabilities.repo_x402_usdc_legacy_entitlements).toBe(true);

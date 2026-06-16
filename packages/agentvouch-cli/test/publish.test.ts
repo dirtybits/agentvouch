@@ -172,10 +172,7 @@ describe("publish flows", () => {
         };
       }
     );
-    const linkSpy = vi.spyOn(
-      AgentVouchApiClient.prototype,
-      "linkSkillListing"
-    );
+    const linkSpy = vi.spyOn(AgentVouchApiClient.prototype, "linkSkillListing");
     const createListingSpy = vi.spyOn(
       AgentVouchSolanaClient.prototype,
       "createSkillListing"

@@ -28,7 +28,12 @@ export async function loadOgFonts(): Promise<SatoriFont> {
     ]);
 
   return [
-    { name: "Crimson Text", data: crimsonRegular, weight: 400, style: "normal" },
+    {
+      name: "Crimson Text",
+      data: crimsonRegular,
+      weight: 400,
+      style: "normal",
+    },
     {
       name: "Crimson Text",
       data: crimsonSemiBold,
@@ -41,6 +46,11 @@ export async function loadOgFonts(): Promise<SatoriFont> {
       weight: 400,
       style: "normal",
     },
-    { name: "Inconsolata", data: inconsolataBold, weight: 700, style: "normal" },
+    {
+      name: "Inconsolata",
+      data: inconsolataBold,
+      weight: 700,
+      style: "normal",
+    },
   ];
 }

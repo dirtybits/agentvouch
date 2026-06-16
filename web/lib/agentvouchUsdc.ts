@@ -73,7 +73,8 @@ export function formatUsdcMicrosValue(
   const value = typeof micros === "bigint" ? micros : BigInt(micros);
   const whole = value / USDC_MICROS_PER_USDC;
   const fraction = value % USDC_MICROS_PER_USDC;
-  const amount = Number(whole) + Number(fraction) / Number(USDC_MICROS_PER_USDC);
+  const amount =
+    Number(whole) + Number(fraction) / Number(USDC_MICROS_PER_USDC);
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits,
     maximumFractionDigits: USDC_DECIMALS,
@@ -164,7 +165,9 @@ export async function assertUsdcAccountReady({
 }) {
   const tokenAccount = await getAssociatedTokenAccount(owner, mint);
   const state = await fetchTokenAccountState(rpc, tokenAccount);
-  const ownerLabel = `${String(owner).slice(0, 4)}...${String(owner).slice(-4)}`;
+  const ownerLabel = `${String(owner).slice(0, 4)}...${String(owner).slice(
+    -4
+  )}`;
 
   if (!state.exists) {
     throw new Error(

@@ -96,9 +96,10 @@ export async function GET(
     }
 
     const skill = rows[0];
-    const listing = skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)
-      ? await getOnChainUsdcPrice(skill.on_chain_address)
-      : null;
+    const listing =
+      skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)
+        ? await getOnChainUsdcPrice(skill.on_chain_address)
+        : null;
     const priceUsdcMicros =
       normalizeUsdcMicros(skill.price_usdc_micros) ??
       normalizeUsdcMicros(listing?.priceUsdcMicros);
@@ -135,7 +136,8 @@ export async function GET(
         payment_flow: paymentFlow,
         requires_purchase: requiresPurchase(paymentFlow),
         listing_changed:
-          providedListing !== null && providedListing !== skill.on_chain_address,
+          providedListing !== null &&
+          providedListing !== skill.on_chain_address,
       },
       {
         headers: {

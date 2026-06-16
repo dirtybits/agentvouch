@@ -47,7 +47,10 @@ describe("skills api source", () => {
       path.join(process.cwd(), "app/api/skills/route.ts"),
       "utf8"
     );
-    const dbSource = fs.readFileSync(path.join(process.cwd(), "lib/db.ts"), "utf8");
+    const dbSource = fs.readFileSync(
+      path.join(process.cwd(), "lib/db.ts"),
+      "utf8"
+    );
 
     expect(source).toContain("websearch_to_tsquery");
     expect(source).toContain("ts_rank_cd");
@@ -61,7 +64,9 @@ describe("skills api source", () => {
     expect(routeSource).toContain("loadRepoSkillRows");
     expect(source).toContain("author_agent.username");
     expect(source).toContain("github_binding.metadata->>'login'");
-    expect(dbSource).toContain("CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector");
+    expect(dbSource).toContain(
+      "CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector"
+    );
     expect(dbSource).toContain("array_to_string(COALESCE(tags");
     expect(dbSource).toContain("agent_username text");
     expect(dbSource).toContain("linked_github_login text");
@@ -95,7 +100,9 @@ describe("skills api source", () => {
     expect(detailSource).toContain("loadSkillDetailSnapshot(skillDbId)");
     expect(detailSource).toContain("if (!buyerAddress)");
     expect(detailSource).toContain("buildPublicCacheControl");
-    expect(detailSource).not.toContain("fetchOnChainSkillListing(skill.on_chain_address");
+    expect(detailSource).not.toContain(
+      "fetchOnChainSkillListing(skill.on_chain_address"
+    );
     expect(snapshotSource).toContain("author_trust_snapshots");
     expect(snapshotSource).toContain("latest_content");
     expect(snapshotSource).toContain("scheduleSnapshotTrustRefresh");

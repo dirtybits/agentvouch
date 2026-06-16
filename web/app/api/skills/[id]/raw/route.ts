@@ -28,10 +28,9 @@ function serveContent(
   return new NextResponse(body, {
     headers: {
       "Content-Type": options.contentType ?? "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filePath
-        .split("/")
-        .at(-1)
-        ?.replace(/"/g, "") ?? "SKILL.md"}"`,
+      "Content-Disposition": `attachment; filename="${
+        filePath.split("/").at(-1)?.replace(/"/g, "") ?? "SKILL.md"
+      }"`,
       ...(extraHeaders ?? {}),
     },
   });
@@ -122,7 +121,8 @@ export async function GET(
     }
 
     const skill = access.skill;
-    const requestedPath = request.nextUrl.searchParams.get("path") ?? "SKILL.md";
+    const requestedPath =
+      request.nextUrl.searchParams.get("path") ?? "SKILL.md";
     try {
       if (requestedPath === "SKILL.md") {
         skill.download_bytes = Buffer.from(skill.content, "utf8");

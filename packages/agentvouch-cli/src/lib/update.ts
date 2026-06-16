@@ -52,7 +52,10 @@ export async function updateSkill(
     );
   }
 
-  if ((metadata?.source ?? "repo") === "chain" || skillId.startsWith("chain-")) {
+  if (
+    (metadata?.source ?? "repo") === "chain" ||
+    skillId.startsWith("chain-")
+  ) {
     throw new CliError(
       "Version-aware updates are only supported for repo-backed skills."
     );

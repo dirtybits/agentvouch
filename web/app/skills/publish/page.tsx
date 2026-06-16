@@ -346,7 +346,11 @@ function PublishSkillPageInner() {
       return;
     }
 
-    if (usdcPriceMicros && !skipProfileCheck && (!profileChecked || profileLoading)) {
+    if (
+      usdcPriceMicros &&
+      !skipProfileCheck &&
+      (!profileChecked || profileLoading)
+    ) {
       setResult(null);
       return;
     }
@@ -364,7 +368,12 @@ function PublishSkillPageInner() {
 
     try {
       let auth:
-        | { pubkey: string; signature: string; message: string; timestamp: number }
+        | {
+            pubkey: string;
+            signature: string;
+            message: string;
+            timestamp: number;
+          }
         | undefined;
       if (connected && publicKey && signMessage) {
         const timestamp = Date.now();
@@ -852,7 +861,8 @@ function PublishSkillPageInner() {
                   Drop SKILL.md here, click to select, or upload a folder
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Folder format: SKILL.md with optional scripts/, references/, assets/
+                  Folder format: SKILL.md with optional scripts/, references/,
+                  assets/
                 </p>
                 <button
                   type="button"
@@ -1154,7 +1164,9 @@ function PublishSkillPageInner() {
               connected={connected}
               githubConnected={githubConnected}
               isPaidPublish={isPaidPublish}
-              profileLoading={isPaidPublish && (profileLoading || !profileChecked)}
+              profileLoading={
+                isPaidPublish && (profileLoading || !profileChecked)
+              }
               hasProfile={!!agentProfile}
               hasContent={!!content}
               hasName={!!name}
@@ -1170,7 +1182,8 @@ function PublishSkillPageInner() {
                 !priceIsValid ||
                 githubLoading ||
                 !hasPublisherAuth ||
-                (isPaidPublish && (!connected || !profileChecked || profileLoading))
+                (isPaidPublish &&
+                  (!connected || !profileChecked || profileLoading))
               }
               className={`${navButtonPrimaryInlineClass} shrink-0`}
             >

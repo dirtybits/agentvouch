@@ -378,8 +378,9 @@ export class AgentVouchSolanaClient {
 
   async purchaseSkill(skillListingAddress: string, authorAddress: string) {
     const skillListingKey = new PublicKey(skillListingAddress);
-    const listing =
-      await this.program.account.skillListing.fetch(skillListingKey);
+    const listing = await this.program.account.skillListing.fetch(
+      skillListingKey
+    );
     const purchase = this.getPurchaseAddress(
       skillListingAddress,
       this.authority,

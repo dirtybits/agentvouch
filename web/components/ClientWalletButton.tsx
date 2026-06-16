@@ -2,10 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Image, { type ImageLoader } from "next/image";
-import {
-  useConnectWallet,
-  useWalletConnectors,
-} from "@solana/connector/react";
+import { useConnectWallet, useWalletConnectors } from "@solana/connector/react";
 import { ConnectButton } from "@phantom/react-sdk";
 import {
   useAgentVouchWallet,
@@ -138,7 +135,10 @@ export function ClientWalletButton() {
                 Phantom Embedded
               </div>
             )}
-            <button onClick={handleDisconnect} className={walletMenuButtonClass}>
+            <button
+              onClick={handleDisconnect}
+              className={walletMenuButtonClass}
+            >
               Disconnect
             </button>
           </div>

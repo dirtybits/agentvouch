@@ -10,7 +10,9 @@ const {
   mockSend: vi.fn(),
   mockDecodePurchase: vi.fn(),
   mockFetchAllMaybeSkillListing: vi.fn(),
-  mockIsAddress: vi.fn((value: unknown) => value === "Buyer111111111111111111111111111111111111111"),
+  mockIsAddress: vi.fn(
+    (value: unknown) => value === "Buyer111111111111111111111111111111111111111"
+  ),
 }));
 
 vi.mock("@solana/kit", () => ({

@@ -2,9 +2,7 @@ import { sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { resolveAuthorTrust } from "@/lib/trust";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
-import {
-  getConfiguredSolanaChainContext,
-} from "@/lib/chains";
+import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import { truncateDescription } from "@/lib/site";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";

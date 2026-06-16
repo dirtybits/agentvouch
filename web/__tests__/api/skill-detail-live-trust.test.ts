@@ -26,7 +26,9 @@ vi.mock("@/lib/agentIdentity", () => ({
 }));
 
 vi.mock("@/lib/x402", () => ({
-  getConfiguredUsdcMint: vi.fn(() => "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
+  getConfiguredUsdcMint: vi.fn(
+    () => "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+  ),
   hasOnChainPurchase: vi.fn(),
 }));
 
@@ -52,7 +54,9 @@ vi.mock("@/lib/solanaRpc", () => ({
 
 vi.mock("@/lib/protocolMetadata", () => ({
   AGENTVOUCH_PROTOCOL_VERSION: "0.2.0",
-  getAgentVouchProgramId: vi.fn(() => "Program1111111111111111111111111111111111"),
+  getAgentVouchProgramId: vi.fn(
+    () => "Program1111111111111111111111111111111111"
+  ),
 }));
 
 vi.mock("@/lib/skillRouteResolver", () => ({

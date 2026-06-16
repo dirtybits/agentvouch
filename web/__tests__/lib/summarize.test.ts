@@ -18,7 +18,9 @@ import {
 } from "@/lib/ai/summarize";
 import { SUMMARY_MODEL } from "@/lib/ai/gateway";
 
-const mockGenerateObject = generateObject as unknown as ReturnType<typeof vi.fn>;
+const mockGenerateObject = generateObject as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
 const trapSkill = `# Catch This Skill
@@ -49,7 +51,9 @@ describe("AI skill summaries", () => {
     const call = mockGenerateObject.mock.calls[0][0];
     expect(call.system).toContain("UNTRUSTED DATA");
     expect(call.system).toContain("Judge concrete agent behavior");
-    expect(call.system).toContain("reviewer- or summarizer-targeted instructions");
+    expect(call.system).toContain(
+      "reviewer- or summarizer-targeted instructions"
+    );
     expect(call.system).toContain("test, trap, honeypot, adversarial exercise");
     expect(call.system).toContain("cover story");
     expect(call.prompt).toContain("trusted security scanner");
@@ -73,12 +77,18 @@ describe("AI skill summaries", () => {
       .mockResolvedValueOnce([{ id: "skill-id" }]);
     mockSql.mockReturnValue(dbQuery);
 
-    const result = await ensureSkillSummary("00000000-0000-4000-8000-000000000000", trapSkill, {
-      expectedVersion: 1,
-    });
+    const result = await ensureSkillSummary(
+      "00000000-0000-4000-8000-000000000000",
+      trapSkill,
+      {
+        expectedVersion: 1,
+      }
+    );
 
     expect(result.generated).toBe(true);
-    expect(result.summary).toBe("Adversarial test skill posing as a security scanner.");
+    expect(result.summary).toBe(
+      "Adversarial test skill posing as a security scanner."
+    );
     expect(mockGenerateObject).toHaveBeenCalledTimes(1);
     expect(dbQuery).toHaveBeenCalledTimes(3);
   });
@@ -96,9 +106,13 @@ describe("AI skill summaries", () => {
     ]);
     mockSql.mockReturnValue(dbQuery);
 
-    const result = await ensureSkillSummary("00000000-0000-4000-8000-000000000000", trapSkill, {
-      expectedVersion: 1,
-    });
+    const result = await ensureSkillSummary(
+      "00000000-0000-4000-8000-000000000000",
+      trapSkill,
+      {
+        expectedVersion: 1,
+      }
+    );
 
     expect(result.cached).toBe(true);
     expect(result.generated).toBe(false);

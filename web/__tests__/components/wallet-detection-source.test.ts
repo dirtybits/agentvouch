@@ -45,7 +45,9 @@ describe("wallet detection source", () => {
     expect(providerSource).toContain("const [initialWalletName]");
     expect(providerSource).toContain("initialWalletName={initialWalletName}");
     expect(providerSource).toContain("wasConnectedRef");
-    expect(providerSource).toContain("connectors.find((c) => c.name === storedWalletName)");
+    expect(providerSource).toContain(
+      "connectors.find((c) => c.name === storedWalletName)"
+    );
     expect(providerSource).toContain("silent: true");
     expect(providerSource).toContain("allowInteractiveFallback: false");
   });
@@ -56,7 +58,7 @@ describe("wallet detection source", () => {
     expect(providerSource).toContain("PHANTOM_LEGACY_WALLET_NAME");
     expect(providerSource).toContain("connectFeature.connect(");
     expect(providerSource).toContain("silent: true");
-    expect(providerSource).toContain("source === \"phantom-extension\"");
+    expect(providerSource).toContain('source === "phantom-extension"');
     expect(buttonSource).toContain("useAgentVouchWallet");
     expect(buttonSource).toContain("wallet.connectPhantomExtension()");
     expect(transactionSignerSource).toContain("useAgentVouchWalletSigner");

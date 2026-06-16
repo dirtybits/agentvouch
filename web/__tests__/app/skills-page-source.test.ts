@@ -25,7 +25,9 @@ describe("skills page source", () => {
     expect(source).toContain("fetch(`/api/skills?${params}`)");
     expect(source).toContain('params.set("mode", "fast")');
     expect(source).toContain("MARKETPLACE_PAGE_SIZE");
-    expect(source).toContain('params.set("pageSize", String(MARKETPLACE_PAGE_SIZE))');
+    expect(source).toContain(
+      'params.set("pageSize", String(MARKETPLACE_PAGE_SIZE))'
+    );
     expect(source).toContain('fetch("/api/skills/hydrate"');
     expect(source).toContain("buyer: publicKey ? String(publicKey) : null");
     expect(source).toContain('fetch("/api/skills/activity")');
@@ -45,7 +47,7 @@ describe("skills page source", () => {
     expect(source).toContain("setPage(1);");
     expect(source).toContain("browseRequestRef");
     expect(source).toContain("browseRequestRef.current !== requestId");
-    expect(source).not.toContain("if (search) params.set(\"q\", search)");
+    expect(source).not.toContain('if (search) params.set("q", search)');
   });
 
   it("filters marketplace cards by clicked skill tags", () => {

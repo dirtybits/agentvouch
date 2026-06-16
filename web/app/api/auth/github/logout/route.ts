@@ -6,4 +6,3 @@ export async function POST() {
   clearGithubSessionCookie(response);
   return response;
 }
-

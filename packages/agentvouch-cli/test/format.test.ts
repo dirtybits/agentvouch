@@ -113,7 +113,8 @@ describe("formatSkillSummary", () => {
         },
         author_trust_summary: {
           wallet_pubkey: "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
-          canonical_agent_id: "solana:devnet/asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+          canonical_agent_id:
+            "solana:devnet/asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
           chain_context: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
           schema_version: "2026-04-03",
           trust_updated_at: "2026-04-09T00:00:00.000Z",

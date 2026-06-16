@@ -68,7 +68,9 @@ function shortAddr(addr: string): string {
 const REWARD_INDEX_SCALE = 1_000_000_000_000n;
 const AUTHOR_REWARD_POOL_CLAIM_ID = "author-reward-pool";
 
-function formatUsdc(micros: number | bigint | string | null | undefined): string {
+function formatUsdc(
+  micros: number | bigint | string | null | undefined
+): string {
   return formatUsdcMicros(micros) ?? "0";
 }
 
@@ -219,13 +221,13 @@ export default function AuthorProfilePage() {
       const agentAddr = address(pubkey);
       const [prof, received, given, onChainListings, repoRes, authorRes] =
         await Promise.all([
-        oracle.getAgentProfile(agentAddr).catch(() => null),
-        oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
-        oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
-        oracle.getSkillListingsByAuthor(agentAddr).catch(() => []),
-        fetch(`/api/skills?author=${pubkey}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
+          oracle.getAgentProfile(agentAddr).catch(() => null),
+          oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
+          oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
+          oracle.getSkillListingsByAuthor(agentAddr).catch(() => []),
+          fetch(`/api/skills?author=${pubkey}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
           fetch(`/api/author/${pubkey}`)
             .then((r) => (r.ok ? r.json() : null))
             .catch(() => null),
@@ -654,8 +656,7 @@ export default function AuthorProfilePage() {
       accruedSinceLastTouch
     );
   }, [profile, viewerVouch]);
-  const viewerCanClaimVoucherRevenue =
-    viewerEstimatedClaimableUsdcMicros > 0n;
+  const viewerCanClaimVoucherRevenue = viewerEstimatedClaimableUsdcMicros > 0n;
   const claimSkillOptions = useMemo(
     () => [
       ...repoSkills
@@ -694,8 +695,7 @@ export default function AuthorProfilePage() {
 
   const clearClaimRouteParams = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams.toString());
-    const hadClaimRoute =
-      nextParams.has("report") || nextParams.has("skill");
+    const hadClaimRoute = nextParams.has("report") || nextParams.has("skill");
     if (!hadClaimRoute) return;
 
     nextParams.delete("report");
@@ -729,44 +729,44 @@ export default function AuthorProfilePage() {
     clearClaimRouteParams();
   }, [claiming, clearClaimRouteParams]);
 
-  const handleClaimVoucherRevenue = useCallback(
-    async () => {
-      if (!connected) {
-        setClaimRevenueStatus({
-          success: false,
-          message: "Connect your wallet to claim voucher revenue.",
-        });
-        setClaimRevenueTx(null);
-        return;
-      }
-
-      setClaimingRevenueListing(AUTHOR_REWARD_POOL_CLAIM_ID);
-      setClaimRevenueStatus(null);
+  const handleClaimVoucherRevenue = useCallback(async () => {
+    if (!connected) {
+      setClaimRevenueStatus({
+        success: false,
+        message: "Connect your wallet to claim voucher revenue.",
+      });
       setClaimRevenueTx(null);
+      return;
+    }
 
-      try {
-        const { tx } = await oracle.claimVoucherRevenue(address(pubkey));
-        setClaimRevenueStatus({
-          success: true,
-          message: "Voucher revenue claimed.",
-        });
-        setClaimRevenueTx(tx);
-        setTimeout(loadData, 2000);
-      } catch (error: unknown) {
-        const message = getErrorMessage(error, "Failed to claim voucher revenue.");
-        setClaimRevenueStatus({
-          success: false,
-          message: /Insufficient funds in author reward pool/i.test(message)
-            ? "This author's recorded voucher revenue is higher than its actual on-chain reward vault balance, so the claim would fail. This looks like stale devnet accounting on an older author profile."
-            : message,
-        });
-        setClaimRevenueTx(null);
-      } finally {
-        setClaimingRevenueListing(null);
-      }
-    },
-    [connected, loadData, oracle, pubkey]
-  );
+    setClaimingRevenueListing(AUTHOR_REWARD_POOL_CLAIM_ID);
+    setClaimRevenueStatus(null);
+    setClaimRevenueTx(null);
+
+    try {
+      const { tx } = await oracle.claimVoucherRevenue(address(pubkey));
+      setClaimRevenueStatus({
+        success: true,
+        message: "Voucher revenue claimed.",
+      });
+      setClaimRevenueTx(tx);
+      setTimeout(loadData, 2000);
+    } catch (error: unknown) {
+      const message = getErrorMessage(
+        error,
+        "Failed to claim voucher revenue."
+      );
+      setClaimRevenueStatus({
+        success: false,
+        message: /Insufficient funds in author reward pool/i.test(message)
+          ? "This author's recorded voucher revenue is higher than its actual on-chain reward vault balance, so the claim would fail. This looks like stale devnet accounting on an older author profile."
+          : message,
+      });
+      setClaimRevenueTx(null);
+    } finally {
+      setClaimingRevenueListing(null);
+    }
+  }, [connected, loadData, oracle, pubkey]);
 
   const handleSubmitClaim = async () => {
     if (!connected) {
@@ -1448,8 +1448,7 @@ export default function AuthorProfilePage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
                 <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <FiShield className="text-[var(--sea-accent)]" /> Your
-                  Backing
+                  <FiShield className="text-[var(--sea-accent)]" /> Your Backing
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   This connected wallet is staking behind this author&apos;s

@@ -50,7 +50,10 @@ describe("GET /api/skills/[id]/archive", () => {
   it("returns raw entitlement failures without serving archive bytes", async () => {
     mockResolveSkillAccess.mockResolvedValue({
       ok: false,
-      response: NextResponse.json({ error: "Payment required" }, { status: 402 }),
+      response: NextResponse.json(
+        { error: "Payment required" },
+        { status: 402 }
+      ),
     });
 
     const res = await GET(makeRequest(), {

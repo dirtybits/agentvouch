@@ -81,7 +81,9 @@ function toNormalizedFiles(
   });
 
   if (!seen.has("SKILL.md")) {
-    throw new CliError("Skill tree must include exactly one top-level SKILL.md.");
+    throw new CliError(
+      "Skill tree must include exactly one top-level SKILL.md."
+    );
   }
 
   return normalized.sort((a, b) => a.path.localeCompare(b.path));
@@ -117,7 +119,12 @@ async function collectDirectoryFiles(
   return files;
 }
 
-function writeOctal(target: Buffer, offset: number, length: number, value: number) {
+function writeOctal(
+  target: Buffer,
+  offset: number,
+  length: number,
+  value: number
+) {
   const octal = value.toString(8).padStart(length - 1, "0");
   target.write(octal.slice(-length + 1), offset, length - 1, "ascii");
   target[offset + length - 1] = 0;
@@ -210,7 +217,9 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
     const size = readOctal(header, 124, 12);
     totalBytes += size;
     if (files.length + 1 > MAX_SKILL_TREE_FILES) {
-      throw new CliError(`Skill tree exceeds cap of ${MAX_SKILL_TREE_FILES} files.`);
+      throw new CliError(
+        `Skill tree exceeds cap of ${MAX_SKILL_TREE_FILES} files.`
+      );
     }
     if (totalBytes > MAX_SKILL_TREE_BYTES) {
       throw new CliError(
@@ -221,7 +230,10 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
       throw new CliError("Tar archive is truncated.");
     }
 
-    files.push({ path: filePath, content: bytes.subarray(offset, offset + size) });
+    files.push({
+      path: filePath,
+      content: bytes.subarray(offset, offset + size),
+    });
     offset += size;
     offset += (TAR_BLOCK_SIZE - (size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
   }
@@ -247,7 +259,9 @@ export async function prepareSkillUploadFromPath(
   const files = toNormalizedFiles(await collectDirectoryFiles(absolute));
   const skillFile = files.find((file) => file.path === "SKILL.md");
   if (!skillFile) {
-    throw new CliError("Skill tree must include exactly one top-level SKILL.md.");
+    throw new CliError(
+      "Skill tree must include exactly one top-level SKILL.md."
+    );
   }
 
   return {

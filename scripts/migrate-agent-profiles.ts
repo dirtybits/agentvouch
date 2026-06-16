@@ -345,8 +345,7 @@ async function main() {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace
-    .Agentvouch as Program<Agentvouch>;
+  const program = anchor.workspace.Agentvouch as Program<Agentvouch>;
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     program.programId

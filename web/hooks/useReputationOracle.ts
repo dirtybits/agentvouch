@@ -1106,9 +1106,7 @@ export function useReputationOracle() {
   const connected = status === "connected" && !!account;
   const { signer: activeSigner } = useAgentVouchTransactionSigner();
 
-  const walletAddress: Address | null = connected
-    ? (account as Address)
-    : null;
+  const walletAddress: Address | null = connected ? (account as Address) : null;
 
   const signer: TransactionSigner | null = activeSigner ?? null;
 

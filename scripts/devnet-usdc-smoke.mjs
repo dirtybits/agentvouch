@@ -257,11 +257,7 @@ async function main() {
     "author_proceeds_vault",
     listingSettlement.toBuffer()
   );
-  const vouch = pda(
-    "vouch",
-    actorProfile.toBuffer(),
-    authorProfile.toBuffer()
-  );
+  const vouch = pda("vouch", actorProfile.toBuffer(), authorProfile.toBuffer());
   const vouchVaultAuthority = pda(
     "vouch_vault_authority",
     actorProfile.toBuffer(),
@@ -319,7 +315,10 @@ async function main() {
   const actorUsdcAccount = tokenAccountAddress(actor.publicKey);
   const authorUsdcAccount = tokenAccountAddress(author.publicKey);
 
-  const configAccountInfo = await connection.getAccountInfo(config, "confirmed");
+  const configAccountInfo = await connection.getAccountInfo(
+    config,
+    "confirmed"
+  );
   if (!configAccountInfo) {
     throw new Error(
       `Config PDA ${config.toBase58()} does not exist on devnet. Run initialize_config first.`
@@ -332,7 +331,9 @@ async function main() {
   }
   if (configAccountInfo.data.length < M13_REPUTATION_CONFIG_MIN_LEN) {
     throw new Error(
-      `Config PDA ${config.toBase58()} is ${configAccountInfo.data.length} bytes, expected at least ${M13_REPUTATION_CONFIG_MIN_LEN} for M13. Run npm run migrate:config -- --apply with the config authority, then rerun this smoke.`
+      `Config PDA ${config.toBase58()} is ${
+        configAccountInfo.data.length
+      } bytes, expected at least ${M13_REPUTATION_CONFIG_MIN_LEN} for M13. Run npm run migrate:config -- --apply with the config authority, then rerun this smoke.`
     );
   }
 
@@ -560,9 +561,7 @@ async function main() {
         SystemProgram.transfer({
           fromPubkey: funder.publicKey,
           toPubkey: actor.publicKey,
-          lamports: Number(
-            AUTHOR_SOL_FLOOR_LAMPORTS - BigInt(initialActorSol)
-          ),
+          lamports: Number(AUTHOR_SOL_FLOOR_LAMPORTS - BigInt(initialActorSol)),
         })
       ),
       [funder]
@@ -968,10 +967,8 @@ async function main() {
         disputeAccount.authorBondSlashedUsdcMicros.toString(),
       voucherSlashedUsdcMicros:
         disputeAccount.voucherSlashedUsdcMicros.toString(),
-      refundPoolUsdcMicros:
-        refundPoolAccount.totalPoolUsdcMicros.toString(),
-      claimedRefundUsdcMicros:
-        refundPoolAccount.claimedUsdcMicros.toString(),
+      refundPoolUsdcMicros: refundPoolAccount.totalPoolUsdcMicros.toString(),
+      claimedRefundUsdcMicros: refundPoolAccount.claimedUsdcMicros.toString(),
       refundPoolRemainingUsdcMicros:
         refundPoolAccount.remainingPoolUsdcMicros.toString(),
     };

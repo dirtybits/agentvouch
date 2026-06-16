@@ -41,7 +41,12 @@ async function setupLinkedVoucherListing(
   await registerAgent(ctx, author);
   await registerAgent(ctx, challenger);
   const skillId = uniqueSkillId("slash");
-  const listing = await createSkillListing(ctx, author, skillId, priceUsdcMicros);
+  const listing = await createSkillListing(
+    ctx,
+    author,
+    skillId,
+    priceUsdcMicros
+  );
   const vouchers = [];
   for (const stake of voucherStakesUsdcMicros) {
     const voucher = await createActor(ctx);
@@ -132,7 +137,12 @@ describe("agentvouch usdc voucher slashing", () => {
     );
 
     // 50% slash: 2 + 1 USDC moved into the proceeds vault, ring-fenced.
-    await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, 3 * ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      3 * ONE_USDC
+    );
     await assertTokenDelta(
       ctx,
       vouchVault(ctx.program, vouchers[0].voucher.profile, author.profile),
@@ -148,7 +158,9 @@ describe("agentvouch usdc voucher slashing", () => {
     assert.equal(Number(disputeAccount.voucherSlashedUsdcMicros), 3 * ONE_USDC);
     assert.isNotNull(disputeAccount.resolvedAt);
 
-    authorProfile = await ctx.program.account.agentProfile.fetch(author.profile);
+    authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
+    );
     assert.equal(authorProfile.openAuthorDisputes, 0);
     assert.equal(Number(authorProfile.totalVouchStakeUsdcMicros), 0);
     assert.equal(authorProfile.totalVouchesReceived, 0);
@@ -230,7 +242,12 @@ describe("agentvouch usdc voucher slashing", () => {
       dispute,
       10 * ONE_USDC
     );
-    await assertTokenDelta(ctx, challenger.usdc, challengerBefore, 0.3 * ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      challenger.usdc,
+      challengerBefore,
+      0.3 * ONE_USDC
+    );
     assert.equal(Number(await tokenAmount(ctx, refundVault)), 5.7 * ONE_USDC);
 
     const settlementAccount = await ctx.program.account.listingSettlement.fetch(
@@ -272,7 +289,12 @@ describe("agentvouch usdc voucher slashing", () => {
       listing.vault
     );
     // Author drains the withdrawable proceeds before any dispute exists.
-    await withdrawAuthorProceeds(ctx, author, listing.skillListing, 3 * ONE_USDC);
+    await withdrawAuthorProceeds(
+      ctx,
+      author,
+      listing.skillListing,
+      3 * ONE_USDC
+    );
 
     const disputeId = u64(Date.now() + 3_000);
     const dispute = await openAuthorDispute(
@@ -709,7 +731,13 @@ describe("agentvouch usdc voucher slashing", () => {
       5 * ONE_USDC
     );
     const buyer2 = await createActor(ctx);
-    await purchaseSkill(ctx, buyer2, author, listing2.skillListing, listing2.vault);
+    await purchaseSkill(
+      ctx,
+      buyer2,
+      author,
+      listing2.skillListing,
+      listing2.vault
+    );
 
     // A claims only the pre-slash accrual: 4/6 of purchase-1 pool = 1.333333.
     const aBefore = await tokenAmount(ctx, vouchers[0].voucher.usdc);

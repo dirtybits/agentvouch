@@ -572,8 +572,7 @@ export function sortEnrichedSkills(
 ) {
   skills.sort((a, b) => {
     if (options?.hasSearchQuery) {
-      const rankDelta =
-        Number(b.search_rank ?? 0) - Number(a.search_rank ?? 0);
+      const rankDelta = Number(b.search_rank ?? 0) - Number(a.search_rank ?? 0);
       if (rankDelta !== 0) return rankDelta;
     }
     return compareEnrichedSkillsBySort(a, b, sort);

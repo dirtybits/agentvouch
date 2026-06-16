@@ -55,8 +55,9 @@ vi.mock("@/lib/githubOAuth", () => ({
 // doesn't consume the mocked db response queue meant for the INSERTs. Keep the
 // module's other exports real (the PATCH tests rely on them).
 vi.mock("@/lib/skillRouteResolver", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/skillRouteResolver")>();
+  const actual = await importOriginal<
+    typeof import("@/lib/skillRouteResolver")
+  >();
   return {
     ...actual,
     buildUniquePublicSkillRoute: vi.fn(async () => ({

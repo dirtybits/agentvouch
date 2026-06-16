@@ -41,7 +41,9 @@ export function buildPublicAuthorSlugBase(
   >
 ): string {
   if (input.author_handle) {
-    return finalizeSlug(input.author_handle) || `publisher-${input.id.slice(0, 8)}`;
+    return (
+      finalizeSlug(input.author_handle) || `publisher-${input.id.slice(0, 8)}`
+    );
   }
   if (input.author_pubkey) {
     return `wallet-${input.author_pubkey.slice(0, 8).toLowerCase()}`;
@@ -49,7 +51,8 @@ export function buildPublicAuthorSlugBase(
   if (input.publisher_identity_key) {
     const [kind, identifier] = input.publisher_identity_key.split(":", 2);
     const slug = finalizeSlug(identifier || kind || "");
-    if (slug) return `${finalizeSlug(kind || "publisher")}-${slug}`.slice(0, 96);
+    if (slug)
+      return `${finalizeSlug(kind || "publisher")}-${slug}`.slice(0, 96);
   }
   return `publisher-${input.id.replace(/-/g, "").slice(0, 8)}`;
 }

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { computeSchemaFingerprint, runSchemaDdlOnce, type SqlQuery } from "@/lib/db";
+import {
+  computeSchemaFingerprint,
+  runSchemaDdlOnce,
+  type SqlQuery,
+} from "@/lib/db";
 
 function mockDb(selectResult: { version: string }[] | Error) {
   const executed: string[] = [];
@@ -49,7 +53,9 @@ describe("schema version gate", () => {
   });
 
   it("falls back to the full DDL when the version table does not exist", async () => {
-    const { db } = mockDb(new Error('relation "db_schema_version" does not exist'));
+    const { db } = mockDb(
+      new Error('relation "db_schema_version" does not exist')
+    );
     const run = vi.fn();
 
     await runSchemaDdlOnce(db, "core", "fp-1", run);

@@ -73,9 +73,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const authorPages: MetadataRoute.Sitemap = [
       ...new Map(
         rows
-          .filter(
-            (row): row is SkillSitemapRow & { author_pubkey: string } =>
-              Boolean(row.author_pubkey)
+          .filter((row): row is SkillSitemapRow & { author_pubkey: string } =>
+            Boolean(row.author_pubkey)
           )
           .map((row) => [
             row.author_pubkey,

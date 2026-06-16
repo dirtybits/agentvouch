@@ -93,7 +93,10 @@ describe("installSkill", () => {
       tree_hash: "tree-hash",
     });
     const rawSpy = vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw");
-    vi.spyOn(AgentVouchApiClient.prototype, "downloadArchive").mockResolvedValue({
+    vi.spyOn(
+      AgentVouchApiClient.prototype,
+      "downloadArchive"
+    ).mockResolvedValue({
       ok: true,
       status: 200,
       archive,

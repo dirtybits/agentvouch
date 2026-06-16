@@ -322,7 +322,11 @@ export async function installSkill(input: InstallSkillInput) {
     }
 
     throw new CliError(
-      `Skill ${input.id} is paid but has no linked on-chain SkillListing. New repo-only x402 purchases are disabled; ask the author to run agentvouch skill link-listing ${input.id} --price-usdc <amount>. ${
+      `Skill ${
+        input.id
+      } is paid but has no linked on-chain SkillListing. New repo-only x402 purchases are disabled; ask the author to run agentvouch skill link-listing ${
+        input.id
+      } --price-usdc <amount>. ${
         initialDownload.listingRequired.message ?? ""
       }`.trim()
     );

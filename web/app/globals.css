@@ -123,12 +123,20 @@ body {
 
 /* Typewriter animation */
 @keyframes typewriter {
-  from { max-width: 0; }
-  to   { max-width: 100%; }
+  from {
+    max-width: 0;
+  }
+  to {
+    max-width: 100%;
+  }
 }
 @keyframes blinkTextCursor {
-  from { border-right-color: currentColor; }
-  to   { border-right-color: transparent; }
+  from {
+    border-right-color: currentColor;
+  }
+  to {
+    border-right-color: transparent;
+  }
 }
 .typewriter {
   display: inline-block;
@@ -136,8 +144,7 @@ body {
   white-space: nowrap;
   border-right: 2px solid currentColor;
   width: max-content;
-  animation:
-    typewriter 2s steps(40) 0.5s 1 normal both,
+  animation: typewriter 2s steps(40) 0.5s 1 normal both,
     blinkTextCursor 500ms steps(40) infinite normal;
 }
 

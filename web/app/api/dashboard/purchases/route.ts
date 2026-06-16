@@ -106,7 +106,9 @@ export async function GET(request: NextRequest) {
       };
     });
     const listingAddresses = [
-      ...new Set(purchases.map((purchase) => String(purchase.account.skillListing))),
+      ...new Set(
+        purchases.map((purchase) => String(purchase.account.skillListing))
+      ),
     ].filter(isAddress);
     const listingAccounts =
       listingAddresses.length > 0
