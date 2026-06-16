@@ -1,0 +1,326 @@
+---
+name: a2-dispute-governance-v1
+overview: "Implement roadmap A2 / readiness P0.2: split resolver authority from config authority, replace instant dispute resolution with propose/execute timelock governance, route slashed value toward buyer refunds first, and add governed config/authority rotation paths before mainnet-RC."
+todos:
+  - id: design-lock
+    content: Lock A2 design decisions, constants, account-layout strategy, and rollback assumptions against current roadmap/readiness docs
+    status: pending
+  - id: state-and-events
+    content: Add resolver authority/timelock fields and pending-resolution state to ReputationConfig/AuthorDispute; add governance/config events; adjust LEN constants
+    status: pending
+  - id: config-authority-instructions
+    content: Add governed config/economic setter, authority rotation, and treasury sweep instructions with strict authority checks and invariant validation
+    status: pending
+  - id: propose-resolution
+    content: Replace authority-keyed resolve entrypoint with propose_author_dispute_resolution that records ruling, refund request, and executable timestamp without moving funds
+    status: pending
+  - id: execute-resolution
+    content: Add execute_author_dispute_resolution to enforce the timelock, move dispute bonds/author bond slash/refund-first buckets, and preserve A1 voucher-slashing parking semantics
+    status: pending
+  - id: refund-pool-integration
+    content: Update create_refund_pool so resolver discretion is bounded by proposal state and refund capacity; keep slashed deposits and proceeds accounting separated
+    status: pending
+  - id: clients-and-surfaces
+    content: Rebuild IDL, sync web/agentvouch.json, regenerate curated web client, and update CLI/web helper call sites for proposed/executed resolution
+    status: pending
+  - id: tests
+    content: Add Anchor coverage for resolver split, timelock, bounded refunds/rewards, authority rotation, treasury sweep, and A1 slashing regressions
+    status: pending
+  - id: docs-and-runbook
+    content: Update MAINNET_READINESS.md, ROADMAP.md, PRODUCTION_RUNBOOK.md, docs/DEVNET_STATE.md, and web/public/skill.md after implementation/deploy decisions are real
+    status: pending
+  - id: verification
+    content: Run NO_DNA=1 anchor build/test, sync/generated-client checks, web/CLI tests and builds, devnet smoke, and final diff/security review
+    status: pending
+isProject: false
+---
+
+# A2 — Dispute Governance v1
+
+## Goal
+
+Convert dispute settlement from "one hot key instantly resolves and pays the challenger" into a governed, observable flow: a resolver authority proposes a ruling and refund parameters, a timelock gives the world time to react, then execution moves funds according to bounded rules that prioritize harmed buyers over resolver/challenger extraction.
+
+Design target as of 2026-06-16:
+
+1. **Resolver authority is separate from config authority.** Dispute resolution and economic/config mutation are distinct powers.
+2. **Resolution is two-phase.** `propose_author_dispute_resolution` records the proposed ruling, refund request, challenger reward intent, and `executable_at`; `execute_author_dispute_resolution` enforces the delay and performs state/fund movement.
+3. **Refund-first routing.** Author-bond slash and voucher slashes should increase buyer refund capacity before paying a challenger reward. Challenger reward remains capped by config.
+4. **Resolver discretion is bounded.** Refund pool sizing must derive from escrow/proceeds/slashed value and purchase price snapshots, not arbitrary authority input.
+5. **A1 semantics survive.** Upheld paid disputes with active linked positions still park in `SlashingVouchers`, use permissionless `slash_dispute_vouches`, and keep listing/settlement locks until `create_refund_pool` consumes the refund settlement path.
+
+## Scope
+
+- In scope: Anchor program state/instructions/tests under `programs/agentvouch/` and `tests/`, IDL/client regeneration, helper call sites, readiness/runbook/docs sync.
+- In scope: config setters and authority rotation because they are required to point resolver/config/treasury/pause/settlement authorities at a multisig without redeploy.
+- In scope: a governed treasury sweep path for dismissed dispute bonds and future protocol fees, with explicit destination and eventing.
+- Out of scope: A3 `set_paused` implementation except where authority rotation must include `pause_authority`; ship A3 as its own plan or adjacent tiny branch.
+- Out of scope: LLM-jury / optimistic-oracle adjudication beyond storing/validating human/operator proposal state.
+- Out of scope: mainnet deployment itself. This plan produces a mainnet-RC-capable branch and devnet evidence.
+
+## Source Context
+
+Verified 2026-06-16 against the local worktree:
+
+- `ReputationConfig` currently has `authority`, `config_authority`, `treasury_authority`, `settlement_authority`, `pause_authority`, economic values, `paused`, and `bump`; it has **no** `resolver_authority` and no timelock field.
+- `resolve_author_dispute.rs` and `create_refund_pool.rs` are both gated by `config.config_authority`.
+- `resolve_author_dispute.rs` currently transfers the dispute bond to the challenger on Upheld and to protocol treasury on Dismissed.
+- `slash_author_bond_if_present` currently transfers author-bond slash directly to the challenger USDC account.
+- A1 added `SlashingVouchers`, paged `slash_dispute_vouches`, `ListingSettlement.slashed_deposit_usdc_micros`, and listing/settlement locks that stay set until `create_refund_pool`.
+- `create_refund_pool.rs` already computes challenger reward only on withdrawable author proceeds and excludes slashed deposits from the reward base.
+- Solana/Anchor docs checked through local Solana skills and MCP search on 2026-06-16: Anchor supports account `realloc`, PDA seed/bump constraints, `Clock::get()` for timelock checks, and IDL/client generation should remain product artifacts.
+
+## Files To Change
+
+### State
+
+- `programs/agentvouch/src/state/config.rs`
+  - Add `resolver_authority: Pubkey`.
+  - Add `resolution_timelock_seconds: i64` with default 48-72h once the value is chosen.
+  - Consider adding `min_resolution_timelock_seconds` / `max_resolution_timelock_seconds` only if config setters allow mutating the timelock; otherwise enforce a constant min in setter logic.
+  - Keep role fields explicit: `config_authority`, `resolver_authority`, `treasury_authority`, `settlement_authority`, `pause_authority`.
+  - Update `LEN` and initialization defaults.
+
+- `programs/agentvouch/src/state/author_dispute.rs`
+  - Add pending-resolution fields, likely:
+    - `proposed_ruling: Option<AuthorDisputeRuling>`
+    - `proposed_refund_pool_usdc_micros: u64`
+    - `proposed_challenger_reward_usdc_micros: u64`
+    - `resolution_proposed_at: Option<i64>`
+    - `resolution_executable_at: Option<i64>`
+    - `resolution_proposer: Option<Pubkey>`
+  - Decide whether to add `AuthorDisputeStatus::ResolutionProposed` or keep `status = Open` until execution. Recommendation: add `ResolutionProposed` so UI/indexers can distinguish open evidence from pending execution. Append enum variant to preserve existing variant encodings.
+  - Update `LEN`.
+
+- `programs/agentvouch/src/state/settlement.rs`
+  - Avoid adding fields unless execution needs a durable slash/refund reserve bucket separate from existing `withdrawable_author_proceeds_usdc_micros`, `refunded_author_proceeds_usdc_micros`, and `slashed_deposit_usdc_micros`.
+  - If author-bond slash is moved into the author proceeds vault for refunding, add a distinct field such as `bond_slashed_deposit_usdc_micros`; do **not** mix author-bond slash into `slashed_deposit_usdc_micros` unless docs rename that field away from voucher-only meaning.
+
+### Instructions
+
+- Add `instructions/propose_author_dispute_resolution.rs`
+  - Accounts: `author_dispute`, `author_profile`, `skill_listing`, optional `listing_settlement`, `config`, `resolver_authority: Signer`.
+  - Require `resolver_authority == config.resolver_authority`.
+  - Require dispute is `Open`.
+  - Validate PDA/config/listing/settlement relationships just like the current resolver path.
+  - Store proposed ruling, requested refund pool amount, proposed challenger reward amount or bps-derived preview, proposal timestamp, and executable timestamp.
+  - Do **not** move tokens or mutate author reputation counters.
+  - For Dismissed, proposed refund amount must be zero.
+  - For Upheld paid disputes, cap requested refund by formula; see "Refund Formula".
+  - Emit `AuthorDisputeResolutionProposed`.
+
+- Add `instructions/execute_author_dispute_resolution.rs`
+  - Accounts mostly mirror current `resolve_author_dispute.rs`, but authority is the executor/payer and need not be resolver if the proposal is already recorded. Decide whether execution is permissionless after timelock; recommendation: permissionless execute after proposal matures, because it lowers liveness risk.
+  - Require status `ResolutionProposed`, `Clock::get()?.unix_timestamp >= executable_at`, and all proposal fields present.
+  - For Dismissed:
+    - Transfer dispute bond to protocol treasury as today.
+    - Clear listing/settlement locks.
+    - Decrement `open_author_disputes`, increment dismissed count, recompute reputation.
+  - For Upheld:
+    - Return the challenger’s original dispute bond first, or explicitly route it through treasury/refund if product policy says otherwise. Recommendation: return bond principal to challenger; reward is separate and capped.
+    - Slash author bond if present, but route the slash into refund capacity rather than directly to challenger.
+    - Increment upheld counters and recompute reputation.
+    - If paid and linked vouches exist, set status `SlashingVouchers` as A1 does; final `Resolved` remains the last slash page.
+    - If no linked vouches or free-listing `AuthorBondOnly`, move to `Resolved` immediately.
+  - Emit `AuthorDisputeResolutionExecuted`.
+
+- Replace or retain `resolve_author_dispute`
+  - Recommendation: keep the public instruction name only as a compatibility wrapper during local/devnet if cheap, but mainnet-RC should prefer explicit `propose_*` / `execute_*` entrypoints.
+  - If retained, make it fail with a clear `UseGovernedResolutionFlow` error or call propose+execute only when timelock is zero in local tests. Avoid shipping an instant hot-key bypass.
+
+- Add `instructions/update_config.rs` or split into narrow setters
+  - Gated by `config.config_authority`.
+  - Update economic values: floors, slash percentage, reward shares, challenger reward bps/cap, author proceeds lock, refund claim window, resolution timelock.
+  - Enforce invariants:
+    - shares sum to 10_000
+    - `slash_percentage <= 100`
+    - bps values <= 10_000
+    - lock/window/timelock nonnegative
+    - chain context length <= `MAX_CHAIN_CONTEXT_LEN` if mutable
+  - Emit `ReputationConfigUpdated`.
+
+- Add `instructions/rotate_authorities.rs`
+  - Gated by `config.config_authority`.
+  - Rotate one or more role pubkeys: config, resolver, treasury, settlement, pause.
+  - If rotating `config_authority`, write all other requested changes before setting the new config authority, or use a two-step handoff. Recommendation for v1: one-step rotate with old authority signer and event, plus devnet test; document as multisig-controlled.
+  - Emit `AuthorityRotated` per changed role.
+
+- Add `instructions/sweep_treasury.rs`
+  - Gated by `config.treasury_authority`.
+  - Only sweeps from `protocol_treasury_vault` to a specified USDC token account owned by the treasury authority or approved recipient.
+  - Validate mint and token program.
+  - Emit `TreasurySwept`.
+  - Do not sweep refund vaults, settlement author proceeds vaults, x402 settlement vault, voucher reward vaults, or author/vouch vaults.
+
+### Existing instructions to edit
+
+- `instructions/initialize_config.rs`
+  - Add `resolver_authority` and `resolution_timelock_seconds` args or default resolver to `config_authority` in local/devnet init.
+  - Tests/helpers must pass the new field.
+
+- `instructions/create_refund_pool.rs`
+  - Change authority check from `config_authority` to `resolver_authority` or allow permissionless execution if the proposal has matured and records refund parameters.
+  - Recommendation: make `create_refund_pool` executable by anyone after dispute `Resolved`, but it must consume bounded proposal values from `AuthorDispute`. If a payer creates the refund vault, any cranker can pay rent; protocol state determines amounts.
+  - Reject requested pool amounts above the matured proposal and formula cap.
+  - Keep current separation:
+    - challenger reward base excludes `slashed_deposit_usdc_micros`
+    - slashed deposits are refund-pool-only
+    - withdrawable author proceeds stay separately accounted
+
+- `instructions/slash_dispute_vouches.rs`
+  - No authority changes expected; ensure finalization still leaves locks for `create_refund_pool` if a refund pool is required.
+  - If A2 stores refund capacity/proposal fields that depend on voucher slash totals, update finalization to avoid marking a dispute fully settled before refund-pool creation constraints are satisfiable.
+
+- `instructions/migrate_config_m13.rs`
+  - Decide whether to extend migration or declare A2 as a devnet clean break. Recommendation: clean break if config/account layout changes stack beyond simple config realloc.
+
+- `programs/agentvouch/src/lib.rs` and `instructions/mod.rs`
+  - Register new instruction modules and entrypoints.
+
+- `programs/agentvouch/src/events.rs`
+  - Add:
+    - `AuthorDisputeResolutionProposed`
+    - `AuthorDisputeResolutionExecuted`
+    - `ReputationConfigUpdated`
+    - `AuthorityRotated`
+    - `TreasurySwept`
+
+## Refund Formula
+
+The exact formula should be locked before implementation. Recommended v1:
+
+- `max_purchase_refund_exposure = author_dispute.skill_price_usdc_micros_snapshot` when a purchase is attached; otherwise `0` until API/indexer can provide affected-revision volume.
+- `available_refund_capacity = withdrawable_author_proceeds_usdc_micros + slashed_deposit_usdc_micros + author_bond_slashed_to_refund_bucket`.
+- `max_challenger_reward = min(config.challenger_reward_cap_usdc_micros, proceeds_reward_base * config.challenger_reward_bps / 10_000)`.
+- `proceeds_reward_base = withdrawable_author_proceeds_usdc_micros` only; slashed voucher deposits and author-bond refund deposits must not inflate challenger reward.
+- `max_refund_pool = min(requested_refund_pool_usdc_micros, max_purchase_refund_exposure, available_refund_capacity - max_challenger_reward)`.
+
+Open question: paid listings can have many purchases per revision, but the current `AuthorDispute` stores only one optional `purchase` and one price snapshot. If A2 wants refund capacity for all affected buyers, implementation needs either an indexer-provided affected-volume input with stronger bounds or a later refund-reserve policy (A4). For mainnet-RC v1, keep the formula conservative and tied to the stored purchase/price snapshot unless A4 expands it.
+
+Important A1 interaction: for paid disputes with linked vouches, actual voucher-slash funds are not known until `slash_dispute_vouches` finishes all pages. The proposal should record the ruling and a refund ceiling/intention; `create_refund_pool` must cap against the matured proposal **and** the actual post-slash settlement buckets (`withdrawable_author_proceeds_usdc_micros`, `slashed_deposit_usdc_micros`, and any chosen author-bond refund bucket).
+
+## Implementation Steps
+
+1. **Lock constants and account-layout strategy.**
+   - Choose `DEFAULT_RESOLUTION_TIMELOCK_SECONDS` (48h = 172_800 or 72h = 259_200).
+   - For local Anchor tests, initialize or set the timelock to a very short nonzero value so early-execute failure and post-delay success are both testable without waiting hours.
+   - Decide whether devnet uses a clean-break program ID or config realloc/migration. A1 used clean-break rationale for broad account layout changes; A2 likely changes `ReputationConfig` and `AuthorDispute`.
+   - Decide whether `execute_author_dispute_resolution` is permissionless after timelock. Recommendation: yes.
+
+2. **Add state and events.**
+   - Update `ReputationConfig` and `AuthorDispute`.
+   - Update initialization and tests helper defaults.
+   - Add event structs with enough fields for indexers: dispute, author, proposer/executor, ruling, executable timestamp, refund amount, reward amount, slash totals.
+
+3. **Add config governance instructions.**
+   - Implement `update_config` with all invariant checks.
+   - Implement `rotate_authorities`.
+   - Implement `sweep_treasury`.
+   - Add tests before touching dispute flow so authority invariants are isolated.
+
+4. **Split dispute resolution.**
+   - Move current validation from `resolve_author_dispute.rs` into shared helpers if it keeps propose/execute small.
+   - `propose_*` records only.
+   - `execute_*` performs the current state/fund transitions after timelock, with A2 routing changes.
+   - Keep A1 `SlashingVouchers` behavior intact.
+
+5. **Route author-bond slash to refund-first capacity.**
+   - Stop transferring author-bond slash directly to challenger.
+   - Decide custody account:
+     - Preferred: transfer author-bond slash into the disputed listing's author proceeds vault and track a separate `bond_slashed_deposit_usdc_micros` field.
+     - Alternative: transfer to protocol treasury and later fund refund pool from treasury via `treasury_authority`; easier custody, weaker automatic buyer protection.
+   - Document the chosen custody path in readiness docs and tests.
+
+6. **Constrain refund pool creation.**
+   - Require mature proposal state.
+   - Cap requested amount against formula and proposal.
+   - Preserve slashed-deposit first-drain behavior from A1.
+
+7. **IDL and clients.**
+   - Run `NO_DNA=1 anchor build`.
+   - Copy `target/idl/agentvouch.json` to `web/agentvouch.json`.
+   - Run `npm run generate:client`.
+   - Update curated web entrypoints and call sites, especially `web/hooks/useReputationOracle.ts` resolver authorization copy and actions.
+
+8. **Docs/runbooks.**
+   - Update readiness docs only after behavior is implemented and verified.
+   - Update `web/public/skill.md` after the program/client state reflects the new flow.
+   - Add authority policy and smoke commands to `docs/PRODUCTION_RUNBOOK.md`.
+
+## Test Matrix
+
+Add/extend Anchor tests, likely in `tests/agentvouch-usdc-disputes.ts` plus slashing regressions in `tests/agentvouch-usdc-slashing.ts`:
+
+1. **Resolver split:** `config_authority` cannot propose/execute unless it is also `resolver_authority`; resolver cannot update config.
+2. **Propose only:** proposal records ruling/refund/executable timestamp and moves no USDC; dispute remains unfinalized.
+3. **Timelock:** execution before `executable_at` fails; after clock advance / local validator wait succeeds.
+4. **Dismissed execution:** dispute bond moves to treasury, locks clear, counters/reputation update, no refund pool.
+5. **Upheld free-listing:** author bond slash routes per chosen refund-first policy; no voucher slashing; dispute resolves without `SlashingVouchers`.
+6. **Upheld paid listing with vouchers:** proposal → execute parks in `SlashingVouchers`; slash pages still work; refund pool respects proposal/formula.
+7. **Challenger reward cap:** reward never exceeds bps/cap and excludes slashed voucher/bond refund buckets.
+8. **Refund amount bounds:** impossible overlarge proposed/requested refund fails or clamps per decided behavior.
+9. **Authority rotation:** rotate resolver/config/treasury/settlement/pause authorities; old authority fails, new authority succeeds; events emitted.
+10. **Config setters:** invalid share sums, slash >100, negative windows/timelock, and bps >10_000 fail.
+11. **Treasury sweep:** treasury authority can sweep only protocol treasury vault; wrong mint/owner/authority fail.
+12. **A1 regressions:** multi-page slash, stale position skip-settle, ring-fenced slashed deposits, and remove/close dispute locks remain green.
+
+## Verification
+
+Local:
+
+- `NO_DNA=1 anchor build`
+- `NO_DNA=1 anchor test`
+- Copy `target/idl/agentvouch.json` to `web/agentvouch.json`
+- `npm run generate:client`
+- `npm run test --workspace @agentvouch/web`
+- `npm run test --workspace @agentvouch/cli`
+- `npm run build --workspace @agentvouch/web`
+- `npm run build --workspace @agentvouch/cli`
+- `git diff --check`
+
+Devnet smoke before mainnet-RC:
+
+- Clean-state publish/vouch/purchase/report/propose/wait-or-test-timelock/execute/slash/refund/claim path.
+- Authority rotation smoke on devnet, including resolver authority and config authority.
+- Treasury sweep smoke only with a tiny known treasury balance and explicit operator approval.
+
+Security review checklist:
+
+- All USDC-moving instructions validate token mint, token owner, PDA seeds, and authority signer.
+- Timelock uses `Clock::get()` and handles nonpositive/default config sanely.
+- No instant dispute-resolution bypass remains.
+- No authority can silently mutate user claims outside documented scope.
+- Refund/reward accounting remains conservation-of-value testable.
+
+## Rollout
+
+Recommended rollout path:
+
+1. Implement and verify on local validator.
+2. Deploy to devnet as a clean break if account layout migration would require broad realloc/backfill.
+3. Initialize config with separate role keys, then rotate resolver/config/treasury/pause/settlement to the intended devnet multisig/test signers.
+4. Run clean devnet smoke twice from fresh state.
+5. Update `docs/DEVNET_STATE.md` with program ID, config pubkeys, smoke txs, IDL hash, and known limitations.
+6. Only then update `docs/MAINNET_READINESS.md` from "blocked" to "A2 devnet-live / pending review" if evidence supports it.
+
+Mainnet remains no-go until A3 pause, A4 refund reserve policy, external/senior security review, authority custody, and repeated clean smokes are complete.
+
+## Rollback
+
+Pre-mainnet:
+
+- If deployed as clean-break devnet program, rollback by pointing web/env/docs back to the previous devnet program/config and restoring the previous Neon state snapshot or cleanup script output.
+- If same-program upgrade is used, rollback requires redeploying the previous `.so` and ensuring clients/IDL match; do not use same-program upgrade unless account compatibility is proven.
+- Never use `git reset --hard` or destructive DB cleanup as rollback without explicit operator approval and a saved state/export.
+
+Mainnet:
+
+- Not applicable for this plan until mainnet-RC gates pass. Mainnet rollback policy must be written in the production runbook before deployment.
+
+## Blockers / Open Questions
+
+- **Timelock duration:** choose 48h or 72h for mainnet default. Tests can use shorter local config if setter supports it.
+- **Author-bond slash custody:** decide whether to place slashed author-bond funds into the listing author-proceeds vault under a new refund-only field, or into protocol treasury with a governed refund/sweep path. Refund-first story is stronger with explicit refund-only custody.
+- **Affected buyer scope:** current dispute stores one optional purchase and price snapshot; full affected-revision refund pools need API/indexer support or a later A4 reserve policy.
+- **Compatibility strategy:** A2 changes account layouts. Decide clean-break devnet versus migration before implementation starts.
+- **Multisig integration:** on-chain program can store a Squads multisig pubkey as authority, but actual Squads setup/rotation is operational work outside the program. Runbook must name signer set, threshold, and emergency rotation procedure.
