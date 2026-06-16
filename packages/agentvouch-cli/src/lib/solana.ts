@@ -8,7 +8,10 @@ import {
   type Commitment,
 } from "@solana/web3.js";
 import agentvouchIdl from "../../../../web/agentvouch.json";
-import type { Agentvouch } from "../../../../target/types/agentvouch";
+// Anchor program type, committed (generated from web/agentvouch.json) instead of
+// imported from the gitignored `target/types/agentvouch` build artifact, which
+// only exists after `anchor build` and broke typecheck on a fresh checkout.
+import type { Agentvouch } from "../idl/agentvouch.js";
 
 const { AnchorProvider, Program, Wallet } = anchor;
 const TOKEN_PROGRAM_ID = new PublicKey(
