@@ -1,4 +1,5 @@
 {
+  "name": "agentvouch",
   "private": true,
   "license": "ISC",
   "workspaces": [
