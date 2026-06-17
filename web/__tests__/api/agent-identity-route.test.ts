@@ -7,6 +7,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/agentIdentity", () => ({
   linkGithubProfileToAgent: vi.fn(),
+  listGithubLinkedWallets: vi.fn(),
   resolveAgentIdentityByWallet: vi.fn(),
   updateAgentUsername: vi.fn(),
 }));
@@ -21,9 +22,11 @@ vi.mock("@/lib/trust", () => ({
 
 import { GET, PATCH } from "@/app/api/agents/[pubkey]/identity/route";
 import { POST as POST_GITHUB } from "@/app/api/agents/[pubkey]/identity/github/route";
+import { GET as GET_GITHUB_LINKED_WALLETS } from "@/app/api/auth/github/linked-wallets/route";
 import { verifyWalletSignature } from "@/lib/auth";
 import {
   linkGithubProfileToAgent,
+  listGithubLinkedWallets,
   resolveAgentIdentityByWallet,
   updateAgentUsername,
 } from "@/lib/agentIdentity";
@@ -40,6 +43,8 @@ const mockUpdateUsername = updateAgentUsername as unknown as ReturnType<
 const mockLinkGithub = linkGithubProfileToAgent as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockListGithubLinkedWallets =
+  listGithubLinkedWallets as unknown as ReturnType<typeof vi.fn>;
 const mockGithubSession = getGithubSessionFromRequest as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -188,5 +193,64 @@ describe("/api/agents/[pubkey]/identity/github", () => {
         githubSession,
       })
     );
+  });
+});
+
+describe("/api/auth/github/linked-wallets", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("requires a GitHub OAuth session before listing linked wallets", async () => {
+    mockGithubSession.mockReturnValue(null);
+
+    const res = await GET_GITHUB_LINKED_WALLETS(
+      makeRequest("/api/auth/github/linked-wallets", "GET")
+    );
+
+    expect(res.status).toBe(401);
+    expect(mockListGithubLinkedWallets).not.toHaveBeenCalled();
+  });
+
+  it("returns wallets linked to the signed-in GitHub profile", async () => {
+    const githubSession = {
+      provider: "github" as const,
+      id: "123",
+      login: "dirtybits",
+      name: "Dirty Bits",
+      avatarUrl: null,
+      createdAt: Date.now(),
+    };
+    mockGithubSession.mockReturnValue(githubSession);
+    mockListGithubLinkedWallets.mockResolvedValue([
+      {
+        agentId: "agent-1",
+        canonicalAgentId: "solana:devnet:agentvouch-local#Wallet111",
+        username: "wallet-one",
+        displayName: null,
+        walletPubkey: "Wallet111",
+        chainContext: "solana:devnet",
+        linkedAt: "2026-06-16T00:00:00.000Z",
+      },
+      {
+        agentId: "agent-2",
+        canonicalAgentId: "solana:devnet:agentvouch-local#Wallet222",
+        username: "wallet-two",
+        displayName: null,
+        walletPubkey: "Wallet222",
+        chainContext: "solana:devnet",
+        linkedAt: "2026-06-16T00:00:00.000Z",
+      },
+    ]);
+
+    const res = await GET_GITHUB_LINKED_WALLETS(
+      makeRequest("/api/auth/github/linked-wallets", "GET")
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.wallets).toHaveLength(2);
+    expect(body.wallets[0].walletPubkey).toBe("Wallet111");
+    expect(mockListGithubLinkedWallets).toHaveBeenCalledWith(githubSession);
   });
 });

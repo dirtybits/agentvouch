@@ -157,6 +157,52 @@ describe("GET /api/skills cache headers", () => {
     expect(mockCreatePurchasePreflightContext).not.toHaveBeenCalled();
   });
 
+  it("resolves full-mode author identities without write-side effects", async () => {
+    const author = "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw";
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          skill_id: "identity-skill",
+          author_pubkey: author,
+          name: "Identity Skill",
+          description: null,
+          tags: [],
+          current_version: 1,
+          ipfs_cid: null,
+          on_chain_address: null,
+          chain_context: "solana:devnet",
+          total_installs: 0,
+          cached_author_trust: {
+            reputationScore: 42,
+            totalVouchesReceived: 1,
+            totalStakedFor: 1000,
+            authorBondUsdcMicros: 0,
+            totalStakeAtRisk: 1000,
+            disputesAgainstAuthor: 0,
+            disputesUpheldAgainstAuthor: 0,
+            activeDisputesAgainstAuthor: 0,
+            registeredAt: 1,
+            isRegistered: true,
+          },
+          created_at: "2026-05-11T00:00:00.000Z",
+          updated_at: "2026-05-11T00:00:00.000Z",
+        },
+      ])
+    );
+
+    const res = await GET(makeRequest("?sort=trusted&page=1"));
+
+    expect(res.status).toBe(200);
+    expect(mockResolveManyAgentIdentitiesByWallet).toHaveBeenCalledWith(
+      [author],
+      {
+        hasAgentProfileByWallet: new Map([[author, true]]),
+        persistDerived: false,
+      }
+    );
+  });
+
   it("orders searched skills by search rank before sort tie-breakers", async () => {
     const lowerRankAlphabeticalFirst = {
       id: "11111111-1111-4111-8111-111111111111",

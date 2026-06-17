@@ -55,6 +55,16 @@ export interface AgentIdentitySummary {
   registryAsset: string | null;
 }
 
+export interface GithubLinkedWallet {
+  agentId: string;
+  canonicalAgentId: string;
+  username: string | null;
+  displayName: string | null;
+  walletPubkey: string;
+  chainContext: string;
+  linkedAt: string | null;
+}
+
 const BINDING_TYPES = {
   walletOwner: "wallet_owner",
   walletOperational: "wallet_operational",
@@ -98,6 +108,16 @@ type DbBinding = {
   raw_upstream_chain_label: string | null;
   raw_upstream_chain_id: string | null;
   metadata: Record<string, unknown> | string | null;
+};
+
+type DbGithubLinkedWallet = {
+  agent_id: string;
+  canonical_agent_id: string;
+  username: string | null;
+  display_name: string | null;
+  wallet_pubkey: string;
+  chain_context: string;
+  linked_at: Date | string | null;
 };
 
 export function buildLocalCanonicalAgentId(
@@ -696,6 +716,7 @@ export async function resolveAgentIdentityByWallet(
     chainContext?: string | null;
     createIfMissing?: boolean;
     hasAgentProfile?: boolean;
+    persistDerived?: boolean;
   }
 ): Promise<AgentIdentitySummary | null> {
   if (!hasDatabaseConfigured()) {
@@ -709,9 +730,10 @@ export async function resolveAgentIdentityByWallet(
   await ensureAgentIdentitySchema();
 
   const chainContext = normalizePersistedChainContext(options?.chainContext);
+  const persistDerived = options?.persistDerived !== false;
   let agent = await getAgentByWallet(walletPubkey, chainContext);
 
-  if (!agent && options?.createIfMissing !== false) {
+  if (!agent && persistDerived && options?.createIfMissing !== false) {
     return upsertLocalAgentIdentity({
       walletPubkey,
       chainContext,
@@ -723,18 +745,21 @@ export async function resolveAgentIdentityByWallet(
     return null;
   }
 
-  agent = await ensureAgentUsername(agent, walletPubkey);
+  if (persistDerived) {
+    agent = await ensureAgentUsername(agent, walletPubkey);
 
-  if (options?.hasAgentProfile) {
-    const agentProfilePda = await deriveAgentProfilePda(walletPubkey);
-    await upsertBinding(agent.id, {
-      bindingType: BINDING_TYPES.agentProfilePda,
-      chainContext,
-      bindingRef: agentProfilePda,
-    });
+    if (options?.hasAgentProfile) {
+      const agentProfilePda = await deriveAgentProfilePda(walletPubkey);
+      await upsertBinding(agent.id, {
+        bindingType: BINDING_TYPES.agentProfilePda,
+        chainContext,
+        bindingRef: agentProfilePda,
+      });
+    }
+
+    agent = (await getAgentByWallet(walletPubkey, chainContext)) ?? agent;
   }
 
-  agent = (await getAgentByWallet(walletPubkey, chainContext)) ?? agent;
   return loadAgentSummary(agent);
 }
 
@@ -743,6 +768,7 @@ export async function resolveManyAgentIdentitiesByWallet(
   options?: {
     chainContext?: string | null;
     hasAgentProfileByWallet?: Map<string, boolean>;
+    persistDerived?: boolean;
   }
 ): Promise<Map<string, AgentIdentitySummary>> {
   const uniqueWallets = [...new Set(walletPubkeys.filter(Boolean))];
@@ -750,9 +776,10 @@ export async function resolveManyAgentIdentitiesByWallet(
     uniqueWallets.map(async (walletPubkey) => {
       const identity = await resolveAgentIdentityByWallet(walletPubkey, {
         chainContext: options?.chainContext,
-        createIfMissing: true,
+        createIfMissing: options?.persistDerived === false ? false : true,
         hasAgentProfile:
           options?.hasAgentProfileByWallet?.get(walletPubkey) ?? false,
+        persistDerived: options?.persistDerived,
       });
       return [walletPubkey, identity] as const;
     })
@@ -972,4 +999,48 @@ export async function linkGithubProfileToAgent(params: {
     username_source: currentAgent.usernameSource,
   };
   return loadAgentSummary(refreshedAgent);
+}
+
+export async function listGithubLinkedWallets(
+  githubSession: GithubSession
+): Promise<GithubLinkedWallet[]> {
+  if (!hasDatabaseConfigured()) {
+    return [];
+  }
+
+  await ensureAgentIdentitySchema();
+
+  const rows = await sql()<DbGithubLinkedWallet>`
+    SELECT
+      a.id AS agent_id,
+      a.canonical_agent_id,
+      a.username,
+      a.display_name,
+      wallet_binding.binding_ref AS wallet_pubkey,
+      wallet_binding.chain_context,
+      github_binding.created_at AS linked_at
+    FROM agent_identity_bindings github_binding
+    JOIN agents a ON a.id = github_binding.agent_id
+    JOIN agent_identity_bindings wallet_binding
+      ON wallet_binding.agent_id = a.id
+      AND wallet_binding.binding_type = ${BINDING_TYPES.walletOwner}
+      AND wallet_binding.is_primary = true
+    WHERE github_binding.binding_type = ${BINDING_TYPES.githubProfile}
+      AND github_binding.chain_context = ${GITHUB_BINDING_CONTEXT}
+      AND github_binding.binding_ref = ${`github:${githubSession.id}`}
+    ORDER BY github_binding.created_at DESC, a.created_at DESC
+  `;
+
+  return rows.map((row) => ({
+    agentId: row.agent_id,
+    canonicalAgentId: row.canonical_agent_id,
+    username: row.username,
+    displayName: row.display_name,
+    walletPubkey: row.wallet_pubkey,
+    chainContext: row.chain_context,
+    linkedAt:
+      row.linked_at instanceof Date
+        ? row.linked_at.toISOString()
+        : row.linked_at,
+  }));
 }

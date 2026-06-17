@@ -158,6 +158,13 @@ describe("POST /api/skills/hydrate", () => {
     expect(body.skills[skillId].author_trust.reputationScore).toBe(88);
     expect(body.skills[skillId].purchasePreflightStatus).toBe("ok");
     expect(body.skills[skillId].buyerHasPurchased).toBe(true);
+    expect(mockResolveManyAgentIdentitiesByWallet).toHaveBeenCalledWith(
+      [author],
+      {
+        hasAgentProfileByWallet: new Map([[author, true]]),
+        persistDerived: false,
+      }
+    );
     expect(mockCreatePurchasePreflightContext).toHaveBeenCalledOnce();
     expect(mockHasUsdcPurchaseEntitlement).toHaveBeenCalledWith(skillId, buyer);
   });
