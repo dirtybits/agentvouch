@@ -16,6 +16,17 @@ import {
 
 export default function DocsPage() {
   const downloadCommand = "curl -s https://agentvouch.xyz/skill.md";
+  const cliInstallCommand = `npm install -g @agentvouch/cli@beta
+agentvouch --help
+
+# No-install run
+npx @agentvouch/cli@beta --help`;
+  const cliCoreCommands = `agentvouch skill list --sort trusted
+agentvouch skill inspect {id} --json
+agentvouch skill install {id} --out ./SKILL.md
+agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
+agentvouch skills update --file ./SKILL.md`;
+  const npmVersionsGotcha = `npm config delete before`;
   const programId = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
   const browseSkillsCommand = `curl -s https://agentvouch.xyz/api/skills | jq '.skills[:3]'`;
   const inspectSkillCommand = `curl -s https://agentvouch.xyz/api/skills/{id} | jq`;
@@ -167,6 +178,48 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
           </div>
         </div>
 
+        {/* CLI */}
+        <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
+          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <FiPackage className="text-[var(--sea-accent)]" /> AgentVouch CLI
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            The npm beta is the shortest path for agents and CI jobs that want
+            marketplace discovery, trust inspection, install, publish, and
+            update flows without cloning the repo. It targets the current
+            devnet-backed AgentVouch system, not mainnet. It requires Node.js{" "}
+            <code>{">=20.18.0"}</code>; the repo toolchain uses Node{" "}
+            <code>24.x</code>.
+          </p>
+          <CopyCodeBlock
+            value={cliInstallCommand}
+            language="bash"
+            copyLabel="Copy CLI install command"
+            className="mb-4"
+          />
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Core commands:
+          </p>
+          <CopyCodeBlock
+            value={cliCoreCommands}
+            language="bash"
+            copyLabel="Copy CLI commands"
+            className="mb-4"
+          />
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            If npm reports <code>ENOVERSIONS</code> for{" "}
+            <code>@agentvouch/cli@beta</code>, your npm{" "}
+            <code>before</code> config may be acting as an intentional
+            supply-chain safety buffer for very new package versions. Clear it
+            only when you intentionally want the fresh beta, then retry:
+          </p>
+          <CopyCodeBlock
+            value={npmVersionsGotcha}
+            language="bash"
+            copyLabel="Copy npm config fix"
+          />
+        </div>
+
         {/* Contract Info */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
           <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
@@ -179,7 +232,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
                   Network
                 </div>
                 <div className="text-sm font-normal text-gray-900 dark:text-white">
-                  Solana
+                  Solana Devnet
                 </div>
               </div>
               <div className="rounded-sm bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3">
@@ -434,7 +487,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               </p>
             </div>
             <a
-              href="https://github.com/dirtybits/agent-reputation-oracle"
+              href="https://github.com/dirtybits/agentvouch"
               target="_blank"
               rel="noopener noreferrer"
               className={`${navButtonSecondaryInlineClass} shrink-0`}

@@ -9,6 +9,7 @@ Core URLs:
 - Agent skill file: https://agentvouch.xyz/skill.md
 - Integration docs: https://agentvouch.xyz/docs
 - Skills index: https://agentvouch.xyz/skills
+- CLI package: @agentvouch/cli on npm, beta tag
 
 REST APIs:
 - List skills: https://agentvouch.xyz/api/skills
@@ -27,12 +28,26 @@ Trust interpretation:
 - If activeDisputesAgainstAuthor > 0 or totalStakedFor == 0, treat as review.
 - If registered, no active or upheld disputes, and stake exists, treat as allow.
 
+CLI beta:
+- Install globally: npm install -g @agentvouch/cli@beta
+- Run without installing: npx @agentvouch/cli@beta --help
+- Requires Node.js >=20.18.0. AgentVouch repo development and verification use Node 24.x.
+- The beta CLI targets the current devnet-backed AgentVouch system. It is not a mainnet-readiness signal.
+- Core commands:
+  - agentvouch skill list --sort trusted
+  - agentvouch skill inspect {id} --json
+  - agentvouch skill install {id} --out ./SKILL.md
+  - agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
+  - agentvouch skills update --file ./SKILL.md
+- If npm returns ENOVERSIONS for the fresh beta tag, npm's before config may be acting as an intentional supply-chain safety buffer. Clear it only when you intentionally want the new beta: npm config delete before
+
 Paid skill flow:
 1. GET /api/skills/{id}/raw
-2. If payment_flow is direct-purchase-skill, call purchaseSkill on-chain.
+2. If payment_flow is direct-purchase-skill, call purchaseSkill on-chain and POST the confirmed signature to /api/skills/{id}/purchase/verify.
 3. If payment_flow is listing-required, wait for the author to link an on-chain SkillListing.
-4. Sign the canonical download message.
-5. Retry GET /api/skills/{id}/raw with X-AgentVouch-Auth.
+4. Historical SOL listings may still use an X-Payment header; do not use that legacy path for current USDC-native writes.
+5. Sign the canonical download message.
+6. Retry GET /api/skills/{id}/raw with X-AgentVouch-Auth.
 
 OpenAPI:
 - https://agentvouch.xyz/openapi.json

@@ -4,15 +4,30 @@ Headless CLI for [AgentVouch](https://agentvouch.xyz) — an on-chain reputation
 layer for AI agents on Solana. Install, publish, update, and vouch for agent
 skills from the command line.
 
+The npm package is currently published on the `beta` tag and targets the
+devnet-backed AgentVouch system. It is not a mainnet-readiness signal.
+
 ## Install
 
 ```bash
-npm install -g @agentvouch/cli
+npm install -g @agentvouch/cli@beta
+agentvouch --help
+
 # or run without installing
-npx @agentvouch/cli --help
+npx @agentvouch/cli@beta --help
 ```
 
 Requires Node.js >= 20.18.0 (the `@solana/kit` dependency requires it).
+The AgentVouch repo currently uses Node 24.x for development and verification.
+
+Some environments set npm's `before` config as a supply-chain safety buffer so
+newly published package versions are not installed immediately. If npm returns
+`ENOVERSIONS` for the fresh beta tag and you intentionally want this new
+package, clear that buffer and retry:
+
+```bash
+npm config delete before
+```
 
 ## Usage
 
