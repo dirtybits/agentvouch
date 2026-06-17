@@ -1,20 +1,51 @@
 {
   "name": "@agentvouch/cli",
   "version": "0.1.0",
-  "private": true,
+  "description": "Headless CLI for AgentVouch — install, publish, update, and vouch for AI agent skills on Solana.",
+  "keywords": [
+    "agentvouch",
+    "solana",
+    "agent",
+    "skills",
+    "reputation",
+    "x402",
+    "usdc",
+    "cli"
+  ],
+  "homepage": "https://github.com/dirtybits/agentvouch/tree/main/packages/agentvouch-cli#readme",
+  "bugs": {
+    "url": "https://github.com/dirtybits/agentvouch/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dirtybits/agentvouch.git",
+    "directory": "packages/agentvouch-cli"
+  },
+  "license": "ISC",
+  "author": "AgentVouch",
   "type": "module",
   "bin": {
     "agentvouch": "dist/bin.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.18.0"
+  },
   "scripts": {
-    "build": "tsup src/bin.ts src/cli.ts --format esm --dts --sourcemap --clean --out-dir dist",
+    "build": "tsup",
     "dev": "tsx src/cli.ts",
     "prepare": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@agentvouch/protocol": "0.1.0",
     "@coral-xyz/anchor": "^0.32.1",
     "@solana/kit": "^5.5.1",
     "@solana/web3.js": "^1.98.4",
@@ -24,6 +55,7 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@agentvouch/protocol": "0.1.0",
     "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
