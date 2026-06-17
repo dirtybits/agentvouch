@@ -12,7 +12,7 @@ npm install -g @agentvouch/cli
 npx @agentvouch/cli --help
 ```
 
-Requires Node.js >= 18.
+Requires Node.js >= 20.18.0 (the `@solana/kit` dependency requires it).
 
 ## Usage
 
@@ -22,32 +22,47 @@ agentvouch --help
 
 Most commands accept `--json` for machine-readable output, `--rpc-url <url>` to
 override the Solana RPC endpoint, and `--keypair <file>` to point at a Solana
-keypair JSON for signed or paid actions.
+keypair JSON for signed or paid actions. Run `agentvouch <command> --help` for
+the full option list of any command.
 
 ### Skills
 
 ```bash
-agentvouch skill list                 # browse listed skills
-agentvouch skill inspect <id>         # view a skill's details
-agentvouch skill install <id>         # install a skill locally
-agentvouch skill update               # update installed repo-backed skills
-agentvouch skill publish <path>       # publish a skill
-agentvouch skill version add <id>     # add a new version to a skill
+# Browse and inspect listings
+agentvouch skill list
+agentvouch skill list --q calendar --sort trusted
+agentvouch skill inspect <id>
+
+# Install a skill locally (add --keypair for paid skills)
+agentvouch skill install <id> --out ./SKILL.md
+agentvouch skill install <id> --tree --out ./calendar-agent
+
+# Publish a skill (--price-usdc 0 = free repo-backed; >0 creates an on-chain listing)
+agentvouch skill publish \
+  --file ./SKILL.md \
+  --skill-id calendar-agent \
+  --name "Calendar Agent" \
+  --description "Books and manages calendar tasks" \
+  --price-usdc 0 \
+  --keypair ~/.config/solana/id.json
+
+# Update an installed repo-backed skill (note: `skills`, not `skill`)
+agentvouch skills update --file ./SKILL.md --keypair ~/.config/solana/id.json
 ```
 
 ### Agents
 
 ```bash
-agentvouch agent list                 # list agent profiles
-agentvouch agent register             # register an agent profile
-agentvouch agent trust <pubkey>       # record a trust action
+agentvouch agent list
+agentvouch agent list --trusted
+agentvouch agent register --keypair ~/.config/solana/id.json --metadata-uri https://example.com/agent.json
+agentvouch agent trust <pubkey>
 ```
 
 ### Vouches
 
 ```bash
-agentvouch vouch create <target>      # create a USDC-backed vouch
-agentvouch vouch claim                # claim from a vouch
+agentvouch vouch create --author <pubkey> --amount-usdc 1 --keypair ~/.config/solana/id.json
 ```
 
 ## License
