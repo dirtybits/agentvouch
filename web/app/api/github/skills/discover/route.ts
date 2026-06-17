@@ -44,6 +44,9 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 function parseLimit(value: string | number | null | undefined): number {
+  if (value === null || value === undefined || value === "") {
+    return 10;
+  }
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) {
     return 10;

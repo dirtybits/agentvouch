@@ -1,6 +1,6 @@
 ---
 name: turn-closeout
-description: End substantial Codex turns with a concise outcome, concrete verification status, numbered recommended next steps, and an explicit prompt asking whether to proceed with one of those options. Use when wrapping up implementation work, debugging, research, planning, reviews, publishing flows, or other non-trivial tasks where the user may want Codex to continue with recommended follow-up actions.
+description: End substantial Codex turns with concise outcomes, concrete verification status, useful numbered next steps, and an explicit prompt asking whether to proceed.
 ---
 
 # Turn Closeout

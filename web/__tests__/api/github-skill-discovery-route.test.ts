@@ -93,6 +93,26 @@ describe("/api/github/skills/discover", () => {
     });
   });
 
+  it("uses the default limit when GET omits one", async () => {
+    vi.stubEnv("GITHUB_SKILL_DISCOVERY_SECRET", "discover-secret");
+
+    const res = await GET(
+      request(
+        "http://localhost/api/github/skills/discover?q=filename:SKILL.md",
+        {
+          headers: { authorization: "Bearer discover-secret" },
+        }
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockDiscoverGithubSkills).toHaveBeenCalledWith({
+      query: "filename:SKILL.md",
+      maxResults: 10,
+      token: undefined,
+    });
+  });
+
   it("discovers GitHub skills with a POST body", async () => {
     vi.stubEnv("GITHUB_SKILL_DISCOVERY_SECRET", "discover-secret");
 
