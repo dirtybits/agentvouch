@@ -16,3 +16,4 @@ web/agentvouch.json
 packages/agentvouch-cli/src/idl/agentvouch.ts
 .claude
 .cursor
+agent-skills

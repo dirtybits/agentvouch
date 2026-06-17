@@ -57,6 +57,7 @@ import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 import { upsertAuthorTrustSnapshots } from "@/lib/trustSnapshots";
 import {
+  getCachedTrust,
   partitionAuthorsByTrustFreshness,
   scheduleBackgroundTrustRefresh,
 } from "@/lib/authorTrustView";
@@ -65,6 +66,7 @@ import {
   createRouteTiming,
   loadRepoSkillRows,
   mergeSkills,
+  type MergedSkillRow,
   normalizeRepoSkillRows,
   sortEnrichedSkills,
   type ChainSkillRow,
@@ -244,6 +246,47 @@ function persistAuthorTrustSnapshots(input: {
     after(persist);
   } catch {
     void persist();
+  }
+}
+
+async function resolveSkillAuthorIdentities(input: {
+  skills: Array<MergedSkillRow>;
+  trustMap: Map<string, AuthorTrust>;
+  timing: RouteTiming;
+}): Promise<Map<string, AgentIdentitySummary>> {
+  const authorRows = new Map<string, MergedSkillRow>();
+  for (const skill of input.skills) {
+    if (skill.author_pubkey && isAddress(skill.author_pubkey)) {
+      authorRows.set(skill.author_pubkey, skill);
+    }
+  }
+
+  const authorPubkeys = [...authorRows.keys()];
+  if (authorPubkeys.length === 0) {
+    return new Map<string, AgentIdentitySummary>();
+  }
+
+  try {
+    return await input.timing.measure("identity", () =>
+      resolveManyAgentIdentitiesByWallet(authorPubkeys, {
+        hasAgentProfileByWallet: new Map(
+          authorPubkeys.map((authorPubkey) => [
+            authorPubkey,
+            input.trustMap.get(authorPubkey)?.isRegistered ??
+              getCachedTrust(authorRows.get(authorPubkey) ?? {})
+                ?.isRegistered ??
+              false,
+          ])
+        ),
+        persistDerived: false,
+      })
+    );
+  } catch (error) {
+    console.error(
+      "Failed to resolve author identities for /api/skills:",
+      error
+    );
+    return new Map<string, AgentIdentitySummary>();
   }
 }
 
@@ -476,10 +519,18 @@ export async function GET(request: NextRequest) {
       scheduleBackgroundTrustRefresh(stale);
     }
 
+    const identityMap = fastMode
+      ? live.identityMap
+      : await resolveSkillAuthorIdentities({
+          skills: allSkills,
+          trustMap: live.trustMap,
+          timing,
+        });
+
     const enriched = buildEnrichedSkillRows({
       skills: allSkills,
       trustMap: live.trustMap,
-      identityMap: live.identityMap,
+      identityMap,
       useCachedTrust: true,
     });
     sortEnrichedSkills(enriched, sort, { hasSearchQuery: Boolean(q) });

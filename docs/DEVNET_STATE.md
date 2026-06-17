@@ -99,7 +99,7 @@ The canonical smoke fixture now verifies direct `purchase_skill`, paid-listing v
 The 2026-06-10 A1 deploy was verified with:
 
 - `NO_DNA=1 anchor test` — 31 passing, including voucher slashing, multi-page crank, stale-position skip-settle, remove/close dispute-lock, and refund-pool paths.
-- `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=/Users/andysustic/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` — passed on 2026-06-11 with live open → upheld resolve → slash → refund-pool → refund-claim path.
+- `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=~/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` — passed on 2026-06-11 with live open → upheld resolve → slash → refund-pool → refund-claim path.
 - Binary match: `target/deploy/agentvouch.so` and `solana program dump` both hashed to `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1`.
 - On-chain IDL: upgraded at IDL account `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4`; fetched IDL semantically matches `target/idl/agentvouch.json` / `web/agentvouch.json`.
 - Web and CLI: `npm run test --workspace @agentvouch/web` (65 files, 332 tests), `npm run test --workspace @agentvouch/cli` (10 files, 50 tests), `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed.

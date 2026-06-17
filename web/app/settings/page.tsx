@@ -57,6 +57,16 @@ interface GithubSessionState {
   } | null;
 }
 
+interface GithubLinkedWallet {
+  agentId: string;
+  canonicalAgentId: string;
+  username: string | null;
+  displayName: string | null;
+  walletPubkey: string;
+  chainContext: string;
+  linkedAt: string | null;
+}
+
 export default function SettingsPage() {
   const { status, account } = useAgentVouchWallet();
   const { signMessage } = useAgentVouchTransactionSigner();
@@ -79,6 +89,9 @@ export default function SettingsPage() {
   const [githubSession, setGithubSession] = useState<GithubSessionState | null>(
     null
   );
+  const [githubLinkedWallets, setGithubLinkedWallets] = useState<
+    GithubLinkedWallet[]
+  >([]);
   const [linkingGithub, setLinkingGithub] = useState(false);
 
   const signAuth = useCallback(
@@ -149,9 +162,24 @@ export default function SettingsPage() {
         cache: "no-store",
       });
       if (!res.ok) return;
-      setGithubSession(await res.json());
+      const session = (await res.json()) as GithubSessionState;
+      setGithubSession(session);
+      if (session.authenticated) {
+        const linkedRes = await fetch("/api/auth/github/linked-wallets", {
+          cache: "no-store",
+        });
+        if (linkedRes.ok) {
+          const data = (await linkedRes.json()) as {
+            wallets?: GithubLinkedWallet[];
+          };
+          setGithubLinkedWallets(data.wallets ?? []);
+        }
+      } else {
+        setGithubLinkedWallets([]);
+      }
     } catch {
       setGithubSession(null);
+      setGithubLinkedWallets([]);
     }
   }, []);
 
@@ -255,6 +283,7 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error(data.error || "Failed to link GitHub");
       setIdentity(data.author_identity ?? null);
       setIdentityStatus("GitHub profile linked.");
+      await loadGithubSession();
     } catch (error: unknown) {
       setError(getErrorMessage(error));
     } finally {
@@ -455,9 +484,13 @@ export default function SettingsPage() {
                             Linking…
                           </>
                         ) : (
-                          "Link to wallet"
+                          "Link to this wallet"
                         )}
                       </button>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        You can link this GitHub account to more wallets by
+                        switching wallets and signing again.
+                      </p>
                     </div>
                   ) : githubSession?.configured === false ? (
                     <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -478,6 +511,38 @@ export default function SettingsPage() {
                       </a>
                     </div>
                   )}
+                  {githubSession?.authenticated &&
+                    githubLinkedWallets.length > 0 && (
+                      <div className="mt-4 border-t border-gray-100 pt-3 dark:border-gray-800">
+                        <p className="mb-2 text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          Linked wallets
+                        </p>
+                        <div className="space-y-2">
+                          {githubLinkedWallets.map((linked) => (
+                            <div
+                              key={`${linked.chainContext}:${linked.walletPubkey}`}
+                              className="rounded-sm border border-gray-100 bg-white px-2 py-1.5 dark:border-gray-800 dark:bg-gray-900"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate font-mono text-xs text-gray-600 dark:text-gray-300">
+                                  {linked.username
+                                    ? `@${linked.username}`
+                                    : linked.walletPubkey}
+                                </span>
+                                {walletAddress === linked.walletPubkey && (
+                                  <span className="rounded-full border border-[var(--sea-accent-border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--sea-accent)]">
+                                    Current
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">
+                                {linked.walletPubkey}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
             </div>

@@ -1,6 +1,9 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
-import { type AgentIdentitySummary } from "@/lib/agentIdentity";
+import {
+  resolveManyAgentIdentitiesByWallet,
+  type AgentIdentitySummary,
+} from "@/lib/agentIdentity";
 import {
   buildAgentTrustSummary,
   type AgentTrustSummary,
@@ -226,6 +229,43 @@ function buildHydratedBaseRows(input: {
   });
 }
 
+async function resolveHydratedAuthorIdentities(input: {
+  skills: RepoSkillRow[];
+  trustMap: Map<string, AuthorTrust>;
+}): Promise<Map<string, AgentIdentitySummary>> {
+  const authorRows = new Map<string, RepoSkillRow>();
+  for (const skill of input.skills) {
+    if (skill.author_pubkey && isAddress(skill.author_pubkey)) {
+      authorRows.set(skill.author_pubkey, skill);
+    }
+  }
+
+  const authorPubkeys = [...authorRows.keys()];
+  if (authorPubkeys.length === 0) {
+    return new Map<string, AgentIdentitySummary>();
+  }
+
+  try {
+    return await resolveManyAgentIdentitiesByWallet(authorPubkeys, {
+      hasAgentProfileByWallet: new Map(
+        authorPubkeys.map((authorPubkey) => [
+          authorPubkey,
+          input.trustMap.get(authorPubkey)?.isRegistered ??
+            getCachedTrust(authorRows.get(authorPubkey) ?? {})?.isRegistered ??
+            false,
+        ])
+      ),
+      persistDerived: false,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to resolve author identities for /api/skills/hydrate:",
+      error
+    );
+    return new Map<string, AgentIdentitySummary>();
+  }
+}
+
 async function addPurchasePreflightAndBuyerStatus(input: {
   skills: HydratedSkillRow[];
   buyerAddress: Address | null;
@@ -337,10 +377,15 @@ export async function POST(request: NextRequest) {
       }
     }
     scheduleBackgroundTrustRefresh(stale);
+    const identityMap = await resolveHydratedAuthorIdentities({
+      skills: repoSkills,
+      trustMap: live.trustMap,
+    });
+
     const baseHydrated = buildHydratedBaseRows({
       skills: repoSkills,
       trustMap: live.trustMap,
-      identityMap: live.identityMap,
+      identityMap,
     });
     const hydrated =
       includeBuyerStatus && buyer
