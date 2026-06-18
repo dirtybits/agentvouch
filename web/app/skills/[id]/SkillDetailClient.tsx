@@ -981,6 +981,7 @@ export default function SkillDetailPage({
     : "Unverified publisher identity";
   const CANONICAL_ORIGIN =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://agentvouch.xyz";
+  const paidSkillDocsHref = "/docs#paid-skill-download";
 
   const refreshSettlementSummary = useCallback(async () => {
     if (!skill?.on_chain_address || !isAuthor) {
@@ -1128,6 +1129,13 @@ export default function SkillDetailPage({
       ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
       : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
+  const purchaseTitle = primaryUsdcPrice
+    ? isListingRequired
+      ? "On-chain listing required"
+      : "USDC primary pricing"
+    : isPaidSkill
+    ? "Paid Skill"
+    : "Free Skill";
   const purchaseDescription = !isPaidSkill
     ? "Download this free skill without connecting a wallet. Downloads are counted, but anonymous downloads are not wallet-attributed."
     : isListingRequired
@@ -1687,7 +1695,7 @@ export default function SkillDetailPage({
                       </span>
                     )}
                   </div>
-                  <InfoTip label="Pricing and checkout details" align="right">
+                  <InfoTip label={`${purchaseTitle} details`} align="right">
                     {purchaseDescription}
                   </InfoTip>
                 </div>
@@ -1814,7 +1822,13 @@ export default function SkillDetailPage({
                 </div>
                 {isPaidSkill && !buyerHasPurchased && !isAuthor && (
                   <p className="mt-2.5 text-center text-[11px] text-gray-400 dark:text-gray-500">
-                    on-chain purchase · per-buyer receipt · refund-eligible
+                    on-chain purchase · per-buyer receipt · refund-eligible ·{" "}
+                    <Link
+                      href={paidSkillDocsHref}
+                      className="text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                    >
+                      docs
+                    </Link>
                   </p>
                 )}
                 {buyerHasPurchased &&
