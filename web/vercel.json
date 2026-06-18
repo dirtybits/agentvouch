@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/refresh-snapshots",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/mirror-skills",
+      "schedule": "0 7 * * *"
     }
   ]
 }

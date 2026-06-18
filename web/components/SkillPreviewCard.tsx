@@ -337,6 +337,11 @@ export default function SkillPreviewCard({
   const PillIcon = pill.Icon;
   const registered = Boolean(trust && trust.isRegistered);
   const skillHref = getPublicSkillPath(skill);
+  // Mirrored skills carry a "mirror" tag (see lib/mirror). Surface it explicitly
+  // so a listing reads as a community mirror, not as the upstream org publishing
+  // here directly.
+  const isMirror = Boolean(skill.tags?.includes("mirror"));
+  const visibleTags = skill.tags.filter((tag) => tag !== "mirror");
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
@@ -433,6 +438,15 @@ export default function SkillPreviewCard({
 
         {/* Signals + tags */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {isMirror && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)]"
+              title="Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
+            >
+              <FiGithub className="h-3 w-3" />
+              Mirror
+            </span>
+          )}
           {scanMeta && (
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
@@ -460,7 +474,7 @@ export default function SkillPreviewCard({
               {authorReports.label}
             </span>
           )}
-          {skill.tags.slice(0, 3).map((tag) =>
+          {visibleTags.slice(0, 3).map((tag) =>
             onTagClick ? (
               <button
                 key={tag}
