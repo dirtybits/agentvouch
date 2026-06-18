@@ -34,6 +34,10 @@ export type LicenseClassification = {
   file: string | null;
 };
 
+export type ResolvedRepoRef = {
+  commitSha: string;
+};
+
 function githubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -46,10 +50,32 @@ function githubHeaders(): Record<string, string> {
   return headers;
 }
 
-export async function fetchRepoTree(
+export async function resolveRepoRef(
   source: MirrorSource
+): Promise<ResolvedRepoRef> {
+  const url = `https://api.github.com/repos/${source.owner}/${
+    source.repo
+  }/commits/${encodeURIComponent(source.branch)}`;
+  const res = await fetch(url, { headers: githubHeaders() });
+  if (!res.ok) {
+    throw new Error(
+      `GitHub ref fetch failed for ${source.owner}/${source.repo}@${source.branch}: ${res.status} ${res.statusText}`
+    );
+  }
+  const body = (await res.json()) as { sha?: string };
+  if (!body.sha) {
+    throw new Error(
+      `GitHub ref fetch did not return a commit SHA for ${source.owner}/${source.repo}@${source.branch}`
+    );
+  }
+  return { commitSha: body.sha };
+}
+
+export async function fetchRepoTree(
+  source: MirrorSource,
+  ref = source.branch
 ): Promise<RepoTreeEntry[]> {
-  const url = `https://api.github.com/repos/${source.owner}/${source.repo}/git/trees/${source.branch}?recursive=1`;
+  const url = `https://api.github.com/repos/${source.owner}/${source.repo}/git/trees/${ref}?recursive=1`;
   const res = await fetch(url, { headers: githubHeaders() });
   if (!res.ok) {
     throw new Error(
@@ -61,8 +87,8 @@ export async function fetchRepoTree(
     truncated?: boolean;
   };
   if (body.truncated) {
-    console.warn(
-      `[mirror] tree for ${source.owner}/${source.repo} is truncated; some skills may be missed`
+    throw new Error(
+      `GitHub tree for ${source.owner}/${source.repo}@${ref} is truncated`
     );
   }
   return body.tree ?? [];
@@ -74,12 +100,25 @@ export function discoverSkills(
 ): DiscoveredSkill[] {
   const dirs: DiscoveredSkill[] = [];
   const blobs = tree.filter((e) => e.type === "blob");
+  const skillDirs = new Set(
+    blobs
+      .filter((entry) => entry.path.endsWith("/SKILL.md"))
+      .map((entry) => entry.path.slice(0, -"/SKILL.md".length))
+  );
+
   for (const entry of blobs) {
     if (!entry.path.endsWith("/SKILL.md")) continue;
     const dir = entry.path.slice(0, -"/SKILL.md".length);
     if (!source.includePathPrefixes.some((p) => dir.startsWith(p))) {
       continue;
     }
+    const parts = dir.split("/");
+    const hasAncestorSkill = parts.some((_, index) => {
+      if (index === parts.length - 1) return false;
+      return skillDirs.has(parts.slice(0, index + 1).join("/"));
+    });
+    if (hasAncestorSkill) continue;
+
     // Trailing slash so e.g. `skills/figma/` does not capture `skills/figma-use/`.
     const filePaths = blobs
       .filter((b) => b.path.startsWith(`${dir}/`))
@@ -87,14 +126,26 @@ export function discoverSkills(
     dirs.push({ skillId: path.posix.basename(dir), dir, filePaths });
   }
   // Stable order for deterministic logs/runs.
-  return dirs.sort((a, b) => a.dir.localeCompare(b.dir));
+  const sorted = dirs.sort((a, b) => a.dir.localeCompare(b.dir));
+  const seen = new Map<string, string>();
+  for (const skill of sorted) {
+    const existingDir = seen.get(skill.skillId);
+    if (existingDir) {
+      throw new Error(
+        `Duplicate mirrored skill id "${skill.skillId}" from ${existingDir} and ${skill.dir}`
+      );
+    }
+    seen.set(skill.skillId, skill.dir);
+  }
+  return sorted;
 }
 
 export async function fetchRaw(
   source: MirrorSource,
-  repoPath: string
+  repoPath: string,
+  ref = source.branch
 ): Promise<Buffer> {
-  const url = `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${source.branch}/${repoPath}`;
+  const url = `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${ref}/${repoPath}`;
   const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!res.ok) {
     throw new Error(`raw fetch failed (${res.status}) for ${repoPath}`);
@@ -126,11 +177,12 @@ async function mapWithConcurrency<T, R>(
 /** Download every file in a skill directory, keyed by path relative to that dir. */
 export async function fetchSkillFiles(
   source: MirrorSource,
-  skill: DiscoveredSkill
+  skill: DiscoveredSkill,
+  ref = source.branch
 ): Promise<SkillTreeInputFile[]> {
   return mapWithConcurrency(skill.filePaths, 8, async (repoPath) => ({
     path: repoPath.slice(skill.dir.length + 1),
-    content: await fetchRaw(source, repoPath),
+    content: await fetchRaw(source, repoPath, ref),
   }));
 }
 
@@ -151,8 +203,10 @@ const LICENSE_NAMES = new Set([
 export function classifyLicense(
   files: SkillTreeInputFile[]
 ): LicenseClassification {
-  const licenseFile = files.find((f) =>
-    LICENSE_NAMES.has(path.posix.basename(f.path).toLowerCase())
+  const licenseFile = files.find(
+    (f) =>
+      !f.path.includes("/") &&
+      LICENSE_NAMES.has(path.posix.basename(f.path).toLowerCase())
   );
   if (!licenseFile) return { tag: null, permissive: false, file: null };
 
@@ -174,7 +228,7 @@ export function classifyLicense(
     return { tag: "mit", permissive: true, file };
   }
   if (/mozilla public license/i.test(text) && /version 2/i.test(text)) {
-    return { tag: "mpl-2.0", permissive: true, file };
+    return { tag: "mpl-2.0", permissive: false, file };
   }
   if (/redistribution and use in source and binary forms/i.test(text)) {
     return { tag: "bsd", permissive: true, file };

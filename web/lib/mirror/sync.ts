@@ -40,6 +40,7 @@ import {
   fetchSkillFiles,
   humanizeSkillName,
   parseFrontmatter,
+  resolveRepoRef,
 } from "@/lib/mirror/github";
 
 export type SyncAction = "create" | "update" | "unchanged" | "skip" | "error";
@@ -88,6 +89,23 @@ async function findExistingListing(
   return rows[0] ?? null;
 }
 
+async function markExistingMirrorListing(
+  source: MirrorSource,
+  skillDbId: string
+): Promise<void> {
+  await sql()`
+    UPDATE skills
+    SET mirror_source_key = ${source.key},
+        tags = array_remove(COALESCE(tags, ARRAY[]::text[]), 'mirror'),
+        updated_at = NOW()
+    WHERE id = ${skillDbId}::uuid
+      AND (
+        mirror_source_key IS DISTINCT FROM ${source.key}
+        OR 'mirror' = ANY(COALESCE(tags, ARRAY[]::text[]))
+      )
+  `;
+}
+
 async function latestTreeHash(skillDbId: string): Promise<string | null> {
   const rows = await sql()<{ tree_hash: string | null }>`
     SELECT tree_hash FROM skill_versions
@@ -124,7 +142,7 @@ function buildMeta(
   const fm = parseFrontmatter(content);
   const tags = Array.from(
     new Set([...source.tags, ...(licenseTag ? [licenseTag] : [])])
-  );
+  ).filter((tag) => tag !== "mirror");
   // Upstream `name` is usually the slug; humanize it for display. Honor a
   // frontmatter name only when it already reads as a title (has a space or caps).
   const rawName = fm.name.trim();
@@ -166,33 +184,36 @@ async function createListing(
   const chainContext = getConfiguredSolanaChainContext();
 
   await sql()`
-    INSERT INTO skills (
-      id, skill_id, public_slug, public_author_slug,
-      author_pubkey, author_kind, author_external_id, author_handle,
-      author_display_name, publisher_identity_key, publisher_tier,
-      name, description, tags, current_version, ipfs_cid, contact,
-      chain_context, price_usdc_micros, currency_mint
-    ) VALUES (
-      ${skillDbId}::uuid, ${meta.skillId}, ${publicSlug}, ${publicAuthorSlug},
-      ${null}, ${"github"}, ${meta.source.githubId}, ${meta.source.handle},
-      ${meta.source.displayName}, ${idKey}, ${"unverified"},
-      ${meta.name}, ${meta.description || null}, ${meta.tags}::text[], 1,
-      ${pin.success ? pin.cid : null}, ${meta.contact || null},
-      ${chainContext}, ${null}, ${null}
+    WITH inserted_skill AS (
+      INSERT INTO skills (
+        id, skill_id, public_slug, public_author_slug,
+        author_pubkey, author_kind, author_external_id, author_handle,
+        author_display_name, publisher_identity_key, publisher_tier,
+        mirror_source_key,
+        name, description, tags, current_version, ipfs_cid, contact,
+        chain_context, price_usdc_micros, currency_mint
+      ) VALUES (
+        ${skillDbId}::uuid, ${meta.skillId}, ${publicSlug}, ${publicAuthorSlug},
+        ${null}, ${"github"}, ${meta.source.githubId}, ${meta.source.handle},
+        ${meta.source.displayName}, ${idKey}, ${"unverified"},
+        ${meta.source.key},
+        ${meta.name}, ${meta.description || null}, ${meta.tags}::text[], 1,
+        ${pin.success ? pin.cid : null}, ${meta.contact || null},
+        ${chainContext}, ${null}, ${null}
+      )
+      RETURNING id
     )
-  `;
-
-  await sql()`
     INSERT INTO skill_versions (
       skill_id, version, content, ipfs_cid, changelog,
       files, tree_hash, storage_backend, has_executable
-    ) VALUES (
-      ${skillDbId}::uuid, 1, ${meta.content},
+    )
+    SELECT
+      id, 1, ${meta.content},
       ${pin.success ? pin.cid : null},
       ${`Mirrored from ${meta.source.owner}/${meta.source.repo}`},
       ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
       ${tree.backend}, ${tree.hasExecutable}
-    )
+    FROM inserted_skill
   `;
 
   if (!skipReview) {
@@ -218,31 +239,49 @@ async function publishNewVersion(
   const tree = await putSkillTree(files);
   const pin = await pinSkillContent(meta.content, meta.skillId, newVersion);
 
-  await sql()`
-    INSERT INTO skill_versions (
-      skill_id, version, content, ipfs_cid, changelog,
-      files, tree_hash, storage_backend, has_executable
-    ) VALUES (
-      ${existing.id}::uuid, ${newVersion}, ${meta.content},
-      ${pin.success ? pin.cid : null},
-      ${`Synced from ${meta.source.owner}/${meta.source.repo}`},
-      ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
-      ${tree.backend}, ${tree.hasExecutable}
+  const rows = await sql()<{ version: number }>`
+    WITH locked_skill AS (
+      SELECT id
+      FROM skills
+      WHERE id = ${existing.id}::uuid
+        AND current_version = ${existing.current_version}
+      FOR UPDATE
+    ),
+    inserted_version AS (
+      INSERT INTO skill_versions (
+        skill_id, version, content, ipfs_cid, changelog,
+        files, tree_hash, storage_backend, has_executable
+      )
+      SELECT
+        id, ${newVersion}, ${meta.content},
+        ${pin.success ? pin.cid : null},
+        ${`Synced from ${meta.source.owner}/${meta.source.repo}`},
+        ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
+        ${tree.backend}, ${tree.hasExecutable}
+      FROM locked_skill
+      RETURNING skill_id, version
+    ),
+    updated_skill AS (
+      UPDATE skills s
+      SET current_version = inserted_version.version,
+          name = ${meta.name},
+          description = ${meta.description || null},
+          tags = ${meta.tags}::text[],
+          contact = ${meta.contact || null},
+          ipfs_cid = ${pin.success ? pin.cid : null},
+          mirror_source_key = ${meta.source.key},
+          updated_at = NOW()
+      FROM inserted_version
+      WHERE s.id = inserted_version.skill_id
+      RETURNING s.current_version
     )
+    SELECT current_version AS version FROM updated_skill
   `;
-
-  // Refresh listing metadata from upstream alongside the version bump.
-  await sql()`
-    UPDATE skills
-    SET current_version = ${newVersion},
-        name = ${meta.name},
-        description = ${meta.description || null},
-        tags = ${meta.tags}::text[],
-        contact = ${meta.contact || null},
-        ipfs_cid = ${pin.success ? pin.cid : null},
-        updated_at = NOW()
-    WHERE id = ${existing.id}::uuid
-  `;
+  if (rows[0]?.version !== newVersion) {
+    throw new Error(
+      `Unable to publish mirrored version for ${existing.id}; listing changed concurrently`
+    );
+  }
 
   if (!skipReview) {
     await runReviewSafe({
@@ -268,9 +307,13 @@ export async function syncMirrorSkills(opts: SyncOptions): Promise<SyncResult> {
         ` as github:${source.handle}`
     );
     let discovered;
+    let commitSha = "";
     try {
-      const tree = await fetchRepoTree(source);
+      const ref = await resolveRepoRef(source);
+      commitSha = ref.commitSha;
+      const tree = await fetchRepoTree(source, commitSha);
       discovered = discoverSkills(tree, source);
+      log(`  pinned ${commitSha.slice(0, 12)}`);
     } catch (error) {
       log(`  ! tree fetch failed: ${(error as Error).message}`);
       outcomes.push({
@@ -292,7 +335,7 @@ export async function syncMirrorSkills(opts: SyncOptions): Promise<SyncResult> {
         action: "skip",
       };
       try {
-        const files = await fetchSkillFiles(source, skill);
+        const files = await fetchSkillFiles(source, skill, commitSha);
         const license = classifyLicense(files);
         outcome.license = license.tag;
         if (!license.permissive) {
@@ -324,6 +367,9 @@ export async function syncMirrorSkills(opts: SyncOptions): Promise<SyncResult> {
           outcome.action = "create";
           log(`  + ${skill.skillId}: create${opts.apply ? " ✓" : ""}`);
         } else {
+          if (opts.apply) {
+            await markExistingMirrorListing(source, existing.id);
+          }
           const prevHash = await latestTreeHash(existing.id);
           if (prevHash === tree.treeHash) {
             outcome.action = "unchanged";

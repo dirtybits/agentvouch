@@ -49,12 +49,13 @@ async function handle(request: NextRequest) {
       (o) =>
         o.action === "create" || o.action === "update" || o.action === "error"
     );
-    return NextResponse.json({
+    const body = {
       ok: result.counts.error === 0,
       durationMs: Date.now() - startedAt,
       counts: result.counts,
       changed,
-    });
+    };
+    return NextResponse.json(body, { status: body.ok ? 200 : 500 });
   } catch (error) {
     console.error("[cron/mirror-skills] failed:", error);
     return NextResponse.json(

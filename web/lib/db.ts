@@ -198,6 +198,11 @@ async function runCoreSchemaDdl() {
 
   await db`
     ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS mirror_source_key VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS public_slug VARCHAR(96)
   `;
 
@@ -863,6 +868,12 @@ async function runCoreSchemaDdl() {
 
   await db`
     CREATE INDEX IF NOT EXISTS idx_skills_tags ON skills USING GIN(tags)
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_mirror_source_key
+    ON skills(mirror_source_key)
+    WHERE mirror_source_key IS NOT NULL
   `;
 
   await db`

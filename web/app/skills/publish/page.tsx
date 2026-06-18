@@ -18,6 +18,8 @@ import {
   normalizeSkillContact,
   normalizeSkillDescription,
   normalizeSkillName,
+  normalizeSkillTags,
+  RESERVED_SKILL_TAGS,
   slugify,
 } from "@/lib/skillDraft";
 import { getPublicSkillPath } from "@/lib/skillUrls";
@@ -189,7 +191,7 @@ function PublishSkillPageInner() {
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>(() => {
     const initial = searchParams.get("tag");
-    return initial ? [initial.toLowerCase()] : [];
+    return initial ? normalizeSkillTags([initial]) : [];
   });
   const [tagInput, setTagInput] = useState("");
   const [contact, setContact] = useState("");
@@ -673,7 +675,7 @@ function PublishSkillPageInner() {
   );
 
   const addTag = () => {
-    const tag = tagInput.trim().toLowerCase();
+    const tag = normalizeSkillTags([tagInput])[0];
     if (tag && !tags.includes(tag) && tags.length < 5) {
       setTags([...tags, tag]);
       setTagInput("");
@@ -1015,7 +1017,11 @@ function PublishSkillPageInner() {
                     onKeyDown={(e) =>
                       e.key === "Enter" && (e.preventDefault(), addTag())
                     }
-                    placeholder="Add a tag..."
+                    placeholder={
+                      RESERVED_SKILL_TAGS.has(tagInput.trim().toLowerCase())
+                        ? "Reserved tag"
+                        : "Add a tag..."
+                    }
                     className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
                   />
                   <button

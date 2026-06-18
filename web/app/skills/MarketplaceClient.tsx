@@ -64,6 +64,7 @@ interface SkillRow {
   } | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
   name: string;
   description: string | null;
   tags: string[];

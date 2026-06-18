@@ -28,7 +28,7 @@ export type MirrorSource = {
    * top-level SKILL.md.
    */
   includePathPrefixes: string[];
-  /** Provenance tags applied to every listing from this source. */
+  /** Normal searchable tags applied to every listing from this source. */
   tags: string[];
 };
 
@@ -42,7 +42,7 @@ export const MIRROR_SOURCES: MirrorSource[] = [
     handle: "anthropics",
     displayName: "Anthropic",
     includePathPrefixes: ["skills/"],
-    tags: ["anthropic", "mirror"],
+    tags: ["anthropic"],
   },
   {
     key: "openai",
@@ -54,7 +54,7 @@ export const MIRROR_SOURCES: MirrorSource[] = [
     displayName: "OpenAI",
     // Codex's public catalog only. `skills/.system/*` are runtime-internal.
     includePathPrefixes: ["skills/.curated/"],
-    tags: ["openai", "codex", "mirror"],
+    tags: ["openai", "codex"],
   },
 ];
 
@@ -66,8 +66,23 @@ export function sourceRepoUrl(source: MirrorSource): string {
   return `https://github.com/${source.owner}/${source.repo}`;
 }
 
+export function getMirrorSourceByKey(key?: string | null): MirrorSource | null {
+  if (!key) return null;
+  return (
+    MIRROR_SOURCES.find(
+      (source) => source.key.toLowerCase() === key.toLowerCase()
+    ) ?? null
+  );
+}
+
 export function getMirrorSources(keys?: string[]): MirrorSource[] {
   if (!keys || keys.length === 0) return MIRROR_SOURCES;
   const want = new Set(keys.map((k) => k.toLowerCase()));
-  return MIRROR_SOURCES.filter((s) => want.has(s.key.toLowerCase()));
+  const sources = MIRROR_SOURCES.filter((s) => want.has(s.key.toLowerCase()));
+  const known = new Set(sources.map((s) => s.key.toLowerCase()));
+  const unknown = [...want].filter((key) => !known.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown mirror source(s): ${unknown.join(", ")}`);
+  }
+  return sources;
 }

@@ -26,6 +26,7 @@ import {
 } from "@/lib/authPayload";
 import { encodeBase64 } from "@/lib/base64";
 import { buildPaidSkillDownloadRequiredMessage } from "@/lib/skillFlowMessages";
+import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
@@ -103,6 +104,7 @@ interface SkillDetail {
   author_display_name?: string | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -960,13 +962,19 @@ export default function SkillDetailPage({
   ]);
 
   const isChainOnly = skill?.source === "chain";
+  const isMirror = Boolean(skill?.mirror_source_key);
+  const visibleTags =
+    skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
   const isAuthor =
     !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
-  const authorLabel = skill?.author_handle
-    ? `@${skill.author_handle}`
-    : skill?.author_pubkey
-    ? shortAddr(skill.author_pubkey)
-    : "Unverified publisher";
+  const authorLabel =
+    isMirror && skill?.author_handle
+      ? `Mirrored from @${skill.author_handle}`
+      : skill?.author_handle
+      ? `@${skill.author_handle}`
+      : skill?.author_pubkey
+      ? shortAddr(skill.author_pubkey)
+      : "Unverified publisher";
   const authorHref = skill?.author_pubkey
     ? `/author/${skill.author_pubkey}`
     : skill?.author_kind === "github" && skill.author_handle
@@ -974,6 +982,8 @@ export default function SkillDetailPage({
     : null;
   const authorTitle = skill?.author_pubkey
     ? "Author wallet that published this skill"
+    : isMirror
+    ? "Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
     : skill?.author_kind === "github"
     ? "GitHub identity that published this unverified skill"
     : "Unverified publisher identity";
@@ -1241,6 +1251,15 @@ export default function SkillDetailPage({
                   <span className="font-medium text-gray-700 dark:text-gray-200">
                     {authorLabel}
                   </span>
+                  {isMirror ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)]"
+                      title="Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
+                    >
+                      <FiGithub className="h-3 w-3" />
+                      Mirror
+                    </span>
+                  ) : null}
                   {skill.author_trust?.registeredAt ? (
                     <span className="rounded-full border border-[var(--sea-accent-border)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)]">
                       Registered
@@ -1250,9 +1269,9 @@ export default function SkillDetailPage({
               </div>
             </div>
             {/* Tags */}
-            {skill.tags?.length > 0 && (
+            {visibleTags.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                {skill.tags.map((tag) => (
+                {visibleTags.map((tag) => (
                   <span
                     key={tag}
                     className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--lobster-accent)]"

@@ -18,6 +18,7 @@ import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
 import { getPublicSkillPath } from "@/lib/skillUrls";
 
 interface SkillPreviewCardSkill {
@@ -38,6 +39,7 @@ interface SkillPreviewCardSkill {
   } | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -290,8 +292,11 @@ export default function SkillPreviewCard({
   const linkedGithubProfile = skill.author_pubkey
     ? skill.author_identity?.githubProfile
     : null;
+  const isMirror = Boolean(skill.mirror_source_key);
   const authorLabel = walletAuthorLabel
     ? walletAuthorLabel
+    : isMirror && skill.author_handle
+    ? `Mirror · @${skill.author_handle}`
     : skill.author_handle
     ? `@${skill.author_handle}`
     : "Unverified publisher";
@@ -304,6 +309,8 @@ export default function SkillPreviewCard({
     ? linkedGithubProfile
       ? `Author wallet linked to GitHub @${linkedGithubProfile.login}`
       : "Author wallet that published this skill"
+    : isMirror
+    ? "Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
     : skill.author_kind === "github"
     ? "GitHub identity that published this unverified skill"
     : "Unverified publisher identity";
@@ -337,11 +344,7 @@ export default function SkillPreviewCard({
   const PillIcon = pill.Icon;
   const registered = Boolean(trust && trust.isRegistered);
   const skillHref = getPublicSkillPath(skill);
-  // Mirrored skills carry a "mirror" tag (see lib/mirror). Surface it explicitly
-  // so a listing reads as a community mirror, not as the upstream org publishing
-  // here directly.
-  const isMirror = Boolean(skill.tags?.includes("mirror"));
-  const visibleTags = skill.tags.filter((tag) => tag !== "mirror");
+  const visibleTags = skill.tags.filter((tag) => !RESERVED_SKILL_TAGS.has(tag));
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">

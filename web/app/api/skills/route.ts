@@ -29,6 +29,7 @@ import {
   normalizeSkillContact,
   normalizeSkillDescription,
   normalizeSkillName,
+  normalizeSkillTags,
 } from "@/lib/skillDraft";
 import {
   assessPurchasePreflight,
@@ -655,6 +656,7 @@ export async function POST(request: NextRequest) {
       ? normalizeSkillDescription(description)
       : "";
     const normalizedContact = contact ? normalizeSkillContact(contact) : "";
+    const normalizedTags = normalizeSkillTags(tags);
     const normalizedChainContext = chain_context
       ? normalizeInputChainContext(chain_context)
       : configuredSolanaChainContext;
@@ -770,7 +772,7 @@ export async function POST(request: NextRequest) {
         ${publisher.tier},
         ${normalizedName},
         ${normalizedDescription || null},
-        ${tags || []}::text[],
+        ${normalizedTags}::text[],
         1,
         ${pinResult.success ? pinResult.cid : null},
         ${normalizedContact || null},
