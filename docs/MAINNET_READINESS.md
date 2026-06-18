@@ -16,7 +16,7 @@ The core product shape is in place: the USDC-native protocol, marketplace publis
 
 > **Update (2026-06-11): live dispute smoke complete.** `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=/Users/andysustic/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` passed against devnet. The run linked a paid-listing vouch, purchased, opened a dispute, resolved it upheld with the config authority, cranked `slash_dispute_vouches`, created a `1_000_000` micro-USDC refund pool, and claimed the buyer refund. Result: `500_000` micro-USDC author bond slash, `500_000` micro-USDC voucher slash, vouch status `slashed`, active listing reward positions `0`, refund pool fully claimed, and the listing settlement dispute lock cleared.
 
-> **Update (2026-06-17): A2 plan review found additional design-lock blockers.** The A2 branch should not move into Anchor implementation until the plan explicitly locks: A2 as a devnet clean break, buyer-first paid refunds before challenger rewards, zero-refund paid dispute behavior, residual/expired fund ownership, and dispute-economic snapshots. See [A2 Extra Review Findings](#a2-extra-review-findings-2026-06-17).
+> **Update (2026-06-17): A2 plan review found additional design-lock blockers.** The A2 branch should not move into Anchor implementation until the plan explicitly locks: A2 as a devnet clean break, cancellable pending resolutions, buyer-first paid refunds, program-computed refund pools, zero-refund paid dispute behavior, serialized author-bond exposure, residual/expired fund ownership, reserve-aware treasury sweep rules, and dispute-economic snapshots. See [A2 Extra Review Findings](#a2-extra-review-findings-2026-06-17).
 
 The next milestone should be framed as **Mainnet Release Candidate**, not final mainnet launch. The release candidate is ready only when the protocol, wallet UX, production config, docs, and operating runbooks can survive repeated end-to-end devnet smoke tests without manual interpretation.
 
@@ -50,7 +50,7 @@ Primary files for hardening: `instructions/resolve_author_dispute.rs`, `instruct
 
 ## A2 Extra Review Findings (2026-06-17)
 
-The draft A2 plan fixes the broad P0.2 direction - split resolver/config authority, add a timelocked propose/execute path, and route slashed value toward harmed buyers. A focused pre-implementation review found five additional design-lock items that must be documented and tested before coding the A2 on-chain changes.
+The draft A2 plan fixes the broad P0.2 direction - split resolver/config authority, add a timelocked propose/execute path, and route slashed value toward harmed buyers. Focused pre-implementation reviews found the following design-lock items that must be documented and tested before coding the A2 on-chain changes.
 
 1. **Use an A2 devnet clean break, not stacked same-program migrations.** A2 changes `ReputationConfig`, `AuthorDispute`, and `ListingSettlement` account layouts. The existing M13 migration gates on a moving `ReputationConfig::LEN`, so extending it without a separate migration design can misclassify already-M13 config accounts. For A2 devnet implementation and smoke, prefer a fresh program ID plus DB cleanup over broad realloc/backfill.
 
@@ -61,6 +61,18 @@ The draft A2 plan fixes the broad P0.2 direction - split resolver/config authori
 4. **Residual paid slash funds and expired refund-pool funds need an owner.** Slash buckets are refund-pool-only and capped by buyer exposure. Any residual slash above buyer exposure, plus unclaimed refund-pool balances after the claim window, must route to protocol treasury/reserve with eventing. They must not remain stranded and must never become author-withdrawable by default.
 
 5. **Dispute economics must be snapshotted at proposal.** Config setters can mutate slash percentage and challenger reward bps/cap while a dispute is proposed or while voucher slash pages are still running. A2 should snapshot settlement economics on `propose_author_dispute_resolution`; execute, `slash_dispute_vouches`, and refund creation should use those snapshots while recomputing from live token bucket balances.
+
+6. **Timelock needs an on-chain remedy, not only observation time.** A delay is useful only if a multisig/guardian can stop a bad pending proposal before execution. A2 should include `cancel_author_dispute_resolution`, gated by `config_authority`, which returns a pending dispute to `Open` without moving funds or clearing locks.
+
+7. **Financial and reputation-only paid dispute branches must be mutually exclusive.** A paid dispute should enter financial settlement only when it has both `AuthorBondThenVouchers` liability scope and an attached verified purchase. Paid no-purchase disputes must remain reputation-only even when the listing has active vouches; otherwise A1 `SlashingVouchers` parking and the zero-refund path conflict.
+
+8. **Refund pool size must be program-computed.** Permissionless refund-pool creation is useful for liveness, but a caller must not be able to create an undersized pool and clear locks. The program should compute `min(buyer exposure, available capacity)` from on-chain state and snapshots; caller input cannot lower the buyer-first amount.
+
+9. **Author-bond exposure should be serialized in A2 v1.** The author bond is one profile-level collateral pot. Until the protocol has aggregate exposure accounting or per-dispute reserves, A2 should reject new author-bond-exposing disputes while `author_profile.open_author_disputes > 0`.
+
+10. **Expired refunds need an owned close path.** `claim_purchase_refund` fails after the claim window, so any unclaimed refund vault balance needs a `close_refund_pool`-style instruction that routes the balance to reserve/treasury accounting with eventing.
+
+11. **Reserve and treasury sweep policy must prevent instant dispute extraction.** Residual dispute slash and expired refund funds should be treated as reserve accounting. `sweep_treasury` should positively bind the protocol treasury source, exclude or reserve dispute-derived funds until A4 policy allows sweeping, and production resolver/treasury/config authorities must be separate multisig/governance roles.
 
 These findings are now reflected in `.agents/plans/a2-dispute-governance-v1.plan.md`. Mainnet remains no-go until the implemented program and tests prove these invariants.
 
@@ -208,7 +220,7 @@ No-go:
 
 - voucher slashing is absent from the target deployment, fails clean devnet replay/security review, or is not reflected in docs/client surfaces (see [Code Audit Findings](#code-audit-findings-2026-05-30) P0.1)
 - dispute resolution depends on a single `config_authority` key, and/or slashed funds route to the challenger rather than harmed buyers (P0.2)
-- A2 dispute governance ships without the 2026-06-17 design-lock invariants: clean-break account strategy, buyer-first paid refunds, zero-refund paid-dispute lock clearing, residual/expired fund ownership, and snapshotted dispute economics
+- A2 dispute governance ships without the 2026-06-17 design-lock invariants: clean-break account strategy, cancellable pending resolutions, buyer-first paid refunds, program-computed refund pool sizing, zero-refund paid-dispute lock clearing, serialized author-bond exposure, residual/expired fund ownership, reserve-aware treasury sweep rules, and snapshotted dispute economics
 - no pause / emergency-stop instruction exists (P0.3)
 - any USDC-moving instruction has unreviewed account constraints or arithmetic
 - wallet simulation warnings are unexplained on expected flows
