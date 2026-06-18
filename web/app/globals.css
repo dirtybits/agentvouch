@@ -121,6 +121,27 @@ body {
   transition: border-color 0.2s ease;
 }
 
+@keyframes installCardPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.install-card-panel {
+  animation: installCardPanelIn 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-card-panel {
+    animation: none;
+  }
+}
+
 /* Typewriter animation */
 @keyframes typewriter {
   from {
