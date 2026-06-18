@@ -28,6 +28,11 @@ function sourceKeys(): string[] | undefined {
   return keys.length ? keys : undefined;
 }
 
+function onlySkillId(): string | undefined {
+  const i = process.argv.indexOf("--only");
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : undefined;
+}
+
 const ICON: Record<SkillOutcome["action"], string> = {
   create: "+",
   update: "^",
@@ -53,6 +58,7 @@ async function main() {
     apply: APPLY,
     sourceKeys: keys,
     skipReview: SKIP_REVIEW,
+    onlySkillId: onlySkillId(),
     log: (m) => console.log(m),
   });
 

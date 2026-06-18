@@ -64,6 +64,8 @@ export type SyncOptions = {
   sourceKeys?: string[];
   /** Skip AI summary/scan generation. */
   skipReview?: boolean;
+  /** Limit to a single skill id (across the selected sources). */
+  onlySkillId?: string;
   /** Progress logger. */
   log?: (message: string) => void;
 };
@@ -329,6 +331,7 @@ export async function syncMirrorSkills(opts: SyncOptions): Promise<SyncResult> {
     const idKey = publisherIdentityKey(source);
 
     for (const skill of discovered) {
+      if (opts.onlySkillId && skill.skillId !== opts.onlySkillId) continue;
       const outcome: SkillOutcome = {
         source: source.key,
         skillId: skill.skillId,

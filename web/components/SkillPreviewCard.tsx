@@ -439,17 +439,9 @@ export default function SkillPreviewCard({
           </p>
         )}
 
-        {/* Signals + tags */}
+        {/* Signals + tags. Mirror provenance is shown in the author byline
+            ("Mirror · @handle"), so it is intentionally not repeated here. */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {isMirror && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)]"
-              title="Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
-            >
-              <FiGithub className="h-3 w-3" />
-              Mirror
-            </span>
-          )}
           {scanMeta && (
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
