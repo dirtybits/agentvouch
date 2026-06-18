@@ -414,7 +414,7 @@ export default function SettingsPage() {
                       type="text"
                       value={usernameDraft}
                       onChange={(e) => setUsernameDraft(e.target.value)}
-                      placeholder="wallet-dmt4cd"
+                      placeholder="wallet-asuavu"
                       className="min-w-0 flex-1 rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-sm text-gray-900 focus:border-[var(--sea-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--sea-focus-ring)] dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                       maxLength={32}
                     />

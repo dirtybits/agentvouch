@@ -5,6 +5,10 @@ import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
+import {
+  formatWalletAuthorLabel,
+  shortWalletAddress,
+} from "@/lib/authorDisplay";
 import { getConfiguredSolanaExplorerTxUrl } from "@/lib/chains";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
@@ -52,6 +56,7 @@ interface SkillRow {
   author_display_name?: string | null;
   author_identity?: {
     username?: string | null;
+    usernameSource?: string | null;
     githubProfile?: {
       login: string;
       url: string;
@@ -176,10 +181,6 @@ function formatUsdc(
   return formatUsdcMicros(micros) ?? "0";
 }
 
-function shortAddr(addr: string): string {
-  return addr.slice(0, 4) + "..." + addr.slice(-4);
-}
-
 function ActorLink({
   pubkey,
   fallback = "Unverified publisher",
@@ -200,7 +201,7 @@ function ActorLink({
       href={`/author/${pubkey}`}
       className="font-mono font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
     >
-      {shortAddr(pubkey)}
+      {formatWalletAuthorLabel(pubkey)}
     </Link>
   );
 }
@@ -716,7 +717,7 @@ export default function MarketplaceClient({
                   rel="noopener noreferrer"
                   className="underline font-mono"
                 >
-                  {shortAddr(txSuccess)}
+                  {shortWalletAddress(txSuccess)}
                 </a>
               </span>
             </div>
