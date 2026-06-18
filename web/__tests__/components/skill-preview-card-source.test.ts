@@ -35,13 +35,14 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain("Show all skills tagged");
   });
 
-  it("prefers wallet identity usernames and exposes linked GitHub profiles", () => {
+  it("formats wallet author labels and exposes linked GitHub profiles", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "components/SkillPreviewCard.tsx"),
       "utf8"
     );
 
-    expect(source).toContain("skill.author_identity?.username");
+    expect(source).toContain("formatWalletAuthorLabel");
+    expect(source).toContain("skill.author_identity");
     expect(source).toContain("skill.author_identity?.githubProfile");
     expect(source).toContain("Linked GitHub");
   });
