@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/errors";
 import { initializeDatabase } from "@/lib/db";
-import { syncMirrorSkills } from "@/lib/mirror/sync";
+import { syncConnectedRepos, syncMirrorSkills } from "@/lib/mirror/sync";
 
 // Mirroring downloads upstream files and may regenerate reviews for changed
 // skills; give it headroom and keep it off the static optimizer. Steady-state
@@ -41,21 +41,23 @@ async function handle(request: NextRequest) {
   const startedAt = Date.now();
   try {
     await initializeDatabase();
-    const result = await syncMirrorSkills({
-      apply: true,
-      log: (message) => console.log("[cron/mirror-skills]", message),
-    });
-    const changed = result.outcomes.filter(
+    const log = (message: string) =>
+      console.log("[cron/mirror-skills]", message);
+    // Community mirrors (Anthropic/OpenAI) + every active first-party connected repo.
+    const mirror = await syncMirrorSkills({ apply: true, log });
+    const connected = await syncConnectedRepos({ apply: true, log });
+    const changed = [...mirror.outcomes, ...connected.outcomes].filter(
       (o) =>
         o.action === "create" || o.action === "update" || o.action === "error"
     );
+    const ok = mirror.counts.error === 0 && connected.counts.error === 0;
     const body = {
-      ok: result.counts.error === 0,
+      ok,
       durationMs: Date.now() - startedAt,
-      counts: result.counts,
+      counts: { mirror: mirror.counts, connected: connected.counts },
       changed,
     };
-    return NextResponse.json(body, { status: body.ok ? 200 : 500 });
+    return NextResponse.json(body, { status: ok ? 200 : 500 });
   } catch (error) {
     console.error("[cron/mirror-skills] failed:", error);
     return NextResponse.json(

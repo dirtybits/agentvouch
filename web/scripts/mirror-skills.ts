@@ -12,11 +12,17 @@
 //     --skip-review    skip AI summary/scan generation (apply only)
 
 import { initializeDatabase } from "@/lib/db";
-import { syncMirrorSkills, type SkillOutcome } from "@/lib/mirror/sync";
+import {
+  syncConnectedRepos,
+  syncMirrorSkills,
+  type SkillOutcome,
+} from "@/lib/mirror/sync";
 import { MIRROR_SOURCES } from "@/lib/mirror/sources";
 
 const APPLY = process.argv.includes("--apply");
 const SKIP_REVIEW = process.argv.includes("--skip-review");
+// Sync first-party connected repos (from the DB) instead of community mirrors.
+const CONNECTED = process.argv.includes("--connected");
 
 function sourceKeys(): string[] | undefined {
   const keys: string[] = [];
@@ -43,24 +49,33 @@ const ICON: Record<SkillOutcome["action"], string> = {
 
 async function main() {
   const keys = sourceKeys();
-  const selected = keys ?? MIRROR_SOURCES.map((s) => s.key);
+  const selected = CONNECTED
+    ? "active connected repos (DB)"
+    : (keys ?? MIRROR_SOURCES.map((s) => s.key)).join(", ");
   console.log(
-    `\nMirror sources: ${selected.join(", ")}` +
+    `\nSource: ${selected}` +
       `\nMode: ${
         APPLY ? "APPLY (writes to DATABASE_URL)" : "DRY RUN (no writes)"
       }` +
       `${SKIP_REVIEW ? " [skip-review]" : ""}`
   );
 
-  if (APPLY) await initializeDatabase();
+  if (APPLY || CONNECTED) await initializeDatabase();
 
-  const result = await syncMirrorSkills({
-    apply: APPLY,
-    sourceKeys: keys,
-    skipReview: SKIP_REVIEW,
-    onlySkillId: onlySkillId(),
-    log: (m) => console.log(m),
-  });
+  const result = CONNECTED
+    ? await syncConnectedRepos({
+        apply: APPLY,
+        skipReview: SKIP_REVIEW,
+        onlySkillId: onlySkillId(),
+        log: (m) => console.log(m),
+      })
+    : await syncMirrorSkills({
+        apply: APPLY,
+        sourceKeys: keys,
+        skipReview: SKIP_REVIEW,
+        onlySkillId: onlySkillId(),
+        log: (m) => console.log(m),
+      });
 
   console.log("\nResults:");
   for (const o of result.outcomes) {

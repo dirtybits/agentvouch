@@ -14,6 +14,43 @@
 
 import { sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
+import { verifyWalletSignature } from "@/lib/auth";
+import { buildSignMessage, type AuthPayload } from "@/lib/authPayload";
+
+export type ConnectAuthResult =
+  | { ok: true; pubkey: string }
+  | { ok: false; status: number; error: string };
+
+// Wallet-signature auth bound to a specific action (connect-repo / sync-repo /
+// disconnect-repo), so a signature for one action can't be replayed for another.
+export function verifyConnectAuth(
+  auth: AuthPayload | undefined,
+  expectedPubkey: string,
+  action: string
+): ConnectAuthResult {
+  if (!auth) {
+    return { ok: false, status: 400, error: "Missing required field: auth" };
+  }
+  const v = verifyWalletSignature(auth);
+  if (!v.valid || !v.pubkey) {
+    return { ok: false, status: 401, error: v.error || "Invalid signature" };
+  }
+  if (v.pubkey !== expectedPubkey) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Wallet does not match this identity.",
+    };
+  }
+  if (auth.message !== buildSignMessage(action, auth.timestamp)) {
+    return {
+      ok: false,
+      status: 401,
+      error: `Signature is not for action "${action}".`,
+    };
+  }
+  return { ok: true, pubkey: v.pubkey };
+}
 
 export type ConnectedRepo = {
   id: string;
