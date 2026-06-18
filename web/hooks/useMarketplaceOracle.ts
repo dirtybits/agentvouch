@@ -206,8 +206,7 @@ function buildPurchaseBalanceError(
 }
 
 function buildPurchaseClusterMismatchError(
-  walletAddress: Address,
-  estimate: PurchasePreflightAssessment
+  walletAddress: Address
 ) {
   const configuredNetwork = `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`;
   return `Phantom reported insufficient SOL, but connected wallet ${shortAddress(
@@ -621,7 +620,7 @@ export function useMarketplaceOracle() {
               );
             }
             throw new Error(
-              buildPurchaseClusterMismatchError(walletAddress, latestEstimate)
+              buildPurchaseClusterMismatchError(walletAddress)
             );
           }
         }
