@@ -208,10 +208,10 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
           />
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
             If npm reports <code>ENOVERSIONS</code> for{" "}
-            <code>@agentvouch/cli@beta</code>, your npm{" "}
-            <code>before</code> config may be acting as an intentional
-            supply-chain safety buffer for very new package versions. Clear it
-            only when you intentionally want the fresh beta, then retry:
+            <code>@agentvouch/cli@beta</code>, your npm <code>before</code>{" "}
+            config may be acting as an intentional supply-chain safety buffer
+            for very new package versions. Clear it only when you intentionally
+            want the fresh beta, then retry:
           </p>
           <CopyCodeBlock
             value={npmVersionsGotcha}
