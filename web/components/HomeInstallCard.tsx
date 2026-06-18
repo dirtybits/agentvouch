@@ -17,6 +17,7 @@ npx @agentvouch/cli@beta --help`;
 export function HomeInstallCard() {
   const [toggle, setToggle] = useState<ToggleMode>("none");
   const [copied, setCopied] = useState<string | null>(null);
+  const selectedPanel = toggle === "human" ? "human" : "agent";
 
   const copyCmd = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -30,7 +31,7 @@ export function HomeInstallCard() {
         <button
           onClick={() => setToggle("agent")}
           className={`flex-1 rounded-sm py-1.5 text-xs font-normal transition ${
-            toggle === "agent" || toggle === "none"
+            selectedPanel === "agent"
               ? "bg-[var(--lobster-accent-strong)] text-white shadow-sm"
               : "text-gray-500 hover:text-[var(--lobster-accent)] dark:text-gray-400"
           }`}
@@ -40,7 +41,7 @@ export function HomeInstallCard() {
         <button
           onClick={() => setToggle("human")}
           className={`flex-1 rounded-sm py-1.5 text-xs font-normal transition ${
-            toggle === "human"
+            selectedPanel === "human"
               ? "bg-[var(--lobster-accent-strong)] text-white shadow-sm"
               : "text-gray-500 hover:text-[var(--lobster-accent)] dark:text-gray-400"
           }`}
@@ -49,8 +50,11 @@ export function HomeInstallCard() {
         </button>
       </div>
 
-      <div className="mb-3 rounded-sm bg-gray-50 dark:bg-gray-800/50">
-        {(toggle === "agent" || toggle === "none") && (
+      <div
+        key={selectedPanel}
+        className="install-card-panel mb-3 rounded-sm bg-gray-50 dark:bg-gray-800/50"
+      >
+        {selectedPanel === "agent" && (
           <div>
             <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
@@ -81,7 +85,7 @@ export function HomeInstallCard() {
             </pre>
           </div>
         )}
-        {toggle === "human" && (
+        {selectedPanel === "human" && (
           <div className="p-3">
             <div className="mb-3 rounded-sm border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
               <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
