@@ -59,7 +59,7 @@ describe("agentIdentity", () => {
   it("derives deterministic wallet fallback usernames", () => {
     expect(
       buildFallbackAgentUsername("AgentWallet111111111111111111111dMt4CD")
-    ).toBe("wallet-dmt4cd");
+    ).toBe("wallet-agentw");
   });
 
   it("normalizes and validates chosen usernames", () => {

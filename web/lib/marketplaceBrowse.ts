@@ -545,24 +545,26 @@ function compareEnrichedSkillsBySort(
   b: EnrichedSkillRow,
   sort: string
 ) {
+  const usageDelta = getSkillUsageTotal(b) - getSkillUsageTotal(a);
   if (sort === "trusted") {
     return (
       (b.author_trust?.reputationScore ?? 0) -
         (a.author_trust?.reputationScore ?? 0) ||
+      usageDelta ||
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }
   if (sort === "installs") {
-    return (
-      b.total_installs +
-      (b.total_downloads ?? 0) -
-      (a.total_installs + (a.total_downloads ?? 0))
-    );
+    return usageDelta;
   }
   if (sort === "name") {
     return a.name.localeCompare(b.name);
   }
   return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
+function getSkillUsageTotal(skill: EnrichedSkillRow) {
+  return skill.total_installs + (skill.total_downloads ?? 0);
 }
 
 export function sortEnrichedSkills(

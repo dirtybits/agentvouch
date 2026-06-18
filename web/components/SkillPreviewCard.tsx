@@ -14,6 +14,7 @@ import {
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
+import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
@@ -29,6 +30,7 @@ interface SkillPreviewCardSkill {
   author_display_name?: string | null;
   author_identity?: {
     username?: string | null;
+    usernameSource?: string | null;
     githubProfile?: {
       login: string;
       url: string;
@@ -94,10 +96,6 @@ function truncateAtWord(value: string, maxChars: number): string {
       : candidate.slice(0, maxChars);
 
   return `${trimmed.trimEnd()}...`;
-}
-
-function shortAddr(addr: string): string {
-  return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
 }
 
 // Mirrors the server-side getRecommendedAction, with one intentional softening:
@@ -286,18 +284,16 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
-  const walletAuthorUsername = skill.author_pubkey
-    ? skill.author_identity?.username
+  const walletAuthorLabel = skill.author_pubkey
+    ? formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
     : null;
   const linkedGithubProfile = skill.author_pubkey
     ? skill.author_identity?.githubProfile
     : null;
-  const authorLabel = walletAuthorUsername
-    ? `@${walletAuthorUsername}`
+  const authorLabel = walletAuthorLabel
+    ? walletAuthorLabel
     : skill.author_handle
     ? `@${skill.author_handle}`
-    : skill.author_pubkey
-    ? shortAddr(skill.author_pubkey)
     : "Unverified publisher";
   const authorHref = skill.author_pubkey
     ? `/author/${skill.author_pubkey}`

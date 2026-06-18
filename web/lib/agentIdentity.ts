@@ -10,6 +10,7 @@ import {
   normalizeInputChainContext,
   normalizePersistedChainContext,
 } from "@/lib/chains";
+import { buildWalletFallbackUsername } from "@/lib/authorDisplay";
 import type { GithubSession } from "@/lib/githubOAuth";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../generated/agentvouch/src/generated/programs";
 
@@ -138,11 +139,7 @@ export function buildRegistryCanonicalAgentId(
 }
 
 export function buildFallbackAgentUsername(walletPubkey: string): string {
-  const suffix = walletPubkey
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .slice(-6)
-    .toLowerCase();
-  return `wallet-${suffix || "agent"}`;
+  return buildWalletFallbackUsername(walletPubkey);
 }
 
 export function normalizeAgentUsername(username: string): string {
@@ -325,9 +322,9 @@ async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
       WITH fallback_usernames AS (
         SELECT
           a.id,
-          'wallet-' || lower(right(regexp_replace(b.binding_ref, '[^a-zA-Z0-9]', '', 'g'), 6)) AS base_username,
+          'wallet-' || lower(left(regexp_replace(b.binding_ref, '[^a-zA-Z0-9]', '', 'g'), 6)) AS base_username,
           row_number() OVER (
-            PARTITION BY lower(right(regexp_replace(b.binding_ref, '[^a-zA-Z0-9]', '', 'g'), 6))
+            PARTITION BY lower(left(regexp_replace(b.binding_ref, '[^a-zA-Z0-9]', '', 'g'), 6))
             ORDER BY a.created_at ASC, a.id ASC
           ) AS collision_index
         FROM agents a
