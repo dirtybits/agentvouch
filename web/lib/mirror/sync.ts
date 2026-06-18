@@ -1,15 +1,22 @@
-// Mirror sync engine. For each configured source it discovers permissively
-// licensed skills and reconciles them against AgentVouch listings:
+// Mirror / connect sync engine. Reconciles skills discovered in a GitHub repo
+// against AgentVouch listings:
 //   - not listed yet            → create (version 1)
 //   - listed, tree hash changed → publish a new version
 //   - listed, tree hash same    → skip (no work)
 //
+// Two attribution modes share this engine:
+//   - github (community mirror): third-party OSS repos (Anthropic, OpenAI),
+//     attributed to a synthetic GitHub identity, license-gated, "Mirror"-labeled.
+//   - wallet (connected repo): a wallet's OWN repo (see lib/mirror/connectedRepos),
+//     attributed to that wallet, license gate bypassed (owner-authorized), tags
+//     preserved on update, and any existing PAID/on-chain listing left untouched.
+//
 // All writes go straight to the DB + blob storage using the same helpers as
-// POST /api/skills and POST /api/skills/[id]/versions. We bypass those HTTP
-// routes deliberately: they require a wallet signature from the skill author,
-// which a synthetic GitHub mirror identity (e.g. github:76263028) cannot
-// provide. Change detection compares the upstream tree hash against the latest
-// stored skill_versions.tree_hash, so no extra bookkeeping table is needed.
+// POST /api/skills and POST /api/skills/[id]/versions — bypassing those HTTP
+// routes deliberately (a synthetic GitHub identity has no wallet to sign, and a
+// connected sync runs unattended after the wallet authorized the connection).
+// Change detection compares the upstream tree hash against the latest stored
+// skill_versions.tree_hash, so no per-skill bookkeeping is needed.
 
 import { randomUUID } from "crypto";
 import { sql } from "@/lib/db";
@@ -22,17 +29,13 @@ import { pinSkillContent } from "@/lib/ipfs";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { runReviewSafe } from "@/lib/ai/review";
+import { verifyAuthorTrust } from "@/lib/trust";
 import {
   normalizeSkillName,
   normalizeSkillDescription,
   normalizeSkillContact,
 } from "@/lib/skillDraft";
-import {
-  getMirrorSources,
-  publisherIdentityKey,
-  sourceRepoUrl,
-  type MirrorSource,
-} from "@/lib/mirror/sources";
+import { getMirrorSources, type MirrorSource } from "@/lib/mirror/sources";
 import {
   classifyLicense,
   discoverSkills,
@@ -41,7 +44,13 @@ import {
   humanizeSkillName,
   parseFrontmatter,
   resolveRepoRef,
+  type LicenseClassification,
 } from "@/lib/mirror/github";
+import {
+  listActiveConnectedRepos,
+  updateConnectedRepoSyncState,
+  type ConnectedRepo,
+} from "@/lib/mirror/connectedRepos";
 
 export type SyncAction = "create" | "update" | "unchanged" | "skip" | "error";
 
@@ -60,7 +69,7 @@ export type SkillOutcome = {
 export type SyncOptions = {
   /** When false, no DB/blob writes occur (dry run). */
   apply: boolean;
-  /** Restrict to specific source keys (e.g. ["anthropic"]). */
+  /** Restrict community mirror to specific source keys (e.g. ["anthropic"]). */
   sourceKeys?: string[];
   /** Skip AI summary/scan generation. */
   skipReview?: boolean;
@@ -75,34 +84,130 @@ export type SyncResult = {
   counts: Record<SyncAction, number>;
 };
 
+// Attribution decides whose identity a listing belongs to.
+type Attribution =
+  | {
+      kind: "github";
+      githubId: string;
+      handle: string;
+      displayName: string;
+      mirrorSourceKey: string;
+    }
+  | { kind: "wallet"; walletPubkey: string };
+
+function idKeyFor(attr: Attribution): string {
+  return attr.kind === "github"
+    ? `github:${attr.githubId}`
+    : `wallet:${attr.walletPubkey}`;
+}
+
+// Everything the engine needs to sync one repo under one attribution.
+type SyncContext = {
+  label: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  includePathPrefixes: string[];
+  attribution: Attribution;
+  baseTags: string[];
+  /** Enforce the permissive-OSS license allowlist (community only). */
+  licenseGate: boolean;
+  /** Leave existing paid / on-chain listings untouched (connected only). */
+  skipPaidOnReconcile: boolean;
+  /** Overwrite tags from the repo on update (community) vs preserve (connected). */
+  updateTagsOnSync: boolean;
+};
+
+function communityContext(source: MirrorSource): SyncContext {
+  return {
+    label: source.key,
+    owner: source.owner,
+    repo: source.repo,
+    branch: source.branch,
+    includePathPrefixes: source.includePathPrefixes,
+    attribution: {
+      kind: "github",
+      githubId: source.githubId,
+      handle: source.handle,
+      displayName: source.displayName,
+      mirrorSourceKey: source.key,
+    },
+    baseTags: source.tags,
+    licenseGate: true,
+    skipPaidOnReconcile: false,
+    updateTagsOnSync: true,
+  };
+}
+
+function connectedContext(repo: ConnectedRepo): SyncContext {
+  return {
+    label: `connect:${repo.github_owner}/${repo.github_repo}`,
+    owner: repo.github_owner,
+    repo: repo.github_repo,
+    branch: repo.branch,
+    includePathPrefixes: repo.include_paths ?? [],
+    attribution: { kind: "wallet", walletPubkey: repo.owner_wallet },
+    baseTags: [],
+    licenseGate: false,
+    skipPaidOnReconcile: true,
+    updateTagsOnSync: false,
+  };
+}
+
 function emptyCounts(): Record<SyncAction, number> {
   return { create: 0, update: 0, unchanged: 0, skip: 0, error: 0 };
 }
 
+function toResult(outcomes: SkillOutcome[]): SyncResult {
+  const counts = emptyCounts();
+  for (const o of outcomes) counts[o.action] += 1;
+  return { outcomes, counts };
+}
+
+type ExistingListing = {
+  id: string;
+  current_version: number;
+  price_usdc_micros: string | null;
+  on_chain_address: string | null;
+};
+
 async function findExistingListing(
   identityKey: string,
   skillId: string
-): Promise<{ id: string; current_version: number } | null> {
-  const rows = await sql()<{ id: string; current_version: number }>`
-    SELECT id, current_version FROM skills
+): Promise<ExistingListing | null> {
+  const rows = await sql()<ExistingListing>`
+    SELECT id, current_version, price_usdc_micros, on_chain_address
+    FROM skills
     WHERE publisher_identity_key = ${identityKey} AND skill_id = ${skillId}
     LIMIT 1
   `;
   return rows[0] ?? null;
 }
 
+function isPaidOrOnChain(existing: ExistingListing): boolean {
+  if (existing.on_chain_address) return true;
+  if (existing.price_usdc_micros) {
+    try {
+      return BigInt(existing.price_usdc_micros) > 0n;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 async function markExistingMirrorListing(
-  source: MirrorSource,
+  sourceKey: string,
   skillDbId: string
 ): Promise<void> {
   await sql()`
     UPDATE skills
-    SET mirror_source_key = ${source.key},
+    SET mirror_source_key = ${sourceKey},
         tags = array_remove(COALESCE(tags, ARRAY[]::text[]), 'mirror'),
         updated_at = NOW()
     WHERE id = ${skillDbId}::uuid
       AND (
-        mirror_source_key IS DISTINCT FROM ${source.key}
+        mirror_source_key IS DISTINCT FROM ${sourceKey}
         OR 'mirror' = ANY(COALESCE(tags, ARRAY[]::text[]))
       )
   `;
@@ -119,7 +224,6 @@ async function latestTreeHash(skillDbId: string): Promise<string | null> {
 }
 
 type SkillMeta = {
-  source: MirrorSource;
   skillId: string;
   name: string;
   description: string;
@@ -129,11 +233,11 @@ type SkillMeta = {
 };
 
 function buildMeta(
-  source: MirrorSource,
+  ctx: SyncContext,
   dir: string,
   skillId: string,
   files: SkillTreeInputFile[],
-  licenseTag: string | null
+  license: LicenseClassification
 ): SkillMeta {
   const skillMd = files.find((f) => f.path === "SKILL.md");
   const content = skillMd
@@ -143,7 +247,10 @@ function buildMeta(
     : "";
   const fm = parseFrontmatter(content);
   const tags = Array.from(
-    new Set([...source.tags, ...(licenseTag ? [licenseTag] : [])])
+    new Set([
+      ...ctx.baseTags,
+      ...(license.permissive && license.tag ? [license.tag] : []),
+    ])
   ).filter((tag) => tag !== "mirror");
   // Upstream `name` is usually the slug; humanize it for display. Honor a
   // frontmatter name only when it already reads as a title (has a space or caps).
@@ -151,32 +258,75 @@ function buildMeta(
   const displayName =
     rawName && /[ A-Z]/.test(rawName) ? rawName : humanizeSkillName(skillId);
   return {
-    source,
     skillId,
     name: normalizeSkillName(displayName),
     description: normalizeSkillDescription(fm.description || ""),
     contact: normalizeSkillContact(
-      `${sourceRepoUrl(source)}/tree/${source.branch}/${dir}`
+      `https://github.com/${ctx.owner}/${ctx.repo}/tree/${ctx.branch}/${dir}`
     ),
     tags,
     content,
   };
 }
 
+type AttributionColumns = {
+  authorPubkey: string | null;
+  authorKind: string;
+  authorExternalId: string | null;
+  authorHandle: string | null;
+  authorDisplayName: string | null;
+  publisherTier: string;
+  mirrorSourceKey: string | null;
+};
+
+async function attributionColumns(
+  attr: Attribution
+): Promise<AttributionColumns> {
+  if (attr.kind === "github") {
+    return {
+      authorPubkey: null,
+      authorKind: "github",
+      authorExternalId: attr.githubId,
+      authorHandle: attr.handle,
+      authorDisplayName: attr.displayName,
+      publisherTier: "unverified",
+      mirrorSourceKey: attr.mirrorSourceKey,
+    };
+  }
+  let tier = "unverified";
+  try {
+    const trust = await verifyAuthorTrust(attr.walletPubkey);
+    tier = trust.isRegistered ? "registered" : "unverified";
+  } catch {
+    // default unverified
+  }
+  return {
+    authorPubkey: attr.walletPubkey,
+    authorKind: "wallet",
+    authorExternalId: null,
+    authorHandle: null,
+    authorDisplayName: null,
+    publisherTier: tier,
+    mirrorSourceKey: null,
+  };
+}
+
 async function createListing(
+  ctx: SyncContext,
   meta: SkillMeta,
   files: SkillTreeInputFile[],
   skipReview: boolean
 ): Promise<string> {
-  const idKey = publisherIdentityKey(meta.source);
+  const cols = await attributionColumns(ctx.attribution);
+  const idKey = idKeyFor(ctx.attribution);
   const skillDbId = randomUUID();
   const { publicAuthorSlug, publicSlug } = await buildUniquePublicSkillRoute(
     sql(),
     {
       id: skillDbId,
       skill_id: meta.skillId,
-      author_handle: meta.source.handle,
-      author_pubkey: null,
+      author_handle: cols.authorHandle,
+      author_pubkey: cols.authorPubkey,
       publisher_identity_key: idKey,
     }
   );
@@ -184,6 +334,10 @@ async function createListing(
   const tree = await putSkillTree(files);
   const pin = await pinSkillContent(meta.content, meta.skillId, 1);
   const chainContext = getConfiguredSolanaChainContext();
+  const changelog =
+    ctx.attribution.kind === "github"
+      ? `Mirrored from ${ctx.owner}/${ctx.repo}`
+      : `Synced from ${ctx.owner}/${ctx.repo}`;
 
   await sql()`
     WITH inserted_skill AS (
@@ -196,9 +350,11 @@ async function createListing(
         chain_context, price_usdc_micros, currency_mint
       ) VALUES (
         ${skillDbId}::uuid, ${meta.skillId}, ${publicSlug}, ${publicAuthorSlug},
-        ${null}, ${"github"}, ${meta.source.githubId}, ${meta.source.handle},
-        ${meta.source.displayName}, ${idKey}, ${"unverified"},
-        ${meta.source.key},
+        ${cols.authorPubkey}, ${cols.authorKind}, ${cols.authorExternalId}, ${
+    cols.authorHandle
+  },
+        ${cols.authorDisplayName}, ${idKey}, ${cols.publisherTier},
+        ${cols.mirrorSourceKey},
         ${meta.name}, ${meta.description || null}, ${meta.tags}::text[], 1,
         ${pin.success ? pin.cid : null}, ${meta.contact || null},
         ${chainContext}, ${null}, ${null}
@@ -212,7 +368,7 @@ async function createListing(
     SELECT
       id, 1, ${meta.content},
       ${pin.success ? pin.cid : null},
-      ${`Mirrored from ${meta.source.owner}/${meta.source.repo}`},
+      ${changelog},
       ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
       ${tree.backend}, ${tree.hasExecutable}
     FROM inserted_skill
@@ -232,56 +388,100 @@ async function createListing(
 }
 
 async function publishNewVersion(
+  ctx: SyncContext,
   meta: SkillMeta,
-  existing: { id: string; current_version: number },
+  existing: ExistingListing,
   files: SkillTreeInputFile[],
   skipReview: boolean
 ): Promise<number> {
   const newVersion = existing.current_version + 1;
   const tree = await putSkillTree(files);
   const pin = await pinSkillContent(meta.content, meta.skillId, newVersion);
+  const ipfsCid = pin.success ? pin.cid : null;
+  const filesJson = JSON.stringify(tree.manifest);
+  const changelog = `Synced from ${ctx.owner}/${ctx.repo}`;
 
-  const rows = await sql()<{ version: number }>`
-    WITH locked_skill AS (
-      SELECT id
-      FROM skills
-      WHERE id = ${existing.id}::uuid
-        AND current_version = ${existing.current_version}
-      FOR UPDATE
-    ),
-    inserted_version AS (
-      INSERT INTO skill_versions (
-        skill_id, version, content, ipfs_cid, changelog,
-        files, tree_hash, storage_backend, has_executable
-      )
-      SELECT
-        id, ${newVersion}, ${meta.content},
-        ${pin.success ? pin.cid : null},
-        ${`Synced from ${meta.source.owner}/${meta.source.repo}`},
-        ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
-        ${tree.backend}, ${tree.hasExecutable}
-      FROM locked_skill
-      RETURNING skill_id, version
-    ),
-    updated_skill AS (
-      UPDATE skills s
-      SET current_version = inserted_version.version,
-          name = ${meta.name},
-          description = ${meta.description || null},
-          tags = ${meta.tags}::text[],
-          contact = ${meta.contact || null},
-          ipfs_cid = ${pin.success ? pin.cid : null},
-          mirror_source_key = ${meta.source.key},
-          updated_at = NOW()
-      FROM inserted_version
-      WHERE s.id = inserted_version.skill_id
-      RETURNING s.current_version
-    )
-    SELECT current_version AS version FROM updated_skill
-  `;
+  // Single-statement, optimistic-concurrency update: locked_skill matches only
+  // when current_version is unchanged, so overlapping syncs throw and retry
+  // cleanly instead of drifting version/CID. Community syncs refresh tags +
+  // mirror_source_key; connected syncs preserve the author's tags/provenance.
+  const rows = ctx.updateTagsOnSync
+    ? await sql()<{ version: number }>`
+        WITH locked_skill AS (
+          SELECT id FROM skills
+          WHERE id = ${existing.id}::uuid
+            AND current_version = ${existing.current_version}
+          FOR UPDATE
+        ),
+        inserted_version AS (
+          INSERT INTO skill_versions (
+            skill_id, version, content, ipfs_cid, changelog,
+            files, tree_hash, storage_backend, has_executable
+          )
+          SELECT id, ${newVersion}, ${meta.content}, ${ipfsCid}, ${changelog},
+            ${filesJson}::jsonb, ${tree.treeHash}, ${tree.backend}, ${
+        tree.hasExecutable
+      }
+          FROM locked_skill
+          RETURNING skill_id, version
+        ),
+        updated_skill AS (
+          UPDATE skills s
+          SET current_version = inserted_version.version,
+              name = ${meta.name},
+              description = ${meta.description || null},
+              tags = ${meta.tags}::text[],
+              contact = ${meta.contact || null},
+              ipfs_cid = ${ipfsCid},
+              mirror_source_key = ${
+                ctx.attribution.kind === "github"
+                  ? ctx.attribution.mirrorSourceKey
+                  : null
+              },
+              updated_at = NOW()
+          FROM inserted_version
+          WHERE s.id = inserted_version.skill_id
+          RETURNING s.current_version
+        )
+        SELECT current_version AS version FROM updated_skill
+      `
+    : await sql()<{ version: number }>`
+        WITH locked_skill AS (
+          SELECT id FROM skills
+          WHERE id = ${existing.id}::uuid
+            AND current_version = ${existing.current_version}
+          FOR UPDATE
+        ),
+        inserted_version AS (
+          INSERT INTO skill_versions (
+            skill_id, version, content, ipfs_cid, changelog,
+            files, tree_hash, storage_backend, has_executable
+          )
+          SELECT id, ${newVersion}, ${meta.content}, ${ipfsCid}, ${changelog},
+            ${filesJson}::jsonb, ${tree.treeHash}, ${tree.backend}, ${
+        tree.hasExecutable
+      }
+          FROM locked_skill
+          RETURNING skill_id, version
+        ),
+        updated_skill AS (
+          UPDATE skills s
+          SET current_version = inserted_version.version,
+              name = ${meta.name},
+              description = ${meta.description || null},
+              contact = ${meta.contact || null},
+              ipfs_cid = ${ipfsCid},
+              updated_at = NOW()
+          FROM inserted_version
+          WHERE s.id = inserted_version.skill_id
+          RETURNING s.current_version
+        )
+        SELECT current_version AS version FROM updated_skill
+      `;
+
   if (rows[0]?.version !== newVersion) {
     throw new Error(
-      `Unable to publish mirrored version for ${existing.id}; listing changed concurrently`
+      `Unable to publish synced version for ${existing.id}; listing changed concurrently`
     );
   }
 
@@ -298,127 +498,199 @@ async function publishNewVersion(
   return newVersion;
 }
 
+async function reconcileSkill(
+  ctx: SyncContext,
+  skill: { skillId: string; dir: string; filePaths: string[] },
+  commitSha: string,
+  opts: SyncOptions
+): Promise<SkillOutcome> {
+  const outcome: SkillOutcome = {
+    source: ctx.label,
+    skillId: skill.skillId,
+    action: "skip",
+  };
+  try {
+    const files = await fetchSkillFiles(
+      { owner: ctx.owner, repo: ctx.repo, branch: ctx.branch },
+      skill,
+      commitSha
+    );
+    const license = classifyLicense(files);
+    outcome.license = license.tag;
+    if (ctx.licenseGate && !license.permissive) {
+      outcome.detail = `non-permissive license (${license.tag ?? "none"})`;
+      return outcome;
+    }
+
+    const tree = prepareSkillTree(files);
+    outcome.treeBytes = tree.manifest.reduce((s, f) => s + f.size, 0);
+    const meta = buildMeta(ctx, skill.dir, skill.skillId, files, license);
+    outcome.name = meta.name;
+
+    const idKey = idKeyFor(ctx.attribution);
+    const existing = await findExistingListing(idKey, skill.skillId);
+
+    if (!existing) {
+      if (opts.apply) {
+        outcome.route = await createListing(
+          ctx,
+          meta,
+          files,
+          !!opts.skipReview
+        );
+        outcome.version = 1;
+      }
+      outcome.action = "create";
+      return outcome;
+    }
+
+    if (ctx.skipPaidOnReconcile && isPaidOrOnChain(existing)) {
+      outcome.action = "skip";
+      outcome.detail = "paid/on-chain listing — not auto-synced";
+      outcome.version = existing.current_version;
+      return outcome;
+    }
+
+    if (opts.apply && ctx.attribution.kind === "github") {
+      await markExistingMirrorListing(
+        ctx.attribution.mirrorSourceKey,
+        existing.id
+      );
+    }
+
+    const prevHash = await latestTreeHash(existing.id);
+    if (prevHash === tree.treeHash) {
+      outcome.action = "unchanged";
+      outcome.version = existing.current_version;
+      return outcome;
+    }
+
+    outcome.version = opts.apply
+      ? await publishNewVersion(ctx, meta, existing, files, !!opts.skipReview)
+      : existing.current_version + 1;
+    outcome.action = "update";
+    return outcome;
+  } catch (error) {
+    const message = (error as Error).message;
+    // Tree cap violations are deterministic, expected exclusions — not failures.
+    if (/exceeds cap of/i.test(message)) {
+      outcome.action = "skip";
+      outcome.detail = `exceeds marketplace cap: ${message}`;
+    } else {
+      outcome.action = "error";
+      outcome.detail = message;
+    }
+    return outcome;
+  }
+}
+
+async function syncSource(
+  ctx: SyncContext,
+  opts: SyncOptions
+): Promise<{ outcomes: SkillOutcome[]; commitSha: string | null }> {
+  const log = opts.log ?? (() => {});
+  const outcomes: SkillOutcome[] = [];
+  let commitSha: string | null = null;
+  try {
+    const ref = await resolveRepoRef({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      branch: ctx.branch,
+    });
+    commitSha = ref.commitSha;
+    const tree = await fetchRepoTree(
+      { owner: ctx.owner, repo: ctx.repo, branch: ctx.branch },
+      commitSha
+    );
+    const discovered = discoverSkills(tree, {
+      includePathPrefixes: ctx.includePathPrefixes,
+    });
+    log(
+      `  [${ctx.label}] pinned ${commitSha.slice(0, 12)} · ${
+        discovered.length
+      } skill(s)`
+    );
+    const mark: Record<SyncAction, string> = {
+      create: "+",
+      update: "^",
+      unchanged: "=",
+      skip: "-",
+      error: "!",
+    };
+    for (const skill of discovered) {
+      if (opts.onlySkillId && skill.skillId !== opts.onlySkillId) continue;
+      const outcome = await reconcileSkill(ctx, skill, commitSha, opts);
+      outcomes.push(outcome);
+      log(
+        `  ${mark[outcome.action]} ${skill.skillId}${
+          outcome.detail ? ` (${outcome.detail})` : ""
+        }`
+      );
+    }
+  } catch (error) {
+    log(`  ! ${ctx.label}: ${(error as Error).message}`);
+    outcomes.push({
+      source: ctx.label,
+      skillId: "(repo)",
+      action: "error",
+      detail: (error as Error).message,
+    });
+  }
+  return { outcomes, commitSha };
+}
+
+/** Sync the hardcoded community mirror sources (Anthropic, OpenAI). */
 export async function syncMirrorSkills(opts: SyncOptions): Promise<SyncResult> {
   const log = opts.log ?? (() => {});
   const sources = getMirrorSources(opts.sourceKeys);
   const outcomes: SkillOutcome[] = [];
-
   for (const source of sources) {
     log(
-      `\n[${source.key}] ${source.owner}/${source.repo}@${source.branch}` +
-        ` as github:${source.handle}`
+      `\n[${source.key}] ${source.owner}/${source.repo}@${source.branch} as github:${source.handle}`
     );
-    let discovered;
-    let commitSha = "";
-    try {
-      const ref = await resolveRepoRef(source);
-      commitSha = ref.commitSha;
-      const tree = await fetchRepoTree(source, commitSha);
-      discovered = discoverSkills(tree, source);
-      log(`  pinned ${commitSha.slice(0, 12)}`);
-    } catch (error) {
-      log(`  ! tree fetch failed: ${(error as Error).message}`);
-      outcomes.push({
-        source: source.key,
-        skillId: "(repo)",
-        action: "error",
-        detail: (error as Error).message,
-      });
-      continue;
-    }
-    log(`  discovered ${discovered.length} skill dir(s)`);
-
-    const idKey = publisherIdentityKey(source);
-
-    for (const skill of discovered) {
-      if (opts.onlySkillId && skill.skillId !== opts.onlySkillId) continue;
-      const outcome: SkillOutcome = {
-        source: source.key,
-        skillId: skill.skillId,
-        action: "skip",
-      };
-      try {
-        const files = await fetchSkillFiles(source, skill, commitSha);
-        const license = classifyLicense(files);
-        outcome.license = license.tag;
-        if (!license.permissive) {
-          outcome.action = "skip";
-          outcome.detail = `non-permissive license (${license.tag ?? "none"})`;
-          outcomes.push(outcome);
-          log(`  - ${skill.skillId}: skip (${outcome.detail})`);
-          continue;
-        }
-
-        // Validates against tree caps and yields the canonical tree hash.
-        const tree = prepareSkillTree(files);
-        outcome.treeBytes = tree.manifest.reduce((s, f) => s + f.size, 0);
-        const meta = buildMeta(
-          source,
-          skill.dir,
-          skill.skillId,
-          files,
-          license.tag
-        );
-        outcome.name = meta.name;
-
-        const existing = await findExistingListing(idKey, skill.skillId);
-        if (!existing) {
-          if (opts.apply) {
-            outcome.route = await createListing(meta, files, !!opts.skipReview);
-            outcome.version = 1;
-          }
-          outcome.action = "create";
-          log(`  + ${skill.skillId}: create${opts.apply ? " ✓" : ""}`);
-        } else {
-          if (opts.apply) {
-            await markExistingMirrorListing(source, existing.id);
-          }
-          const prevHash = await latestTreeHash(existing.id);
-          if (prevHash === tree.treeHash) {
-            outcome.action = "unchanged";
-            outcome.version = existing.current_version;
-            log(
-              `  = ${skill.skillId}: unchanged (v${existing.current_version})`
-            );
-          } else {
-            if (opts.apply) {
-              outcome.version = await publishNewVersion(
-                meta,
-                existing,
-                files,
-                !!opts.skipReview
-              );
-            } else {
-              outcome.version = existing.current_version + 1;
-            }
-            outcome.action = "update";
-            log(
-              `  ^ ${skill.skillId}: update → v${outcome.version}${
-                opts.apply ? " ✓" : ""
-              }`
-            );
-          }
-        }
-      } catch (error) {
-        const message = (error as Error).message;
-        // Tree cap violations (too many files / too large) are deterministic,
-        // expected exclusions — not failures. Treat them as skips so the daily
-        // cron stays clean instead of reporting an error every run.
-        if (/exceeds cap of/i.test(message)) {
-          outcome.action = "skip";
-          outcome.detail = `exceeds marketplace cap: ${message}`;
-          log(`  - ${skill.skillId}: skip (${message})`);
-        } else {
-          outcome.action = "error";
-          outcome.detail = message;
-          log(`  ! ${skill.skillId}: error ${message}`);
-        }
-      }
-      outcomes.push(outcome);
-    }
+    const { outcomes: sourceOutcomes } = await syncSource(
+      communityContext(source),
+      opts
+    );
+    outcomes.push(...sourceOutcomes);
   }
+  return toResult(outcomes);
+}
 
-  const counts = emptyCounts();
-  for (const o of outcomes) counts[o.action] += 1;
-  return { outcomes, counts };
+/** Sync one wallet-owned connected repo (attributed to the owner's wallet). */
+export async function syncConnectedRepo(
+  repo: ConnectedRepo,
+  opts: SyncOptions
+): Promise<SkillOutcome[]> {
+  const log = opts.log ?? (() => {});
+  log(
+    `\n[connect] ${repo.github_owner}/${repo.github_repo}@${
+      repo.branch
+    } as wallet:${repo.owner_wallet.slice(0, 8)}…`
+  );
+  const { outcomes, commitSha } = await syncSource(
+    connectedContext(repo),
+    opts
+  );
+  if (opts.apply) {
+    const errored = outcomes.find((o) => o.action === "error");
+    await updateConnectedRepoSyncState(repo.id, {
+      lastCommitSha: commitSha,
+      status: errored ? "error" : "ok",
+      detail: errored?.detail ?? null,
+    }).catch(() => {});
+  }
+  return outcomes;
+}
+
+/** Sync every active connected repo (used by the daily cron). */
+export async function syncConnectedRepos(
+  opts: SyncOptions
+): Promise<SyncResult> {
+  const repos = await listActiveConnectedRepos();
+  const outcomes: SkillOutcome[] = [];
+  for (const repo of repos) {
+    outcomes.push(...(await syncConnectedRepo(repo, opts)));
+  }
+  return toResult(outcomes);
 }

@@ -6,9 +6,12 @@
 
 import path from "path";
 import type { SkillTreeInputFile } from "@/lib/skillStorage";
-import type { MirrorSource } from "@/lib/mirror/sources";
 
 const USER_AGENT = "agentvouch-mirror";
+
+// Minimal repo coordinates. Both community MirrorSource and connected_repos rows
+// satisfy this structurally, so the fetch helpers work for either.
+export type RepoCoords = { owner: string; repo: string; branch: string };
 
 export type RepoTreeEntry = {
   path: string;
@@ -51,7 +54,7 @@ function githubHeaders(): Record<string, string> {
 }
 
 export async function resolveRepoRef(
-  source: MirrorSource
+  source: RepoCoords
 ): Promise<ResolvedRepoRef> {
   const url = `https://api.github.com/repos/${source.owner}/${
     source.repo
@@ -72,7 +75,7 @@ export async function resolveRepoRef(
 }
 
 export async function fetchRepoTree(
-  source: MirrorSource,
+  source: RepoCoords,
   ref = source.branch
 ): Promise<RepoTreeEntry[]> {
   const url = `https://api.github.com/repos/${source.owner}/${source.repo}/git/trees/${ref}?recursive=1`;
@@ -96,7 +99,7 @@ export async function fetchRepoTree(
 
 export function discoverSkills(
   tree: RepoTreeEntry[],
-  source: MirrorSource
+  source: { includePathPrefixes: string[] }
 ): DiscoveredSkill[] {
   const dirs: DiscoveredSkill[] = [];
   const blobs = tree.filter((e) => e.type === "blob");
@@ -105,11 +108,14 @@ export function discoverSkills(
       .filter((entry) => entry.path.endsWith("/SKILL.md"))
       .map((entry) => entry.path.slice(0, -"/SKILL.md".length))
   );
+  // Empty prefix list = mirror every SKILL.md dir in the repo (connected repos
+  // default to this); a non-empty list scopes discovery (community sources).
+  const prefixes = source.includePathPrefixes;
 
   for (const entry of blobs) {
     if (!entry.path.endsWith("/SKILL.md")) continue;
     const dir = entry.path.slice(0, -"/SKILL.md".length);
-    if (!source.includePathPrefixes.some((p) => dir.startsWith(p))) {
+    if (prefixes.length > 0 && !prefixes.some((p) => dir.startsWith(p))) {
       continue;
     }
     const parts = dir.split("/");
@@ -141,7 +147,7 @@ export function discoverSkills(
 }
 
 export async function fetchRaw(
-  source: MirrorSource,
+  source: RepoCoords,
   repoPath: string,
   ref = source.branch
 ): Promise<Buffer> {
@@ -176,7 +182,7 @@ async function mapWithConcurrency<T, R>(
 
 /** Download every file in a skill directory, keyed by path relative to that dir. */
 export async function fetchSkillFiles(
-  source: MirrorSource,
+  source: RepoCoords,
   skill: DiscoveredSkill,
   ref = source.branch
 ): Promise<SkillTreeInputFile[]> {

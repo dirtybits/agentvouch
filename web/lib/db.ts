@@ -932,6 +932,41 @@ async function runCoreSchemaDdl() {
   await db`
     CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)
   `;
+
+  // First-party "connected repos": a wallet authorizes a GitHub repo it owns to
+  // be kept in sync as its own listings (distinct from community mirrors, which
+  // are hardcoded in lib/mirror/sources.ts and attributed to a synthetic GitHub
+  // identity). One repo maps to exactly one wallet.
+  await db`
+    CREATE TABLE IF NOT EXISTS connected_repos (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_wallet VARCHAR(44) NOT NULL,
+      github_owner VARCHAR(120) NOT NULL,
+      github_repo VARCHAR(140) NOT NULL,
+      branch VARCHAR(120) NOT NULL DEFAULT 'main',
+      include_paths TEXT[] NOT NULL DEFAULT '{}',
+      verification_method VARCHAR(24) NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'active',
+      last_commit_sha VARCHAR(64),
+      last_synced_at TIMESTAMPTZ,
+      last_sync_status VARCHAR(16),
+      last_sync_detail TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(github_owner, github_repo)
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_connected_repos_owner
+    ON connected_repos(owner_wallet)
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_connected_repos_status
+    ON connected_repos(status)
+    WHERE status = 'active'
+  `;
 }
 
 export async function initializeDatabase() {
