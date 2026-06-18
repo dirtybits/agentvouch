@@ -422,10 +422,12 @@ export default function SkillDetailPage({
     void refreshSkill({ includeBuyer: false });
   }, [refreshSkill]);
 
+  const loadedSkillId = skill?.id ?? null;
+
   useEffect(() => {
-    if (!walletAddress || !skill) return;
+    if (!walletAddress || !loadedSkillId) return;
     void refreshSkill({ includeBuyer: true });
-  }, [refreshSkill, skill?.id, walletAddress]);
+  }, [refreshSkill, loadedSkillId, walletAddress]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -1693,7 +1695,7 @@ export default function SkillDetailPage({
                       </span>
                     )}
                   </div>
-                  <InfoTip label="Pricing and checkout details" align="right">
+                  <InfoTip label={`${purchaseTitle} details`} align="right">
                     {purchaseDescription}
                   </InfoTip>
                 </div>
@@ -1820,7 +1822,13 @@ export default function SkillDetailPage({
                 </div>
                 {isPaidSkill && !buyerHasPurchased && !isAuthor && (
                   <p className="mt-2.5 text-center text-[11px] text-gray-400 dark:text-gray-500">
-                    on-chain purchase · per-buyer receipt · refund-eligible
+                    on-chain purchase · per-buyer receipt · refund-eligible ·{" "}
+                    <Link
+                      href={paidSkillDocsHref}
+                      className="text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                    >
+                      docs
+                    </Link>
                   </p>
                 )}
                 {buyerHasPurchased &&

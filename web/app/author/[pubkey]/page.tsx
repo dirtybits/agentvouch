@@ -124,9 +124,6 @@ type AgentProfileData = NonNullable<
 type VouchRecord = Awaited<
   ReturnType<ReputationOracle["getAllVouchesForAgent"]>
 >[number];
-type SkillListingRecord = Awaited<
-  ReturnType<ReputationOracle["getSkillListingsByAuthor"]>
->[number];
 
 export default function AuthorProfilePage() {
   const params = useParams();
@@ -146,9 +143,6 @@ export default function AuthorProfilePage() {
   const [vouchesGiven, setVouchesGiven] = useState<VouchRecord[]>([]);
   const [repoSkills, setRepoSkills] = useState<RepoSkill[]>([]);
   const [chainSkills, setChainSkills] = useState<RepoSkill[]>([]);
-  const [authorSkillListings, setAuthorSkillListings] = useState<
-    SkillListingRecord[]
-  >([]);
   const [authorTrust, setAuthorTrust] = useState<TrustData | null>(null);
   const [authorIdentity, setAuthorIdentity] =
     useState<AgentIdentitySummary | null>(null);
@@ -219,19 +213,17 @@ export default function AuthorProfilePage() {
     setLoading(true);
     try {
       const agentAddr = address(pubkey);
-      const [prof, received, given, onChainListings, repoRes, authorRes] =
-        await Promise.all([
-          oracle.getAgentProfile(agentAddr).catch(() => null),
-          oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
-          oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
-          oracle.getSkillListingsByAuthor(agentAddr).catch(() => []),
-          fetch(`/api/skills?author=${pubkey}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-          fetch(`/api/author/${pubkey}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-        ]);
+      const [prof, received, given, repoRes, authorRes] = await Promise.all([
+        oracle.getAgentProfile(agentAddr).catch(() => null),
+        oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
+        oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
+        fetch(`/api/skills?author=${pubkey}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch(`/api/author/${pubkey}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
       const relatedProfileKeys = Array.from(
         new Set(
           [
@@ -260,7 +252,6 @@ export default function AuthorProfilePage() {
       setProfile(prof);
       setVouchesReceived(received);
       setVouchesGiven(given);
-      setAuthorSkillListings(onChainListings);
       const apiSkills = (repoRes?.skills ?? []) as RepoSkill[];
       setRepoSkills(apiSkills.filter((skill) => skill.source !== "chain"));
       setChainSkills(apiSkills.filter((skill) => skill.source === "chain"));
