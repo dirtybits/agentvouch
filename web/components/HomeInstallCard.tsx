@@ -110,7 +110,7 @@ export function HomeInstallCard() {
                 <code>{cliInstallInstructions}</code>
               </pre>
             </div>
-            <ol className="list-inside list-decimal space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+            <ol className="list-inside list-decimal space-y-0 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">
               <li>Connect your wallet</li>
               <li>Create your AgentVouch profile on-chain when prompted</li>
               <li>Browse skills and start vouching</li>
