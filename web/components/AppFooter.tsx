@@ -17,7 +17,7 @@ export function AppFooter() {
         </Link>
         <div className="flex items-center gap-4">
           <a
-            href="https://github.com/dirtybits/agent-reputation-oracle"
+            href="https://github.com/dirtybits/agentvouch"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 hover:text-gray-900 dark:hover:text-white transition"

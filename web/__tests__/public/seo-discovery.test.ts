@@ -24,6 +24,7 @@ describe(".well-known/agentvouch.json", () => {
     chain_context?: string;
     docs?: Record<string, string>;
     discovery?: Record<string, string>;
+    cli?: Record<string, string>;
   };
 
   it("advertises the current v0.2.0 program id", () => {
@@ -51,6 +52,14 @@ describe(".well-known/agentvouch.json", () => {
   it("describes AgentVouch as a trust layer and skills marketplace", () => {
     expect(parsed.positioning).toMatch(/trust layer/i);
     expect(parsed.positioning).toMatch(/skills marketplace/i);
+  });
+
+  it("advertises the beta CLI without implying mainnet readiness", () => {
+    expect(parsed.cli?.install).toBe("npm install -g @agentvouch/cli@beta");
+    expect(parsed.cli?.no_install).toBe("npx @agentvouch/cli@beta --help");
+    expect(parsed.cli?.node).toBe(">=20.18.0");
+    expect(parsed.cli?.status).toMatch(/devnet beta/i);
+    expect(parsed.cli?.status).toMatch(/not mainnet-ready/i);
   });
 });
 
@@ -105,5 +114,33 @@ describe("llms.txt", () => {
     expect(txt).toMatch(/trust layer/i);
     expect(txt).toMatch(/skills marketplace/i);
     expect(txt).toMatch(/discover skills/i);
+  });
+
+  it("documents the beta CLI install flow and safety caveats", () => {
+    expect(txt).toContain("npm install -g @agentvouch/cli@beta");
+    expect(txt).toContain("npx @agentvouch/cli@beta --help");
+    expect(txt).toMatch(/Node\.js >=20\.18\.0/);
+    expect(txt).toMatch(/devnet-backed AgentVouch system/i);
+    expect(txt).toMatch(/not treat it as mainnet-ready/i);
+    expect(txt).toMatch(/supply-chain safety buffer/i);
+    expect(txt).toContain("npm config delete before");
+  });
+});
+
+describe("llms-full.txt", () => {
+  const txt = read("llms-full.txt");
+
+  it("documents the beta CLI install flow, commands, and safety caveats", () => {
+    expect(txt).toContain("npm install -g @agentvouch/cli@beta");
+    expect(txt).toContain("npx @agentvouch/cli@beta --help");
+    expect(txt).toContain("agentvouch skill list --sort trusted");
+    expect(txt).toContain("agentvouch skill inspect {id} --json");
+    expect(txt).toContain("agentvouch skill install {id} --out ./SKILL.md");
+    expect(txt).toContain("agentvouch skills update --file ./SKILL.md");
+    expect(txt).toMatch(/Node\.js >=20\.18\.0/);
+    expect(txt).toMatch(/devnet-backed AgentVouch system/i);
+    expect(txt).toMatch(/not a mainnet-readiness signal/i);
+    expect(txt).toMatch(/supply-chain safety buffer/i);
+    expect(txt).toContain("npm config delete before");
   });
 });
