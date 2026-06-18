@@ -439,10 +439,7 @@ export class AgentVouchSolanaClient {
     };
   }
 
-  async claimVoucherRevenue(
-    skillListingAddress: string,
-    authorAddress: string
-  ) {
+  async claimVoucherRevenue(authorAddress: string) {
     const voucherProfile = this.getAgentProfileAddress(this.authority);
     const authorProfile = this.getAgentProfileAddress(authorAddress);
     const vouch = this.getVouchAddress(authorAddress);
@@ -475,7 +472,6 @@ export class AgentVouchSolanaClient {
 
     return {
       tx,
-      skillListing: skillListingAddress,
       vouch: vouch.toBase58(),
       voucherProfile: voucherProfile.toBase58(),
       authorProfile: authorProfile.toBase58(),

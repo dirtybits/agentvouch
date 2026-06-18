@@ -712,20 +712,15 @@ export function buildProgram(): Command {
         "--author <pubkey>",
         "Author wallet pubkey you vouched for"
       )
-      .requiredOption(
-        "--skill-listing <address>",
-        "Skill listing PDA that holds unclaimed voucher revenue"
-      )
       .requiredOption("--keypair <file>", "Solana keypair JSON file")
       .option("--json", "Print structured JSON output")
       .addHelpText(
         "after",
-        "\nExamples:\n  agentvouch vouch claim --author asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw --skill-listing Eq35iaSKECtZAGMkPVSk18tqFDFe6L3hgEhJsUzkByFd --keypair ~/.config/solana/id.json"
+        "\nExamples:\n  agentvouch vouch claim --author asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw --keypair ~/.config/solana/id.json"
       )
       .action(
         async (options: {
           author: string;
-          skillListing: string;
           keypair: string;
           rpcUrl: string;
           json?: boolean;
@@ -738,14 +733,10 @@ export function buildProgram(): Command {
                 keypair,
                 resolveRpcUrl(options.rpcUrl)
               );
-              return solana.claimVoucherRevenue(
-                options.skillListing,
-                options.author
-              );
+              return solana.claimVoucherRevenue(options.author);
             },
             (result) => [
               `claimed voucher revenue`,
-              `listing: ${result.skillListing}`,
               `vouch: ${result.vouch}`,
               `voucher_profile: ${result.voucherProfile}`,
               `author_profile: ${result.authorProfile}`,
