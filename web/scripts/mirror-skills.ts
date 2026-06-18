@@ -41,7 +41,9 @@ async function main() {
   const selected = keys ?? MIRROR_SOURCES.map((s) => s.key);
   console.log(
     `\nMirror sources: ${selected.join(", ")}` +
-      `\nMode: ${APPLY ? "APPLY (writes to DATABASE_URL)" : "DRY RUN (no writes)"}` +
+      `\nMode: ${
+        APPLY ? "APPLY (writes to DATABASE_URL)" : "DRY RUN (no writes)"
+      }` +
       `${SKIP_REVIEW ? " [skip-review]" : ""}`
   );
 
@@ -59,20 +61,26 @@ async function main() {
     const size = o.treeBytes ? `${(o.treeBytes / 1024).toFixed(0)}KB` : "";
     const extra =
       o.detail ??
-      [o.license, o.version ? `v${o.version}` : "", size, o.name ? `→ ${o.name}` : ""]
+      [
+        o.license,
+        o.version ? `v${o.version}` : "",
+        size,
+        o.name ? `→ ${o.name}` : "",
+      ]
         .filter(Boolean)
         .join("  ");
     console.log(
-      `  ${ICON[o.action]} ${o.source}/${o.skillId.padEnd(34)} ${o.action.padEnd(
-        9
-      )} ${extra}`
+      `  ${ICON[o.action]} ${o.source}/${o.skillId.padEnd(
+        34
+      )} ${o.action.padEnd(9)} ${extra}`
     );
   }
 
   const c = result.counts;
   console.log(
-    `\n${APPLY ? "Applied" : "Dry run"}: create=${c.create} update=${c.update}` +
-      ` unchanged=${c.unchanged} skip=${c.skip} error=${c.error}`
+    `\n${APPLY ? "Applied" : "Dry run"}: create=${c.create} update=${
+      c.update
+    }` + ` unchanged=${c.unchanged} skip=${c.skip} error=${c.error}`
   );
   if (!APPLY && c.create + c.update > 0) {
     console.log("Re-run with --apply to write to the configured DATABASE_URL.");

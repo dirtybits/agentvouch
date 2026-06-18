@@ -46,7 +46,8 @@ async function handle(request: NextRequest) {
       log: (message) => console.log("[cron/mirror-skills]", message),
     });
     const changed = result.outcomes.filter(
-      (o) => o.action === "create" || o.action === "update" || o.action === "error"
+      (o) =>
+        o.action === "create" || o.action === "update" || o.action === "error"
     );
     return NextResponse.json({
       ok: result.counts.error === 0,

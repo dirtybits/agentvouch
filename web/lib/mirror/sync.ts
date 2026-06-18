@@ -42,12 +42,7 @@ import {
   parseFrontmatter,
 } from "@/lib/mirror/github";
 
-export type SyncAction =
-  | "create"
-  | "update"
-  | "unchanged"
-  | "skip"
-  | "error";
+export type SyncAction = "create" | "update" | "unchanged" | "skip" | "error";
 
 export type SkillOutcome = {
   source: string;
@@ -262,9 +257,7 @@ async function publishNewVersion(
   return newVersion;
 }
 
-export async function syncMirrorSkills(
-  opts: SyncOptions
-): Promise<SyncResult> {
+export async function syncMirrorSkills(opts: SyncOptions): Promise<SyncResult> {
   const log = opts.log ?? (() => {});
   const sources = getMirrorSources(opts.sourceKeys);
   const outcomes: SkillOutcome[] = [];
@@ -313,7 +306,13 @@ export async function syncMirrorSkills(
         // Validates against tree caps and yields the canonical tree hash.
         const tree = prepareSkillTree(files);
         outcome.treeBytes = tree.manifest.reduce((s, f) => s + f.size, 0);
-        const meta = buildMeta(source, skill.dir, skill.skillId, files, license.tag);
+        const meta = buildMeta(
+          source,
+          skill.dir,
+          skill.skillId,
+          files,
+          license.tag
+        );
         outcome.name = meta.name;
 
         const existing = await findExistingListing(idKey, skill.skillId);
@@ -329,7 +328,9 @@ export async function syncMirrorSkills(
           if (prevHash === tree.treeHash) {
             outcome.action = "unchanged";
             outcome.version = existing.current_version;
-            log(`  = ${skill.skillId}: unchanged (v${existing.current_version})`);
+            log(
+              `  = ${skill.skillId}: unchanged (v${existing.current_version})`
+            );
           } else {
             if (opts.apply) {
               outcome.version = await publishNewVersion(

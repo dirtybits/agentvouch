@@ -109,13 +109,16 @@ async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    for (;;) {
-      const i = cursor++;
-      if (i >= items.length) break;
-      results[i] = await fn(items[i], i);
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= items.length) break;
+        results[i] = await fn(items[i], i);
+      }
     }
-  });
+  );
   await Promise.all(workers);
   return results;
 }
