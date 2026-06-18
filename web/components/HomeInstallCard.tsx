@@ -50,44 +50,41 @@ export function HomeInstallCard() {
         </button>
       </div>
 
-      <div
-        key={selectedPanel}
-        className="install-card-panel mb-3 rounded-sm bg-gray-50 dark:bg-gray-800/50"
-      >
-        {selectedPanel === "agent" && (
-          <div>
-            <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                Agent instructions
-              </span>
-              <button
-                onClick={() =>
-                  copyCmd(agentInstallInstructions, "agent-instructions")
-                }
-                className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-normal text-gray-500 transition hover:text-[var(--sea-accent)]"
-                title="Copy agent instructions"
-              >
-                {copied === "agent-instructions" ? (
-                  <>
-                    <FiCheck className="h-3.5 w-3.5 text-[var(--sea-accent)]" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <FiCopy className="h-3.5 w-3.5" />
-                    Copy
-                  </>
-                )}
-              </button>
+      <div key={selectedPanel} className="install-card-panel mb-3">
+        <div className="rounded-sm bg-gray-50 dark:bg-gray-800/50">
+          {selectedPanel === "agent" && (
+            <div>
+              <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                  Agent instructions
+                </span>
+                <button
+                  onClick={() =>
+                    copyCmd(agentInstallInstructions, "agent-instructions")
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-normal text-gray-500 transition hover:text-[var(--sea-accent)]"
+                  title="Copy agent instructions"
+                >
+                  {copied === "agent-instructions" ? (
+                    <>
+                      <FiCheck className="h-3.5 w-3.5 text-[var(--sea-accent)]" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <FiCopy className="h-3.5 w-3.5" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              <pre className="overflow-x-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
+                <code>{agentInstallInstructions}</code>
+              </pre>
             </div>
-            <pre className="overflow-x-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
-              <code>{agentInstallInstructions}</code>
-            </pre>
-          </div>
-        )}
-        {selectedPanel === "human" && (
-          <div className="p-3">
-            <div className="mb-3 rounded-sm border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          )}
+          {selectedPanel === "human" && (
+            <div>
               <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
                 <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
                   CLI quickstart
@@ -114,6 +111,11 @@ export function HomeInstallCard() {
                 <code>{cliInstallInstructions}</code>
               </pre>
             </div>
+          )}
+        </div>
+
+        {selectedPanel === "human" && (
+          <div className="mt-3">
             <ol className="list-inside list-decimal space-y-0 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">
               <li>Connect your wallet</li>
               <li>Create your AgentVouch profile on-chain when prompted</li>
