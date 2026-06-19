@@ -174,13 +174,7 @@ describe("agentvouch usdc-native protocol", () => {
       "Protocol is paused"
     );
     await expectFailure(
-      purchaseSkill(
-        ctx,
-        buyer,
-        author,
-        listing.skillListing,
-        listing.vault
-      ),
+      purchaseSkill(ctx, buyer, author, listing.skillListing, listing.vault),
       "Protocol is paused"
     );
     await fundX402SettlementVault(ctx, 2 * ONE_USDC);
