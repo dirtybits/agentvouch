@@ -67,6 +67,18 @@ Design target as of 2026-06-17:
 - Out of scope: LLM-jury / optimistic-oracle adjudication beyond storing/validating human/operator proposal state.
 - Out of scope: mainnet deployment itself. This plan produces a mainnet-RC-capable branch and devnet evidence.
 
+## Implementation Slice Plans
+
+Drafted 2026-06-19 for handoff and parallel branch work:
+
+1. `a2-s1-state-layout.plan.md`: account layout, constants, initializer defaults, and events.
+2. `a2-s2-authority-governance.plan.md`: config setters, two-step config authority handoff, role rotation, and reserve-aware treasury sweep.
+3. `a2-s3-governed-resolution.plan.md`: propose/cancel/execute dispute resolution, author-bond dispute serialization, and snapshot-based voucher slashing.
+4. `a2-s4-refund-reserve-accounting.plan.md`: program-computed buyer-first refund pools, residual reserve accounting, and expired refund close.
+5. `a2-s5-clients-smoke-readiness.plan.md`: generated clients, web/CLI/smoke surfaces, clean-break devnet evidence, and readiness docs.
+
+These slice plans are subordinate to this umbrella design. If implementation changes a design decision, update the relevant slice plan and this umbrella plan in the same branch.
+
 ## Source Context
 
 Verified 2026-06-16 against the local worktree:
