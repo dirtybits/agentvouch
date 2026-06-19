@@ -42,6 +42,18 @@ describe("dashboard profile source", () => {
     expect(source).toContain("Publish New Version");
   });
 
+  it("surfaces settings as a dashboard tab after disputes", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/dashboard/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain('href="/settings"');
+    expect(source).toContain("FiSettings");
+    expect(source).toContain('id: "disputes"');
+    expect(source).toContain("<FiSettings className=");
+  });
+
   it("links vouch dashboard rows through author wallets instead of AgentProfile PDAs", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/dashboard/page.tsx"),

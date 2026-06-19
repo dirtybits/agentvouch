@@ -49,6 +49,7 @@ import {
   FiFlag,
   FiLoader,
   FiPackage,
+  FiSettings,
   FiShield,
   FiTag,
   FiTrendingUp,
@@ -1088,11 +1089,11 @@ export default function AuthorProfilePage() {
         )}
 
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
             <Link
               href="/skills"
-              className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition"
+              className="mt-1 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition"
             >
               <FiArrowLeft className="w-4 h-4" />
             </Link>
@@ -1130,6 +1131,15 @@ export default function AuthorProfilePage() {
               </p>
             </div>
           </div>
+          {isOwnProfile && (
+            <Link
+              href="/settings"
+              className={`${navButtonSecondaryInlineClass} shrink-0 sm:mt-1`}
+            >
+              <FiSettings className="w-4 h-4" />
+              Settings
+            </Link>
+          )}
         </div>
 
         {/* Trust Badge */}
