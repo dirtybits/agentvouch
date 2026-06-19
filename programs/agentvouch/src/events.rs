@@ -1,6 +1,14 @@
 use anchor_lang::prelude::*;
 
 #[event]
+pub struct PauseStateChanged {
+    pub config: Pubkey,
+    pub pause_authority: Pubkey,
+    pub paused: bool,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct VouchCreated {
     pub vouch: Pubkey,
     pub voucher: Pubkey,

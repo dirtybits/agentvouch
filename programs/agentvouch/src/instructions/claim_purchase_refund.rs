@@ -68,10 +68,6 @@ pub struct ClaimPurchaseRefund<'info> {
 }
 
 pub fn handler(ctx: Context<ClaimPurchaseRefund>) -> Result<()> {
-    require!(
-        !ctx.accounts.config.paused,
-        ClaimRefundError::ProtocolPaused
-    );
     let clock = Clock::get()?;
     if let Some(deadline) = ctx.accounts.refund_pool.claim_deadline {
         require!(

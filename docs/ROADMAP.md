@@ -8,7 +8,7 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
-Last reviewed: 2026-06-09.
+Last reviewed: 2026-06-19.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
@@ -38,6 +38,8 @@ Goal: convert "one hot key decides instantly and pays the challenger" into "a kn
 ### A3. Emergency pause (P0.3)
 
 Add a `set_paused` instruction gated on `pause_authority` (currently written at init and never read). The `require!(!paused)` guards already exist in ~10 handlers and become live once this ships.
+
+Status 2026-06-19: source implementation is on `feat/a3-emergency-pause`, pending review, merge, devnet deploy, and pause/unpause smoke. Policy: paused blocks new exposure and author-side collateral exits; buyer refund claims and voucher revenue claims remain open.
 
 ### A4. Refund reserve policy (P0.4)
 

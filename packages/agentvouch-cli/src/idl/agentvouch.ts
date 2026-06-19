@@ -2849,6 +2849,50 @@ export type Agentvouch = {
       "args": []
     },
     {
+      "name": "setPaused",
+      "discriminator": [
+        91,
+        60,
+        125,
+        192,
+        176,
+        225,
+        166,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pauseAuthority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "settleX402Purchase",
       "discriminator": [
         33,
@@ -4549,6 +4593,19 @@ export type Agentvouch = {
       ]
     },
     {
+      "name": "pauseStateChanged",
+      "discriminator": [
+        224,
+        2,
+        23,
+        9,
+        225,
+        156,
+        4,
+        72
+      ]
+    },
+    {
       "name": "purchaseRefundClaimed",
       "discriminator": [
         41,
@@ -5564,6 +5621,30 @@ export type Agentvouch = {
           {
             "name": "pendingRewardsUsdcMicros",
             "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pauseStateChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "pauseAuthority",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
           },
           {
             "name": "timestamp",

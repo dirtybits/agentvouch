@@ -4,25 +4,25 @@ overview: "Implement roadmap A3 / readiness P0.3: make the existing paused flag 
 todos:
   - id: design-lock
     content: Lock the A3-lite pause policy: paused blocks new risk and purchases, while safe exits stay allowed unless a handler can worsen protocol exposure
-    status: pending
+    status: completed
   - id: set-paused-instruction
     content: Add set_paused gated by config.pause_authority, emit PauseStateChanged, and register the instruction in mod.rs/lib.rs
-    status: pending
+    status: completed
   - id: pause-guard-audit
     content: Audit every instruction for paused behavior and add/remove guards so the implemented policy matches the test matrix
-    status: pending
+    status: completed
   - id: tests
     content: Add Anchor coverage for pause authority, idempotent pause/unpause, blocked risky flows, allowed safe exits, and x402 bridge pause behavior
-    status: pending
+    status: completed
   - id: clients-and-scripts
-    content: Rebuild IDL, sync web/agentvouch.json, regenerate clients, and update helper/smoke/operator call sites for set_paused
-    status: pending
+    content: Rebuild IDL, sync web/agentvouch.json, regenerate clients, and update helper/client exports for set_paused
+    status: completed
   - id: docs-and-runbook
-    content: Update MAINNET_READINESS.md, ROADMAP.md if sequencing changes, PRODUCTION_RUNBOOK.md, DEVNET_STATE.md after deploy, and web/public/skill.md only when live behavior changes
-    status: pending
+    content: Update source/readiness/runbook docs for A3; defer DEVNET_STATE.md and web/public/skill.md until deployed behavior changes
+    status: completed
   - id: verification
-    content: Run NO_DNA=1 anchor build/test, generated-client checks, web/CLI tests/builds, root build, git diff checks, and devnet pause smoke before marking complete
-    status: pending
+    content: Run local build/test/diff checks; devnet pause smoke remains pending before treating A3 as launch-alpha ready
+    status: in_progress
 isProject: false
 ---
 
@@ -36,9 +36,10 @@ Design target as of 2026-06-18:
 
 1. **A3-lite, not full governance.** Ship a narrow `set_paused(paused: bool)` instruction. Authority rotation and richer governance remain A2 or later governance work.
 2. **Pause blocks new risk.** Creating new protocol exposure should fail while paused.
-3. **Pause should avoid trapping funds.** Claims, withdrawals, revokes, and close paths should stay allowed unless they can worsen a known incident.
-4. **Pause authority is explicit.** Only `config.pause_authority` can toggle the flag.
-5. **The current guards become real.** Existing `require!(!config.paused, ...)` checks stop being dead code once `set_paused` exists.
+3. **Pause should avoid trapping buyer/user claims.** Buyer refund claims and voucher revenue claims stay open.
+4. **Pause preserves author-side recovery collateral.** Author proceeds and author-bond withdrawals stay blocked while paused because they can drain funds needed during incident response.
+5. **Pause authority is explicit.** Only `config.pause_authority` can toggle the flag.
+6. **The current guards become real.** Existing `require!(!config.paused, ...)` checks stop being dead code once `set_paused` exists.
 
 ## Scope
 
@@ -93,21 +94,21 @@ Blocked while paused:
 - `purchase_skill`
 - `settle_x402_purchase`
 - `open_author_dispute`
+- `withdraw_author_proceeds`
+- `withdraw_author_bond`
 
 Allowed while paused:
 
 - `set_paused(false)` to unpause.
 - `register_agent`, because it does not move USDC or create direct financial exposure.
-- `withdraw_author_bond`, if normal dispute/open-lock invariants permit it.
 - `revoke_vouch`, if normal dispute/open-lock invariants permit it.
 - `claim_voucher_revenue`.
 - `claim_purchase_refund`.
-- `withdraw_author_proceeds`, if normal settlement lock and delay invariants permit it.
 - `resolve_author_dispute`, `slash_dispute_vouches`, and `create_refund_pool` for A1/A2 cleanup and refunds, unless implementation finds a concrete incident case where they worsen exposure.
 - `unlink_vouch_from_listing`, `remove_skill_listing`, and `close_skill_listing` when their existing dispute/ownership/status checks permit them, because these reduce or retire exposure.
 - migration instructions only in controlled devnet/upgrade flows, not as normal user actions.
 
-Open decision for implementation: `claim_purchase_refund` and `withdraw_author_proceeds` currently have paused guards even though they are exit paths. The A3 implementation should either remove those guards and prove safety with tests, or keep them blocked with a documented reason in `docs/PRODUCTION_RUNBOOK.md`.
+Decision locked 2026-06-19: `claim_purchase_refund` should be allowed while paused because it pays buyers from an already-created refund pool. `withdraw_author_proceeds` should remain blocked, and `withdraw_author_bond` should gain a pause guard, because both can drain recovery collateral before operators understand an incident.
 
 ## Files To Change
 
@@ -131,9 +132,10 @@ Open decision for implementation: `claim_purchase_refund` and `withdraw_author_p
 ## Implementation Steps
 
 1. **Lock the pause policy in tests first.**
-   - Decide whether `claim_purchase_refund` and `withdraw_author_proceeds` are allowed while paused.
-   - Recommended default: allow them, because they are exits/claims and normal locks already protect disputed funds.
-   - Any blocked exit path must have a runbook reason.
+   - Buyer refund claims stay allowed.
+   - Voucher revenue claims stay allowed.
+   - Author proceeds and author-bond withdrawals stay blocked until unpaused.
+   - Document the reason: paused mode preserves recovery collateral during incident response.
 
 2. **Add `set_paused`.**
    - Accounts:
@@ -200,11 +202,11 @@ Open decision for implementation: `claim_purchase_refund` and `withdraw_author_p
 10. Paused blocks direct purchase.
 11. Paused blocks x402 settlement or the bridge fails before transaction construction.
 12. Paused blocks opening a new author dispute.
-13. Paused still allows author-bond withdrawal when no open dispute exists.
-14. Paused still allows vouch revoke when no open dispute exists.
-15. Paused still allows voucher revenue claim.
-16. Paused still allows purchase refund claim if the final policy allows buyer exits.
-17. Paused still allows author proceeds withdrawal if the final policy allows seller exits and normal lock/delay checks pass.
+13. Paused blocks author proceeds withdrawal.
+14. Paused blocks author-bond withdrawal.
+15. Paused still allows vouch revoke when no open dispute exists.
+16. Paused still allows voucher revenue claim.
+17. Paused still allows purchase refund claim.
 18. Paused still allows listing remove/close when normal no-lock/status checks pass.
 19. Unpaused restores the blocked flows.
 
@@ -250,6 +252,6 @@ The smoke should include at minimum: set paused true, prove a purchase or vouch 
 
 ## Blockers / Open Questions
 
-- Final policy decision: should `claim_purchase_refund` and `withdraw_author_proceeds` remain allowed while paused? Recommendation: yes, unless the incident class specifically involves those exits.
+- `withdraw_author_proceeds` and `withdraw_author_bond` are deliberately blocked while paused to preserve recovery collateral. If a later incident response policy wants author-side exits during pause, update the runbook and tests first.
 - Operator setup: production `pause_authority` should not be an ordinary hot wallet for a mainnet alpha.
 - A3 does not solve A2 dispute governance or A4 reserve automation. It only adds the brake pedal needed to launch a tightly capped alpha more safely.
