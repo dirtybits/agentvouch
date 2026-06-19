@@ -2837,6 +2837,50 @@
       "args": []
     },
     {
+      "name": "set_paused",
+      "discriminator": [
+        91,
+        60,
+        125,
+        192,
+        176,
+        225,
+        166,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pause_authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "settle_x402_purchase",
       "discriminator": [
         33,
@@ -4537,6 +4581,19 @@
       ]
     },
     {
+      "name": "PauseStateChanged",
+      "discriminator": [
+        224,
+        2,
+        23,
+        9,
+        225,
+        156,
+        4,
+        72
+      ]
+    },
+    {
       "name": "PurchaseRefundClaimed",
       "discriminator": [
         41,
@@ -5552,6 +5609,30 @@
           {
             "name": "pending_rewards_usdc_micros",
             "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PauseStateChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "pause_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
           },
           {
             "name": "timestamp",
