@@ -105,6 +105,7 @@ interface SkillDetail {
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
   mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -963,6 +964,7 @@ export default function SkillDetailPage({
 
   const isChainOnly = skill?.source === "chain";
   const isMirror = Boolean(skill?.mirror_source_key);
+  const isSynced = !isMirror && Boolean(skill?.synced_repo_url);
   const visibleTags =
     skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
   const isAuthor =
@@ -1259,6 +1261,18 @@ export default function SkillDetailPage({
                       <FiGithub className="h-3 w-3" />
                       Mirror
                     </span>
+                  ) : null}
+                  {isSynced && skill.synced_repo_url ? (
+                    <a
+                      href={skill.synced_repo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"
+                      title="Kept in sync from this author's GitHub repo"
+                    >
+                      <FiGithub className="h-3 w-3" />
+                      Synced
+                    </a>
                   ) : null}
                   {skill.author_trust?.registeredAt ? (
                     <span className="rounded-full border border-[var(--sea-accent-border)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)]">

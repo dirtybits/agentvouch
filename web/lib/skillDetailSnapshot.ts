@@ -59,6 +59,7 @@ export type SkillDetailSnapshot = {
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
   mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -130,6 +131,7 @@ type SkillDetailSnapshotRow = SkillScanFieldRow &
     publisher_identity_key: string | null;
     publisher_tier: string | null;
     mirror_source_key: string | null;
+    synced_repo_url: string | null;
     name: string;
     description: string | null;
     tags: string[];
@@ -453,6 +455,7 @@ export async function loadSkillDetailSnapshot(
     publisher_identity_key: row.publisher_identity_key,
     publisher_tier: row.publisher_tier,
     mirror_source_key: row.mirror_source_key,
+    synced_repo_url: row.synced_repo_url,
     name: row.name,
     description: row.description,
     tags: row.tags ?? [],

@@ -116,6 +116,8 @@ type SyncContext = {
   skipPaidOnReconcile: boolean;
   /** Overwrite tags from the repo on update (community) vs preserve (connected). */
   updateTagsOnSync: boolean;
+  /** For connected repos, the source repo URL surfaced as "Synced from GitHub". */
+  syncedRepoUrl: string | null;
 };
 
 function communityContext(source: MirrorSource): SyncContext {
@@ -136,6 +138,7 @@ function communityContext(source: MirrorSource): SyncContext {
     licenseGate: true,
     skipPaidOnReconcile: false,
     updateTagsOnSync: true,
+    syncedRepoUrl: null,
   };
 }
 
@@ -151,6 +154,7 @@ function connectedContext(repo: ConnectedRepo): SyncContext {
     licenseGate: false,
     skipPaidOnReconcile: true,
     updateTagsOnSync: false,
+    syncedRepoUrl: `https://github.com/${repo.github_owner}/${repo.github_repo}`,
   };
 }
 
@@ -196,20 +200,33 @@ function isPaidOrOnChain(existing: ExistingListing): boolean {
   return false;
 }
 
-async function markExistingMirrorListing(
-  sourceKey: string,
+// Backfill provenance on an already-listed skill so it is marked even when the
+// content is unchanged: mirror_source_key for community mirrors, synced_repo_url
+// for first-party connected repos.
+async function markProvenance(
+  ctx: SyncContext,
   skillDbId: string
 ): Promise<void> {
+  if (ctx.attribution.kind === "github") {
+    const sourceKey = ctx.attribution.mirrorSourceKey;
+    await sql()`
+      UPDATE skills
+      SET mirror_source_key = ${sourceKey},
+          tags = array_remove(COALESCE(tags, ARRAY[]::text[]), 'mirror'),
+          updated_at = NOW()
+      WHERE id = ${skillDbId}::uuid
+        AND (
+          mirror_source_key IS DISTINCT FROM ${sourceKey}
+          OR 'mirror' = ANY(COALESCE(tags, ARRAY[]::text[]))
+        )
+    `;
+    return;
+  }
   await sql()`
     UPDATE skills
-    SET mirror_source_key = ${sourceKey},
-        tags = array_remove(COALESCE(tags, ARRAY[]::text[]), 'mirror'),
-        updated_at = NOW()
+    SET synced_repo_url = ${ctx.syncedRepoUrl}, updated_at = NOW()
     WHERE id = ${skillDbId}::uuid
-      AND (
-        mirror_source_key IS DISTINCT FROM ${sourceKey}
-        OR 'mirror' = ANY(COALESCE(tags, ARRAY[]::text[]))
-      )
+      AND synced_repo_url IS DISTINCT FROM ${ctx.syncedRepoUrl}
   `;
 }
 
@@ -345,7 +362,7 @@ async function createListing(
         id, skill_id, public_slug, public_author_slug,
         author_pubkey, author_kind, author_external_id, author_handle,
         author_display_name, publisher_identity_key, publisher_tier,
-        mirror_source_key,
+        mirror_source_key, synced_repo_url,
         name, description, tags, current_version, ipfs_cid, contact,
         chain_context, price_usdc_micros, currency_mint
       ) VALUES (
@@ -354,7 +371,7 @@ async function createListing(
     cols.authorHandle
   },
         ${cols.authorDisplayName}, ${idKey}, ${cols.publisherTier},
-        ${cols.mirrorSourceKey},
+        ${cols.mirrorSourceKey}, ${ctx.syncedRepoUrl},
         ${meta.name}, ${meta.description || null}, ${meta.tags}::text[], 1,
         ${pin.success ? pin.cid : null}, ${meta.contact || null},
         ${chainContext}, ${null}, ${null}
@@ -438,6 +455,7 @@ async function publishNewVersion(
                   ? ctx.attribution.mirrorSourceKey
                   : null
               },
+              synced_repo_url = ${ctx.syncedRepoUrl},
               updated_at = NOW()
           FROM inserted_version
           WHERE s.id = inserted_version.skill_id
@@ -471,6 +489,7 @@ async function publishNewVersion(
               description = ${meta.description || null},
               contact = ${meta.contact || null},
               ipfs_cid = ${ipfsCid},
+              synced_repo_url = ${ctx.syncedRepoUrl},
               updated_at = NOW()
           FROM inserted_version
           WHERE s.id = inserted_version.skill_id
@@ -551,11 +570,8 @@ async function reconcileSkill(
       return outcome;
     }
 
-    if (opts.apply && ctx.attribution.kind === "github") {
-      await markExistingMirrorListing(
-        ctx.attribution.mirrorSourceKey,
-        existing.id
-      );
+    if (opts.apply) {
+      await markProvenance(ctx, existing.id);
     }
 
     const prevHash = await latestTreeHash(existing.id);

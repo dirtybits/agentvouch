@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
         publisher_identity_key: skill.publisher_identity_key ?? null,
         publisher_tier: skill.publisher_tier ?? null,
         mirror_source_key: skill.mirror_source_key ?? null,
+        synced_repo_url: skill.synced_repo_url ?? null,
         mirrored_from: skill.mirror_source_key
           ? {
               source_key: skill.mirror_source_key,

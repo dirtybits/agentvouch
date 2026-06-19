@@ -40,6 +40,7 @@ interface SkillPreviewCardSkill {
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
   mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -345,6 +346,9 @@ export default function SkillPreviewCard({
   const registered = Boolean(trust && trust.isRegistered);
   const skillHref = getPublicSkillPath(skill);
   const visibleTags = skill.tags.filter((tag) => !RESERVED_SKILL_TAGS.has(tag));
+  // First-party skill the author keeps in sync from their own GitHub repo
+  // (distinct from a community mirror, which uses mirror_source_key).
+  const isSynced = !isMirror && Boolean(skill.synced_repo_url);
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
@@ -442,6 +446,18 @@ export default function SkillPreviewCard({
         {/* Signals + tags. Mirror provenance is shown in the author byline
             ("Mirror · @handle"), so it is intentionally not repeated here. */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {isSynced && skill.synced_repo_url && (
+            <a
+              href={skill.synced_repo_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"
+              title="Kept in sync from this author's GitHub repo"
+            >
+              <FiGithub className="h-3 w-3" />
+              Synced
+            </a>
+          )}
           {scanMeta && (
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}

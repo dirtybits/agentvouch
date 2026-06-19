@@ -203,6 +203,11 @@ async function runCoreSchemaDdl() {
 
   await db`
     ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS synced_repo_url VARCHAR(256)
+  `;
+
+  await db`
+    ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS public_slug VARCHAR(96)
   `;
 

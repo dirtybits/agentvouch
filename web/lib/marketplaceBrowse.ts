@@ -54,6 +54,7 @@ export type RepoSkillRow = SkillScanFieldRow & {
   publisher_identity_key?: string | null;
   publisher_tier?: "unverified" | "registered" | "bonded" | string;
   mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
