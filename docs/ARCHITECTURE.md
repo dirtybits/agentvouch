@@ -124,7 +124,19 @@ Skill purchase: 1.00 USDC
                   └── claimable by linked vouchers by reward stake weight
 ```
 
-SOL is still required for transaction fees, rent, and ATA creation. Protocol accounting is USDC-native.
+SOL is still required for transaction fees, rent, and ATA creation in the current direct wallet-paid flows. Protocol accounting is USDC-native.
+
+### Planned Kora Fee Abstraction
+
+Kora integration is the planned Solana-native path for removing user-held SOL from normal AgentVouch flows. The design is tracked in `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
+
+The architecture distinction matters:
+
+- **Transaction fee sponsorship:** Kora can act as the transaction `feePayer` while the user reimburses the relayer in USDC through a batched token transfer. This can ship without changing the Anchor program, but only removes network-fee SOL.
+- **Rent/account-creation sponsorship:** many AgentVouch instructions currently create PDAs or vaults with the user as Anchor `payer`. Fully no-SOL UX requires either bounded rent prefunding or, preferably, explicit `rent_payer` accounts so a Kora/paymaster signer can fund PDA and token-account rent while the user remains the USDC authority.
+- **x402 relationship:** Kora does not replace x402. Kora abstracts Solana transaction cost for protocol instructions; x402 remains the agent-facing HTTP payment envelope for bridge-enabled paid downloads.
+
+Do not update public agent-facing instructions to claim SOL-free operation until the relevant sponsored path has been implemented and smoke-tested.
 
 ## Disputes
 
@@ -179,6 +191,7 @@ Repo-backed skills keep content and versions in Postgres. Optional on-chain list
 | Skill content signing  | Skills are still unsigned content; future work should bind content hashes or signatures to listings/versions.                                 |
 | Mainnet governance     | Mainnet needs multisig or stronger authority controls, monitoring, and incident response.                                                     |
 | Mainnet refund policy  | M13 keeps unclaimed purchaser restitution out of treasury by default; governance still needs explicit reserve and sweep rules before mainnet. |
+| SOL-less user flows    | Kora fee abstraction is planned but not built. Current direct wallet-paid flows can still require user-held SOL for transaction fees, rent, and ATA creation. |
 
 ## Repository Map
 

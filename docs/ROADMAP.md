@@ -8,7 +8,7 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
-Last reviewed: 2026-06-09.
+Last reviewed: 2026-06-19.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
@@ -71,6 +71,18 @@ The durable asset is verified, staked, accountable trust data — vouches, backi
 
 Generic how-to content depreciates with every model release. Durable skill value for frontier models: org/domain-specific procedure not in training data, freshness (post-cutoff API/tool changes), executable capability with credentials, and provenance/safety. Marketplace surfaces and curation should optimize for those, not for volume of generic content.
 
+### Wallet and transaction friction: Kora before chain migration
+
+Kora is the preferred next Solana-native path for removing user-held SOL from normal AgentVouch flows. The plan lives in `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
+
+Strategic read:
+
+- Do not migrate to Base just to get gasless USDC UX. Solana already supports fee payer separation and batched token reimbursement; Kora packages this into a configurable paymaster/relayer.
+- Preserve Solana program state as the trust source: purchases, vouches, bonds, disputes, slashing, refunds, and rewards should remain protocol-visible.
+- Ship in layers: fee-only sponsorship first, then explicit `rent_payer` program interfaces for full no-SOL first-time flows.
+- Keep x402 as the agent-facing payment envelope where it fits; use Kora to make direct Solana protocol instructions less wallet-hostile.
+- Treat Kora as a launch accelerator, not a launch blocker, unless it is enabled in the release candidate path. Once enabled, it inherits mainnet readiness gates for signer custody, spend caps, monitoring, and rollback.
+
 ### Category expansion: MCP servers / connectors
 
 Planned as the **second listing type**, sequenced strictly after the trust loop is real (A1 + A2 shipped, one full upheld-dispute cycle survived on devnet). Rationale:
@@ -81,13 +93,34 @@ Planned as the **second listing type**, sequenced strictly after the trust loop 
 
 Expanding categories before slashing and credible dispute governance exist would widen an unproven surface; the first incident would define the brand.
 
+### AgentVouch MCP client/server
+
+MCP should become an adoption surface for agents, not a second protocol. The earlier MCP caution still applies: do not duplicate purchase, auth, signing, or trust logic in a standalone server. Reuse the HTTP API, CLI/protocol package, generated Solana client, x402 bridge, and Kora-sponsored transaction path.
+
+V1 should be split deliberately:
+
+- **Local MCP client first:** read-only tools for `list_skills`, `inspect_skill`, `get_author_trust`, `list_authors`, and free-skill install. Paid install can orchestrate the existing purchase/download flow, but should require explicit spend policy: max USDC amount, allowed domain, allowed network/mint, and a local signer or wallet integration. Avoid remote custody of user keys.
+- **Hosted MCP server second:** discovery and trust tools over public APIs, suitable for agents that want AgentVouch context inside Claude/Cursor/etc. Hosted tools should not sign or pay. If paid install is exposed, it should return an x402 requirement or a typed transaction intent, not hold private keys.
+- **x402-compatible buyer path:** track Coinbase/CDP x402 MCP client patterns as an interoperability target. They are useful buyer-side plumbing, but they only settle x402 payments; protocol-listed AgentVouch purchases still need `purchase_skill` or the feature-flagged `settle_x402_purchase` bridge.
+- **Kora-compatible transaction path:** once Kora sponsorship is live, the MCP client can call the same typed sponsored transaction APIs as the web app. This is the clean route to "agent pays in USDC, signs once, no SOL setup" without inventing MCP-only payment semantics.
+
+Sequencing:
+
+1. Stabilize public OpenAPI/agent-facing API contracts and keep `web/public/skill.md` current.
+2. Land Kora-sponsored purchase or x402 bridge readiness for paid protocol-listed skills.
+3. Build local read-only/free-install MCP wrapper over existing modules.
+4. Add paid-install orchestration with explicit spend caps and no remote key custody.
+5. Only after the above, consider a hosted read-only AgentVouch MCP endpoint for discovery/trust.
+
+This belongs near the MCP/connector expansion strategy: AgentVouch should both list/vet MCP servers as marketplace objects and provide MCP tools that let agents query AgentVouch trust before installing or paying.
+
 ### Known risks (watch list, not blockers)
 
 - Distribution: platform-native registries (Anthropic skills, MCP registries, GitHub) get default discovery — be the trust layer they query, not a competing storefront.
 - Low willingness to pay for prose-only skills; thin paid-skill volume.
-- Wallet/crypto friction for mainstream agent developers; x402 agent payments still early.
+- Wallet/crypto friction for mainstream agent developers; Kora and x402 reduce the UX gap but add signer, relayer, policy, and monitoring surfaces.
 - Two-sided cold start.
 
 ### Sequencing summary
 
-Skills beachhead → close P0s (A1–A4) → mainnet → MCP/connector listings → reputation-oracle API as the long-term product.
+Skills beachhead → close P0s (A1–A4) → optional Kora/x402 friction hardening for the RC path → mainnet → MCP client/server adoption surface → MCP/connector listings → reputation-oracle API as the long-term product.
