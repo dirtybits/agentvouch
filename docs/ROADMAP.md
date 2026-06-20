@@ -39,7 +39,7 @@ Goal: convert "one hot key decides instantly and pays the challenger" into "a kn
 
 Add a `set_paused` instruction gated on `pause_authority` (currently written at init and never read). The `require!(!paused)` guards already exist in ~10 handlers and become live once this ships.
 
-Status 2026-06-19: source implementation is on `feat/a3-emergency-pause`, pending review, merge, devnet deploy, and pause/unpause smoke. Policy: paused blocks new exposure and author-side collateral exits; buyer refund claims and voucher revenue claims remain open.
+Status 2026-06-19: merged, same-ID upgraded on devnet, on-chain IDL upgraded, and pause/unpause smoke passed. Policy: paused blocks new exposure and author-side collateral exits; buyer refund claims and voucher revenue claims remain open. Remaining before mainnet: custody pause authority behind the approved signer policy and repeat the smoke on the release-candidate deployment.
 
 ### A4. Refund reserve policy (P0.4)
 

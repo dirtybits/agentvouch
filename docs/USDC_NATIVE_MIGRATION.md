@@ -35,9 +35,9 @@ Authority and treasury gate decision:
 - Mainnet `v1.0.0` cannot accept real user funds while a single hot wallet controls upgrade, config, or treasury authority. Those roles require multisig or stronger governance.
 - `config_authority` controls governance-sensitive config updates and role rotations.
 - `treasury_authority` is reserved in `v0.2.0`; Milestone 3 should not add an arbitrary treasury-withdrawal instruction. Treasury inflows are dismissed dispute bonds and future governed fees.
-- `pause_authority` can only toggle pause state and is rotatable by `config_authority` if separate.
+- `pause_authority` can only toggle pause state. Rotation remains part of the config setter / authority-rotation work, not the A3 pause instruction itself.
 - `settlement_authority` is reserved for the feature-flagged x402 bridge, is rotatable and pausable by `config_authority`, and cannot withdraw arbitrary settlement or treasury vault balances.
-- `paused = true` blocks new risk and new purchases: create/update paid listings, direct purchases, new vouches, vouch/listing links, author-bond deposits, and x402 settlement. It allows authority rotation, unpause, dispute open/resolve, voucher reward claims, author-bond withdrawals, vouch revokes, and close flows only when normal dispute/lock invariants already permit them.
+- `paused = true` blocks new risk, new purchases, and author-side collateral exits: create/update paid listings, direct purchases, new vouches, vouch/listing links, author-bond deposits, author-bond withdrawals, author-proceeds withdrawals, and x402 settlement. It allows unpause, profile registration, already-open dispute cleanup, voucher reward claims, buyer refund claims, vouch revokes, and close flows only when normal dispute/lock invariants already permit them.
 
 Interop decision:
 
