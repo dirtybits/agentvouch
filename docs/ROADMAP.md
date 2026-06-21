@@ -83,6 +83,18 @@ Strategic read:
 - Keep x402 as the agent-facing payment envelope where it fits; use Kora to make direct Solana protocol instructions less wallet-hostile.
 - Treat Kora as a launch accelerator, not a launch blocker, unless it is enabled in the release candidate path. Once enabled, it inherits mainnet readiness gates for signer custody, spend caps, monitoring, and rollback.
 
+### Base full-logic POC
+
+Base remains the strongest expansion candidate for a USDC/x402-native AgentVouch lane, but it should be tested as a **port by spec**, not a migration by transpilation. The plan lives in `.agents/plans/base-full-logic-poc.plan.md`.
+
+Strategic read:
+
+- Prove the full protocol surface before migration talk: profiles, author bonds, vouches, listings, purchases, author proceeds, voucher claims, disputes, voucher slashing, refund pools, pause behavior, and x402 settlement.
+- Keep the POC isolated under an EVM workspace and package so Solana remains the canonical implementation while the decision is tested.
+- Preserve the current accounting invariants: protocol-visible purchase receipts, 60/40 author/voucher economics when backed, no-vouch purchases routing fully to authors, dispute locks, slashed-fund ring-fencing, and one-claim/one-settlement idempotency.
+- Compare concrete evidence, not vibes: smart-account/paymaster UX, x402 settlement trust assumptions, gas costs, implementation size, test coverage, and operator custody burden.
+- Do not update public docs or marketplace defaults to present Base as live until the POC has a decision report and a separate launch plan.
+
 ### Category expansion: MCP servers / connectors
 
 Planned as the **second listing type**, sequenced strictly after the trust loop is real (A1 + A2 shipped, one full upheld-dispute cycle survived on devnet). Rationale:
