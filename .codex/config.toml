@@ -3,3 +3,6 @@ url = "https://docs.phantom.com/mcp"
 
 [mcp_servers.solana-mcp-server]
 url = "https://mcp.solana.com/mcp"
+
+[mcp_servers.solana-mcp-server.tools.Solana_Documentation_Search]
+approval_mode = "approve"
