@@ -38,6 +38,7 @@ contract AgentVouchEvmStateTest is Test {
         assertEq(c.usdc, address(usdc));
         assertEq(c.authorShareBps, 6000);
         assertEq(c.voucherShareBps, 4000);
+        assertEq(c.protocolFeeBps, 0);
         assertEq(c.chainContext, "eip155:84532");
         assertTrue(av.configInitialized());
     }
@@ -54,6 +55,30 @@ contract AgentVouchEvmStateTest is Test {
         AgentVouchTypes.Config memory c = _cfg(address(u2));
         c.authorShareBps = 7000;
         c.voucherShareBps = 4000; // 110% total
+        vm.prank(admin);
+        vm.expectRevert(AgentVouchEvm.BadEconomics.selector);
+        av2.initializeConfig(c);
+    }
+
+    function test_initializeRejectsUnderAllocatedSplits() public {
+        MockUSDC u2 = new MockUSDC();
+        AgentVouchEvm av2 = new AgentVouchEvm(address(u2), admin);
+        AgentVouchTypes.Config memory c = _cfg(address(u2));
+        c.authorShareBps = 6000;
+        c.voucherShareBps = 3000;
+        c.protocolFeeBps = 0; // 90% total would undercharge backed purchases
+        vm.prank(admin);
+        vm.expectRevert(AgentVouchEvm.BadEconomics.selector);
+        av2.initializeConfig(c);
+    }
+
+    function test_initializeRejectsReservedProtocolFee() public {
+        MockUSDC u2 = new MockUSDC();
+        AgentVouchEvm av2 = new AgentVouchEvm(address(u2), admin);
+        AgentVouchTypes.Config memory c = _cfg(address(u2));
+        c.authorShareBps = 6000;
+        c.voucherShareBps = 3000;
+        c.protocolFeeBps = 1000;
         vm.prank(admin);
         vm.expectRevert(AgentVouchEvm.BadEconomics.selector);
         av2.initializeConfig(c);

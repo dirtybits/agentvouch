@@ -114,7 +114,11 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     function initializeConfig(AgentVouchTypes.Config calldata cfg) external onlyRole(CONFIG_ROLE) {
         if (configInitialized) revert AlreadyInitialized();
         if (cfg.usdc != address(usdc)) revert UsdcMismatch();
-        if (uint256(cfg.authorShareBps) + cfg.voucherShareBps + cfg.protocolFeeBps > 10_000) {
+        if (uint256(cfg.authorShareBps) + cfg.voucherShareBps + cfg.protocolFeeBps != 10_000) {
+            revert BadEconomics();
+        }
+        // Protocol fees are reserved until purchaseSkill routes them to treasury.
+        if (cfg.protocolFeeBps != 0) {
             revert BadEconomics();
         }
         config = cfg;

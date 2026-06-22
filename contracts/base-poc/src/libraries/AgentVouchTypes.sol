@@ -50,6 +50,7 @@ library AgentVouchTypes {
         uint256 minPaidListingPriceUsdcMicros;
         uint16 authorShareBps;
         uint16 voucherShareBps;
+        // Reserved in the Base POC until purchaseSkill collects and routes protocol fees.
         uint16 protocolFeeBps;
         uint8 slashPercentage;
         uint256 authorProceedsLockSeconds;
