@@ -127,9 +127,9 @@ export async function purchaseSkillWithSponsoredCheckout(input: {
       }),
     }
   );
-  const prepareBody = (await prepareResponse.json().catch(() => null)) as
-    | SponsoredPrepareResponse
-    | null;
+  const prepareBody = (await prepareResponse
+    .json()
+    .catch(() => null)) as SponsoredPrepareResponse | null;
   if (!prepareResponse.ok || !prepareBody || "error" in prepareBody) {
     throw new SponsoredPurchaseError(
       readResponseError(prepareBody, "Sponsored checkout prepare failed"),
@@ -164,9 +164,9 @@ export async function purchaseSkillWithSponsoredCheckout(input: {
       body: JSON.stringify({ signedTransaction }),
     }
   );
-  const submitBody = (await submitResponse.json().catch(() => null)) as
-    | SponsoredSubmitResponse
-    | null;
+  const submitBody = (await submitResponse
+    .json()
+    .catch(() => null)) as SponsoredSubmitResponse | null;
   if (!submitResponse.ok || !submitBody || "error" in submitBody) {
     throw new SponsoredPurchaseError(
       readResponseError(submitBody, "Sponsored checkout submit failed"),

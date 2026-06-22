@@ -33,10 +33,7 @@ function ceilDiv(numerator: bigint, denominator: bigint) {
 export function quoteSponsoredCheckoutSetupFee(
   input: SponsoredCheckoutQuoteInput
 ): SponsoredCheckoutQuote {
-  const rentLamports = toNonNegativeBigInt(
-    input.rentLamports,
-    "rentLamports"
-  );
+  const rentLamports = toNonNegativeBigInt(input.rentLamports, "rentLamports");
   const transactionFeeLamports = toNonNegativeBigInt(
     input.transactionFeeLamports ?? 0n,
     "transactionFeeLamports"
@@ -58,7 +55,10 @@ export function quoteSponsoredCheckoutSetupFee(
       : toNonNegativeBigInt(input.capUsdcMicros, "capUsdcMicros");
 
   const baseLamports = rentLamports + transactionFeeLamports;
-  const bufferedLamports = ceilDiv(baseLamports * (10_000n + bufferBps), 10_000n);
+  const bufferedLamports = ceilDiv(
+    baseLamports * (10_000n + bufferBps),
+    10_000n
+  );
   const uncappedSetupFeeUsdcMicros = ceilDiv(
     bufferedLamports * microUsdcPerSol,
     LAMPORTS_PER_SOL
@@ -82,7 +82,9 @@ export function parseSponsoredCheckoutMicroUsdcPerSol(
   envName = "AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE"
 ) {
   if (!value) {
-    throw new Error(`${envName} is required when sponsored checkout is enabled`);
+    throw new Error(
+      `${envName} is required when sponsored checkout is enabled`
+    );
   }
   const parsed = BigInt(value);
   if (parsed <= 0n) {

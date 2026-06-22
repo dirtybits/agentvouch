@@ -41,13 +41,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error: unknown) {
     const message = getErrorMessage(error, "Failed to submit checkout");
-    const status = /signature|instruction|mismatch|missing|required|invalid/i.test(
-      message
-    )
-      ? 400
-      : /balance|paused|already has a purchase/i.test(message)
-      ? 409
-      : 500;
+    const status =
+      /signature|instruction|mismatch|missing|required|invalid/i.test(message)
+        ? 400
+        : /balance|paused|already has a purchase/i.test(message)
+        ? 409
+        : 500;
     console.warn("[sponsored-purchase:submit]", message);
     return NextResponse.json({ error: message }, { status });
   }

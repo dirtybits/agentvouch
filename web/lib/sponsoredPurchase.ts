@@ -188,7 +188,9 @@ async function fetchTokenAccountState(
     return { exists: false, mint: null, owner: null, amount: 0n };
   }
   if (!account.owner.equals(TOKEN_PROGRAM_ID) || account.data.length < 72) {
-    throw new Error(`${tokenAccount.toBase58()} is not a valid SPL token account`);
+    throw new Error(
+      `${tokenAccount.toBase58()} is not a valid SPL token account`
+    );
   }
   return {
     exists: true,
@@ -327,7 +329,10 @@ async function resolvePurchaseContext(input: {
     input.expectedPriceUsdcMicros,
     "expectedPriceUsdcMicros"
   );
-  if (expectedPrice !== null && expectedPrice !== listing.data.priceUsdcMicros) {
+  if (
+    expectedPrice !== null &&
+    expectedPrice !== listing.data.priceUsdcMicros
+  ) {
     throw new Error("Expected price does not match on-chain listing");
   }
 
@@ -361,7 +366,10 @@ async function resolvePurchaseContext(input: {
     "author_reward_vault_authority",
     authorProfile.toBuffer()
   );
-  const authorRewardVault = pda("author_reward_vault", authorProfile.toBuffer());
+  const authorRewardVault = pda(
+    "author_reward_vault",
+    authorProfile.toBuffer()
+  );
   const buyerUsdcAccount = deriveAta(buyer, usdcMint);
 
   const purchaseAccount = await fetchMaybePurchase(
@@ -369,7 +377,9 @@ async function resolvePurchaseContext(input: {
     address(purchase.toBase58())
   );
   if (purchaseAccount.exists) {
-    throw new Error("This buyer already has a purchase receipt for this revision");
+    throw new Error(
+      "This buyer already has a purchase receipt for this revision"
+    );
   }
 
   const buyerTokenState = await fetchTokenAccountState(
@@ -381,7 +391,9 @@ async function resolvePurchaseContext(input: {
     !buyerTokenState.mint?.equals(usdcMint) ||
     !buyerTokenState.owner?.equals(buyer)
   ) {
-    throw new Error("Buyer USDC associated token account is missing or invalid");
+    throw new Error(
+      "Buyer USDC associated token account is missing or invalid"
+    );
   }
 
   const purchaseRentLamports =
@@ -497,8 +509,9 @@ export async function prepareSponsoredPurchase(
     ...input,
     sponsor: sponsor.publicKey,
   });
-  const latestBlockhash =
-    await context.connection.getLatestBlockhash("confirmed");
+  const latestBlockhash = await context.connection.getLatestBlockhash(
+    "confirmed"
+  );
   const prelim = buildTransaction({
     context,
     blockhash: latestBlockhash.blockhash,
@@ -582,11 +595,7 @@ export async function prepareSponsoredPurchase(
   };
 }
 
-function assertKey(
-  actual: PublicKey,
-  expected: PublicKey,
-  label: string
-) {
+function assertKey(actual: PublicKey, expected: PublicKey, label: string) {
   if (!actual.equals(expected)) {
     throw new Error(`${label} mismatch`);
   }
@@ -598,10 +607,17 @@ async function validateSubmittedTransaction(transaction: Transaction) {
     throw new Error("Sponsored checkout transaction is missing a fee payer");
   }
   assertKey(transaction.feePayer, sponsor.publicKey, "fee payer");
-  if (transaction.instructions.length < 1 || transaction.instructions.length > 2) {
-    throw new Error("Sponsored checkout transaction has unexpected instruction count");
+  if (
+    transaction.instructions.length < 1 ||
+    transaction.instructions.length > 2
+  ) {
+    throw new Error(
+      "Sponsored checkout transaction has unexpected instruction count"
+    );
   }
-  if (transaction.signatures.some((signature) => signature.signature === null)) {
+  if (
+    transaction.signatures.some((signature) => signature.signature === null)
+  ) {
     throw new Error("Sponsored checkout transaction is missing signatures");
   }
   if (!transaction.verifySignatures()) {
@@ -659,7 +675,10 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   purchaseInstruction.keys.forEach((key, index) => {
     const expected = expectedPurchase.keys[index];
     assertKey(key.pubkey, expected.pubkey, `purchase account ${index}`);
-    if (key.isSigner !== expected.isSigner || key.isWritable !== expected.isWritable) {
+    if (
+      key.isSigner !== expected.isSigner ||
+      key.isWritable !== expected.isWritable
+    ) {
       throw new Error(`purchase account ${index} meta mismatch`);
     }
   });
@@ -678,7 +697,11 @@ async function validateSubmittedTransaction(transaction: Transaction) {
     }
     assertKey(keys[0].pubkey, context.buyerUsdcAccount, "reimbursement source");
     assertKey(keys[1].pubkey, context.usdcMint, "reimbursement mint");
-    assertKey(keys[2].pubkey, sponsorFeeDestination, "reimbursement destination");
+    assertKey(
+      keys[2].pubkey,
+      sponsorFeeDestination,
+      "reimbursement destination"
+    );
     assertKey(keys[3].pubkey, context.buyer, "reimbursement owner");
     if (!keys[3].isSigner) {
       throw new Error("Sponsor reimbursement owner must sign");
@@ -718,7 +741,9 @@ export async function submitSponsoredPurchase(
     Buffer.from(serializedTransaction, "base64")
   );
   const validation = await validateSubmittedTransaction(transaction);
-  const simulation = await validation.connection.simulateTransaction(transaction);
+  const simulation = await validation.connection.simulateTransaction(
+    transaction
+  );
   if (simulation.value.err) {
     throw new Error(
       `Sponsored checkout simulation failed: ${JSON.stringify(
