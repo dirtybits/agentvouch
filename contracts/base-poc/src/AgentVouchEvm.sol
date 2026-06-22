@@ -6,6 +6,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20TransferWithAuthorization} from "./interfaces/IERC20TransferWithAuthorization.sol";
 import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
 
 /// @title AgentVouchEvm (Base POC)
@@ -42,6 +43,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     mapping(bytes32 => AgentVouchTypes.SkillListing) internal listings; // keccak256(author, skillIdHash)
     mapping(bytes32 => mapping(uint64 => AgentVouchTypes.ListingSettlement)) internal settlements;
     mapping(bytes32 => AgentVouchTypes.Purchase) internal purchases; // keccak256(buyer, listingId, revision)
+    mapping(bytes32 => bool) public usedPaymentRefHash; // x402 payment-ref idempotency guard
+    mapping(bytes32 => bool) public usedSettlementTxHash; // x402 settlement-tx idempotency guard
 
     event ConfigInitialized(address indexed usdc, string chainContext);
     event PausedSet(address indexed by, bool paused);
@@ -63,6 +66,13 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     );
     event AuthorProceedsWithdrawn(bytes32 indexed listingId, uint64 revision, address indexed author, uint256 amount);
     event VoucherRevenueClaimed(address indexed voucher, address indexed author, uint256 amount);
+    event X402Settled(
+        bytes32 indexed purchaseId,
+        bytes32 indexed paymentRefHash,
+        bytes32 settlementTxHash,
+        address buyer,
+        uint256 amount
+    );
 
     error ZeroAddress();
     error AlreadyInitialized();
@@ -95,6 +105,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error NothingToClaim();
     error ProceedsTimeLocked();
     error InsufficientProceeds();
+    error InvalidPaymentRef();
+    error PaymentRefUsed();
+    error SettlementTxUsed();
+    error SettlementAmountMismatch();
 
     /// @param usdc_ 6-decimal USDC token on the target Base network.
     /// @param admin holder of every role for the POC (a multisig/timelock in prod).
@@ -306,43 +320,115 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     ///         price routes to author proceeds and no voucher pool is created. The
     ///         voucher pool advances the author-wide reward index. Atomic: the receipt
     ///         and USDC movement happen together or revert together.
+    /// @notice Lane A — direct allowance-based purchase (smart-account/paymaster sponsors gas).
     function purchaseSkill(bytes32 id) external nonReentrant whenNotPaused returns (bytes32 pId) {
-        AgentVouchTypes.SkillListing storage l = listings[id];
+        AgentVouchTypes.SkillListing storage l = _purchasableListing(id);
+        uint256 authorShare;
+        uint256 voucherPool;
+        (pId, authorShare, voucherPool) = _recordPurchase(id, l, msg.sender);
+        // Effects written above; allowance pull last (CEI). Atomic: a failed pull reverts all.
+        usdc.safeTransferFrom(msg.sender, address(this), authorShare + voucherPool);
+    }
+
+    /// @notice Lane B — x402, trust-minimized: the contract itself consumes the buyer's
+    ///         EIP-3009 authorization to pull USDC and records the purchase in one tx, so
+    ///         no settlement authority is trusted. The authorization nonce is bound to
+    ///         `(buyer, listingId, revision, price)`, so a relayer cannot redirect a signed
+    ///         payment to a different listing, and the token consumes the nonce (replay-safe).
+    function purchaseWithAuthorization(
+        bytes32 id,
+        address buyer,
+        uint256 validAfter,
+        uint256 validBefore,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant whenNotPaused returns (bytes32 pId) {
+        AgentVouchTypes.SkillListing storage l = _purchasableListing(id);
+        uint256 price = l.priceUsdcMicros;
+        bytes32 boundNonce = keccak256(abi.encode(buyer, id, l.currentRevision, price));
+
+        (pId,,) = _recordPurchase(id, l, buyer);
+
+        // Pull the buyer's funds via their signed EIP-3009 authorization (value == price).
+        IERC20TransferWithAuthorization(address(usdc))
+            .transferWithAuthorization(buyer, address(this), price, validAfter, validBefore, boundNonce, v, r, s);
+    }
+
+    /// @notice Lane C — bridge-equivalent: a SETTLEMENT_ROLE attests an off-chain x402
+    ///         payment already delivered to this contract, then records the purchase with
+    ///         payment-ref and settlement-tx idempotency guards.
+    /// @dev    Trust note: the contract cannot read prior transfers, so this lane trusts
+    ///         the settlement authority that `amount` actually arrived. Keep the role
+    ///         narrow, monitored, and POC-bounded (see threat model).
+    function settleX402Purchase(
+        bytes32 id,
+        address buyer,
+        uint256 amount,
+        bytes32 paymentRefHash,
+        bytes32 settlementTxHash
+    ) external onlyRole(SETTLEMENT_ROLE) nonReentrant whenNotPaused returns (bytes32 pId) {
+        if (paymentRefHash == bytes32(0) || settlementTxHash == bytes32(0)) {
+            revert InvalidPaymentRef();
+        }
+        if (usedPaymentRefHash[paymentRefHash]) revert PaymentRefUsed();
+        if (usedSettlementTxHash[settlementTxHash]) revert SettlementTxUsed();
+
+        AgentVouchTypes.SkillListing storage l = _purchasableListing(id);
+        if (amount != l.priceUsdcMicros) revert SettlementAmountMismatch();
+
+        usedPaymentRefHash[paymentRefHash] = true;
+        usedSettlementTxHash[settlementTxHash] = true;
+        // No pull: funds are assumed already delivered to the contract by the facilitator.
+        (pId,,) = _recordPurchase(id, l, buyer);
+        emit X402Settled(pId, paymentRefHash, settlementTxHash, buyer, amount);
+    }
+
+    /// @dev Validates a listing is purchasable (exists, active, not dispute-locked, paid).
+    function _purchasableListing(bytes32 id) internal view returns (AgentVouchTypes.SkillListing storage l) {
+        l = listings[id];
         if (!l.exists) revert ListingNotFound();
         if (l.status != AgentVouchTypes.ListingStatus.Active) revert ListingNotActive();
         if (l.lockedByDispute) revert DisputeLocked();
-        uint256 price = l.priceUsdcMicros;
-        if (price == 0) revert FreeSkillNotPurchased();
+        if (l.priceUsdcMicros == 0) revert FreeSkillNotPurchased();
+    }
 
+    /// @dev Shared accounting for every purchase lane: validates the settlement, guards
+    ///      duplicate receipts, splits by backing, advances the author-wide reward index,
+    ///      and writes the revision-scoped receipt. Does NOT move USDC — each lane moves
+    ///      its own funds (Lane A/B pull; Lane C assumes prior delivery).
+    function _recordPurchase(bytes32 id, AgentVouchTypes.SkillListing storage l, address buyer)
+        internal
+        returns (bytes32 pId, uint256 authorShare, uint256 voucherPool)
+    {
+        if (buyer == address(0)) revert ZeroAddress();
         uint64 revision = l.currentRevision;
         AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
         if (!s.initialized) revert SettlementNotInitialized();
         if (s.locked) revert SettlementLocked();
 
-        pId = purchaseId(msg.sender, id, revision);
+        pId = purchaseId(buyer, id, revision);
         if (purchases[pId].exists) revert DuplicatePurchase();
 
+        uint256 price = l.priceUsdcMicros;
         address author = l.author;
         uint256 activeVouchStake = profiles[author].totalVouchStakeReceivedUsdcMicros;
-
-        uint256 authorShare;
-        uint256 voucherPool;
         if (activeVouchStake > 0) {
-            authorShare = (price * config.authorShareBps) / 10_000;
             voucherPool = (price * config.voucherShareBps) / 10_000;
             if (voucherPool == 0) revert VoucherPoolTooSmall();
+            // Author takes the remainder so authorShare + voucherPool == price exactly:
+            // no stranded rounding dust, and every lane pulls/credits the listing price.
+            // (Solana floors both shares independently and strands <=1 micro; the POC
+            // routes that micro to the author instead — a documented, sub-cent divergence.)
+            authorShare = price - voucherPool;
         } else {
             authorShare = price;
             voucherPool = 0;
         }
 
-        // Pull exactly what is allocated (matches Solana's two separate transfers).
-        usdc.safeTransferFrom(msg.sender, address(this), authorShare + voucherPool);
-
-        // Record the revision-scoped receipt.
         purchases[pId] = AgentVouchTypes.Purchase({
             exists: true,
-            buyer: msg.sender,
+            buyer: buyer,
             listingId: id,
             revision: revision,
             priceUsdcMicros: price,
@@ -364,7 +450,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
             ap.unclaimedVoucherRevenueUsdcMicros += voucherPool;
         }
 
-        emit SkillPurchased(pId, id, msg.sender, revision, price, authorShare, voucherPool);
+        emit SkillPurchased(pId, id, buyer, revision, price, authorShare, voucherPool);
     }
 
     /// @notice Port of `claim_voucher_revenue`. Accrues then pays out the voucher's
@@ -389,9 +475,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit VoucherRevenueClaimed(msg.sender, author, claimable);
     }
 
-    /// @notice Port of `withdraw_author_proceeds`. NOT paused-guarded (earned revenue,
-    ///         treated like a claim). Blocked by settlement dispute lock and the
-    ///         author-proceeds time lock (createdAt + authorProceedsLockSeconds).
+    /// @notice Port of `withdraw_author_proceeds`. Paused-guarded (Solana blocks this
+    ///         author-side collateral exit while paused). Also blocked by the settlement
+    ///         dispute lock and the rolling proceeds time lock (updatedAt + authorProceedsLockSeconds).
     function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount) external nonReentrant whenNotPaused {
         AgentVouchTypes.SkillListing storage l = listings[id];
         if (!l.exists) revert ListingNotFound();
