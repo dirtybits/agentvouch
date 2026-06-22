@@ -57,6 +57,7 @@ import {
   getConfiguredSolanaExplorerAddressUrl,
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
+import { sanitizeSyncedRepoUrl } from "@/lib/mirror/connectedRepos";
 import {
   FiAlertTriangle,
   FiInfo,
@@ -1262,9 +1263,9 @@ export default function SkillDetailPage({
                       Mirror
                     </span>
                   ) : null}
-                  {isSynced && skill.synced_repo_url ? (
+                  {isSynced && sanitizeSyncedRepoUrl(skill.synced_repo_url) ? (
                     <a
-                      href={skill.synced_repo_url}
+                      href={sanitizeSyncedRepoUrl(skill.synced_repo_url)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"

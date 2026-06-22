@@ -3,16 +3,18 @@ export const MAX_SKILL_DESCRIPTION_LENGTH = 256;
 export const MAX_SKILL_CONTACT_LENGTH = 128;
 // Cap raw skill content (markdown SKILL.md). Generous for docs; bounds DB/IPFS abuse.
 export const MAX_SKILL_CONTENT_BYTES = 256 * 1024;
-// Some skills bundle large reference doc sets (e.g. a few hundred small
-// markdown files) alongside their instructions; 512 keeps those listable while
-// still bounding pathological trees.
-export const MAX_SKILL_TREE_FILES = 512;
-// 8MB tree budget accommodates skills that bundle binary assets (e.g. font
-// families) alongside their instructions. Off-chain only: the full tree lives in
-// blob storage; on-chain listings carry just metadata + skill_uri.
-export const MAX_SKILL_TREE_BYTES = 8 * 1024 * 1024;
-// Whole-request ceiling: max tree (~8MB) as base64 (~1.33x) + multipart overhead.
-export const MAX_SKILL_UPLOAD_BYTES = 12 * 1024 * 1024;
+// User-facing upload caps (POST /api/skills and POST /api/skills/[id]/versions).
+export const MAX_SKILL_TREE_FILES = 200;
+export const MAX_SKILL_TREE_BYTES = 5 * 1024 * 1024;
+// Whole-request ceiling: max tree (~5MB) as base64 (~1.33x) + multipart overhead.
+export const MAX_SKILL_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+// Mirror-only caps: the sync engine processes third-party repos that may bundle
+// large doc sets or many reference files. These MUST NOT be used on any
+// user-facing upload path.
+export const MIRROR_MAX_SKILL_TREE_FILES = 512;
+export const MIRROR_MAX_SKILL_TREE_BYTES = 8 * 1024 * 1024;
+export const MIRROR_MAX_SKILL_UPLOAD_BYTES = 12 * 1024 * 1024;
 export const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 export const RESERVED_SKILL_TAGS = new Set(["mirror"]);
 export const MAX_SKILL_TAGS = 5;

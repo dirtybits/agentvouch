@@ -19,6 +19,7 @@ import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
+import { sanitizeSyncedRepoUrl } from "@/lib/mirror/connectedRepos";
 import { getPublicSkillPath } from "@/lib/skillUrls";
 
 interface SkillPreviewCardSkill {
@@ -446,9 +447,9 @@ export default function SkillPreviewCard({
         {/* Signals + tags. Mirror provenance is shown in the author byline
             ("Mirror · @handle"), so it is intentionally not repeated here. */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {isSynced && skill.synced_repo_url && (
+          {isSynced && sanitizeSyncedRepoUrl(skill.synced_repo_url) && (
             <a
-              href={skill.synced_repo_url}
+              href={sanitizeSyncedRepoUrl(skill.synced_repo_url)!}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"

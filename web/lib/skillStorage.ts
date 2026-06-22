@@ -6,7 +6,11 @@ import {
   MAX_SKILL_FILE_BYTES,
   MAX_SKILL_TREE_BYTES,
   MAX_SKILL_TREE_FILES,
+  MIRROR_MAX_SKILL_TREE_BYTES,
+  MIRROR_MAX_SKILL_TREE_FILES,
 } from "@/lib/skillDraft";
+
+type TreeCaps = { maxFiles: number; maxBytes: number };
 
 export type SkillStorageBackend = "blob" | "inline";
 
@@ -153,14 +157,18 @@ function isExecutablePath(filePath: string, content: Buffer): boolean {
 }
 
 export function normalizeSkillTreeFiles(
-  files: SkillTreeInputFile[]
+  files: SkillTreeInputFile[],
+  caps: TreeCaps = {
+    maxFiles: MAX_SKILL_TREE_FILES,
+    maxBytes: MAX_SKILL_TREE_BYTES,
+  }
 ): Array<SkillTreeInputFile & { path: string; bytes: Buffer }> {
   if (files.length === 0) {
     throw new Error("Skill tree must include SKILL.md");
   }
-  if (files.length > MAX_SKILL_TREE_FILES) {
+  if (files.length > caps.maxFiles) {
     throw new Error(
-      `Skill tree has ${files.length} files, exceeds cap of ${MAX_SKILL_TREE_FILES}`
+      `Skill tree has ${files.length} files, exceeds cap of ${caps.maxFiles}`
     );
   }
 
@@ -181,9 +189,9 @@ export function normalizeSkillTreeFiles(
       );
     }
     totalBytes += bytes.byteLength;
-    if (totalBytes > MAX_SKILL_TREE_BYTES) {
+    if (totalBytes > caps.maxBytes) {
       throw new Error(
-        `Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes`
+        `Skill tree is ${totalBytes} bytes, exceeds cap of ${caps.maxBytes} bytes`
       );
     }
     return { ...file, path: filePath, bytes };
@@ -438,9 +446,10 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
 }
 
 export function prepareSkillTree(
-  files: SkillTreeInputFile[]
+  files: SkillTreeInputFile[],
+  caps?: TreeCaps
 ): SkillTreeStoreResult {
-  const normalized = normalizeSkillTreeFiles(files);
+  const normalized = normalizeSkillTreeFiles(files, caps);
   const manifest = buildSkillManifest(normalized);
   const treeHash = computeTreeHash(manifest);
   const archiveBytes = buildTarArchive(normalized);
@@ -464,15 +473,45 @@ export function prepareSkillTree(
 }
 
 export async function putSkillTree(
-  files: SkillTreeInputFile[]
+  files: SkillTreeInputFile[],
+  caps?: TreeCaps
 ): Promise<SkillTreeStoreResult> {
-  const tree = prepareSkillTree(files);
+  const tree = prepareSkillTree(files, caps);
   await put(getBlobArchivePath(tree.treeHash), tree.archiveBytes, {
     access: "private",
     allowOverwrite: true,
     contentType: "application/x-tar",
   });
   return tree;
+}
+
+/** Mirror-scoped wrappers that apply raised caps for syncing external repos. */
+const MIRROR_CAPS: TreeCaps = {
+  maxFiles: MIRROR_MAX_SKILL_TREE_FILES,
+  maxBytes: MIRROR_MAX_SKILL_TREE_BYTES,
+};
+
+export function prepareSkillTreeForMirror(
+  files: SkillTreeInputFile[]
+): SkillTreeStoreResult {
+  return prepareSkillTree(files, MIRROR_CAPS);
+}
+
+export async function putSkillTreeForMirror(
+  files: SkillTreeInputFile[]
+): Promise<SkillTreeStoreResult> {
+  return putSkillTree(files, MIRROR_CAPS);
+}
+
+/** Persist a previously prepared tree to blob storage (avoids double prepare). */
+export async function writePreparedTreeToBlob(
+  tree: SkillTreeStoreResult
+): Promise<void> {
+  await put(getBlobArchivePath(tree.treeHash), tree.archiveBytes, {
+    access: "private",
+    allowOverwrite: true,
+    contentType: "application/x-tar",
+  });
 }
 
 async function readStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {

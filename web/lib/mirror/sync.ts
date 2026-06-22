@@ -19,10 +19,13 @@
 // skill_versions.tree_hash, so no per-skill bookkeeping is needed.
 
 import { randomUUID } from "crypto";
+import { del } from "@vercel/blob";
 import { sql } from "@/lib/db";
 import {
-  prepareSkillTree,
-  putSkillTree,
+  getBlobArchivePath,
+  prepareSkillTreeForMirror,
+  putSkillTreeForMirror,
+  writePreparedTreeToBlob,
   type SkillTreeInputFile,
 } from "@/lib/skillStorage";
 import { pinSkillContent } from "@/lib/ipfs";
@@ -348,7 +351,10 @@ async function createListing(
     }
   );
 
-  const tree = await putSkillTree(files);
+  // Prepare tree (computes hash + archive) WITHOUT writing to blob yet.
+  // DB insert goes first so a slug collision fails before we incur blob storage.
+  // The blob write happens after; on DB failure we clean up any written blob.
+  const tree = prepareSkillTreeForMirror(files);
   const pin = await pinSkillContent(meta.content, meta.skillId, 1);
   const chainContext = getConfiguredSolanaChainContext();
   const changelog =
@@ -356,6 +362,8 @@ async function createListing(
       ? `Mirrored from ${ctx.owner}/${ctx.repo}`
       : `Synced from ${ctx.owner}/${ctx.repo}`;
 
+  // 1. DB insert first — idempotent if the same skillDbId already exists
+  //    (won't happen in practice but safe on retry).
   await sql()`
     WITH inserted_skill AS (
       INSERT INTO skills (
@@ -391,6 +399,23 @@ async function createListing(
     FROM inserted_skill
   `;
 
+  // 2. Blob write after the DB insert succeeds. Uses the already-prepared tree
+  //    to avoid recomputing. On failure the DB rows are cleaned up so the next
+  //    daily run retries cleanly.
+  try {
+    await writePreparedTreeToBlob(tree);
+  } catch (blobErr) {
+    // Best-effort cleanup: remove the DB rows so the next run retries cleanly.
+    await sql()`DELETE FROM skill_versions WHERE skill_id = ${skillDbId}::uuid`.catch(
+      () => {}
+    );
+    await sql()`DELETE FROM skills WHERE id = ${skillDbId}::uuid`.catch(
+      () => {}
+    );
+    await del(getBlobArchivePath(tree.treeHash)).catch(() => {});
+    throw blobErr;
+  }
+
   if (!skipReview) {
     await runReviewSafe({
       skillId: skillDbId,
@@ -412,7 +437,7 @@ async function publishNewVersion(
   skipReview: boolean
 ): Promise<number> {
   const newVersion = existing.current_version + 1;
-  const tree = await putSkillTree(files);
+  const tree = await putSkillTreeForMirror(files);
   const pin = await pinSkillContent(meta.content, meta.skillId, newVersion);
   const ipfsCid = pin.success ? pin.cid : null;
   const filesJson = JSON.stringify(tree.manifest);
@@ -541,7 +566,7 @@ async function reconcileSkill(
       return outcome;
     }
 
-    const tree = prepareSkillTree(files);
+    const tree = prepareSkillTreeForMirror(files);
     outcome.treeBytes = tree.manifest.reduce((s, f) => s + f.size, 0);
     const meta = buildMeta(ctx, skill.dir, skill.skillId, files, license);
     outcome.name = meta.name;
