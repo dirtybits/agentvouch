@@ -30,6 +30,20 @@ import {
 } from "./helpers/agentvouchUsdc";
 
 describe("agentvouch usdc marketplace rewards", () => {
+  it("keeps protocol fee deferred while author and voucher shares consume the full split", async () => {
+    const ctx = await getTestContext();
+    const config = await ctx.program.account.reputationConfig.fetch(ctx.config);
+    const authorShareBps = Number(config.authorShareBps);
+    const voucherShareBps = Number(config.voucherShareBps);
+    const protocolFeeBps = Number(config.protocolFeeBps);
+
+    assert.equal(protocolFeeBps, 0);
+    assert.equal(authorShareBps, 6_000);
+    assert.equal(voucherShareBps, 4_000);
+    assert.equal(authorShareBps + voucherShareBps + protocolFeeBps, 10_000);
+    assert.equal(authorShareBps + voucherShareBps, 10_000);
+  });
+
   it("settles x402 purchases through the protocol vault and preserves voucher economics", async () => {
     const ctx = await getTestContext();
     const { author, buyer, listing } = await setupPaidListingWithVouch(

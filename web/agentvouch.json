@@ -5936,6 +5936,10 @@
           },
           {
             "name": "protocol_fee_bps",
+            "docs": [
+              "Reserved/deferred. Current purchases route only author + voucher shares,",
+              "so live configs must keep this at 0 until protocol fee collection ships."
+            ],
             "type": "u16"
           },
           {

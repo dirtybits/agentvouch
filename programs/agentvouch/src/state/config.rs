@@ -8,8 +8,10 @@ pub const DEFAULT_MIN_PAID_LISTING_PRICE_USDC_MICROS: u64 = 10_000;
 pub const DEFAULT_MIN_VOUCH_STAKE_USDC_MICROS: u64 = 1_000_000;
 pub const DEFAULT_MIN_AUTHOR_BOND_FOR_FREE_LISTING_USDC_MICROS: u64 = 1_000_000;
 pub const DEFAULT_DISPUTE_BOND_USDC_MICROS: u64 = 500_000;
+pub const REVENUE_SPLIT_BPS_DENOMINATOR: u32 = 10_000;
 pub const DEFAULT_AUTHOR_SHARE_BPS: u16 = 6_000;
 pub const DEFAULT_VOUCHER_SHARE_BPS: u16 = 4_000;
+// Reserved for future treasury fee routing. Purchases do not collect this yet.
 pub const DEFAULT_PROTOCOL_FEE_BPS: u16 = 0;
 pub const DEFAULT_SLASH_PERCENTAGE: u8 = 50;
 pub const DEFAULT_AUTHOR_PROCEEDS_LOCK_SECONDS: i64 = 0;
@@ -43,6 +45,8 @@ pub struct ReputationConfig {
     pub min_paid_listing_price_usdc_micros: u64,
     pub author_share_bps: u16,
     pub voucher_share_bps: u16,
+    /// Reserved/deferred. Current purchases route only author + voucher shares,
+    /// so live configs must keep this at 0 until protocol fee collection ships.
     pub protocol_fee_bps: u16,
     pub slash_percentage: u8,
     pub cooldown_period: i64,
@@ -99,7 +103,17 @@ impl ReputationConfig {
         1; // bump
 
     pub fn validate_splits(&self) -> bool {
-        self.author_share_bps as u32 + self.voucher_share_bps as u32 + self.protocol_fee_bps as u32
-            == 10_000
+        u32::from(self.author_share_bps)
+            .saturating_add(u32::from(self.voucher_share_bps))
+            .saturating_add(u32::from(self.protocol_fee_bps))
+            == REVENUE_SPLIT_BPS_DENOMINATOR
+    }
+
+    pub fn validate_deferred_protocol_fee(&self) -> bool {
+        self.protocol_fee_bps == 0
+    }
+
+    pub fn validate_live_revenue_splits(&self) -> bool {
+        self.validate_splits() && self.validate_deferred_protocol_fee()
     }
 }

@@ -4,6 +4,7 @@ use anchor_lang::solana_program::{program::invoke, system_instruction};
 use crate::state::{
     ReputationConfig, DEFAULT_AUTHOR_PROCEEDS_LOCK_SECONDS, DEFAULT_CHALLENGER_REWARD_BPS,
     DEFAULT_CHALLENGER_REWARD_CAP_USDC_MICROS, DEFAULT_REFUND_CLAIM_WINDOW_SECONDS,
+    REVENUE_SPLIT_BPS_DENOMINATOR,
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -80,16 +81,28 @@ pub fn handler(ctx: Context<MigrateConfigM13>) -> Result<()> {
         ctx.accounts.authority.key(),
         MigrateConfigM13Error::Unauthorized
     );
+    let legacy_split_total = u32::from(legacy.author_share_bps)
+        .saturating_add(u32::from(legacy.voucher_share_bps))
+        .saturating_add(u32::from(legacy.protocol_fee_bps));
+    require!(
+        legacy_split_total == REVENUE_SPLIT_BPS_DENOMINATOR,
+        MigrateConfigM13Error::InvalidRevenueSplits
+    );
+    require!(
+        legacy.protocol_fee_bps == 0,
+        MigrateConfigM13Error::ProtocolFeeDeferred
+    );
 
     let rent = Rent::get()?;
     let required_lamports = rent.minimum_balance(ReputationConfig::LEN);
     let current_lamports = ctx.accounts.config.lamports();
-    if required_lamports > current_lamports {
+    let lamports_to_fund = required_lamports.saturating_sub(current_lamports);
+    if lamports_to_fund > 0 {
         invoke(
             &system_instruction::transfer(
                 &ctx.accounts.payer.key(),
                 &ctx.accounts.config.key(),
-                required_lamports - current_lamports,
+                lamports_to_fund,
             ),
             &[
                 ctx.accounts.payer.to_account_info(),
@@ -156,4 +169,8 @@ pub enum MigrateConfigM13Error {
     ConfigDiscriminatorMismatch,
     #[msg("Only the config authority can migrate config")]
     Unauthorized,
+    #[msg("Revenue shares must sum to 10,000 basis points")]
+    InvalidRevenueSplits,
+    #[msg("Protocol fee collection is deferred; protocol_fee_bps must be 0")]
+    ProtocolFeeDeferred,
 }

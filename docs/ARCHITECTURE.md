@@ -115,6 +115,8 @@ Defaults are stored in `programs/agentvouch/src/state/config.rs` and copied into
 | Protocol fee                          |                          `0` bps |
 | Default slash percentage              |                            `50%` |
 
+`protocol_fee_bps` is reserved for future treasury fee routing. Current purchase paths do not collect a protocol fee, so live configs must keep it at `0`; `initialize_config` and M13 config migration reject nonzero values. Until protocol fee collection ships, author + voucher + protocol fee shares must still sum to `10_000` bps, with author + voucher consuming the full split.
+
 Example paid purchase:
 
 ```text
