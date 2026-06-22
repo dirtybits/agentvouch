@@ -2250,7 +2250,7 @@ export default function SkillDetailPage({
         {skill.on_chain_address ? (
           <div
             id="author-actions"
-            className="rounded-sm border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-4 mb-6"
+            className="mt-6 rounded-sm border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-4 mb-6"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
@@ -2492,7 +2492,7 @@ export default function SkillDetailPage({
         ) : (
           connected &&
           walletAddress === skill.author_pubkey && (
-            <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6">
+            <div className="mt-6 rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <UsdcIcon className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-normal text-gray-900 dark:text-white">
