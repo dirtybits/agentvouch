@@ -88,8 +88,11 @@ async function getLandingPayload(): Promise<{
   computeMs: number;
 }> {
   let snapshot: Awaited<ReturnType<typeof readPlatformMetricsSnapshot>> = null;
-  let source: "snapshot-hit" | "snapshot-stale" | "live-compute" | "snapshot-error" =
-    "live-compute";
+  let source:
+    | "snapshot-hit"
+    | "snapshot-stale"
+    | "live-compute"
+    | "snapshot-error" = "live-compute";
   const snapshotStart = Date.now();
   try {
     snapshot = await readPlatformMetricsSnapshot();
@@ -120,7 +123,8 @@ async function getLandingPayload(): Promise<{
 
 export async function GET() {
   try {
-    const { payload, source, snapshotMs, computeMs } = await getLandingPayload();
+    const { payload, source, snapshotMs, computeMs } =
+      await getLandingPayload();
     return NextResponse.json(payload, {
       headers: {
         "Cache-Control": buildPublicCacheControl(
