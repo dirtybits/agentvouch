@@ -85,4 +85,44 @@ library AgentVouchTypes {
         uint256 unclaimedVoucherRevenueUsdcMicros;
         uint64 registeredAt;
     }
+
+    /// @dev Mirrors Solana `Vouch` (state/vouch.rs). No vault/rent-payer fields.
+    struct Vouch {
+        address voucher;
+        address vouchee;
+        uint256 stakeUsdcMicros;
+        VouchStatus status;
+        uint256 cumulativeRevenueUsdcMicros;
+        uint64 linkedListingCount;
+        uint256 entryRewardIndexUsdcMicrosX1e12;
+        uint256 pendingRewardsUsdcMicros;
+        uint64 lastPayoutAt;
+    }
+
+    /// @dev Mirrors Solana `SkillListing` (state/skill_listing.rs). `exists` flags a
+    ///      live slot since Solidity mappings have no membership concept.
+    struct SkillListing {
+        address author;
+        bytes32 skillIdHash;
+        string uri;
+        string name;
+        string description;
+        uint256 priceUsdcMicros; // 0 == free listing
+        uint64 currentRevision;
+        uint256 totalDownloads;
+        uint256 totalRevenueUsdcMicros;
+        ListingStatus status;
+        bool lockedByDispute;
+        bool exists;
+    }
+
+    /// @dev Mirrors Solana `ListingSettlement` (state/settlement.rs). The
+    ///      `author_proceeds_vault` becomes internal withdrawable accounting;
+    ///      `slashedDeposit` is ring-fenced (refund-pool-only, set in Phase 5).
+    struct ListingSettlement {
+        bool initialized;
+        uint256 authorProceedsUsdcMicros;
+        uint256 slashedDepositUsdcMicros;
+        bool locked;
+    }
 }
