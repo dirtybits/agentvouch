@@ -121,7 +121,8 @@ library AgentVouchTypes {
     ///      `slashedDeposit` is ring-fenced (refund-pool-only, set in Phase 5).
     struct ListingSettlement {
         bool initialized;
-        uint64 createdAt; // basis for the author-proceeds time lock
+        uint64 createdAt;
+        uint64 updatedAt; // refreshed on each purchase; basis for the author-proceeds time lock (Solana parity)
         uint256 authorProceedsUsdcMicros;
         uint256 slashedDepositUsdcMicros;
         bool locked;

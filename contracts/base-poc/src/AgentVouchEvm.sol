@@ -16,9 +16,9 @@ import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
 ///         config pubkeys. A single `Pausable` flag provides A3 parity. The exact
 ///         paused set mirrors the Solana `require!(!config.paused)` guards (verified
 ///         2026-06-22): blocked = deposit_author_bond, withdraw_author_bond, vouch,
-///         create/update_skill_listing, purchase_skill, open_dispute, x402 settle.
-///         Allowed while paused = register_agent, revoke_vouch, remove_listing,
-///         withdraw_author_proceeds, claim_voucher_revenue, refund claims.
+///         create/update_skill_listing, purchase_skill, withdraw_author_proceeds,
+///         open_dispute, x402 settle. Allowed while paused = register_agent,
+///         revoke_vouch, remove_listing, claim_voucher_revenue, refund claims.
 contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -77,6 +77,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error BondExposureLocked();
     error DisputeLocked();
     error BelowMinVouchStake();
+    error InvalidVouchee();
     error VouchAlreadyActive();
     error VouchSlashed();
     error NoActiveVouch();
@@ -177,9 +178,11 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     function vouch(address vouchee, uint256 stake) external nonReentrant whenNotPaused {
         if (!configInitialized) revert NotInitialized();
-        if (vouchee == address(0) || vouchee == msg.sender) revert ZeroAddress();
+        if (vouchee == address(0) || vouchee == msg.sender) revert InvalidVouchee();
         if (stake < config.minVouchStakeUsdcMicros) revert BelowMinVouchStake();
         if (!profiles[msg.sender].registered) revert NotRegistered();
+        // Solana parity: the vouchee_profile PDA must already exist (be registered).
+        if (!profiles[vouchee].registered) revert NotRegistered();
 
         AgentVouchTypes.Vouch storage v = vouches[vouchId(msg.sender, vouchee)];
         // A fresh storage slot has status == Active (enum value 0), so existence is
@@ -198,7 +201,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         v.status = AgentVouchTypes.VouchStatus.Active;
         // Entry index = vouchee's current author-wide reward index (no rewards earned before entry).
         v.entryRewardIndexUsdcMicrosX1e12 = profiles[vouchee].rewardIndexUsdcMicrosX1e12;
-        v.pendingRewardsUsdcMicros = 0;
+        // Do NOT reset pending here: a re-vouch after revoke must preserve rewards earned
+        // before revoke (still counted in the author's unclaimed pool until claimed).
         v.lastPayoutAt = uint64(block.timestamp);
 
         AgentVouchTypes.AgentProfile storage vee = profiles[vouchee];
@@ -271,6 +275,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         // implicit initialize_listing_settlement for revision 1
         settlements[id][1].initialized = true;
         settlements[id][1].createdAt = uint64(block.timestamp);
+        settlements[id][1].updatedAt = uint64(block.timestamp);
         emit SkillListingCreated(id, msg.sender, priceUsdcMicros, free);
     }
 
@@ -343,6 +348,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         });
 
         s.authorProceedsUsdcMicros += authorShare;
+        s.updatedAt = uint64(block.timestamp); // rolling proceeds lock resets each sale (Solana parity)
         l.totalDownloads += 1;
         l.totalRevenueUsdcMicros += price;
 
@@ -382,7 +388,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     /// @notice Port of `withdraw_author_proceeds`. NOT paused-guarded (earned revenue,
     ///         treated like a claim). Blocked by settlement dispute lock and the
     ///         author-proceeds time lock (createdAt + authorProceedsLockSeconds).
-    function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount) external nonReentrant {
+    function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount) external nonReentrant whenNotPaused {
         AgentVouchTypes.SkillListing storage l = listings[id];
         if (!l.exists) revert ListingNotFound();
         if (l.author != msg.sender) revert NotListingAuthor();
@@ -391,9 +397,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
         if (!s.initialized) revert SettlementNotInitialized();
         if (s.locked) revert SettlementLocked();
+        // Rolling lock measured from the last purchase (updatedAt), matching Solana.
         // Hours/days-scale lock; a few seconds of validator timestamp drift is irrelevant.
         // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < uint256(s.createdAt) + config.authorProceedsLockSeconds) {
+        if (block.timestamp < uint256(s.updatedAt) + config.authorProceedsLockSeconds) {
             revert ProceedsTimeLocked();
         }
         if (amount > s.authorProceedsUsdcMicros) revert InsufficientProceeds();

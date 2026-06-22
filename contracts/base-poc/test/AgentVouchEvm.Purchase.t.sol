@@ -292,4 +292,85 @@ contract PurchaseTest is Test {
             + av.getProfile(author).unclaimedVoucherRevenueUsdcMicros;
         assertEq(usdc.balanceOf(address(av)), liabilities);
     }
+
+    // --- regression: audit fixes (2026-06-22) ---
+
+    function _seed(MockUSDC u, AgentVouchEvm a, address who) internal {
+        u.mint(who, 1_000_000_000);
+        vm.startPrank(who);
+        u.approve(address(a), type(uint256).max);
+        a.registerAgent("ipfs://x");
+        vm.stopPrank();
+    }
+
+    // re-vouch after revoke must NOT wipe earned-but-unclaimed rewards (was a USDC lockup).
+    function test_revouchPreservesPendingRewards() public {
+        vm.prank(voucher);
+        av.vouch(author, MIN_VOUCH * 4);
+        vm.prank(buyer);
+        av.purchaseSkill(idBacked);
+
+        vm.prank(voucher);
+        av.revokeVouch(author); // accrues -> pending = 4e6
+        assertEq(av.getVouch(voucher, author).pendingRewardsUsdcMicros, 4_000_000);
+
+        // re-vouch WITHOUT claiming first
+        vm.prank(voucher);
+        av.vouch(author, MIN_VOUCH * 2);
+        assertEq(av.getVouch(voucher, author).pendingRewardsUsdcMicros, 4_000_000);
+
+        uint256 bal = usdc.balanceOf(voucher);
+        vm.prank(voucher);
+        av.claimVoucherRevenue(author);
+        assertEq(usdc.balanceOf(voucher) - bal, 4_000_000);
+        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 0);
+    }
+
+    // withdraw_author_proceeds IS paused-guarded on Solana (fidelity fix).
+    function test_proceedsBlockedWhilePaused() public {
+        vm.prank(buyer);
+        av.purchaseSkill(idNoBacking);
+        vm.prank(admin);
+        av.setPaused(true);
+        vm.prank(author2);
+        vm.expectRevert();
+        av.withdrawAuthorProceeds(idNoBacking, 1, PRICE);
+    }
+
+    // the proceeds lock is rolling: each new purchase resets it (updatedAt), matching Solana.
+    function test_proceedsLockRollsForwardOnNewPurchase() public {
+        MockUSDC u = new MockUSDC();
+        AgentVouchEvm a = new AgentVouchEvm(address(u), admin);
+        AgentVouchTypes.Config memory c = _cfg(1000);
+        c.usdc = address(u);
+        vm.prank(admin);
+        a.initializeConfig(c);
+
+        address au = address(0xAA);
+        address b1 = address(0xC1);
+        address b2 = address(0xC2);
+        _seed(u, a, au);
+        _seed(u, a, b1);
+        _seed(u, a, b2);
+
+        vm.prank(au);
+        bytes32 id = a.createSkillListing(keccak256("x"), "u", "n", "d", PRICE);
+
+        vm.prank(b1);
+        a.purchaseSkill(id); // updatedAt = T
+
+        vm.warp(block.timestamp + 600); // < 1000s, still locked
+        vm.prank(b2);
+        a.purchaseSkill(id); // updatedAt rolls forward to T+600
+
+        vm.warp(block.timestamp + 600); // now T+1200; unlock = (T+600)+1000 = T+1600
+        vm.prank(au);
+        vm.expectRevert(AgentVouchEvm.ProceedsTimeLocked.selector);
+        a.withdrawAuthorProceeds(id, 1, PRICE);
+
+        vm.warp(block.timestamp + 400); // now T+1600 -> unlocked
+        vm.prank(au);
+        a.withdrawAuthorProceeds(id, 1, 2 * PRICE);
+        assertEq(a.getSettlement(id, 1).authorProceedsUsdcMicros, 0);
+    }
 }

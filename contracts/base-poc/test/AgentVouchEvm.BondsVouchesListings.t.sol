@@ -205,4 +205,19 @@ contract BondsVouchesListingsTest is Test {
         av.revokeVouch(author);
         assertEq(av.getProfile(author).totalVouchStakeReceivedUsdcMicros, 0);
     }
+
+    // --- regression: audit fixes (2026-06-22) ---
+
+    // Solana parity: the vouchee must be registered (its profile PDA must exist).
+    function test_vouchRequiresVoucheeRegistered() public {
+        vm.prank(voucher);
+        vm.expectRevert(AgentVouchEvm.NotRegistered.selector);
+        av.vouch(address(0xDEAD), MIN_VOUCH);
+    }
+
+    function test_selfVouchReverts() public {
+        vm.prank(voucher);
+        vm.expectRevert(AgentVouchEvm.InvalidVouchee.selector);
+        av.vouch(voucher, MIN_VOUCH);
+    }
 }
