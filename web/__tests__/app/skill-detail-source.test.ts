@@ -9,7 +9,7 @@ describe("skill detail source", () => {
       "utf8"
     );
 
-    expect(source).toContain("USDC primary pricing");
+    expect(source).toContain("paid download docs");
     expect(source).toContain("estimatedPurchaseRentLamports");
     expect(source).toContain("purchasePreflightMessage");
   });

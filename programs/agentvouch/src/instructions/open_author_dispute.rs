@@ -141,6 +141,11 @@ pub fn handler<'info>(
             settlement.skill_listing == skill_listing,
             ErrorCode::ListingSettlementMismatch
         );
+        require_keys_eq!(
+            settlement.key(),
+            ctx.accounts.skill_listing.current_settlement,
+            ErrorCode::ListingSettlementMismatch
+        );
         require!(
             settlement.revision == ctx.accounts.skill_listing.current_revision,
             ErrorCode::ListingSettlementMismatch

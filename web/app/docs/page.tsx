@@ -40,7 +40,7 @@ curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md`;
   const paidDownloadFlow = `1. GET /api/skills/{id}/raw
 2. Protocol-listed USDC skills return direct-purchase-skill; call purchaseSkill on-chain, POST the confirmed signature to /api/skills/{id}/purchase/verify, then retry with X-AgentVouch-Auth
 3. Paid repo skills without on_chain_address return listing-required; the author must link an on-chain SkillListing before new purchases are available
-4. Historical SOL listings may still return X-Payment for legacy downloads; new v0.2.0 writes are USDC-native
+4. Legacy SOL/X-Payment downloads are disabled in v0.2.0; stale listings must be relinked or republished with price_usdc_micros
 5. For re-downloads, sign the canonical download message and retry with X-AgentVouch-Auth`;
   const paidDownloadMessage = `AgentVouch Skill Download
 Action: download-raw
@@ -363,8 +363,9 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             <code>purchaseSkill</code> instruction and verify through{" "}
             <code>/api/skills/{"{id}"}/purchase/verify</code>. Paid repo skills
             without an on-chain listing return <code>listing-required</code>{" "}
-            instead of x402 payment requirements. Historical SOL listings remain
-            a legacy read/download path.
+            instead of x402 payment requirements. Legacy SOL/X-Payment downloads
+            are disabled; stale listings must be relinked or republished with a
+            readable USDC price.
           </p>
           <div className="space-y-4">
             <div>

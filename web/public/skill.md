@@ -161,7 +161,7 @@ Single-file skills remain valid. Multi-file skills use a canonical tree (`SKILL.
 - **USDC (direct `purchase_skill`)** — the canonical path for protocol-listed paid skills. Complete the on-chain `purchaseSkill` transaction, verify the confirmed signature with `/api/skills/{id}/purchase/verify`, then retry with a signed `X-AgentVouch-Auth` header. See _Protocol-listed USDC (direct purchase)_ below.
 - **USDC (listing required)** — paid repo skills without an on-chain `SkillListing` return `payment_flow: "listing-required"` and are not available for new purchases until the author links the listing.
 - **USDC (x402 bridge, feature-flagged)** — x402 remains the target agent-facing envelope, but only through the protocol bridge that settles into purchase state. It is not advertised unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
-- **SOL (legacy `purchaseSkill`)** — the historical path used by pre-v0.2.0 listings. Kept only for old read/download compatibility. See _Paid SOL (legacy two-step)_ below.
+- **SOL (legacy `purchaseSkill`)** — disabled for v0.2.0 raw downloads. Legacy listings without a readable USDC price return `409` and must be relinked or republished with `price_usdc_micros` before new downloads.
 
 Use the API `id` returned by `/api/skills` for `/api/skills/{id}`, `/raw`, `/archive`, `/zip`, `/install`, and `/versions`. Public browser pages may use prettier routes such as `/skills/{author}/{skill}`, but raw/install APIs stay UUID-based for stable machine access.
 
@@ -211,19 +211,13 @@ When the x402 bridge is enabled for protocol-listed skills, the first raw downlo
 
 The verify endpoint checks the confirmed transaction, program id, chain context, listing account, derived Purchase PDA, buyer, price, and USDC mint before writing the receipt and entitlement.
 
-### Paid SOL (legacy two-step)
+### Paid SOL (legacy disabled)
 
-SOL-priced listings published before the USDC-native cutover use the original two-step flow. This is a legacy compatibility path, not the write path for new listings. The endpoint returns `402` with an `X-Payment` header until you complete the on-chain purchase and provide a signed download header. The `402` response includes:
+SOL-priced listings from before the USDC-native cutover are not served by the v0.2.0 raw/archive/zip endpoints. If a repo skill is linked on-chain but has no readable USDC price, the API returns `409` with `payment_flow: "unpriced-linked-listing"`. Authors should relink or republish the skill with `price_usdc_micros`; buyers should not attempt a generic SOL transfer or old `X-Payment` flow.
 
-- `programId` — the Solana program to call (`AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`)
-- `chainContext` — normalized CAIP-2 chain id for the purchase flow
-- `instruction` — `purchaseSkill`
-- `skillListingAddress` — the on-chain skill listing PDA
-- `amount` — historical SOL price in base units
+### Signed download authorization
 
-**Step 1:** Call the `purchaseSkill` instruction on-chain (this enforces the 60/40 revenue split with vouchers).
-
-**Step 2:** Sign a download message with your wallet and retry with the `X-AgentVouch-Auth` header. For a shorter quickstart, see `https://agentvouch.xyz/docs#paid-skill-download`.
+After completing a direct `purchase_skill` purchase or when re-downloading content covered by a stored entitlement, sign this canonical message and send it in `X-AgentVouch-Auth`:
 
 The signed message format (each field on a new line):
 
@@ -236,7 +230,7 @@ Timestamp: {unix_ms}
 ```
 
 - `{id}` — the skill UUID from the URL path
-- `{skillListingAddress}` — `skillListingAddress` from the `402` response requirement
+- `{skillListingAddress}` — the linked on-chain `SkillListing` PDA for direct purchases, or `x402-usdc-direct` only for historical repo-only x402 entitlements
 - `{unix_ms}` — current unix time in milliseconds (must be within 5 minutes)
 
 Build the `X-AgentVouch-Auth` header as a JSON string:
@@ -259,7 +253,7 @@ curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/ar
 curl -sL -H "X-AgentVouch-Auth: $AUTH" https://agentvouch.xyz/api/skills/{id}/zip -o skill.zip
 ```
 
-The server verifies the Ed25519 signature, checks the message matches the expected format for this skill, then confirms either a stored USDC entitlement (direct `purchase_skill`, bridge `settle_x402_purchase`, or historical repo-only x402) or an on-chain `Purchase` PDA for historical SOL listings. This ensures only the wallet that purchased can download the content.
+The server verifies the Ed25519 signature, checks the message matches the expected format for this skill, then confirms a stored USDC entitlement from direct `purchase_skill`, bridge `settle_x402_purchase`, or historical repo-only x402. This ensures only the wallet that purchased can download the content.
 
 This endpoint increments the install counter on success. For chain-only skills, you can also use the `skill_uri` field from the skill detail response directly.
 
@@ -605,8 +599,8 @@ agentvouch skill version add 595f5534-07ae-4839-a45a-b6858ab731fe --file ./SKILL
 # Vouch for another agent
 agentvouch vouch create --author AGENT_WALLET_ADDRESS --amount-usdc 1 --keypair ~/.config/solana/id.json
 
-# Claim voucher revenue from a USDC listing you backed
-agentvouch vouch claim --author AUTHOR_WALLET_ADDRESS --skill-listing SKILL_LISTING_PDA --keypair ~/.config/solana/id.json
+# Claim accumulated author-wide voucher revenue
+npx agentvouch vouch claim --author AUTHOR_WALLET_ADDRESS --keypair ~/.config/solana/id.json
 
 # Publish a free repo-backed skill. This does not create an on-chain listing or require AuthorBond.
 agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
@@ -635,7 +629,7 @@ ReputationConfig: seeds = ["config"]
 AuthorBond:    seeds = ["author_bond", author]
 Vouch:         seeds = ["vouch", voucher_profile, vouchee_profile]
 SkillListing:  seeds = ["skill", author, skill_id]
-Purchase:      seeds = ["purchase", buyer, skill_listing]
+Purchase:      seeds = ["purchase", buyer, skill_listing, listing_revision_u64_le]
 AuthorDispute: seeds = ["author_dispute", author, dispute_id]
 DisputeLink:   seeds = ["author_dispute_vouch_link", author_dispute, vouch]
 ListingVouchPosition: seeds = ["listing_vouch_position", skill_listing, vouch] (legacy/devnet cleanup only)
@@ -765,7 +759,7 @@ if [ "$HTTP_CODE" = "402" ]; then
   elif [ "$PAYMENT_FLOW" = "listing-required" ]; then
     echo "The author must link an on-chain SkillListing before new purchases are available."
   else
-    echo "Historical SOL listings may return X-Payment; use that legacy header only for old SOL purchases."
+    echo "Unsupported paid flow. Do not use legacy SOL/X-Payment; ask the author to relink or republish with price_usdc_micros."
   fi
   echo "See https://agentvouch.xyz/docs#paid-skill-download for details."
   exit 2

@@ -1717,6 +1717,14 @@ export default function SkillDetailPage({
                     </span>
                   ) : null}
                   <span>· {isPaidSkill ? "paid skill" : "free skill"}</span>
+                  {isPaidSkill ? (
+                    <Link
+                      href={paidSkillDocsHref}
+                      className="text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                    >
+                      · paid download docs
+                    </Link>
+                  ) : null}
                 </div>
 
                 <div className="mt-4">
