@@ -3,34 +3,34 @@ name: base-full-logic-poc
 overview: "Build an isolated Base/EVM proof of concept that ports AgentVouch's current USDC-native trust, listing, purchase, dispute, slashing, refund, pause, and x402 settlement logic by spec, without migrating production authority away from Solana."
 todos:
   - id: source-parity-spec
-    content: Freeze the Solana-to-EVM parity map (23 core instructions, 14 account structs, A3 pause behavior) and commit the Decision Rubric thresholds (per-action cost ceiling) before building
-    status: pending
+    content: Freeze the Solana-to-EVM parity map for the scoped POC and commit the Phase 4.5 Decision Rubric thresholds
+    status: completed
   - id: evm-workspace
-    content: Add an isolated Foundry workspace under contracts/base-poc plus package-level ABI/type export strategy without disturbing Solana workspaces
-    status: pending
+    content: Add an isolated Foundry workspace under contracts/base-poc without disturbing Solana workspaces; defer package-level ABI/type exports until a production Base track is funded
+    status: completed
   - id: core-state-roles
     content: Implement AgentVouchEvm config, roles, pause, profiles, bonds, vouches, listings, settlements, and internal USDC accounting
-    status: pending
+    status: completed
   - id: purchase-and-rewards
     content: Implement direct Base purchase flow with USDC custody, purchase receipts, author proceeds, author-wide voucher reward index, and claims
-    status: pending
+    status: completed
   - id: x402-settlement
     content: Implement and compare x402-compatible settlement lanes with payment-ref idempotency and protocol-visible purchase receipts
-    status: pending
+    status: completed
   - id: interim-decision-gate
     content: Score the Decision Rubric on Phases 0-4 evidence (gas-free UX, settlement trust, cost, custody, accounting parity) and decide go/no-go before porting disputes/slashing/refunds
-    status: pending
+    status: completed
   - id: disputes-slashing-refunds
     content: Port author disputes, liability scopes, dispute locks, voucher slashing, refund pools, claims, and close/expiry behavior
     status: pending
   - id: parity-tests
-    content: Add Foundry tests that mirror the Solana Anchor happy paths, adversarial paths, accounting invariants, and gas measurements
-    status: pending
+    content: Add Foundry tests for implemented Phases 0-4, including Solana-parity happy paths, adversarial paths, accounting invariants, and gas measurements
+    status: completed
   - id: app-api-cli-spike
     content: Add feature-flagged web/API/CLI adapter stubs for Base chain_context, receipts, and read-only inspection without changing default Solana flows
     status: pending
   - id: decision-report
-    content: Produce the comparison report scored against the Decision Rubric: Solana plus Kora/backing alpha vs Base full-logic POC for UX, cost, custody, security, and operational complexity
+    content: If the Base/x402 distribution bet is funded, produce the full Phase 7 comparison report; the Phase 4.5 interim memo is complete
     status: pending
 isProject: false
 ---
@@ -45,12 +45,22 @@ This is a decision instrument, not a migration branch. Solana remains the curren
 
 ## Status And Assumptions
 
-- Drafted 2026-06-21; lives on branch `feat/base-poc` (3 doc-only commits ahead of `main`).
+- Drafted 2026-06-21; implementation lives on PR branch `feat/base-poc-spike` (#44), rebased onto `main` on 2026-06-22.
 - A3 emergency pause is merged and on `main` (verified 2026-06-21): `set_paused` exists at `programs/agentvouch/src/instructions/set_paused.rs`, is gated by `config.pause_authority`, and `.agents/plans/a3-emergency-pause.plan.md` shows all todos completed. The earlier "this worktree is pre-A3, refresh from `main`" hedge no longer applies; `set_paused` is already in the parity map below. Branch from current `main`/`feat/base-poc` and A3 is present.
 - Parity surface verified against `main` 2026-06-21: `programs/agentvouch/src/lib.rs` exposes **25 instruction handlers** (`pub fn`). Two are M13 migration helpers (`migrate_config_m13`, `migrate_skill_listing_m13`) that the POC does not port, which leaves **23 core protocol instructions** as the parity surface (the 23 rows in the parity map below, `set_paused` included) plus **14 `#[account]` structs**.
 - A3 pause enforcement is distributed, not centralized: `set_paused` only flips `config.paused`; each instruction enforces its own paused behavior. Derive the exact allowed/blocked flow set by grepping `paused` across `programs/agentvouch/src/instructions/*.rs` during Phase 0, not from `set_paused.rs` alone.
 - Existing CAIP-2 labels already include Base as `eip155:8453` (`web/lib/chains.ts`).
 - Do not call this a "transpile." The business rules port; Solana PDAs, rent, ATAs, Anchor constraints, and SPL token vault structure do not.
+- Phase 4.5 is complete as an **interim gate**: `docs/BASE_POC_INTERIM.md` scores Phases 0-4 and recommends stopping before Phases 5-7 unless AgentVouch explicitly funds the Base/x402 distribution bet. The unfinished items are future work, not blockers for PR #44's decision-instrument scope.
+
+### Implementation log
+
+- 2026-06-22: Implementation started on branch `feat/base-poc-spike` (off `main`, which now carries this plan after #41). Foundry 1.7.1; deps OpenZeppelin Contracts v5.1.0 + forge-std, vendored under `contracts/base-poc/lib/` (gitignored, reproduce via `setup.sh`). **Phase 1 green:** `AgentVouchEvm` with `Config` + roles (`CONFIG/RESOLVER/TREASURY/SETTLEMENT/PAUSE`) + `Pausable` A3 parity + `registerAgent` (first rent-touching flow — a plain sponsored write on Base, no rent/payer), plus `MockUSDC` and `AgentVouchTypes`. `forge build` + 8/8 `forge test` pass. Scope target: Phases 0–4 (rent-touching core + x402), stop at the 4.5 gate. Cost-ceiling rubric threshold still to be set before the gate.
+- 2026-06-22 (Phase 2): bonds + vouches + listings green; **22/22 forge tests**. `depositAuthorBond`/`withdrawAuthorBond` (exit, locked by open disputes + free-listing bond-floor exposure), `vouch`/`revokeVouch` (USDC custody, reward-index entry snapshot, A1 open-dispute revoke lock), `createSkillListing` (+ implicit settlement init, free-listing floor / min-paid-price) and `removeSkillListing`. A3 pause: risk-increasing inflows are `whenNotPaused`, exits stay open. **Porting hazard surfaced + fixed:** Solana `VouchStatus::Active` is enum value `0`, which is also a fresh EVM storage slot's default — so existence is gated on a non-zero `voucher`, not on status (EVM mappings have no membership). Deferred to fold into later phases: `updateSkillListing` revision bump and `closeSkillListing` (on EVM, close ≈ remove — no rent to recoup). Next: Phase 3 (`purchaseSkill` + 60/40-vs-100% split + author-wide reward-index accrual + proceeds/claims).
+- 2026-06-22 (Phase 3): purchase + reward index + proceeds + claims green; **36/36 forge tests**. `purchaseSkill` (split: no-backing→100% author / backed→authorBps/voucherBps with `require voucher_pool>0`; revision-scoped receipt; duplicate-purchase guard; dispute + settlement locks; atomic — revert moves no USDC and writes no receipt), `claimVoucherRevenue` (NOT pause-guarded), `withdrawAuthorProceeds` (NOT pause-guarded; dispute lock + author-proceeds time lock), and `_accrueAuthorRewards` mirroring Solana's shared helper exactly: `index_delta = pool * 1e12 / activeStake`, per-voucher `stake * (authorIndex − entryIndex) / 1e12`, non-live/zero-stake skip accrual but keep pending, and **revoke accrues first** so pre-revoke earnings survive. `REWARD_INDEX_SCALE = 1e12`. Covered: 60/40 + 100% routing, single/multi-voucher pro-rata, late-voucher-earns-nothing, dup guard, proceeds time-lock, rewards-survive-revoke, pause set, and a solvency invariant. **A3 fidelity correction** (from grepping the real `require!(!config.paused)` set, not the ROADMAP prose): `register_agent` is NOT paused-guarded (allowed while paused) and `withdraw_author_bond` IS (blocked) — Phase 1/2 had both backwards; fixed + retested. Next: adversarial verification of the accounting (subagent fan-out), then Phase 4 (x402 lanes).
+- 2026-06-22 (Phase 3 adversarial verification): fanned out 3 read-only auditors (Solana-parity / insolvency / Solidity-security). Confirmed faithful: split, index math, accrue/claim, revoke-accrues-first, and solvency (both `indexDelta` and per-voucher accrual truncate DOWN, so `sum(accrued) <= voucherPool` always — the unclaimed `-=` can't underflow; ~`n-1` micros dust per purchase, negligible). **Fixed 4 real issues surfaced:** (1) re-vouch silently zeroed earned-but-unclaimed pending rewards → permanent USDC lockup (now preserved across re-vouch); (2) `withdraw_author_proceeds` was NOT pause-guarded here but Solana guards it — my earlier `paused` grep was `head`-truncated (now `whenNotPaused`); (3) proceeds time-lock used `createdAt` (fixed window) vs Solana's `updatedAt` (rolling lock, reset each purchase) (now `updatedAt`, refreshed in `purchaseSkill`); (4) `vouch` didn't require the vouchee registered, Solana does (now checked); plus a self-vouch error-clarity nit. Deferred to Phase 5 (latent — no slashing path exists yet): Slashed-residual revoke reclaim, Suspended-free-listing count decrement, `slashedDeposit` drain, `totalVouchStake` under slash.
+- 2026-06-22 (Base protocol-fee guard): follow-up patch fixed the Base POC split/fee hazard before Phase 4. `initializeConfig` now requires `authorShareBps + voucherShareBps + protocolFeeBps == 10_000` and rejects nonzero `protocolFeeBps` until `purchaseSkill` actually collects/routes protocol fees. Added under-allocation and reserved-fee regression tests; `forge fmt --check`, `git diff --check`, and `forge test -vv` pass with **43/43 forge tests**. The Solana-side `protocol_fee_bps` collect-vs-defer decision remains tracked separately and should not be hidden inside the Base POC.
+- 2026-06-22 (Phase 4 + interim gate): x402 lanes green; **65/65 forge tests**. Lane B `purchaseWithAuthorization` (EIP-3009 contract-consumed, trust-minimized; the authorization nonce is bound to `(buyer, listingId, revision, price)` so a relayer can't redirect a signed payment; the token consumes the nonce) + Lane C `settleX402Purchase` (`SETTLEMENT_ROLE` attestation with `paymentRefHash` + `settlementTxHash` idempotency guards). `MockUSDC` gained EIP-3009/EIP-712; `purchaseSkill` refactored into a shared `_recordPurchase` used by all three lanes. Used the user's `ethereum-development` skill (EIP-712 + adversarial-test discipline) and the Coinbase `agentic-wallet` x402 skill (payer-side context). Three adversarial auditors confirmed the core sound (nonce binding, redirect-prevention, replay, CEI, cross-lane dup guard, Solana parity) and surfaced fixes now applied: split routes the sub-cent remainder to the author so every lane pulls/credits exactly `price` (no stranded dust); `buyer != address(0)` guard; corrected a stale withdraw-proceeds NatSpec; +7 coverage tests. **Headline finding (documented + tested, deliberately NOT fixed in the POC): Lane B mempool-stranding (F-1)** — the EIP-3009 auth names the contract as `to`, so anyone can submit it directly to the token, depositing funds + consuming the nonce with no receipt → stranded (no sweep). A real wrinkle of contract-consumed x402; feeds the decision. Gas measured (~260–284k purchase, ~63k settle; ≈ $0.01–0.04/purchase at Base L2). **Phase 4.5 gate memo: `docs/BASE_POC_INTERIM.md`.** Recommendation: keep Solana canonical, ship Solana + Kora for the RC, and do NOT fund Phases 5–7 unless the x402/Coinbase distribution bet is made explicitly — gas-free UX is achievable on both chains, so the call is strategic/distribution, not UX/accounting. **STOPPING at the gate** as designed (Phases 5–7 disputes/slashing/refunds not built).
 
 ## External References Verified 2026-06-21
 
@@ -86,6 +96,8 @@ The POC is successful only if it proves all of the following:
 7. Gas and paymaster cost are measured for the core flows, not guessed.
 8. Atomic purchase lanes prove that if the transaction reverts, no purchase receipt is written and no USDC is moved.
 9. The final report clearly compares Base POC complexity against Solana plus Kora/backing-alpha path.
+
+Phase 4.5 note (2026-06-22): criteria 1-4 and 6-8 are satisfied for the Phases 0-4 interim gate and recorded in `docs/BASE_POC_INTERIM.md`. Criteria covering disputes/slashing/refunds and the full Phase 7 report remain future work only if the Base/x402 distribution bet is funded.
 
 ## Decision Rubric
 
@@ -476,7 +488,8 @@ Implement:
 - `purchaseWithAuthorization` for EIP-3009 if feasible.
 - `settleX402Purchase` attestation lane if stock facilitator compatibility is needed.
 - `paymentRefHash` and `settlementTxHash` guards.
-- TypeScript helper in `packages/agentvouch-evm` for quote/receipt shapes.
+- Defer any `packages/agentvouch-evm` TypeScript quote/receipt helper until a
+  production Base track is funded; Phase 4 is contract/test/memo-only.
 
 Tests:
 
@@ -600,8 +613,8 @@ Expected POC-only path should not touch Anchor code.
 2. Base Sepolia deploy with test USDC/mocked USDC.
 3. Optional Base Sepolia smart-account/paymaster smoke.
 4. Optional x402 testnet facilitator smoke.
-5. Interim decision gate (Phase 4.5): score the rubric on Phases 0-4 evidence; stop here if trending no-go.
-6. Disputes/slashing/refunds and app spike only if the gate says continue.
+5. Interim decision gate (Phase 4.5): score the rubric on Phases 0-4 evidence; stop here if trending no-go. **Completed 2026-06-22 in `docs/BASE_POC_INTERIM.md`; recommendation is to stop before Phases 5-7 unless the Base/x402 distribution bet is funded.**
+6. Disputes/slashing/refunds and app spike only if the gate says continue or the distribution bet is explicitly funded.
 7. Decision report.
 
 Do not deploy to Base Mainnet without a separate production plan.
@@ -615,8 +628,8 @@ Do not deploy to Base Mainnet without a separate production plan.
 
 ## Blockers And Open Questions
 
-- Which x402 lane is the target for proof: contract-consumed EIP-3009 authorization, stock facilitator plus settlement authority, or both?
+- Answered 2026-06-22: both x402 lanes were implemented for comparison. Lane B (`purchaseWithAuthorization`) is preferred for trust minimization but has the documented F-1 mempool-stranding edge; Lane C (`settleX402Purchase`) is bridge-equivalent and trusts `SETTLEMENT_ROLE`.
 - Should the POC implement current dispute resolution exactly, or jump straight to the A2 governance spec for Base? Recommendation: current parity first, A2 as a second pass.
 - Should `link_vouch_to_listing` remain in the POC even though docs describe it as legacy/devnet cleanup? Recommendation: implement only if needed for A1 voucher-slash-set parity.
-- Does Base POC use live Base Sepolia USDC or a local mock with an EIP-3009-compatible interface? Recommendation: local mock first, then Base Sepolia USDC if available and tooling supports it.
-- Does the web app need write flows for the POC? Recommendation: no; read-only inspection and API state mapping first.
+- Base Sepolia/live-USDC deployment remains future work if a follow-up `base-ui-smoke` or production Base track is funded.
+- Web write flows remain future work. The completed PR #44 scope is contract/tests/interim memo; a browser register/list/purchase smoke needs a separate deployed contract, ABI/address export, wallet adapter, and feature-flagged UI path.

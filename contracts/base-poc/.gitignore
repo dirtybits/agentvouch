@@ -1,0 +1,5 @@
+out/
+cache/
+broadcast/
+# Vendored Foundry deps are not committed; reproduce with ./setup.sh
+lib/

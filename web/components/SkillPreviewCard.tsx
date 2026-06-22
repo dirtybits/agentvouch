@@ -19,7 +19,7 @@ import { formatUsdcMicros } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
-import { sanitizeSyncedRepoUrl } from "@/lib/mirror/connectedRepos";
+import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
 import { getPublicSkillPath } from "@/lib/skillUrls";
 
 interface SkillPreviewCardSkill {
