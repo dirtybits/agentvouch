@@ -546,6 +546,21 @@ export async function registerAgent(
     .rpc();
 }
 
+export async function setPaused(
+  ctx: TestContext,
+  paused: boolean,
+  authority: Keypair = ctx.configAdmin
+) {
+  await ctx.program.methods
+    .setPaused(paused)
+    .accountsStrict({
+      config: ctx.config,
+      pauseAuthority: authority.publicKey,
+    })
+    .signers([authority])
+    .rpc();
+}
+
 export async function depositAuthorBond(
   ctx: TestContext,
   author: TestActor,

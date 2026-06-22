@@ -16,6 +16,8 @@ The core product shape is in place: the USDC-native protocol, marketplace publis
 
 > **Update (2026-06-11): live dispute smoke complete.** `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=~/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` passed against devnet. The run linked a paid-listing vouch, purchased, opened a dispute, resolved it upheld with the config authority, cranked `slash_dispute_vouches`, created a `1_000_000` micro-USDC refund pool, and claimed the buyer refund. Result: `500_000` micro-USDC author bond slash, `500_000` micro-USDC voucher slash, vouch status `slashed`, active listing reward positions `0`, refund pool fully claimed, and the listing settlement dispute lock cleared.
 
+> **Update (2026-06-19): A3 emergency pause merged, deployed, and smoke-tested on devnet.** Program `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` was upgraded in slot `470607512` with deploy tx `5WDUWu15dU2L1FCFXd6MQeqG5SmppEjq8DMwFBdjhZCUSQ1AtD7haggRreXVeFYfZBbLSV6bMQ1GeJKmGp6gizHj`; local deploy artifact SHA-256 was `4def6997c51fb4ac2adf5963960845481913dfd28748990a7bb0be42cd63934d`. The on-chain IDL was upgraded at `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4` and fetched IDL contains `set_paused` / `PauseStateChanged`. The live pause smoke set `paused = true`, proved `create_skill_listing` fails with `Protocol is paused`, proved `claim_voucher_revenue` still works while paused, set `paused = false`, and proved a listing can be created after unpause. Mainnet remains blocked by dispute governance, authority custody/security review, and refund-reserve policy.
+
 > **Update (2026-06-19): Kora planning added.** Kora/USDC fee abstraction is the preferred next path for removing user-held SOL from AgentVouch flows. It is not yet a shipped readiness claim. If enabled before mainnet, it becomes part of the release candidate scope: Kora signer custody, validation policy, rate limits, fee pricing, monitoring, rollback, and devnet smoke tests must be reviewed alongside the existing wallet-paid path. Plan: `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
 
 The next milestone should be framed as **Mainnet Release Candidate**, not final mainnet launch. The release candidate is ready only when the protocol, wallet UX, production config, docs, and operating runbooks can survive repeated end-to-end devnet smoke tests without manual interpretation.
@@ -36,7 +38,7 @@ A direct review of `programs/agentvouch/src` and the test suites downgraded the 
 
 2. **Dispute adjudication is a single key.** `resolve_author_dispute` and `create_refund_pool` are gated only on `config.config_authority` (`require_keys_eq!(config.config_authority, authority.key())`). One ordinary pubkey unilaterally decides Upheld/Dismissed and sizes refunds — no multisig, timelock, quorum, or appeal; on-chain evidence is a URI string. Slashed author bond is paid **100% to the challenger** (`resolve_author_dispute.rs`), not to harmed buyers, so a compromised or colluding resolver + challenger can drain any author's bond. *Fix:* multisig + timelock on the resolver authority at minimum; route slashed funds to harmed buyers (or explicitly justify otherwise); longer term, the optimistic-oracle / LLM-jury adjudication design.
 
-3. **No pause / emergency stop.** `config.paused` is written only at init (`= false`); no instruction sets it true, so every `require!(!paused)` guard is dead code and `pause_authority` is never read. There is no kill switch.
+3. **No pause / emergency stop in the 2026-05-30 audit; fixed on devnet 2026-06-19.** At audit time, `config.paused` was written only at init (`= false`); no instruction set it true, so every `require!(!paused)` guard was dead code and `pause_authority` was never read. A3 adds `set_paused(paused: bool)` gated by `config.pause_authority`, emits `PauseStateChanged`, and keeps buyer/voucher claim flows open while paused. It was merged, deployed, IDL-upgraded, and live-smoked on devnet on 2026-06-19. Remaining before mainnet: put pause authority under approved custody, record the production signer policy, and repeat the smoke on the mainnet release-candidate deployment.
 
 4. **No refund reserve; refunds frequently unfundable.** Refund pools are funded from the author's own undisbursed proceeds for one revision, first-come-first-served until empty. Free-listing disputes produce no pool at all, and proceeds withdrawn before a dispute opened leave nothing. The slashed bond does not backstop buyers (it goes to the challenger).
 
@@ -54,12 +56,13 @@ Primary files for hardening: `instructions/resolve_author_dispute.rs`, `instruct
 - **Historical ID:** `web/scripts/db-cutover.ts` retains `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` only as `TRACK_B_PREVIOUS_DEVNET_PROGRAM_ID` for old-state cleanup. Do not treat it as active deployment config.
 - **Purchase gate:** direct purchase verification is stronger than earlier notes imply. The API verifies the confirmed transaction, program id, chain context, listing PDA, derived `Purchase` PDA, buyer, listing revision, price, and USDC mint before recording an entitlement.
 - **x402 bridge:** protocol-listed x402 remains fail-closed behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`; `/api/x402/supported` does not advertise the bridge unless the flag is enabled. The bridge binds buyer/listing/skill/amount/nonce into a payment-ref hash and checks the backend settlement authority against on-chain config.
-- **Verification run:** `npm run test --workspace @agentvouch/web`, `npm run test --workspace @agentvouch/cli`, `NO_DNA=1 anchor build`, `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed on 2026-06-09. On 2026-06-10, `NO_DNA=1 anchor test` passed with 31 tests after rerunning outside the sandboxed port-binding failure; no port-8899 process was killed. The same day also passed web tests (332), CLI tests (50), web/CLI builds, web lint, `git diff --check`, direct devnet USDC smoke, strict x402 bridge POC, and public flow-surface smoke. On 2026-06-11, the direct devnet USDC smoke was extended and passed the live authority-keyed dispute/slash/refund branch.
+- **Verification run:** `npm run test --workspace @agentvouch/web`, `npm run test --workspace @agentvouch/cli`, `NO_DNA=1 anchor build`, `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed on 2026-06-09. On 2026-06-10, `NO_DNA=1 anchor test` passed with 31 tests after rerunning outside the sandboxed port-binding failure; no port-8899 process was killed. The same day also passed web tests (332), CLI tests (50), web/CLI builds, web lint, `git diff --check`, direct devnet USDC smoke, strict x402 bridge POC, and public flow-surface smoke. On 2026-06-11, the direct devnet USDC smoke was extended and passed the live authority-keyed dispute/slash/refund branch. On 2026-06-19, the A3 pause smoke passed against the deployed program: pause blocked a new listing, voucher revenue claim stayed open, unpause restored listing creation, and final state confirmed `paused = false`.
 
 ## Release Candidate Gates
 
 - Protocol safety review covers purchase, vouch, voucher reward, author bond, dispute, refund, close, claim, and withdraw paths.
 - Devnet soak has repeated the full happy path with fresh wallets: register, publish, vouch, purchase, claim voucher revenue, withdraw author proceeds, report, resolve, and refund.
+- Emergency pause has been exercised on devnet: pause, prove at least one risk-creating flow fails, prove buyer refund or voucher claim still works, unpause, and prove normal operation resumes.
 - Wallet UX is clear for locked wallets, simulation warnings, insufficient SOL, ATA creation, network mismatch, and rejected signatures.
 - If Kora sponsorship is enabled: wallet UX clearly distinguishes sponsored and fallback paths, quotes any USDC fee, proves users can complete the targeted flow without SOL, and never implies unsupported flows are SOL-free.
 - Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
@@ -83,7 +86,7 @@ Mainnet must not depend on a single hot wallet for:
 - treasury movement
 - x402 settlement authority
 - dispute resolver authority
-- pause or emergency controls, when implemented
+- pause or emergency controls
 
 Before mainnet:
 
@@ -198,7 +201,7 @@ No-go:
 
 - voucher slashing is absent from the target deployment, fails clean devnet replay/security review, or is not reflected in docs/client surfaces (see [Code Audit Findings](#code-audit-findings-2026-05-30) P0.1)
 - dispute resolution depends on a single `config_authority` key, and/or slashed funds route to the challenger rather than harmed buyers (P0.2)
-- no pause / emergency-stop instruction exists (P0.3)
+- target deployment lacks a merged, deployed, custody-approved, and smoke-tested pause / emergency-stop instruction (P0.3)
 - any USDC-moving instruction has unreviewed account constraints or arithmetic
 - wallet simulation warnings are unexplained on expected flows
 - Vercel, Neon, RPC, or program config points at mixed devnet/mainnet state

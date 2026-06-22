@@ -57,6 +57,7 @@ pub struct WithdrawAuthorBond<'info> {
 
 pub fn handler(ctx: Context<WithdrawAuthorBond>, amount_usdc_micros: u64) -> Result<()> {
     require!(amount_usdc_micros > 0, ErrorCode::AmountMustBePositive);
+    require!(!ctx.accounts.config.paused, ErrorCode::ProtocolPaused);
 
     let clock = Clock::get()?;
     let author_bond = &mut ctx.accounts.author_bond;
@@ -136,6 +137,8 @@ pub enum ErrorCode {
     FreeListingsRequireBondFloor,
     #[msg("Author bond cannot be withdrawn while author disputes are open")]
     AuthorBondLockedWhileDisputesOpen,
+    #[msg("Protocol is paused")]
+    ProtocolPaused,
     #[msg("USDC mint does not match config")]
     InvalidUsdcMint,
     #[msg("Author bond vault does not match account state")]
