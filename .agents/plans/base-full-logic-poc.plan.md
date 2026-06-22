@@ -4,13 +4,13 @@ overview: "Build an isolated Base/EVM proof of concept that ports AgentVouch's c
 todos:
   - id: source-parity-spec
     content: Freeze the Solana-to-EVM parity map (23 core instructions, 14 account structs, A3 pause behavior) and commit the Decision Rubric thresholds (per-action cost ceiling) before building
-    status: pending
+    status: in_progress
   - id: evm-workspace
     content: Add an isolated Foundry workspace under contracts/base-poc plus package-level ABI/type export strategy without disturbing Solana workspaces
-    status: pending
+    status: in_progress
   - id: core-state-roles
     content: Implement AgentVouchEvm config, roles, pause, profiles, bonds, vouches, listings, settlements, and internal USDC accounting
-    status: pending
+    status: in_progress
   - id: purchase-and-rewards
     content: Implement direct Base purchase flow with USDC custody, purchase receipts, author proceeds, author-wide voucher reward index, and claims
     status: pending
@@ -51,6 +51,10 @@ This is a decision instrument, not a migration branch. Solana remains the curren
 - A3 pause enforcement is distributed, not centralized: `set_paused` only flips `config.paused`; each instruction enforces its own paused behavior. Derive the exact allowed/blocked flow set by grepping `paused` across `programs/agentvouch/src/instructions/*.rs` during Phase 0, not from `set_paused.rs` alone.
 - Existing CAIP-2 labels already include Base as `eip155:8453` (`web/lib/chains.ts`).
 - Do not call this a "transpile." The business rules port; Solana PDAs, rent, ATAs, Anchor constraints, and SPL token vault structure do not.
+
+### Implementation log
+
+- 2026-06-22: Implementation started on branch `feat/base-poc-spike` (off `main`, which now carries this plan after #41). Foundry 1.7.1; deps OpenZeppelin Contracts v5.1.0 + forge-std, vendored under `contracts/base-poc/lib/` (gitignored, reproduce via `setup.sh`). **Phase 1 green:** `AgentVouchEvm` with `Config` + roles (`CONFIG/RESOLVER/TREASURY/SETTLEMENT/PAUSE`) + `Pausable` A3 parity + `registerAgent` (first rent-touching flow — a plain sponsored write on Base, no rent/payer), plus `MockUSDC` and `AgentVouchTypes`. `forge build` + 8/8 `forge test` pass. Scope target: Phases 0–4 (rent-touching core + x402), stop at the 4.5 gate. Cost-ceiling rubric threshold still to be set before the gate.
 
 ## External References Verified 2026-06-21
 
