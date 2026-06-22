@@ -485,7 +485,8 @@ Implement:
 - `purchaseWithAuthorization` for EIP-3009 if feasible.
 - `settleX402Purchase` attestation lane if stock facilitator compatibility is needed.
 - `paymentRefHash` and `settlementTxHash` guards.
-- TypeScript helper in `packages/agentvouch-evm` for quote/receipt shapes.
+- Defer any `packages/agentvouch-evm` TypeScript quote/receipt helper until a
+  production Base track is funded; Phase 4 is contract/test/memo-only.
 
 Tests:
 

@@ -28,6 +28,14 @@ forge test --gas-report
 ```
 
 ## Status
-Phase 1 (workspace + config/roles/A3 pause + `registerAgent`) — in progress.
-See the plan's Implementation Phases. Build stops at the Phase 4.5 interim decision
-gate before any disputes/slashing/refund work.
+Phase 4.5 gate reached on `feat/base-poc-spike`: Phases 0-4 are implemented
+and verified with 65/65 Foundry tests. The POC now includes the rent-touching
+core flows plus two x402 lanes:
+
+- Lane B: `purchaseWithAuthorization` using EIP-3009.
+- Lane C: `settleX402Purchase` with settlement-role attestation and dual
+  idempotency guards.
+
+The interim decision memo is `docs/BASE_POC_INTERIM.md`. Per that gate, the POC
+stops before disputes/slashing/refunds (Phases 5-7) unless AgentVouch explicitly
+funds the Base/x402 distribution bet.
