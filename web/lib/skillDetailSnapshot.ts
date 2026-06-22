@@ -8,7 +8,6 @@ import {
   getCachedTrust,
   getCachedTrustSummary,
   partitionAuthorsByTrustFreshness,
-  scheduleBackgroundTrustRefresh,
   type CachedTrustRow,
 } from "@/lib/authorTrustView";
 import {

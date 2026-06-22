@@ -4,6 +4,8 @@
 
 Living scope doc for the "remove the wallet-exists wall" effort. Phase 2 (Stripe + custodial fiat) is out of scope here; this phase stays on Solana / USDC rails and is fully testable on devnet.
 
+> **Update (2026-06-19): Kora is the preferred next friction-removal rail.** Solana's fee model already supports a separate `feePayer` plus a batched token reimbursement instruction, and Kora packages that into a configurable Solana paymaster/fee relayer with USDC fee payment, validation allowlists, authentication, rate limits, and spend protection. The next implementation plan is `.agents/plans/kora-usdc-fee-abstraction.plan.md`. This supersedes the older faucet-first framing for normal buyer/author/voucher flows, but does **not** make "no SOL" true until rent-paying paths are handled: many Anchor instructions still use `payer = buyer`, `payer = voucher`, `payer = author`, or `payer = challenger` for account creation. Fee sponsorship can ship first; full no-SOL UX requires either tightly bounded rent prefunding or explicit `rent_payer` accounts in the program interfaces.
+
 ## Goal
 
 Make a first-time buyer go from `agentvouch.xyz` → "Sign in with Google" → "Buy this skill" in under a minute, with no wallet extension, no seed phrase, no out-of-band funding step. Same shape for sellers: "Sign in with Google" → "Publish this skill" with the platform absorbing the cold-wallet rent cost on devnet.
@@ -244,8 +246,31 @@ Devnet DB cleanup remains dry-run-first; the 2026-05-15 cleanup cleared stale li
 
 After the paid economic path is clarified, continue the friction-removal items that make either checkout path usable:
 
-1. Devnet onboarding faucet for signed-in users.
-2. Embedded-wallet-aware preflight copy and funding state, without attempting embedded paid purchase.
-3. First-purchase USDC ATA creation.
-4. Author registration rent sponsor for devnet sign-ups.
-5. Revisit embedded paid checkout only with Phantom support, a minimal repro, or a different embedded wallet provider.
+1. Kora fee-only sponsorship for direct `purchase_skill` on devnet, behind a hidden feature flag, proving signer compatibility and fallback behavior.
+2. Sponsor-aware preflight copy and funding state: show USDC balance, Kora fee quote, and explicit fallback only when sponsorship is unavailable.
+3. Rent-payer design for first-time account creation: `purchase_skill` first, then `register_agent`, `vouch`, author bond, listing, dispute, claim, and withdraw paths.
+4. First-purchase USDC ATA creation using a sponsor/rent payer where the ATA payer can differ from the token-account owner.
+5. Devnet onboarding faucet only as a fallback/testing utility for flows not yet Kora-sponsored.
+6. Revisit embedded paid checkout after sponsored transaction smoke tests, Phantom support, a minimal repro, or a different embedded wallet provider.
+
+## Kora / USDC-paid fee abstraction — 2026-06-19
+
+The design target is not "AgentVouch subsidizes everything forever." It is "the user can stay in USDC while a bounded relayer pays SOL under the hood." Kora supports three useful operating modes:
+
+- **Margin pricing:** charge the user a USDC fee derived from actual Solana costs plus an operator margin. This is the production default candidate because it accounts for fee-payer outflow.
+- **Fixed pricing:** simple, but dangerous if the Kora payer can perform SOL outflow. Use only with strict fee-payer policy and low caps.
+- **Free pricing:** useful for devnet smoke or a promotional budget, but do not combine it with arbitrary account-creation/outflow permissions.
+
+Implementation order:
+
+1. **Fee-only spike.** Add a sponsored `purchase_skill` path where Kora is transaction fee payer and the buyer reimburses Kora in USDC. This removes network-fee SOL when no new user-funded rent is needed.
+2. **Rent-payer interface change.** Split domain signers from account/rent payers in Anchor contexts that create PDAs or vaults. Example: `buyer` remains the USDC authority for `purchase_skill`; a `rent_payer` signer creates the `Purchase` PDA and any needed vaults.
+3. **Flow expansion.** Extend the same helper to registration, vouching, author bond, listing, dispute, refund, voucher reward, and withdrawal paths in order of user friction.
+4. **Docs flip.** Only after a flow is live should `/docs`, `web/public/skill.md`, CLI help, and runbooks stop saying that that flow requires user-held SOL.
+
+Security invariants:
+
+- Kora credentials stay server-side.
+- Server APIs accept typed AgentVouch intents, not arbitrary user-supplied transactions, unless a later security review approves a generic validator.
+- Kora validation allowlists AgentVouch, SPL Token, Associated Token, Compute Budget, and only the System Program operations needed for expected rent flows.
+- `max_allowed_lamports`, per-wallet/per-IP limits, payer SOL balance monitoring, and Kora error monitoring are launch gates for any mainnet use.

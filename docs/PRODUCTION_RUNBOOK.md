@@ -96,7 +96,45 @@ Record the authority pubkeys for each environment before production changes:
 - config authority
 - treasury authority
 - x402 settlement authority
-- pause authority, when implemented
+- pause authority
+
+## Emergency Pause
+
+A3 adds `set_paused(paused: bool)`, gated by `config.pause_authority`. Treat it as a narrow emergency brake: it stops new protocol exposure while leaving buyer and voucher claim paths open where funds are already allocated.
+
+Use pause for suspected protocol bugs, compromised authorities, bad IDL/client deploys, x402 settlement issues, accounting incidents, or any live flow where continued purchases/vouches/listings could widen the blast radius.
+
+Blocked while paused:
+
+- create or update a skill listing
+- initialize a listing settlement
+- deposit or withdraw author bond
+- create a vouch or link a vouch to a listing
+- direct `purchase_skill`
+- protocol `settle_x402_purchase`
+- open a new author dispute
+- withdraw author proceeds
+
+Allowed while paused, subject to normal account/status checks:
+
+- unpause through `set_paused(false)`
+- register an agent profile
+- revoke a vouch
+- claim voucher revenue
+- claim a purchase refund from an existing refund pool
+- resolve/settle already-open dispute cleanup paths
+- unlink/remove/close listing paths that retire exposure
+
+Pause procedure:
+
+1. Verify the decoded `ReputationConfig` and current `pause_authority`.
+2. Use the configured pause authority to submit `set_paused(true)`.
+3. Confirm `config.paused == true`.
+4. Smoke one blocked path, such as purchase or vouch creation, and one allowed claim path, such as voucher revenue claim or purchase refund.
+5. Record the transaction signature, reason, owner, and user-communication threshold.
+6. Unpause only after root cause is understood, client/IDL surfaces match the deployed program, and a normal flow smoke passes.
+
+Do not update `docs/DEVNET_STATE.md` or `web/public/skill.md` for pause behavior until the program containing `set_paused` is actually deployed and smoked.
 
 ## Settlement And Refund Incidents
 

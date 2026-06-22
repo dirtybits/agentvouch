@@ -205,10 +205,7 @@ function buildPurchaseBalanceError(
   )} USDC plus SOL for receipt rent and network fees.`;
 }
 
-function buildPurchaseClusterMismatchError(
-  walletAddress: Address,
-  estimate: PurchasePreflightAssessment
-) {
+function buildPurchaseClusterMismatchError(walletAddress: Address) {
   const configuredNetwork = `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`;
   return `Phantom reported insufficient SOL, but connected wallet ${shortAddress(
     walletAddress
@@ -620,9 +617,7 @@ export function useMarketplaceOracle() {
                   "This listing is temporarily not purchasable."
               );
             }
-            throw new Error(
-              buildPurchaseClusterMismatchError(walletAddress, latestEstimate)
-            );
+            throw new Error(buildPurchaseClusterMismatchError(walletAddress));
           }
         }
         throw error;

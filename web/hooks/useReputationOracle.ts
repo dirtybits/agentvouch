@@ -93,7 +93,6 @@ import {
   getAssociatedTokenAccount,
   getCreateAssociatedTokenAccountIdempotentInstruction,
   logTransactionSummary,
-  TOKEN_PROGRAM_ID,
   usdcToMicros,
   type AgentVouchTransactionSummary,
 } from "@/lib/agentvouchUsdc";
@@ -624,13 +623,6 @@ async function getAuthorProceedsVaultPDA(
   listingSettlement: Address
 ): Promise<Address> {
   return deriveAddress(["author_proceeds_vault", listingSettlement]);
-}
-
-async function getListingVouchPositionPDA(
-  skillListing: Address,
-  vouch: Address
-): Promise<Address> {
-  return deriveAddress(["listing_vouch_position", skillListing, vouch]);
 }
 
 async function getProtocolTreasuryVaultPDA(): Promise<Address> {

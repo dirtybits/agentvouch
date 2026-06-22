@@ -30,6 +30,7 @@ import {
   FiExternalLink,
   FiGitCommit,
   FiSearch,
+  FiSettings,
   FiShield,
   FiUser,
   FiUsers,
@@ -910,6 +911,12 @@ export default function DashboardPage() {
                 {tab.icon} {tab.label}
               </button>
             ))}
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1 px-4 py-2.5 font-medium whitespace-nowrap transition text-sm border-b-2 -mb-[2px] border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <FiSettings className="inline-block mr-1" /> Settings
+            </Link>
           </div>
 
           {activeTab === "profile" && !connected && (

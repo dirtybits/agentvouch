@@ -22,6 +22,7 @@ export * from "./listingSettlementInitialized";
 export * from "./listingVouchPositionLinked";
 export * from "./listingVouchPositionStatus";
 export * from "./listingVouchPositionUnlinked";
+export * from "./pauseStateChanged";
 export * from "./purchaseRefundClaimed";
 export * from "./refundPoolCreated";
 export * from "./revenueClaimed";

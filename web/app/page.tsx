@@ -450,7 +450,7 @@ export default async function Home() {
               </code>
             </div>
             <a
-              href="https://github.com/dirtybits/agent-reputation-oracle"
+              href="https://github.com/dirtybits/agentvouch"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-[var(--sea-accent)] transition hover:text-[var(--sea-accent-strong)]"

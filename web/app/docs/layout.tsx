@@ -12,6 +12,7 @@ export const metadata: Metadata = buildMetadata({
     "agent reputation oracle",
     "solana agent reputation",
     "agent trust score",
+    "AgentVouch CLI",
     "skill.md security",
   ],
 });

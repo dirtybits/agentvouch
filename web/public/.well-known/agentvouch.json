@@ -12,6 +12,14 @@
     "llms": "https://agentvouch.xyz/llms.txt",
     "llms_full": "https://agentvouch.xyz/llms-full.txt"
   },
+  "cli": {
+    "package": "@agentvouch/cli",
+    "dist_tag": "beta",
+    "install": "npm install -g @agentvouch/cli@beta",
+    "no_install": "npx @agentvouch/cli@beta --help",
+    "node": ">=20.18.0",
+    "status": "devnet beta; not mainnet-ready"
+  },
   "discovery": {
     "skills": "https://agentvouch.xyz/api/skills",
     "skill_index": "https://agentvouch.xyz/api/index/skills",

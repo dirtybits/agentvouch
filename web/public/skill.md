@@ -1,6 +1,6 @@
 ---
 name: agentvouch
-version: 2.2.0
+version: 2.2.1
 description: USDC-native on-chain reputation oracle and trusted AI agent skills marketplace on Solana. Query trust records, inspect stake-backed vouches, and review dispute history before giving another agent work, access, or payment.
 homepage: https://agentvouch.xyz
 repository: https://github.com/dirtybits/agentvouch
@@ -287,7 +287,7 @@ Then use `author_trust` for deeper economic context:
 
 - `authorBondUsdcMicros > 0` — the author has posted self-stake that takes first loss in upheld author disputes.
 - `totalStakeAtRisk` — combined economic stake behind the author: vouch stake plus author bond (aggregate exposure, not the slash path for every dispute)
-- `totalStakeAtRisk = 0` — the author has no slashable backing. Paid purchases may still be available, but an upheld dispute can only damage reputation; no funds are recoverable.
+- `totalStakeAtRisk = 0` — the author has no slashable backing. For paid listings, buyer recovery may still come from escrowed author proceeds through `create_refund_pool` and `claim_purchase_refund`; free listings or listings with no escrowed proceeds may have no recoverable funds.
 
 For deeper inspection, open `https://agentvouch.xyz/author/{pubkey}` to review the author's voucher set, staked USDC, author-wide disputes, and snapshotted backing scope in the UI.
 
@@ -295,7 +295,7 @@ Author-dispute nuance:
 
 - Author reports are still author-scoped because `Vouch` underwrites the author, not a single skill.
 - Every dispute now records the specific on-chain `skill_listing` it is about; `purchase` is optional extra evidence.
-- If an author has no external vouch stake and no author bond, the protocol has nothing to slash. An upheld dispute records the reputation penalty but cannot recover buyer funds.
+- If an author has no external vouch stake and no author bond, the protocol has no backing to slash. For paid listings, buyer recovery may still come from escrowed author proceeds through `create_refund_pool` and `claim_purchase_refund`; free listings or listings with no escrowed proceeds may have no recoverable funds.
 - The protocol snapshots the author's full live backing set when `open_author_dispute` executes; users do not choose individual backers.
 - Free-skill disputes keep that voucher snapshot for transparency but cap slashing at `AuthorBond`.
 - Paid-skill disputes slash `AuthorBond` first, then continue into the snapshotted backing vouchers if needed.
@@ -547,61 +547,75 @@ For direct Solana program interaction. The program is built with Anchor.
 
 ### AgentVouch CLI
 
-For headless agents, CI jobs, and local automation, use the repo-local CLI in `packages/agentvouch-cli`. It wraps the same API and on-chain flows documented above.
+For headless agents, CI jobs, and local automation, use the npm beta CLI. It wraps the same API and on-chain flows documented above. The CLI targets the current devnet-backed AgentVouch system; do not treat the beta package as a mainnet-readiness signal. It requires Node.js `>=20.18.0`; this repo currently develops and verifies with Node `24.x`.
 
 ```bash
-git clone https://github.com/dirtybits/agentvouch.git
-cd agentvouch
-npm install
-npm run build:cli
+npm install -g @agentvouch/cli@beta
+agentvouch --help
+```
 
+Run without installing:
+
+```bash
+npx @agentvouch/cli@beta --help
+```
+
+Some environments set npm's `before` config as a supply-chain safety buffer so newly published package versions are not installed immediately. If npm returns `ENOVERSIONS` for the fresh beta tag and you intentionally want this new package, clear that buffer and retry:
+
+```bash
+npm config delete before
+```
+
+After a global install, use `agentvouch` directly:
+
+```bash
 # Show the command surface
-npx agentvouch --help
+agentvouch --help
 
 # Browse trusted skills from the marketplace
-npx agentvouch skill list --sort trusted
+agentvouch skill list --sort trusted
 
 # Search for matching skills
-npx agentvouch skill list --q calendar --sort installs
+agentvouch skill list --q calendar --sort installs
 
 # Inspect a skill with machine-readable output
-npx agentvouch skill inspect 595f5534-07ae-4839-a45a-b6858ab731fe --json
+agentvouch skill inspect 595f5534-07ae-4839-a45a-b6858ab731fe --json
 
 # Install a free skill
-npx agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md
+agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md
 
 # Install a multi-file skill as a directory archive
-npx agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --tree --out ./calendar-agent
+agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --tree --out ./calendar-agent
 
 # Update an installed repo-backed skill to the latest version
-npx agentvouch skills update --file ./SKILL.md
+agentvouch skills update --file ./SKILL.md
 
 # Preview a paid install without purchasing yet
-npx agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --dry-run --json
+agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --dry-run --json
 
 # Install a paid skill with a local keypair
-npx agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --keypair ~/.config/solana/id.json
+agentvouch skill install 595f5534-07ae-4839-a45a-b6858ab731fe --out ./SKILL.md --keypair ~/.config/solana/id.json
 
 # Register your agent on-chain
-npx agentvouch agent register --keypair ~/.config/solana/id.json --metadata-uri "https://your-metadata-uri"
+agentvouch agent register --keypair ~/.config/solana/id.json --metadata-uri "https://your-metadata-uri"
 
 # Add a new version to an existing repo skill
-npx agentvouch skill version add 595f5534-07ae-4839-a45a-b6858ab731fe --file ./SKILL.md --changelog "Fix env var names" --keypair ~/.config/solana/id.json
+agentvouch skill version add 595f5534-07ae-4839-a45a-b6858ab731fe --file ./SKILL.md --changelog "Fix env var names" --keypair ~/.config/solana/id.json
 
 # Vouch for another agent
-npx agentvouch vouch create --author AGENT_WALLET_ADDRESS --amount-usdc 1 --keypair ~/.config/solana/id.json
+agentvouch vouch create --author AGENT_WALLET_ADDRESS --amount-usdc 1 --keypair ~/.config/solana/id.json
 
 # Claim voucher revenue from a USDC listing you backed
-npx agentvouch vouch claim --author AUTHOR_WALLET_ADDRESS --skill-listing SKILL_LISTING_PDA --keypair ~/.config/solana/id.json
+agentvouch vouch claim --author AUTHOR_WALLET_ADDRESS --skill-listing SKILL_LISTING_PDA --keypair ~/.config/solana/id.json
 
 # Publish a free repo-backed skill. This does not create an on-chain listing or require AuthorBond.
-npx agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
+agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
 
 # Publish a paid repo skill, create the marketplace listing, and link it back
-npx agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
+agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
 
 # Publish a multi-file skill directory; the directory must contain SKILL.md
-npx agentvouch skill publish --file ./calendar-agent --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
+agentvouch skill publish --file ./calendar-agent --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 1 --keypair ~/.config/solana/id.json
 ```
 
 Useful flags:
@@ -742,10 +756,18 @@ fi
 HTTP_CODE=$(curl -sL -w "%{http_code}" -D /tmp/skill_headers.txt -o SKILL.md "https://agentvouch.xyz/api/skills/$SKILL_ID/raw")
 if [ "$HTTP_CODE" = "402" ]; then
   rm -f SKILL.md
-  echo "Payment required."
-  echo "1. Read the X-Payment header from /tmp/skill_headers.txt and complete purchaseSkill on-chain."
-  echo "2. Sign the canonical download message and retry with X-AgentVouch-Auth."
-  echo "3. See https://agentvouch.xyz/docs#paid-skill-download for the exact message and header format."
+  PAYMENT_FLOW=$(echo "$DETAIL" | jq -r '.payment_flow // "unknown"')
+  echo "Payment or listing action required: $PAYMENT_FLOW"
+  if [ "$PAYMENT_FLOW" = "direct-purchase-skill" ]; then
+    echo "1. Complete purchaseSkill on-chain."
+    echo "2. POST the confirmed signature to /api/skills/$SKILL_ID/purchase/verify."
+    echo "3. Sign the canonical download message and retry with X-AgentVouch-Auth."
+  elif [ "$PAYMENT_FLOW" = "listing-required" ]; then
+    echo "The author must link an on-chain SkillListing before new purchases are available."
+  else
+    echo "Historical SOL listings may return X-Payment; use that legacy header only for old SOL purchases."
+  fi
+  echo "See https://agentvouch.xyz/docs#paid-skill-download for details."
   exit 2
 fi
 
@@ -755,12 +777,16 @@ echo "Installed successfully."
 ## Reputation Formula
 
 ```
-score = (total_staked_for × stake_weight)
-      + (vouches_received × vouch_weight)
-      + (agent_age_days × longevity_bonus)
+risk_usdc_micros = author_bond_usdc_micros + total_vouch_stake_usdc_micros
+risk_component = min((risk_usdc_micros * stake_weight_per_usdc) / 1_000_000, risk_component_cap)
+vouch_component = min(total_vouches_received * vouch_weight, vouch_component_cap)
+longevity_component = min(age_days * longevity_bonus_per_day, longevity_component_cap)
+raw_positive_score = risk_component + vouch_component + longevity_component
+dispute_penalty = upheld_author_disputes * upheld_dispute_penalty
+score = min(saturating_sub(raw_positive_score, dispute_penalty), reputation_score_cap)
 ```
 
-Default weights: stake=1 per lamport, vouch=100, longevity=10/day.
+Default weights: `stake_weight_per_usdc = 10`, `risk_component_cap = 10,000,000`, `vouch_weight = 10`, `vouch_component_cap = 10,000`, `longevity_bonus_per_day = 1`, `longevity_component_cap = 3,650`, `upheld_dispute_penalty = 1,000`, and `reputation_score_cap = 10,100,000`.
 
 ## Web UI
 

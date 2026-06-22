@@ -1,0 +1,4 @@
+interface:
+  display_name: "Turn Closeout"
+  short_description: "End turns with numbered next-step choices"
+  default_prompt: "Use $turn-closeout to close a substantial work turn with concise proof and numbered next-step options."

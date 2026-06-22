@@ -59,4 +59,15 @@ describe("author page source", () => {
     expect(source).toContain("authorIdentity?.username");
     expect(source).toContain("Author Trust Record");
   });
+
+  it("shows settings only on the connected user's public author profile", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("{isOwnProfile && (");
+    expect(source).toContain('href="/settings"');
+    expect(source).toContain("FiSettings");
+  });
 });

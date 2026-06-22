@@ -1,6 +1,6 @@
 # Devnet Deployment State
 
-Living record of the active `agentvouch` devnet deployment after the Track B x402 settlement bridge cutover and A1 voucher-slashing upgrade. Update this file whenever the program is upgraded, the config authority rotates, or the canonical smoke fixture changes.
+Living record of the active `agentvouch` devnet deployment after the Track B x402 settlement bridge cutover, A1 voucher-slashing upgrade, and A3 emergency-pause upgrade. Update this file whenever the program is upgraded, an authority rotates, or the canonical smoke fixture changes.
 
 ## Active program
 
@@ -12,19 +12,20 @@ Living record of the active `agentvouch` devnet deployment after the Track B x40
 | Upgrade authority | `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou` |
 | Config PDA | `8RQ1ySTxbmsYwcnucZZ4VgYg5pzwEbmBreEKJHLfdgha` |
 | Config authority | `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou` |
+| Pause authority | `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou` |
 | Config layout | Track B / M13-compatible (491 bytes, `ReputationConfig` includes `author_proceeds_lock_seconds` and a stock-compatible x402 settlement vault ATA) |
 | Protocol treasury vault authority | `DUcUxw3r4t91ezbCUeoHeCrQppgfzLFCn8Yxhw8Zh3Aw` |
 | Protocol treasury vault | `3LihXhStfS7jx3gmzK2NALCWr5fAmgtJrJU2ZKffK6hT` |
 | x402 settlement vault authority | `3ueLzqB5SiFLdGqGqJ55PNBffcgUqJ5iLf7pJMGrfCdj` |
 | x402 settlement vault ATA | `3Z7VPVVA4ehG7hcsdGbKJcZgvAfPNbSSbFGJCyEFbzdr` |
-| Last deploy slot | `468574856` |
-| Last deploy tx | `2FYWJ3QfJLLTKr157tmkRFcQJs4fpRATiZWEs3MAQMZVwvbW8tcqUeGjGWVugKHasuu8qVJfEkBbRSGyyuU7Shrg` |
+| Last deploy slot | `470607512` |
+| Last deploy tx | `5WDUWu15dU2L1FCFXd6MQeqG5SmppEjq8DMwFBdjhZCUSQ1AtD7haggRreXVeFYfZBbLSV6bMQ1GeJKmGp6gizHj` |
 | Config init tx | `4sabP2jqmF8dNqnCxrdL25NMUijSx5f6TBLcMs7qu6spwcJj5rJkPP9TJ8rjNQ6vkaZ5w24EAk2tdteAMj4sgJJp` |
-| Local `.so` sha256 | `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1` |
+| Local `.so` sha256 | `4def6997c51fb4ac2adf5963960845481913dfd28748990a7bb0be42cd63934d` |
 | USDC mint (devnet) | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
 | Chain context (CAIP-2) | `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` |
 
-The deployed program includes the Track B protocol layer (`settle_x402_purchase`, x402 receipt/signature idempotency guards, and the stock-compatible x402 settlement vault ATA) plus the A1 voucher-slashing layer. Upheld paid disputes with linked voucher positions can park in `SlashingVouchers`, be cranked permissionlessly through `slash_dispute_vouches`, ring-fence slashed deposits for refund pools, and keep listing membership/removal/close flows locked until settlement clears the dispute lock. The on-chain IDL was uploaded with the deploy; clients should still read the synced repo IDL (`target/idl/agentvouch.json`, `web/agentvouch.json`, and `web/generated/agentvouch/`) so local builds stay deterministic.
+The deployed program includes the Track B protocol layer (`settle_x402_purchase`, x402 receipt/signature idempotency guards, and the stock-compatible x402 settlement vault ATA), the A1 voucher-slashing layer, and the A3 emergency-pause control. Upheld paid disputes with linked voucher positions can park in `SlashingVouchers`, be cranked permissionlessly through `slash_dispute_vouches`, ring-fence slashed deposits for refund pools, and keep listing membership/removal/close flows locked until settlement clears the dispute lock. The pause authority can toggle `config.paused` through `set_paused`; paused mode blocks new risk-creating flows while leaving allowed claim/cleanup paths open. The on-chain IDL was uploaded with the deploy; clients should still read the synced repo IDL (`target/idl/agentvouch.json`, `web/agentvouch.json`, and `web/generated/agentvouch/`) so local builds stay deterministic.
 
 To re-verify the binary match locally:
 
@@ -38,9 +39,9 @@ head -c $LOCAL_LEN /tmp/agentvouch_devnet.so | shasum -a 256
 
 The trimmed hash must match the local `.so` hash; the trailing bytes on the dump are zero padding inserted by the BPF loader and do not affect equality.
 
-## Instruction surface (24 instructions)
+## Instruction surface (25 instructions)
 
-`claim_purchase_refund`, `claim_voucher_revenue`, `close_skill_listing`, `create_refund_pool`, `create_skill_listing`, `deposit_author_bond`, `initialize_config`, `initialize_listing_settlement`, `link_vouch_to_listing`, `migrate_config_m13`, `migrate_skill_listing_m13`, `open_author_dispute`, `purchase_skill`, `register_agent`, `remove_skill_listing`, `resolve_author_dispute`, `revoke_vouch`, `settle_x402_purchase`, `slash_dispute_vouches`, `unlink_vouch_from_listing`, `update_skill_listing`, `vouch`, `withdraw_author_bond`, `withdraw_author_proceeds`.
+`claim_purchase_refund`, `claim_voucher_revenue`, `close_skill_listing`, `create_refund_pool`, `create_skill_listing`, `deposit_author_bond`, `initialize_config`, `initialize_listing_settlement`, `link_vouch_to_listing`, `migrate_config_m13`, `migrate_skill_listing_m13`, `open_author_dispute`, `purchase_skill`, `register_agent`, `remove_skill_listing`, `resolve_author_dispute`, `revoke_vouch`, `set_paused`, `settle_x402_purchase`, `slash_dispute_vouches`, `unlink_vouch_from_listing`, `update_skill_listing`, `vouch`, `withdraw_author_bond`, `withdraw_author_proceeds`.
 
 Error codes were renumbered after `NoActiveAuthorBacking` was removed; downstream consumers that parse Anchor error variants by index must use the synced IDL rather than hard-coded numbers.
 
@@ -99,12 +100,67 @@ The canonical smoke fixture now verifies direct `purchase_skill`, paid-listing v
 The 2026-06-10 A1 deploy was verified with:
 
 - `NO_DNA=1 anchor test` — 31 passing, including voucher slashing, multi-page crank, stale-position skip-settle, remove/close dispute-lock, and refund-pool paths.
-- `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=/Users/andysustic/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` — passed on 2026-06-11 with live open → upheld resolve → slash → refund-pool → refund-claim path.
+- `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=~/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` — passed on 2026-06-11 with live open → upheld resolve → slash → refund-pool → refund-claim path.
 - Binary match: `target/deploy/agentvouch.so` and `solana program dump` both hashed to `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1`.
 - On-chain IDL: upgraded at IDL account `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4`; fetched IDL semantically matches `target/idl/agentvouch.json` / `web/agentvouch.json`.
 - Web and CLI: `npm run test --workspace @agentvouch/web` (65 files, 332 tests), `npm run test --workspace @agentvouch/cli` (10 files, 50 tests), `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed.
 - x402 bridge POC: `npm run x402:bridge-poc --workspace @agentvouch/web -- --strict` passed with production bridge support still feature-flagged off.
 - Public flow surface: `npm run smoke:flow-surface` passed after the web deployment/promotion.
+
+## A3 deploy and pause smoke
+
+The 2026-06-19 A3 same-ID upgrade was deployed with:
+
+```bash
+NO_DNA=1 solana program deploy target/deploy/agentvouch.so \
+  --program-id AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg \
+  --upgrade-authority ~/dev-keypair.json \
+  -u devnet
+NO_DNA=1 anchor idl upgrade AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg \
+  -f web/agentvouch.json \
+  --provider.cluster devnet \
+  --provider.wallet ~/dev-keypair.json
+```
+
+Deployment evidence:
+
+| Field | Value |
+| --- | --- |
+| Deploy tx | `5WDUWu15dU2L1FCFXd6MQeqG5SmppEjq8DMwFBdjhZCUSQ1AtD7haggRreXVeFYfZBbLSV6bMQ1GeJKmGp6gizHj` |
+| Deploy slot | `470607512` |
+| Local deploy artifact SHA-256 | `4def6997c51fb4ac2adf5963960845481913dfd28748990a7bb0be42cd63934d` |
+| IDL account | `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4` |
+| IDL check | `anchor idl fetch ... | rg "set_paused|PauseStateChanged"` returned both names |
+
+The pause smoke used `.agent-keys/a3-devnet-pause-smoke/` with `skill_id = a3pause-20260619`. It first prepared a normal paid listing with a linked vouch and a purchase, then exercised pause/unpause against the deployed program:
+
+```bash
+AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=~/dev-keypair.json \
+  npm run smoke:devnet-usdc -- \
+  --apply \
+  --pause-smoke \
+  --state-dir .agent-keys/a3-devnet-pause-smoke \
+  --skill-id a3pause-20260619
+```
+
+Key smoke transactions:
+
+| Step | Tx |
+| --- | --- |
+| `set-paused-true` | `494JNakPV7iiKYuQRtwphMizitRCt82diXMNW1cx4szxR4Vjn4AdWZE5HWptJABfAeN5Y2zTnfoWboMqideLftAR` |
+| `paused-create-skill-listing` | expected simulation failure containing `Protocol is paused` |
+| `claim-voucher-revenue-while-paused` | `2oAJAA4zHZkPp6BS1Uqq87cS6A66NchJ8SF5TB9rK6qk8opsMco4FjSg8ynBqGSctWPHZt3ZUVbjXogY9p9rQk3e` |
+| `set-paused-false` | `rCZDRXpAWN2vBbZ4RxjcJY8C8SqgnAkjbEE26Hukx4b8UE7RzzRvbc1k7KvywkGWkfypHUB7CrQRqYrQJg9J8DH` |
+| `create-skill-listing-after-unpause` | `tbyei3mZd5y4DQXpaxu7saJcYrGfc47U7p2kwRqjXiYinimhrRUDG9U7rAA7w8dMuB12r8kJrcR3TQDLiLesXJo` |
+
+Post-state confirmed:
+
+- `config.paused = false` after unpause.
+- Pause smoke listing `35amXLjzA6q9C1oDWVbDZ5CoRUHUKGj2t2hUjaVH27P1` exists with status `active`.
+- The blocked risk-creating flow was `create_skill_listing` while paused.
+- The allowed claim flow was `claim_voucher_revenue` while paused.
+
+The first live apply was interrupted by public devnet RPC rate limits after setting `paused = true`; the same command was rerun and completed the unpause and final listing creation. A final dry run confirmed `paused = false` before this state was recorded.
 
 ## Track B x402 bridge smoke
 

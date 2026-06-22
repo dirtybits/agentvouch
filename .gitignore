@@ -50,6 +50,7 @@ db-inventory*.json
 # tooling
 .vercel
 .firecrawl
+/agent-skills/
 
 # Cursor
 .cursor/hooks/

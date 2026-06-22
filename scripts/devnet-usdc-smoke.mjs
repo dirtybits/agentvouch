@@ -40,6 +40,7 @@ const STATE_DIR = path.resolve(".agent-keys/m11-devnet-smoke");
 function parseArgs(argv) {
   const options = {
     apply: false,
+    pauseSmoke: false,
     rpcUrl: process.env.AGENTVOUCH_RPC_URL ?? DEVNET_RPC_URL,
     funderKeypair:
       process.env.AGENTVOUCH_SMOKE_FUNDER_KEYPAIR ??
@@ -69,6 +70,8 @@ function parseArgs(argv) {
 
     if (arg === "--apply") {
       options.apply = true;
+    } else if (arg === "--pause-smoke") {
+      options.pauseSmoke = true;
     } else if (arg === "--rpc-url") {
       options.rpcUrl = next();
     } else if (arg === "--funder-keypair") {
@@ -211,6 +214,7 @@ async function main() {
   ) {
     writeFileSync(skillIdPath, persistedSkillId);
   }
+  const pauseSkillId = `${persistedSkillId.slice(0, 26)}-pause`;
 
   const connection = new anchor.web3.Connection(options.rpcUrl, "confirmed");
   const provider = new anchor.AnchorProvider(
@@ -233,6 +237,11 @@ async function main() {
     "skill",
     author.publicKey.toBuffer(),
     Buffer.from(persistedSkillId)
+  );
+  const pauseSkillListing = pda(
+    "skill",
+    author.publicKey.toBuffer(),
+    Buffer.from(pauseSkillId)
   );
   const authorRewardVaultAuthority = pda(
     "author_reward_vault_authority",
@@ -278,6 +287,20 @@ async function main() {
     actor.publicKey.toBuffer(),
     skillListing.toBuffer(),
     listingRevisionSeed
+  );
+  const pauseListingRevisionSeed = u64Le(0n);
+  const pauseListingSettlement = pda(
+    "listing_settlement",
+    pauseSkillListing.toBuffer(),
+    pauseListingRevisionSeed
+  );
+  const pauseAuthorProceedsVaultAuthority = pda(
+    "author_proceeds_vault_authority",
+    pauseListingSettlement.toBuffer()
+  );
+  const pauseAuthorProceedsVault = pda(
+    "author_proceeds_vault",
+    pauseListingSettlement.toBuffer()
   );
   const disputeIdSeed = u64Le(options.disputeId);
   const authorDispute = pda(
@@ -344,12 +367,18 @@ async function main() {
   if (configAccount.chainContext !== DEVNET_CHAIN_CONTEXT) {
     throw new Error("Config chain context does not match devnet CAIP-2.");
   }
+  const requiredAuthority = options.pauseSmoke
+    ? configAccount.pauseAuthority
+    : configAccount.configAuthority;
+  const requiredAuthorityLabel = options.pauseSmoke
+    ? "pause authority"
+    : "config authority";
   if (
     authority &&
-    authority.publicKey.toBase58() !== configAccount.configAuthority.toBase58()
+    authority.publicKey.toBase58() !== requiredAuthority.toBase58()
   ) {
     throw new Error(
-      `Authority keypair ${authority.publicKey.toBase58()} does not match config authority ${configAccount.configAuthority.toBase58()}.`
+      `Authority keypair ${authority.publicKey.toBase58()} does not match ${requiredAuthorityLabel} ${requiredAuthority.toBase58()}.`
     );
   }
   const disputeBondUsdcMicros = BigInt(
@@ -418,6 +447,7 @@ async function main() {
 
   const summary = {
     mode: options.apply ? "apply" : "dry-run",
+    smokeMode: options.pauseSmoke ? "pause" : "full",
     rpcUrl: options.rpcUrl,
     programId: PROGRAM_ID.toBase58(),
     usdcMint: DEVNET_USDC_MINT.toBase58(),
@@ -430,6 +460,7 @@ async function main() {
     authorKeypairPath,
     actorKeypairPath,
     skillId: persistedSkillId,
+    pauseSkillId,
     amounts: {
       authorBondUsdcMicros: options.authorBondUsdcMicros.toString(),
       vouchUsdcMicros: options.vouchUsdcMicros.toString(),
@@ -456,6 +487,7 @@ async function main() {
       authorBondVaultAuthority: authorBondVaultAuthority.toBase58(),
       authorBondVault: authorBondVault.toBase58(),
       skillListing: skillListing.toBase58(),
+      pauseSkillListing: pauseSkillListing.toBase58(),
       authorRewardVaultAuthority: authorRewardVaultAuthority.toBase58(),
       authorRewardVault: authorRewardVault.toBase58(),
       vouch: vouch.toBase58(),
@@ -486,23 +518,34 @@ async function main() {
       purchaseExists: Boolean(existingPurchase),
       authorDisputeExists: Boolean(existingAuthorDispute),
       configAuthority: configAccount.configAuthority.toBase58(),
+      pauseAuthority: configAccount.pauseAuthority.toBase58(),
+      paused: configAccount.paused,
     },
-    plannedSteps: [
-      "fund author SOL for account rent if below 0.1 SOL",
-      "fund actor SOL for account rent if below 0.1 SOL",
-      "create author USDC ATA if missing",
-      "fund author USDC ATA for the author bond if needed",
-      "create and fund actor USDC ATA for vouching and purchasing",
-      "register actor/voucher/buyer profile",
-      "register author profile",
-      "deposit author bond",
-      "create paid skill listing and settlement vaults",
-      "create USDC vouch from funder to author",
-      "link the vouch to the paid listing",
-      "purchase listing as funder/buyer",
-      "claim voucher revenue to funder USDC ATA",
-      "if an authority keypair is provided: open an author dispute, resolve upheld, slash linked vouches, create a refund pool, and claim the buyer refund",
-    ],
+    plannedSteps: options.pauseSmoke
+      ? [
+          "prepare a fresh paid listing with a linked vouch and one purchase",
+          "set paused true with the configured pause authority",
+          "prove a new paid listing is blocked while paused",
+          "claim voucher revenue while paused",
+          "set paused false with the configured pause authority",
+          "prove the previously blocked paid listing can be created after unpause",
+        ]
+      : [
+          "fund author SOL for account rent if below 0.1 SOL",
+          "fund actor SOL for account rent if below 0.1 SOL",
+          "create author USDC ATA if missing",
+          "fund author USDC ATA for the author bond if needed",
+          "create and fund actor USDC ATA for vouching and purchasing",
+          "register actor/voucher/buyer profile",
+          "register author profile",
+          "deposit author bond",
+          "create paid skill listing and settlement vaults",
+          "create USDC vouch from funder to author",
+          "link the vouch to the paid listing",
+          "purchase listing as funder/buyer",
+          "claim voucher revenue to funder USDC ATA",
+          "if an authority keypair is provided: open an author dispute, resolve upheld, slash linked vouches, create a refund pool, and claim the buyer refund",
+        ],
   };
 
   if (!options.apply) {
@@ -536,6 +579,26 @@ async function main() {
     );
     transactions.push({ label, signature });
     return signature;
+  }
+
+  async function expectFailure(label, buildTransaction, signers, expectedText) {
+    try {
+      await send(label, await buildTransaction(), signers);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes(expectedText)) {
+        throw new Error(
+          `${label} failed, but not with "${expectedText}": ${message}`
+        );
+      }
+      transactions.push({
+        label,
+        expectedFailure: true,
+        reason: message.split("\n")[0],
+      });
+      return;
+    }
+    throw new Error(`${label} unexpectedly succeeded.`);
   }
 
   if (BigInt(initialAuthorSol) < AUTHOR_SOL_FLOOR_LAMPORTS) {
@@ -796,6 +859,154 @@ async function main() {
       })
       .transaction();
     await send("purchase-skill", tx, [actor]);
+  }
+
+  if (options.pauseSmoke) {
+    if (!authority) {
+      throw new Error(
+        "Pause smoke requires AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR or --authority-keypair for config.pause_authority."
+      );
+    }
+    if (await accountExists(connection, pauseSkillListing)) {
+      throw new Error(
+        `Pause smoke listing ${pauseSkillListing.toBase58()} already exists. Pass a fresh --skill-id.`
+      );
+    }
+
+    async function setPausedValue(paused, label) {
+      const tx = await program.methods
+        .setPaused(paused)
+        .accountsStrict({
+          config,
+          pauseAuthority: authority.publicKey,
+        })
+        .transaction();
+      await send(label, tx, [authority]);
+
+      const pauseConfig = await program.account.reputationConfig.fetch(config);
+      if (pauseConfig.paused !== paused) {
+        throw new Error(
+          `set_paused(${paused}) did not persist config.paused = ${paused}.`
+        );
+      }
+    }
+
+    async function unpauseAfterFailure() {
+      try {
+        const currentConfig = await program.account.reputationConfig.fetch(
+          config
+        );
+        if (currentConfig.paused) {
+          await setPausedValue(false, "set-paused-false-cleanup");
+        }
+      } catch (cleanupError) {
+        console.error(
+          "Pause smoke failed after pausing, and cleanup unpause also failed:",
+          cleanupError
+        );
+      }
+    }
+
+    try {
+      await setPausedValue(true, "set-paused-true");
+
+      await expectFailure(
+        "paused-create-skill-listing",
+        () =>
+          program.methods
+            .createSkillListing(
+              pauseSkillId,
+              `https://agentvouch.xyz/smoke/${pauseSkillId}.md`,
+              "A3 Pause Smoke",
+              "Pause smoke listing",
+              bn(options.priceUsdcMicros)
+            )
+            .accountsStrict({
+              skillListing: pauseSkillListing,
+              authorProfile,
+              config,
+              authorBond: null,
+              usdcMint: DEVNET_USDC_MINT,
+              listingSettlement: pauseListingSettlement,
+              authorProceedsVaultAuthority: pauseAuthorProceedsVaultAuthority,
+              authorProceedsVault: pauseAuthorProceedsVault,
+              author: author.publicKey,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            })
+            .transaction(),
+        [author],
+        "Protocol is paused"
+      );
+
+      let tx = await program.methods
+        .claimVoucherRevenue()
+        .accountsStrict({
+          authorProfile,
+          vouch,
+          voucherProfile: actorProfile,
+          config,
+          usdcMint: DEVNET_USDC_MINT,
+          authorRewardVaultAuthority,
+          authorRewardVault,
+          voucherUsdcAccount: actorUsdcAccount,
+          voucher: actor.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .transaction();
+      await send("claim-voucher-revenue-while-paused", tx, [actor]);
+
+      await setPausedValue(false, "set-paused-false");
+    } catch (error) {
+      await unpauseAfterFailure();
+      throw error;
+    }
+
+    const tx = await program.methods
+      .createSkillListing(
+        pauseSkillId,
+        `https://agentvouch.xyz/smoke/${pauseSkillId}.md`,
+        "A3 Pause Smoke",
+        "Pause smoke listing",
+        bn(options.priceUsdcMicros)
+      )
+      .accountsStrict({
+        skillListing: pauseSkillListing,
+        authorProfile,
+        config,
+        authorBond: null,
+        usdcMint: DEVNET_USDC_MINT,
+        listingSettlement: pauseListingSettlement,
+        authorProceedsVaultAuthority: pauseAuthorProceedsVaultAuthority,
+        authorProceedsVault: pauseAuthorProceedsVault,
+        author: author.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .transaction();
+    await send("create-skill-listing-after-unpause", tx, [author]);
+
+    const finalPauseListing = await program.account.skillListing.fetch(
+      pauseSkillListing
+    );
+    const finalConfig = await program.account.reputationConfig.fetch(config);
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          ...summary,
+          transactions,
+          postState: {
+            paused: finalConfig.paused,
+            pauseSkillListing: pauseSkillListing.toBase58(),
+            pauseListingStatus: enumVariant(finalPauseListing.status),
+          },
+        },
+        null,
+        2
+      )
+    );
+    return;
   }
 
   try {

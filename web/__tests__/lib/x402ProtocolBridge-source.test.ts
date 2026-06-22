@@ -23,4 +23,9 @@ describe("x402 protocol bridge source", () => {
     expect(source).toContain('decodedText.startsWith("[")');
     expect(source).toContain("base64:<json-secret>");
   });
+
+  it("fails closed before protocol x402 settlement when the on-chain config is paused", () => {
+    expect(source).toContain("configAccount.data.paused");
+    expect(source).toContain("AgentVouch protocol is paused");
+  });
 });

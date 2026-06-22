@@ -23,6 +23,7 @@ export * from "./registerAgent";
 export * from "./removeSkillListing";
 export * from "./resolveAuthorDispute";
 export * from "./revokeVouch";
+export * from "./setPaused";
 export * from "./settleX402Purchase";
 export * from "./slashDisputeVouches";
 export * from "./unlinkVouchFromListing";

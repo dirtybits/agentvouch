@@ -49,6 +49,7 @@ import {
   FiFlag,
   FiLoader,
   FiPackage,
+  FiSettings,
   FiShield,
   FiTag,
   FiTrendingUp,
@@ -124,9 +125,6 @@ type AgentProfileData = NonNullable<
 type VouchRecord = Awaited<
   ReturnType<ReputationOracle["getAllVouchesForAgent"]>
 >[number];
-type SkillListingRecord = Awaited<
-  ReturnType<ReputationOracle["getSkillListingsByAuthor"]>
->[number];
 
 export default function AuthorProfilePage() {
   const params = useParams();
@@ -146,9 +144,6 @@ export default function AuthorProfilePage() {
   const [vouchesGiven, setVouchesGiven] = useState<VouchRecord[]>([]);
   const [repoSkills, setRepoSkills] = useState<RepoSkill[]>([]);
   const [chainSkills, setChainSkills] = useState<RepoSkill[]>([]);
-  const [authorSkillListings, setAuthorSkillListings] = useState<
-    SkillListingRecord[]
-  >([]);
   const [authorTrust, setAuthorTrust] = useState<TrustData | null>(null);
   const [authorIdentity, setAuthorIdentity] =
     useState<AgentIdentitySummary | null>(null);
@@ -219,19 +214,17 @@ export default function AuthorProfilePage() {
     setLoading(true);
     try {
       const agentAddr = address(pubkey);
-      const [prof, received, given, onChainListings, repoRes, authorRes] =
-        await Promise.all([
-          oracle.getAgentProfile(agentAddr).catch(() => null),
-          oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
-          oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
-          oracle.getSkillListingsByAuthor(agentAddr).catch(() => []),
-          fetch(`/api/skills?author=${pubkey}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-          fetch(`/api/author/${pubkey}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-        ]);
+      const [prof, received, given, repoRes, authorRes] = await Promise.all([
+        oracle.getAgentProfile(agentAddr).catch(() => null),
+        oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
+        oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
+        fetch(`/api/skills?author=${pubkey}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch(`/api/author/${pubkey}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
       const relatedProfileKeys = Array.from(
         new Set(
           [
@@ -260,7 +253,6 @@ export default function AuthorProfilePage() {
       setProfile(prof);
       setVouchesReceived(received);
       setVouchesGiven(given);
-      setAuthorSkillListings(onChainListings);
       const apiSkills = (repoRes?.skills ?? []) as RepoSkill[];
       setRepoSkills(apiSkills.filter((skill) => skill.source !== "chain"));
       setChainSkills(apiSkills.filter((skill) => skill.source === "chain"));
@@ -1097,11 +1089,11 @@ export default function AuthorProfilePage() {
         )}
 
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
             <Link
               href="/skills"
-              className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition"
+              className="mt-1 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition"
             >
               <FiArrowLeft className="w-4 h-4" />
             </Link>
@@ -1139,6 +1131,15 @@ export default function AuthorProfilePage() {
               </p>
             </div>
           </div>
+          {isOwnProfile && (
+            <Link
+              href="/settings"
+              className={`${navButtonSecondaryInlineClass} shrink-0 sm:mt-1`}
+            >
+              <FiSettings className="w-4 h-4" />
+              Settings
+            </Link>
+          )}
         </div>
 
         {/* Trust Badge */}
