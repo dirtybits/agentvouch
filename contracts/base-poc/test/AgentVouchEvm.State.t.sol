@@ -82,16 +82,11 @@ contract AgentVouchEvmStateTest is Test {
         av.registerAgent("");
     }
 
-    function test_pauseBlocksRegisterThenUnpauseAllows() public {
+    function test_registerAllowedWhilePaused() public {
+        // register_agent has no `require!(!config.paused)` guard on Solana, so it must
+        // stay open while paused (no funds move). Verified against main 2026-06-22.
         vm.prank(admin);
         av.setPaused(true);
-
-        vm.prank(alice);
-        vm.expectRevert(); // Pausable.EnforcedPause
-        av.registerAgent("ipfs://alice");
-
-        vm.prank(admin);
-        av.setPaused(false);
 
         vm.prank(alice);
         av.registerAgent("ipfs://alice");

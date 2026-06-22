@@ -174,8 +174,10 @@ contract BondsVouchesListingsTest is Test {
         av.revokeVouch(author);
     }
 
-    // --- pause: inflows blocked, exits open (A3 parity) ---
-    function test_pauseBlocksInflowsAllowsExits() public {
+    // --- pause: exact A3 guard set (verified vs main 2026-06-22) ---
+    // Blocked: deposit_author_bond, withdraw_author_bond, vouch, create_skill_listing.
+    // Allowed: revoke_vouch (and register/claim/proceeds, covered elsewhere).
+    function test_pauseGuardSet() public {
         vm.prank(author);
         av.depositAuthorBond(FLOOR);
         vm.prank(voucher);
@@ -184,7 +186,6 @@ contract BondsVouchesListingsTest is Test {
         vm.prank(admin);
         av.setPaused(true);
 
-        // risk-increasing inflows blocked
         vm.prank(author);
         vm.expectRevert();
         av.depositAuthorBond(1);
@@ -194,12 +195,14 @@ contract BondsVouchesListingsTest is Test {
         vm.prank(author);
         vm.expectRevert();
         av.createSkillListing(keccak256("p"), "u", "n", "d", MIN_PAID);
+        // withdraw_author_bond IS paused-guarded (collateral exit)
+        vm.prank(author);
+        vm.expectRevert();
+        av.withdrawAuthorBond(1);
 
-        // safe exits remain open while paused
+        // revoke_vouch is NOT paused-guarded — stays open
         vm.prank(voucher);
         av.revokeVouch(author);
-        vm.prank(author);
-        av.withdrawAuthorBond(FLOOR);
-        assertEq(av.getProfile(author).authorBondUsdcMicros, 0);
+        assertEq(av.getProfile(author).totalVouchStakeReceivedUsdcMicros, 0);
     }
 }

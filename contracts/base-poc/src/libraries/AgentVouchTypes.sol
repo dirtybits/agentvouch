@@ -121,8 +121,22 @@ library AgentVouchTypes {
     ///      `slashedDeposit` is ring-fenced (refund-pool-only, set in Phase 5).
     struct ListingSettlement {
         bool initialized;
+        uint64 createdAt; // basis for the author-proceeds time lock
         uint256 authorProceedsUsdcMicros;
         uint256 slashedDepositUsdcMicros;
         bool locked;
+    }
+
+    /// @dev Mirrors Solana `Purchase` (state/purchase.rs). Revision-scoped receipt;
+    ///      `exists` distinguishes a live receipt from an empty mapping slot.
+    struct Purchase {
+        bool exists;
+        address buyer;
+        bytes32 listingId;
+        uint64 revision;
+        uint256 priceUsdcMicros;
+        uint256 authorShareUsdcMicros;
+        uint256 voucherPoolUsdcMicros;
+        uint64 timestamp;
     }
 }

@@ -13,11 +13,17 @@ import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
 ///         instrument only; Solana (`programs/agentvouch`) remains canonical.
 /// @dev    No rent/ATA/PDA concepts: the contract custodies USDC and tracks every
 ///         balance as internal accounting. Authority is OpenZeppelin roles, not
-///         config pubkeys. A single `Pausable` flag provides A3 parity; risk-
-///         increasing inflows are `whenNotPaused`, while exits stay open (A3:
-///         "block new risk-increasing flows, preserve agreed safe exits").
+///         config pubkeys. A single `Pausable` flag provides A3 parity. The exact
+///         paused set mirrors the Solana `require!(!config.paused)` guards (verified
+///         2026-06-22): blocked = deposit_author_bond, withdraw_author_bond, vouch,
+///         create/update_skill_listing, purchase_skill, open_dispute, x402 settle.
+///         Allowed while paused = register_agent, revoke_vouch, remove_listing,
+///         withdraw_author_proceeds, claim_voucher_revenue, refund claims.
 contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    // Matches Solana REWARD_INDEX_SCALE (state/skill_listing.rs).
+    uint256 internal constant REWARD_INDEX_SCALE = 1e12;
 
     // --- Roles (replace Solana Config authority pubkeys) ---
     bytes32 public constant CONFIG_ROLE = keccak256("CONFIG_ROLE");
@@ -35,6 +41,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     mapping(bytes32 => AgentVouchTypes.Vouch) internal vouches; // keccak256(voucher, vouchee)
     mapping(bytes32 => AgentVouchTypes.SkillListing) internal listings; // keccak256(author, skillIdHash)
     mapping(bytes32 => mapping(uint64 => AgentVouchTypes.ListingSettlement)) internal settlements;
+    mapping(bytes32 => AgentVouchTypes.Purchase) internal purchases; // keccak256(buyer, listingId, revision)
 
     event ConfigInitialized(address indexed usdc, string chainContext);
     event PausedSet(address indexed by, bool paused);
@@ -45,6 +52,17 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     event VouchRevoked(address indexed voucher, address indexed vouchee, uint256 returned);
     event SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free);
     event SkillListingRemoved(bytes32 indexed listingId);
+    event SkillPurchased(
+        bytes32 indexed purchaseId,
+        bytes32 indexed listingId,
+        address indexed buyer,
+        uint64 revision,
+        uint256 price,
+        uint256 authorShare,
+        uint256 voucherPool
+    );
+    event AuthorProceedsWithdrawn(bytes32 indexed listingId, uint64 revision, address indexed author, uint256 amount);
+    event VoucherRevenueClaimed(address indexed voucher, address indexed author, uint256 amount);
 
     error ZeroAddress();
     error AlreadyInitialized();
@@ -67,6 +85,15 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error NotListingAuthor();
     error BelowMinPaidPrice();
     error FreeListingBondFloor();
+    error FreeSkillNotPurchased();
+    error ListingNotActive();
+    error SettlementNotInitialized();
+    error SettlementLocked();
+    error DuplicatePurchase();
+    error VoucherPoolTooSmall();
+    error NothingToClaim();
+    error ProceedsTimeLocked();
+    error InsufficientProceeds();
 
     /// @param usdc_ 6-decimal USDC token on the target Base network.
     /// @param admin holder of every role for the POC (a multisig/timelock in prod).
@@ -100,12 +127,13 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit PausedSet(msg.sender, paused_);
     }
 
-    // --- Profiles (register_agent) ---
+    // --- Profiles (register_agent: NOT paused-guarded on Solana) ---
 
     /// @notice Port of `register_agent`. On Solana this inits the AgentProfile PDA
     ///         with `payer = authority` (rent). On Base it is a plain state write —
-    ///         no rent, no payer split; a paymaster/relayer sponsors the gas.
-    function registerAgent(string calldata metadataUri) external whenNotPaused {
+    ///         no rent, no payer split; a paymaster/relayer sponsors the gas. Allowed
+    ///         while paused (no funds move; matches Solana's lack of a paused guard).
+    function registerAgent(string calldata metadataUri) external {
         if (!configInitialized) revert NotInitialized();
         if (bytes(metadataUri).length == 0) revert EmptyMetadata();
         AgentVouchTypes.AgentProfile storage p = profiles[msg.sender];
@@ -116,10 +144,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit AgentRegistered(msg.sender, metadataUri, p.registeredAt);
     }
 
-    // --- Author bonds (deposit_author_bond, withdraw_author_bond) ---
+    // --- Author bonds (deposit_author_bond, withdraw_author_bond — both paused-guarded) ---
 
-    /// @notice Port of `deposit_author_bond` (Solana `payer = author` → rent). On Base,
-    ///         a sponsored write that pulls USDC into the internal author-bond ledger.
     function depositAuthorBond(uint256 amount) external nonReentrant whenNotPaused {
         if (!configInitialized) revert NotInitialized();
         if (amount == 0) revert ZeroAmount();
@@ -130,9 +156,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit AuthorBondDeposited(msg.sender, amount, p.authorBondUsdcMicros);
     }
 
-    /// @notice Port of `withdraw_author_bond`. A safe exit (not pause-gated), but
-    ///         locked while the author has open disputes or active free-listing exposure.
-    function withdrawAuthorBond(uint256 amount) external nonReentrant {
+    /// @notice Port of `withdraw_author_bond`. An author-side collateral exit, which
+    ///         Solana blocks while paused (`require!(!config.paused)`), so it is
+    ///         `whenNotPaused` here. Also locked by open disputes / free-listing floor.
+    function withdrawAuthorBond(uint256 amount) external nonReentrant whenNotPaused {
         AgentVouchTypes.AgentProfile storage p = profiles[msg.sender];
         if (amount == 0) revert ZeroAmount();
         if (amount > p.authorBondUsdcMicros) revert InsufficientBond();
@@ -148,8 +175,6 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     // --- Vouches (vouch, revoke_vouch) ---
 
-    /// @notice Port of `vouch` (Solana `payer = voucher` → rent). Pulls USDC into the
-    ///         internal vouch-stake ledger; snapshots the vouchee reward index at entry.
     function vouch(address vouchee, uint256 stake) external nonReentrant whenNotPaused {
         if (!configInitialized) revert NotInitialized();
         if (vouchee == address(0) || vouchee == msg.sender) revert ZeroAddress();
@@ -185,8 +210,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit Vouched(msg.sender, vouchee, stake);
     }
 
-    /// @notice Port of `revoke_vouch`. Returns active stake. Blocked while the vouchee
-    ///         has open disputes (A1 lock). Reward settlement on revoke lands in Phase 3.
+    /// @notice Port of `revoke_vouch`. Accrues earned rewards first (so pre-revoke
+    ///         earnings stay claimable), then returns active stake. Blocked while the
+    ///         vouchee has open disputes (A1 lock). Allowed while paused.
     function revokeVouch(address vouchee) external nonReentrant {
         AgentVouchTypes.Vouch storage v = vouches[vouchId(msg.sender, vouchee)];
         if (v.voucher == address(0) || v.status != AgentVouchTypes.VouchStatus.Active) {
@@ -194,6 +220,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         }
         AgentVouchTypes.AgentProfile storage vee = profiles[vouchee];
         if (vee.openDisputes > 0) revert DisputeLocked();
+
+        // Settle rewards earned up to now before the stake stops backing.
+        _accrueAuthorRewards(vouchee, v);
 
         uint256 stake = v.stakeUsdcMicros;
         v.status = AgentVouchTypes.VouchStatus.Revoked;
@@ -203,10 +232,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit VouchRevoked(msg.sender, vouchee, stake);
     }
 
-    // --- Listings (create_skill_listing, remove_skill_listing, implicit initialize_listing_settlement) ---
+    // --- Listings (create_skill_listing, remove_skill_listing) ---
 
-    /// @notice Port of `create_skill_listing` (+ implicit `initialize_listing_settlement`).
-    ///         Solana inits PDAs with `payer = author` (rent); on Base, a sponsored write.
     function createSkillListing(
         bytes32 skillIdHash,
         string calldata uri,
@@ -241,13 +268,15 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         l.currentRevision = 1;
         l.status = AgentVouchTypes.ListingStatus.Active;
         l.exists = true;
-        settlements[id][1].initialized = true; // implicit initialize_listing_settlement
+        // implicit initialize_listing_settlement for revision 1
+        settlements[id][1].initialized = true;
+        settlements[id][1].createdAt = uint64(block.timestamp);
         emit SkillListingCreated(id, msg.sender, priceUsdcMicros, free);
     }
 
-    /// @notice Port of `remove_skill_listing` (and `close_skill_listing`: on EVM there is
-    ///         no rent to recoup, so closing is just marking Removed — see plan parity map).
-    ///         Blocked while dispute-locked.
+    /// @notice Port of `remove_skill_listing` (and `close_skill_listing`: on EVM there
+    ///         is no rent to recoup, so closing is just marking Removed). Blocked while
+    ///         dispute-locked; allowed while paused.
     function removeSkillListing(bytes32 id) external {
         AgentVouchTypes.SkillListing storage l = listings[id];
         if (!l.exists) revert ListingNotFound();
@@ -260,6 +289,136 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit SkillListingRemoved(id);
     }
 
+    // --- Purchase, rewards, proceeds (purchase_skill, claim_voucher_revenue, withdraw_author_proceeds) ---
+
+    /// @notice Port of `purchase_skill`. Splits price by backing: if the author has
+    ///         external vouch stake, author_share = price*authorBps/1e4 and voucher_pool
+    ///         = price*voucherBps/1e4 (require voucher_pool > 0); otherwise the full
+    ///         price routes to author proceeds and no voucher pool is created. The
+    ///         voucher pool advances the author-wide reward index. Atomic: the receipt
+    ///         and USDC movement happen together or revert together.
+    function purchaseSkill(bytes32 id) external nonReentrant whenNotPaused returns (bytes32 pId) {
+        AgentVouchTypes.SkillListing storage l = listings[id];
+        if (!l.exists) revert ListingNotFound();
+        if (l.status != AgentVouchTypes.ListingStatus.Active) revert ListingNotActive();
+        if (l.lockedByDispute) revert DisputeLocked();
+        uint256 price = l.priceUsdcMicros;
+        if (price == 0) revert FreeSkillNotPurchased();
+
+        uint64 revision = l.currentRevision;
+        AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
+        if (!s.initialized) revert SettlementNotInitialized();
+        if (s.locked) revert SettlementLocked();
+
+        pId = purchaseId(msg.sender, id, revision);
+        if (purchases[pId].exists) revert DuplicatePurchase();
+
+        address author = l.author;
+        uint256 activeVouchStake = profiles[author].totalVouchStakeReceivedUsdcMicros;
+
+        uint256 authorShare;
+        uint256 voucherPool;
+        if (activeVouchStake > 0) {
+            authorShare = (price * config.authorShareBps) / 10_000;
+            voucherPool = (price * config.voucherShareBps) / 10_000;
+            if (voucherPool == 0) revert VoucherPoolTooSmall();
+        } else {
+            authorShare = price;
+            voucherPool = 0;
+        }
+
+        // Pull exactly what is allocated (matches Solana's two separate transfers).
+        usdc.safeTransferFrom(msg.sender, address(this), authorShare + voucherPool);
+
+        // Record the revision-scoped receipt.
+        purchases[pId] = AgentVouchTypes.Purchase({
+            exists: true,
+            buyer: msg.sender,
+            listingId: id,
+            revision: revision,
+            priceUsdcMicros: price,
+            authorShareUsdcMicros: authorShare,
+            voucherPoolUsdcMicros: voucherPool,
+            timestamp: uint64(block.timestamp)
+        });
+
+        s.authorProceedsUsdcMicros += authorShare;
+        l.totalDownloads += 1;
+        l.totalRevenueUsdcMicros += price;
+
+        if (voucherPool > 0) {
+            uint256 indexDelta = (voucherPool * REWARD_INDEX_SCALE) / activeVouchStake;
+            if (indexDelta == 0) revert VoucherPoolTooSmall();
+            AgentVouchTypes.AgentProfile storage ap = profiles[author];
+            ap.rewardIndexUsdcMicrosX1e12 += indexDelta;
+            ap.unclaimedVoucherRevenueUsdcMicros += voucherPool;
+        }
+
+        emit SkillPurchased(pId, id, msg.sender, revision, price, authorShare, voucherPool);
+    }
+
+    /// @notice Port of `claim_voucher_revenue`. Accrues then pays out the voucher's
+    ///         pending rewards. NOT paused-guarded on Solana — claims stay open while paused.
+    function claimVoucherRevenue(address author) external nonReentrant {
+        AgentVouchTypes.Vouch storage v = vouches[vouchId(msg.sender, author)];
+        if (v.voucher == address(0)) revert NoActiveVouch();
+
+        _accrueAuthorRewards(author, v);
+        uint256 claimable = v.pendingRewardsUsdcMicros;
+        if (claimable == 0) revert NothingToClaim();
+
+        AgentVouchTypes.AgentProfile storage ap = profiles[author];
+        // checked_sub parity: claim can never exceed the author's unclaimed pool.
+        ap.unclaimedVoucherRevenueUsdcMicros -= claimable;
+
+        v.pendingRewardsUsdcMicros = 0;
+        v.cumulativeRevenueUsdcMicros += claimable;
+        v.lastPayoutAt = uint64(block.timestamp);
+
+        usdc.safeTransfer(msg.sender, claimable);
+        emit VoucherRevenueClaimed(msg.sender, author, claimable);
+    }
+
+    /// @notice Port of `withdraw_author_proceeds`. NOT paused-guarded (earned revenue,
+    ///         treated like a claim). Blocked by settlement dispute lock and the
+    ///         author-proceeds time lock (createdAt + authorProceedsLockSeconds).
+    function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount) external nonReentrant {
+        AgentVouchTypes.SkillListing storage l = listings[id];
+        if (!l.exists) revert ListingNotFound();
+        if (l.author != msg.sender) revert NotListingAuthor();
+        if (amount == 0) revert ZeroAmount();
+
+        AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
+        if (!s.initialized) revert SettlementNotInitialized();
+        if (s.locked) revert SettlementLocked();
+        // Hours/days-scale lock; a few seconds of validator timestamp drift is irrelevant.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < uint256(s.createdAt) + config.authorProceedsLockSeconds) {
+            revert ProceedsTimeLocked();
+        }
+        if (amount > s.authorProceedsUsdcMicros) revert InsufficientProceeds();
+
+        s.authorProceedsUsdcMicros -= amount;
+        usdc.safeTransfer(msg.sender, amount);
+        emit AuthorProceedsWithdrawn(id, revision, msg.sender, amount);
+    }
+
+    /// @dev Mirrors Solana `accrue_author_rewards`. Non-live vouches (Revoked/Slashed)
+    ///      or zero-stake do not accrue (their stake left the reward-index denominator),
+    ///      but already-accrued pending rewards stay claimable. Index only grows, so the
+    ///      subtraction never underflows for a real entry.
+    function _accrueAuthorRewards(address author, AgentVouchTypes.Vouch storage v) internal {
+        uint256 authorIndex = profiles[author].rewardIndexUsdcMicrosX1e12;
+        uint256 delta = authorIndex - v.entryRewardIndexUsdcMicrosX1e12;
+        if (delta == 0 || v.stakeUsdcMicros == 0 || v.status != AgentVouchTypes.VouchStatus.Active) {
+            v.entryRewardIndexUsdcMicrosX1e12 = authorIndex;
+            return;
+        }
+        uint256 accrued = (v.stakeUsdcMicros * delta) / REWARD_INDEX_SCALE;
+        v.pendingRewardsUsdcMicros += accrued;
+        v.entryRewardIndexUsdcMicrosX1e12 = authorIndex;
+    }
+
     // --- Id helpers (Solana seed concepts, not exposed as PDAs) ---
 
     function vouchId(address voucher, address vouchee) public pure returns (bytes32) {
@@ -268,6 +427,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     function listingId(address author, bytes32 skillIdHash) public pure returns (bytes32) {
         return keccak256(abi.encode(author, skillIdHash));
+    }
+
+    function purchaseId(address buyer, bytes32 id, uint64 revision) public pure returns (bytes32) {
+        return keccak256(abi.encode(buyer, id, revision));
     }
 
     // --- Views ---
@@ -294,5 +457,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         returns (AgentVouchTypes.ListingSettlement memory)
     {
         return settlements[id][revision];
+    }
+
+    function getPurchase(bytes32 pId) external view returns (AgentVouchTypes.Purchase memory) {
+        return purchases[pId];
     }
 }

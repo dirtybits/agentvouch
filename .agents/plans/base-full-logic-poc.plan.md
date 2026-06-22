@@ -10,10 +10,10 @@ todos:
     status: in_progress
   - id: core-state-roles
     content: Implement AgentVouchEvm config, roles, pause, profiles, bonds, vouches, listings, settlements, and internal USDC accounting
-    status: in_progress
+    status: completed
   - id: purchase-and-rewards
     content: Implement direct Base purchase flow with USDC custody, purchase receipts, author proceeds, author-wide voucher reward index, and claims
-    status: pending
+    status: completed
   - id: x402-settlement
     content: Implement and compare x402-compatible settlement lanes with payment-ref idempotency and protocol-visible purchase receipts
     status: pending
@@ -56,6 +56,7 @@ This is a decision instrument, not a migration branch. Solana remains the curren
 
 - 2026-06-22: Implementation started on branch `feat/base-poc-spike` (off `main`, which now carries this plan after #41). Foundry 1.7.1; deps OpenZeppelin Contracts v5.1.0 + forge-std, vendored under `contracts/base-poc/lib/` (gitignored, reproduce via `setup.sh`). **Phase 1 green:** `AgentVouchEvm` with `Config` + roles (`CONFIG/RESOLVER/TREASURY/SETTLEMENT/PAUSE`) + `Pausable` A3 parity + `registerAgent` (first rent-touching flow — a plain sponsored write on Base, no rent/payer), plus `MockUSDC` and `AgentVouchTypes`. `forge build` + 8/8 `forge test` pass. Scope target: Phases 0–4 (rent-touching core + x402), stop at the 4.5 gate. Cost-ceiling rubric threshold still to be set before the gate.
 - 2026-06-22 (Phase 2): bonds + vouches + listings green; **22/22 forge tests**. `depositAuthorBond`/`withdrawAuthorBond` (exit, locked by open disputes + free-listing bond-floor exposure), `vouch`/`revokeVouch` (USDC custody, reward-index entry snapshot, A1 open-dispute revoke lock), `createSkillListing` (+ implicit settlement init, free-listing floor / min-paid-price) and `removeSkillListing`. A3 pause: risk-increasing inflows are `whenNotPaused`, exits stay open. **Porting hazard surfaced + fixed:** Solana `VouchStatus::Active` is enum value `0`, which is also a fresh EVM storage slot's default — so existence is gated on a non-zero `voucher`, not on status (EVM mappings have no membership). Deferred to fold into later phases: `updateSkillListing` revision bump and `closeSkillListing` (on EVM, close ≈ remove — no rent to recoup). Next: Phase 3 (`purchaseSkill` + 60/40-vs-100% split + author-wide reward-index accrual + proceeds/claims).
+- 2026-06-22 (Phase 3): purchase + reward index + proceeds + claims green; **36/36 forge tests**. `purchaseSkill` (split: no-backing→100% author / backed→authorBps/voucherBps with `require voucher_pool>0`; revision-scoped receipt; duplicate-purchase guard; dispute + settlement locks; atomic — revert moves no USDC and writes no receipt), `claimVoucherRevenue` (NOT pause-guarded), `withdrawAuthorProceeds` (NOT pause-guarded; dispute lock + author-proceeds time lock), and `_accrueAuthorRewards` mirroring Solana's shared helper exactly: `index_delta = pool * 1e12 / activeStake`, per-voucher `stake * (authorIndex − entryIndex) / 1e12`, non-live/zero-stake skip accrual but keep pending, and **revoke accrues first** so pre-revoke earnings survive. `REWARD_INDEX_SCALE = 1e12`. Covered: 60/40 + 100% routing, single/multi-voucher pro-rata, late-voucher-earns-nothing, dup guard, proceeds time-lock, rewards-survive-revoke, pause set, and a solvency invariant. **A3 fidelity correction** (from grepping the real `require!(!config.paused)` set, not the ROADMAP prose): `register_agent` is NOT paused-guarded (allowed while paused) and `withdraw_author_bond` IS (blocked) — Phase 1/2 had both backwards; fixed + retested. Next: adversarial verification of the accounting (subagent fan-out), then Phase 4 (x402 lanes).
 
 ## External References Verified 2026-06-21
 
