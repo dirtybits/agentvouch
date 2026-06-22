@@ -79,6 +79,10 @@ export type ReputationConfig = {
   minPaidListingPriceUsdcMicros: bigint;
   authorShareBps: number;
   voucherShareBps: number;
+  /**
+   * Reserved/deferred. Current purchases route only author + voucher shares,
+   * so live configs must keep this at 0 until protocol fee collection ships.
+   */
   protocolFeeBps: number;
   slashPercentage: number;
   cooldownPeriod: bigint;
@@ -115,6 +119,10 @@ export type ReputationConfigArgs = {
   minPaidListingPriceUsdcMicros: number | bigint;
   authorShareBps: number;
   voucherShareBps: number;
+  /**
+   * Reserved/deferred. Current purchases route only author + voucher shares,
+   * so live configs must keep this at 0 until protocol fee collection ships.
+   */
   protocolFeeBps: number;
   slashPercentage: number;
   cooldownPeriod: number | bigint;
