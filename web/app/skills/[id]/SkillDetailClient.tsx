@@ -1129,6 +1129,13 @@ export default function SkillDetailPage({
       ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
       : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
+  const purchaseTitle = primaryUsdcPrice
+    ? isListingRequired
+      ? "On-chain listing required"
+      : "USDC primary pricing"
+    : isPaidSkill
+    ? "Paid Skill"
+    : "Free Skill";
   const purchaseDescription = !isPaidSkill
     ? "Download this free skill without connecting a wallet. Downloads are counted, but anonymous downloads are not wallet-attributed."
     : isListingRequired
