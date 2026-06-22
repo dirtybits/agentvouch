@@ -3,7 +3,7 @@ name: base-full-logic-poc
 overview: "Build an isolated Base/EVM proof of concept that ports AgentVouch's current USDC-native trust, listing, purchase, dispute, slashing, refund, pause, and x402 settlement logic by spec, without migrating production authority away from Solana."
 todos:
   - id: source-parity-spec
-    content: Freeze the Solana-to-EVM parity map for current AgentVouch state, instructions, events, and known A3 pause behavior
+    content: Freeze the Solana-to-EVM parity map (23 core instructions, 14 account structs, A3 pause behavior) and commit the Decision Rubric thresholds (per-action cost ceiling) before building
     status: pending
   - id: evm-workspace
     content: Add an isolated Foundry workspace under contracts/base-poc plus package-level ABI/type export strategy without disturbing Solana workspaces
@@ -17,6 +17,9 @@ todos:
   - id: x402-settlement
     content: Implement and compare x402-compatible settlement lanes with payment-ref idempotency and protocol-visible purchase receipts
     status: pending
+  - id: interim-decision-gate
+    content: Score the Decision Rubric on Phases 0-4 evidence (gas-free UX, settlement trust, cost, custody, accounting parity) and decide go/no-go before porting disputes/slashing/refunds
+    status: pending
   - id: disputes-slashing-refunds
     content: Port author disputes, liability scopes, dispute locks, voucher slashing, refund pools, claims, and close/expiry behavior
     status: pending
@@ -27,7 +30,7 @@ todos:
     content: Add feature-flagged web/API/CLI adapter stubs for Base chain_context, receipts, and read-only inspection without changing default Solana flows
     status: pending
   - id: decision-report
-    content: Produce a comparison report: Solana plus Kora/backing alpha vs Base full-logic POC for UX, cost, custody, security, and operational complexity
+    content: Produce the comparison report scored against the Decision Rubric: Solana plus Kora/backing alpha vs Base full-logic POC for UX, cost, custody, security, and operational complexity
     status: pending
 isProject: false
 ---
@@ -42,10 +45,11 @@ This is a decision instrument, not a migration branch. Solana remains the curren
 
 ## Status And Assumptions
 
-- Drafted 2026-06-21 on branch `base-expansion-agentvouch`.
-- User-provided update 2026-06-21: A3 emergency pause has merged and deployed. This worktree still appears to contain pre-A3 source/docs, so refresh from `main` before coding parity tests around `set_paused`.
-- Current local docs describe 23 Solana instructions and 14 Anchor account structs. Treat those as the parity surface unless `main` has changed.
-- Existing CAIP-2 labels already include Base as `eip155:8453`.
+- Drafted 2026-06-21; lives on branch `feat/base-poc` (3 doc-only commits ahead of `main`).
+- A3 emergency pause is merged and on `main` (verified 2026-06-21): `set_paused` exists at `programs/agentvouch/src/instructions/set_paused.rs`, is gated by `config.pause_authority`, and `.agents/plans/a3-emergency-pause.plan.md` shows all todos completed. The earlier "this worktree is pre-A3, refresh from `main`" hedge no longer applies; `set_paused` is already in the parity map below. Branch from current `main`/`feat/base-poc` and A3 is present.
+- Parity surface verified against `main` 2026-06-21: `programs/agentvouch/src/lib.rs` exposes **25 instruction handlers** (`pub fn`). Two are M13 migration helpers (`migrate_config_m13`, `migrate_skill_listing_m13`) that the POC does not port, which leaves **23 core protocol instructions** as the parity surface (the 23 rows in the parity map below, `set_paused` included) plus **14 `#[account]` structs**.
+- A3 pause enforcement is distributed, not centralized: `set_paused` only flips `config.paused`; each instruction enforces its own paused behavior. Derive the exact allowed/blocked flow set by grepping `paused` across `programs/agentvouch/src/instructions/*.rs` during Phase 0, not from `set_paused.rs` alone.
+- Existing CAIP-2 labels already include Base as `eip155:8453` (`web/lib/chains.ts`).
 - Do not call this a "transpile." The business rules port; Solana PDAs, rent, ATAs, Anchor constraints, and SPL token vault structure do not.
 
 ## External References Verified 2026-06-21
@@ -82,6 +86,23 @@ The POC is successful only if it proves all of the following:
 7. Gas and paymaster cost are measured for the core flows, not guessed.
 8. Atomic purchase lanes prove that if the transaction reverts, no purchase receipt is written and no USDC is moved.
 9. The final report clearly compares Base POC complexity against Solana plus Kora/backing-alpha path.
+
+## Decision Rubric
+
+This POC is a decision instrument, so the go/no-go criteria are fixed here before the build, not inferred after the effort is sunk. The Phase 7 report scores every dimension below against measured evidence. "Go" means Base earns a separate funded migration plan; "no-go" means Solana stays canonical and the Kora/backing-alpha path carries the friction work.
+
+Score each dimension Pass / Marginal / Fail with evidence, not impression:
+
+| Dimension | Pass | Fail |
+| --- | --- | --- |
+| Buyer gas-free UX | Buyer completes a paid purchase holding only USDC (no ETH, no per-purchase approval ceremony) on at least one lane. | Buyer needs ETH, or per-purchase friction is worse than the Solana + Kora target. |
+| Settlement trust | Winning lane's trust model is no worse than the current Solana x402 bridge; prefer Lane B (contract-consumed EIP-3009) over Lane C (settlement-authority attestation). | Only Lane C works and its settlement authority is an unbounded trusted writer. |
+| Per-action cost | Measured gas + paymaster cost per purchase is within the Phase 0 ceiling (set a concrete USD number, e.g. <= $0.05/purchase at target gas); low-value voucher claims have a viable threshold/batching fix. | Cost exceeds ceiling, or low-value claims go net-negative after reimbursement with no fix. |
+| Operator custody burden | Paymaster/relayer/settlement signer policy is bounded (allowlisted contract + selectors, per-user and global spend caps) and runnable without continuous manual intervention. | Requires a hot unbounded signer, constant babysitting, or worse custody posture than current Solana ops. |
+| Accounting parity (Phases 0-4) | Invariants hold under test: unique purchase receipt, one-use payment-ref/settlement guards, correct 60/40-vs-100% routing, no insolvency under rounding. | Any invariant fails or needs a weakened trust/accounting model to pass. |
+| Implementation cost | Net engineering + audit + ops complexity is credibly lower than, or justified by a decisive UX win over, Solana + Kora for the same user outcomes. | Comparable-or-higher complexity with no decisive UX win. |
+
+Commit the concrete cost ceiling and any numeric thresholds during Phase 0 (record them here, dated) so they exist before results do. Dispute/slashing/refund parity is required only for the full Phase 7 report, not for the interim gate; see Phase 4.5.
 
 ## Contract Layout
 
@@ -466,6 +487,17 @@ Tests:
 - duplicate `settlementTxHash` fails;
 - settlement authority cannot create purchase without matching expected internal accounting assumptions.
 
+### Phase 4.5: Interim Decision Gate
+
+Before building disputes, slashing, refunds, or the app spike, stop and write a short interim memo (`docs/BASE_POC_INTERIM.md`) scoring the Decision Rubric dimensions that Phases 0-4 already answer: buyer gas-free UX, settlement trust, per-action cost, operator custody burden, and Phases 0-4 accounting parity. Disputes/slashing/refunds are not needed to score these.
+
+Gate:
+
+- **Trending no-go** (gas-free UX fails, only an unbounded Lane C works, cost over ceiling, or custody burden worse than Solana + Kora): stop here. Write the Phase 7 report from interim evidence, recommend keeping Solana canonical, and do not build Phases 5-6.
+- **Trending go, or genuinely undecided on grounds that dispute/refund parity would resolve**: continue to Phase 5.
+
+Rationale: Phases 5-6 are migration-grade parity work (the same business arithmetic re-expressed in Solidity) and rarely move the keep-vs-migrate decision, which turns on UX, settlement trust, cost, and custody. Gating here avoids sinking that effort into a port that may never ship while Solana stays canonical.
+
 ### Phase 5: Disputes, Slashing, Refunds
 
 Implement current Solana parity:
@@ -502,7 +534,7 @@ Do not switch marketplace defaults to Base in the POC.
 
 ### Phase 7: Decision Report
 
-Write `docs/BASE_POC_REPORT.md` after implementation, with:
+Write `docs/BASE_POC_REPORT.md` after implementation, scoring every Decision Rubric dimension with measured evidence, with:
 
 - contract address and chain, if deployed;
 - test command outputs;
@@ -568,7 +600,9 @@ Expected POC-only path should not touch Anchor code.
 2. Base Sepolia deploy with test USDC/mocked USDC.
 3. Optional Base Sepolia smart-account/paymaster smoke.
 4. Optional x402 testnet facilitator smoke.
-5. Decision report.
+5. Interim decision gate (Phase 4.5): score the rubric on Phases 0-4 evidence; stop here if trending no-go.
+6. Disputes/slashing/refunds and app spike only if the gate says continue.
+7. Decision report.
 
 Do not deploy to Base Mainnet without a separate production plan.
 
