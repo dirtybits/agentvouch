@@ -32,9 +32,7 @@ import {
 describe("agentvouch usdc marketplace rewards", () => {
   it("keeps protocol fee deferred while author and voucher shares consume the full split", async () => {
     const ctx = await getTestContext();
-    const config = await ctx.program.account.reputationConfig.fetch(
-      ctx.config
-    );
+    const config = await ctx.program.account.reputationConfig.fetch(ctx.config);
     const authorShareBps = Number(config.authorShareBps);
     const voucherShareBps = Number(config.voucherShareBps);
     const protocolFeeBps = Number(config.protocolFeeBps);
