@@ -35,14 +35,33 @@ type SponsoredSubmitResponse =
     }
   | { error: string };
 
+export type SponsoredCheckoutPhase = "prepare" | "submit";
+
 export class SponsoredPurchaseError extends Error {
   readonly status: number;
+  readonly phase: SponsoredCheckoutPhase;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, phase: SponsoredCheckoutPhase) {
     super(message);
     this.name = "SponsoredPurchaseError";
     this.status = status;
+    this.phase = phase;
   }
+}
+
+/**
+ * Whether a failed sponsored checkout is safe to retry as a direct (self-pay)
+ * purchase. `prepare`-phase failures never touched the chain, so falling back is
+ * always safe (and fixes the gap where a buyer who could afford the price but
+ * not the setup fee got a hard failure). A `submit`-phase failure may already
+ * have landed on-chain, so we only fall back when the sponsor path was
+ * explicitly unavailable — otherwise we surface the error to avoid a
+ * double-submit. Non-sponsored errors (e.g. a wallet rejection) propagate.
+ */
+export function sponsoredCheckoutShouldFallBack(error: unknown): boolean {
+  if (!(error instanceof SponsoredPurchaseError)) return false;
+  if (error.phase === "prepare") return true;
+  return /not enabled/i.test(error.message);
 }
 
 function readResponseError(body: unknown, fallback: string) {
@@ -133,7 +152,8 @@ export async function purchaseSkillWithSponsoredCheckout(input: {
   if (!prepareResponse.ok || !prepareBody || "error" in prepareBody) {
     throw new SponsoredPurchaseError(
       readResponseError(prepareBody, "Sponsored checkout prepare failed"),
-      prepareResponse.status
+      prepareResponse.status,
+      "prepare"
     );
   }
   if (typeof window !== "undefined" && prepareBody.quote.setupFeeUsdcMicros) {
@@ -170,7 +190,8 @@ export async function purchaseSkillWithSponsoredCheckout(input: {
   if (!submitResponse.ok || !submitBody || "error" in submitBody) {
     throw new SponsoredPurchaseError(
       readResponseError(submitBody, "Sponsored checkout submit failed"),
-      submitResponse.status
+      submitResponse.status,
+      "submit"
     );
   }
 

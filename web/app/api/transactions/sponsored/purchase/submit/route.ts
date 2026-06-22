@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/errors";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/rateLimit";
 import { submitSponsoredPurchase } from "@/lib/sponsoredPurchase";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,20 @@ function stringOrNull(value: unknown): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  const rate = checkRateLimit(
+    `sponsored-submit:${clientIpFromRequest(request)}`,
+    { limit: 15, windowMs: 60_000 }
+  );
+  if (!rate.ok) {
+    return NextResponse.json(
+      { error: "Too many sponsored checkout requests" },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      }
+    );
+  }
+
   let body: SubmitBody;
   try {
     body = (await request.json()) as SubmitBody;

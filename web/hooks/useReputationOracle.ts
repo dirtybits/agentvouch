@@ -88,8 +88,8 @@ import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
   purchaseSkillWithSponsoredCheckout,
-  SponsoredPurchaseError,
   sponsoredCheckoutPubliclyEnabled,
+  sponsoredCheckoutShouldFallBack,
 } from "@/lib/sponsoredPurchaseClient";
 import {
   assertUsdcAccountReady,
@@ -1168,7 +1168,7 @@ export function useReputationOracle() {
       const agentProfile = await getAgentPDA(authorAddress);
       return { tx, agentProfile };
     },
-    [capabilities.canSign, connectorSigner, signer, walletAddress, sendIx]
+    [signer, walletAddress, sendIx]
   );
 
   /**
@@ -2257,10 +2257,7 @@ export function useReputationOracle() {
           logTransactionSummary(summary);
           return { tx: sponsored.signature, summary };
         } catch (error) {
-          if (
-            error instanceof SponsoredPurchaseError &&
-            (error.status >= 500 || /not enabled/i.test(error.message))
-          ) {
+          if (sponsoredCheckoutShouldFallBack(error)) {
             console.warn(
               "Sponsored checkout unavailable, falling back to direct purchase:",
               error
@@ -2391,7 +2388,7 @@ export function useReputationOracle() {
         throw error;
       }
     },
-    [signer, walletAddress, sendIx]
+    [capabilities.canSign, connectorSigner, signer, walletAddress, sendIx]
   );
 
   const getListingSettlement = useCallback(async (skillListingKey: Address) => {

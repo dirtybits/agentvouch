@@ -32,8 +32,8 @@ import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
   purchaseSkillWithSponsoredCheckout,
-  SponsoredPurchaseError,
   sponsoredCheckoutPubliclyEnabled,
+  sponsoredCheckoutShouldFallBack,
 } from "@/lib/sponsoredPurchaseClient";
 import {
   assertUsdcAccountReady,
@@ -539,10 +539,7 @@ export function useMarketplaceOracle() {
           logTransactionSummary(summary);
           return { tx: sponsored.signature, summary };
         } catch (error) {
-          if (
-            error instanceof SponsoredPurchaseError &&
-            (error.status >= 500 || /not enabled/i.test(error.message))
-          ) {
+          if (sponsoredCheckoutShouldFallBack(error)) {
             console.warn(
               "Sponsored checkout unavailable, falling back to direct purchase:",
               error

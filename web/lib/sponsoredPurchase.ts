@@ -30,7 +30,13 @@ const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 );
 const SYSTEM_PROGRAM_ID = SystemProgram.programId;
+// Must stay in sync with `Purchase::SPACE` in
+// programs/agentvouch/src/state/purchase.rs (8 disc + 32 buyer + 32 listing +
+// 8 ts + 8 revision + 32 settlement + 8 + 8 + 8 + 32 mint + 1 bump = 177).
+// Used only to quote the sponsor's rent reimbursement — the program allocates
+// the real size, so a drift here silently under/over-charges the setup fee.
 const PURCHASE_ACCOUNT_SPACE = 177;
+// SPL token account is a fixed 165 bytes.
 const TOKEN_ACCOUNT_SPACE = 165;
 const USDC_DECIMALS = 6;
 
@@ -110,6 +116,22 @@ function requirePubkey(value: string | undefined | null, label: string) {
   }
 }
 
+/**
+ * SECURITY: the sponsor co-signs the prepared transaction as fee payer + rent
+ * payer. If the buyer is *also* the sponsor, the buyer / rent_payer / fee_payer
+ * signer slots collapse onto a single key, so `partialSign(sponsor)` fully
+ * signs the transaction with no user signature required — letting an attacker
+ * drain the sponsor's USDC into an attacker-owned listing. Both the prepare and
+ * submit paths must reject buyer == sponsor. See AGENTS.md "Security invariants".
+ */
+export function assertBuyerIsNotSponsor(buyer: PublicKey, sponsor: PublicKey) {
+  if (buyer.equals(sponsor)) {
+    throw new Error(
+      "Invalid sponsored checkout: buyer must not be the sponsor account"
+    );
+  }
+}
+
 function parseSecretBytes(raw: string, label: string) {
   const trimmed = raw.trim();
   let bytes: number[];
@@ -138,25 +160,32 @@ function parseSecretBytes(raw: string, label: string) {
   return Uint8Array.from(bytes);
 }
 
+// Cache the parsed keypair so the secret is read/parsed once per instance
+// instead of on every prepare/validate call (less secret handling on the hot
+// path). Module-scoped, so it never leaves the server process.
+let cachedSponsorKeypair: Keypair | null = null;
+
 function loadSponsorKeypair() {
+  if (cachedSponsorKeypair) return cachedSponsorKeypair;
   const inlineSecret = process.env.AGENTVOUCH_SPONSOR_SECRET_KEY;
   const keypairPath = process.env.AGENTVOUCH_SPONSOR_KEYPAIR_PATH;
   if (inlineSecret) {
-    return Keypair.fromSecretKey(
+    cachedSponsorKeypair = Keypair.fromSecretKey(
       parseSecretBytes(inlineSecret, "AGENTVOUCH_SPONSOR_SECRET_KEY")
     );
-  }
-  if (keypairPath) {
-    return Keypair.fromSecretKey(
+  } else if (keypairPath) {
+    cachedSponsorKeypair = Keypair.fromSecretKey(
       parseSecretBytes(
         fs.readFileSync(keypairPath, "utf8"),
         "AGENTVOUCH_SPONSOR_KEYPAIR_PATH"
       )
     );
+  } else {
+    throw new Error(
+      "AGENTVOUCH_SPONSOR_SECRET_KEY or AGENTVOUCH_SPONSOR_KEYPAIR_PATH is required"
+    );
   }
-  throw new Error(
-    "AGENTVOUCH_SPONSOR_SECRET_KEY or AGENTVOUCH_SPONSOR_KEYPAIR_PATH is required"
-  );
+  return cachedSponsorKeypair;
 }
 
 function u64Le(value: bigint | number | string) {
@@ -315,6 +344,7 @@ async function resolvePurchaseContext(input: {
 
   const skillListing = requirePubkey(input.listingAddress, "listingAddress");
   const buyer = requirePubkey(input.buyerPubkey, "buyerPubkey");
+  assertBuyerIsNotSponsor(buyer, input.sponsor);
   const listing = await fetchOnChainSkillListing(skillListing.toBase58(), {
     useCache: false,
   });
@@ -650,6 +680,8 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   ) {
     throw new Error("purchase_skill rent payer must be the sponsor signer");
   }
+  // Defense in depth: reject a self-dealt purchase before re-deriving context.
+  assertBuyerIsNotSponsor(buyer.pubkey, sponsor.publicKey);
 
   const context = await resolvePurchaseContext({
     buyerPubkey: buyer.pubkey.toBase58(),
@@ -717,12 +749,6 @@ async function validateSubmittedTransaction(transaction: Transaction) {
 
   return {
     connection: context.connection,
-    latestBlockhash: {
-      blockhash: transaction.recentBlockhash ?? "",
-      lastValidBlockHeight: await context.connection
-        .getBlockHeight("confirmed")
-        .then((height) => height + 150),
-    },
     setupFeeUsdcMicros,
     buyerPubkey: context.buyer.toBase58(),
     listingAddress: context.skillListing.toBase58(),
