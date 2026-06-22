@@ -29,6 +29,7 @@
     "smoke:devnet-usdc": "node scripts/devnet-usdc-smoke.mjs",
     "smoke:flow-surface": "node scripts/smoke-flow-surface.mjs",
     "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspace @agentvouch/web",
     "test:cli": "npm run test --workspace @agentvouch/cli",
     "test:web": "npm run test --workspace @agentvouch/web"
   },

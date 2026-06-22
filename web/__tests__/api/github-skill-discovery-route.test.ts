@@ -11,7 +11,9 @@ vi.mock("@/lib/githubSkillDiscovery", () => ({
 
 import { GET, POST } from "@/app/api/github/skills/discover/route";
 
-function request(url: string, init: RequestInit = {}): NextRequest {
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function request(url: string, init: NextRequestInit = {}): NextRequest {
   return new NextRequest(url, init);
 }
 
