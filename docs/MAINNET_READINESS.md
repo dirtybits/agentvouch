@@ -18,6 +18,8 @@ The core product shape is in place: the USDC-native protocol, marketplace publis
 
 > **Update (2026-06-19): A3 emergency pause merged, deployed, and smoke-tested on devnet.** Program `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` was upgraded in slot `470607512` with deploy tx `5WDUWu15dU2L1FCFXd6MQeqG5SmppEjq8DMwFBdjhZCUSQ1AtD7haggRreXVeFYfZBbLSV6bMQ1GeJKmGp6gizHj`; local deploy artifact SHA-256 was `4def6997c51fb4ac2adf5963960845481913dfd28748990a7bb0be42cd63934d`. The on-chain IDL was upgraded at `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4` and fetched IDL contains `set_paused` / `PauseStateChanged`. The live pause smoke set `paused = true`, proved `create_skill_listing` fails with `Protocol is paused`, proved `claim_voucher_revenue` still works while paused, set `paused = false`, and proved a listing can be created after unpause. Mainnet remains blocked by dispute governance, authority custody/security review, and refund-reserve policy.
 
+> **Update (2026-06-19): Kora planning added.** Kora/USDC fee abstraction is the preferred next path for removing user-held SOL from AgentVouch flows. It is not yet a shipped readiness claim. If enabled before mainnet, it becomes part of the release candidate scope: Kora signer custody, validation policy, rate limits, fee pricing, monitoring, rollback, and devnet smoke tests must be reviewed alongside the existing wallet-paid path. Plan: `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
+
 The next milestone should be framed as **Mainnet Release Candidate**, not final mainnet launch. The release candidate is ready only when the protocol, wallet UX, production config, docs, and operating runbooks can survive repeated end-to-end devnet smoke tests without manual interpretation.
 
 ## Code Audit Findings (2026-05-30)
@@ -62,7 +64,9 @@ Primary files for hardening: `instructions/resolve_author_dispute.rs`, `instruct
 - Devnet soak has repeated the full happy path with fresh wallets: register, publish, vouch, purchase, claim voucher revenue, withdraw author proceeds, report, resolve, and refund.
 - Emergency pause has been exercised on devnet: pause, prove at least one risk-creating flow fails, prove buyer refund or voucher claim still works, unpause, and prove normal operation resumes.
 - Wallet UX is clear for locked wallets, simulation warnings, insufficient SOL, ATA creation, network mismatch, and rejected signatures.
+- If Kora sponsorship is enabled: wallet UX clearly distinguishes sponsored and fallback paths, quotes any USDC fee, proves users can complete the targeted flow without SOL, and never implies unsupported flows are SOL-free.
 - Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
+- If Kora sponsorship is enabled: Kora endpoint, auth mode, fee token, signer backend, payer account, validation allowlists, spend caps, and emergency disable env are frozen and recorded in the production runbook.
 - Public docs match shipped behavior: `web/public/skill.md`, `/docs`, CLI help, paid download instructions, and publish/update flows.
 - Production operations are documented: monitoring, authority handling, rollback, incident response, and user support for paid access failures.
 
@@ -118,6 +122,7 @@ Monitor at least:
 - indexing lag between Solana and API responses
 - failed purchase verification or raw download authorization
 - unexpected treasury or settlement movement
+- if enabled, Kora payer SOL balance, Kora USDC fee receipts, Kora validation rejects, abnormal fee-payer outflow, sponsorship error rates, and fallback-rate spikes
 
 ## Incident Response
 
@@ -131,6 +136,7 @@ Have playbooks for:
 - bad IDL/client deploy
 - Neon branch mismatch
 - Solana RPC outage or cluster mismatch
+- Kora/paymaster outage, payer depletion, validation misconfiguration, or suspicious sponsored-transaction outflow
 
 Each playbook should include:
 
@@ -153,6 +159,7 @@ Before mainnet, complete an external or senior internal review of:
 - active-dispute freezes and slashing paths
 - voucher reward math
 - x402 settlement memo binding and payment-ref uniqueness
+- Kora sponsored transaction shape validation, payer outflow controls, fee quote integrity, signer custody, and fallback behavior if the feature is enabled
 - authority rotation and rollback paths
 
 Review at least these user-facing protocol flows end to end:
@@ -175,6 +182,7 @@ Review at least these user-facing protocol flows end to end:
 - IDL and generated clients are synced.
 - `web/public/skill.md`, docs, CLI, Vercel env, and public app all reference the same program/config.
 - Production runbook has current authority pubkeys, env matrix, smoke checks, and rollback steps.
+- If Kora is enabled, production runbook has Kora endpoint/auth, signer custody, payer balances, spend caps, fee model, monitoring, and emergency-disable instructions.
 - SEO and LLM-facing docs are handled in Milestone 14; pitch deck alignment is handled in Milestone 15 after settlement behavior is reflected.
 
 ## Mainnet Go / No-Go
