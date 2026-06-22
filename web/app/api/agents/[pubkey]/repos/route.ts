@@ -59,7 +59,6 @@ export async function POST(
       repo?: string;
       branch?: string;
       include_paths?: unknown;
-      skip_review?: boolean;
     };
 
     const auth = verifyConnectAuth(body.auth, pubkey, "connect-repo");
@@ -95,7 +94,9 @@ export async function POST(
     }
 
     const includePaths = Array.isArray(body.include_paths)
-      ? body.include_paths.filter((p): p is string => typeof p === "string")
+      ? body.include_paths
+          .filter((p): p is string => typeof p === "string")
+          .filter((p) => p.trim() !== "")
       : [];
 
     const created = await createConnectedRepo({
@@ -115,7 +116,7 @@ export async function POST(
 
     const outcomes = await syncConnectedRepo(created.repo, {
       apply: true,
-      skipReview: Boolean(body.skip_review),
+      skipReview: false,
     });
 
     return NextResponse.json(

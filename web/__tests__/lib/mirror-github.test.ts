@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyLicense } from "@/lib/mirror/github";
+import { classifyLicense, fetchRaw } from "@/lib/mirror/github";
 import type { SkillTreeInputFile } from "@/lib/skillStorage";
 
 function makeFiles(licenseText: string): SkillTreeInputFile[] {
@@ -77,5 +77,39 @@ describe("classifyLicense", () => {
     expect(result.permissive).toBe(false);
     expect(result.tag).toBe(null);
     expect(result.file).toBe(null);
+  });
+
+  it("deny wins when 'all rights reserved' appears alongside 'MIT' (mixed-signal file)", () => {
+    // A custom corporate license that mentions MIT in passing should still be denied.
+    const result = classifyLicense(
+      makeFiles(
+        "Company Software License\n\nAll rights reserved.\n\n" +
+          "This software is NOT licensed under MIT or Apache. All rights reserved."
+      )
+    );
+    expect(result.permissive).toBe(false);
+    expect(result.tag).toBe("all-rights-reserved");
+  });
+});
+
+describe("fetchRaw — path traversal guard", () => {
+  const coords = { owner: "owner", repo: "repo", branch: "main" };
+
+  it("rejects a path starting with /", async () => {
+    await expect(fetchRaw(coords, "/etc/passwd")).rejects.toThrow(
+      /unsafe repoPath/
+    );
+  });
+
+  it("rejects a path containing ../", async () => {
+    await expect(
+      fetchRaw(coords, "skills/../../../etc/passwd")
+    ).rejects.toThrow(/unsafe repoPath/);
+  });
+
+  it("rejects a path that is exactly ../", async () => {
+    await expect(fetchRaw(coords, "../secret")).rejects.toThrow(
+      /unsafe repoPath/
+    );
   });
 });

@@ -151,6 +151,9 @@ export async function fetchRaw(
   repoPath: string,
   ref = source.branch
 ): Promise<Buffer> {
+  if (repoPath.startsWith("/") || repoPath.includes("../")) {
+    throw new Error(`fetchRaw: unsafe repoPath "${repoPath}"`);
+  }
   const url = `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${ref}/${repoPath}`;
   const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!res.ok) {
@@ -221,7 +224,8 @@ export function classifyLicense(
     : String(licenseFile.content);
   const file = licenseFile.path;
 
-  if (/all rights reserved/i.test(text) && !/apache|MIT|BSD/i.test(text)) {
+  // Explicit non-permissive signal wins over any permissive match (deny-wins).
+  if (/all rights reserved/i.test(text)) {
     return { tag: "all-rights-reserved", permissive: false, file };
   }
   if (/apache license/i.test(text) && /version 2/i.test(text)) {

@@ -28,7 +28,7 @@ import {
   writePreparedTreeToBlob,
   type SkillTreeInputFile,
 } from "@/lib/skillStorage";
-import { pinSkillContent } from "@/lib/ipfs";
+import { pinSkillContent, unpinSkillContent } from "@/lib/ipfs";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { runReviewSafe } from "@/lib/ai/review";
@@ -354,6 +354,8 @@ async function createListing(
   // Prepare tree (computes hash + archive) WITHOUT writing to blob yet.
   // DB insert goes first so a slug collision fails before we incur blob storage.
   // The blob write happens after; on DB failure we clean up any written blob.
+  // Pin runs before the DB insert because its CID is stored in the DB row. On
+  // DB failure we attempt a best-effort unpin (no-ops without Pinata configured).
   const tree = prepareSkillTreeForMirror(files);
   const pin = await pinSkillContent(meta.content, meta.skillId, 1);
   const chainContext = getConfiguredSolanaChainContext();
@@ -364,40 +366,49 @@ async function createListing(
 
   // 1. DB insert first — idempotent if the same skillDbId already exists
   //    (won't happen in practice but safe on retry).
-  await sql()`
-    WITH inserted_skill AS (
-      INSERT INTO skills (
-        id, skill_id, public_slug, public_author_slug,
-        author_pubkey, author_kind, author_external_id, author_handle,
-        author_display_name, publisher_identity_key, publisher_tier,
-        mirror_source_key, synced_repo_url,
-        name, description, tags, current_version, ipfs_cid, contact,
-        chain_context, price_usdc_micros, currency_mint
-      ) VALUES (
-        ${skillDbId}::uuid, ${meta.skillId}, ${publicSlug}, ${publicAuthorSlug},
-        ${cols.authorPubkey}, ${cols.authorKind}, ${cols.authorExternalId}, ${
-    cols.authorHandle
-  },
-        ${cols.authorDisplayName}, ${idKey}, ${cols.publisherTier},
-        ${cols.mirrorSourceKey}, ${ctx.syncedRepoUrl},
-        ${meta.name}, ${meta.description || null}, ${meta.tags}::text[], 1,
-        ${pin.success ? pin.cid : null}, ${meta.contact || null},
-        ${chainContext}, ${null}, ${null}
+  try {
+    await sql()`
+      WITH inserted_skill AS (
+        INSERT INTO skills (
+          id, skill_id, public_slug, public_author_slug,
+          author_pubkey, author_kind, author_external_id, author_handle,
+          author_display_name, publisher_identity_key, publisher_tier,
+          mirror_source_key, synced_repo_url,
+          name, description, tags, current_version, ipfs_cid, contact,
+          chain_context, price_usdc_micros, currency_mint
+        ) VALUES (
+          ${skillDbId}::uuid, ${
+      meta.skillId
+    }, ${publicSlug}, ${publicAuthorSlug},
+          ${cols.authorPubkey}, ${cols.authorKind}, ${cols.authorExternalId}, ${
+      cols.authorHandle
+    },
+          ${cols.authorDisplayName}, ${idKey}, ${cols.publisherTier},
+          ${cols.mirrorSourceKey}, ${ctx.syncedRepoUrl},
+          ${meta.name}, ${meta.description || null}, ${meta.tags}::text[], 1,
+          ${pin.success ? pin.cid : null}, ${meta.contact || null},
+          ${chainContext}, ${null}, ${null}
+        )
+        RETURNING id
       )
-      RETURNING id
-    )
-    INSERT INTO skill_versions (
-      skill_id, version, content, ipfs_cid, changelog,
-      files, tree_hash, storage_backend, has_executable
-    )
-    SELECT
-      id, 1, ${meta.content},
-      ${pin.success ? pin.cid : null},
-      ${changelog},
-      ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
-      ${tree.backend}, ${tree.hasExecutable}
-    FROM inserted_skill
-  `;
+      INSERT INTO skill_versions (
+        skill_id, version, content, ipfs_cid, changelog,
+        files, tree_hash, storage_backend, has_executable
+      )
+      SELECT
+        id, 1, ${meta.content},
+        ${pin.success ? pin.cid : null},
+        ${changelog},
+        ${JSON.stringify(tree.manifest)}::jsonb, ${tree.treeHash},
+        ${tree.backend}, ${tree.hasExecutable}
+      FROM inserted_skill
+    `;
+  } catch (dbErr) {
+    // Best-effort cleanup: unpin the IPFS content and bail out so the next
+    // run retries cleanly. No-ops when Pinata is not configured.
+    await unpinSkillContent(pin.success ? pin.cid : "").catch(() => {});
+    throw dbErr;
+  }
 
   // 2. Blob write after the DB insert succeeds. Uses the already-prepared tree
   //    to avoid recomputing. On failure the DB rows are cleaned up so the next

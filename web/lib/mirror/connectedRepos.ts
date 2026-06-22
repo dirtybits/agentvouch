@@ -197,34 +197,14 @@ export async function createConnectedRepo(input: {
   includePaths: string[];
   verificationMethod: string;
 }): Promise<CreateConnectedRepoResult> {
-  // Idempotent for the same owner; conflict if another wallet already claimed it.
-  const existing = await sql()<ConnectedRepo>`
-    SELECT * FROM connected_repos
-    WHERE github_owner = ${input.githubOwner} AND github_repo = ${input.githubRepo}
-    LIMIT 1
-  `;
-  if (existing[0]) {
-    if (existing[0].owner_wallet !== input.ownerWallet) {
-      return {
-        ok: false,
-        status: 409,
-        error: `${input.githubOwner}/${input.githubRepo} is already connected by another wallet.`,
-      };
-    }
-    const [updated] = await sql()<ConnectedRepo>`
-      UPDATE connected_repos
-      SET branch = ${input.branch},
-          include_paths = ${input.includePaths}::text[],
-          verification_method = ${input.verificationMethod},
-          status = 'active',
-          updated_at = NOW()
-      WHERE id = ${existing[0].id}::uuid
-      RETURNING *
-    `;
-    return { ok: true, repo: updated, created: false };
-  }
-
-  const [repo] = await sql()<ConnectedRepo>`
+  // Use INSERT ... ON CONFLICT to avoid a SELECT-then-INSERT TOCTOU race on the
+  // UNIQUE(github_owner, github_repo) constraint. Three cases:
+  //   1. No prior row → insert succeeds, RETURNING returns the new row.
+  //   2. Same wallet owns it → DO UPDATE re-applies settings, created = false.
+  //   3. Different wallet owns it → DO UPDATE only fires when owner_wallet matches,
+  //      so RETURNING returns 0 rows; we then fetch the conflicting row to build
+  //      a proper 409.
+  const rows = await sql()<ConnectedRepo>`
     INSERT INTO connected_repos (
       owner_wallet, github_owner, github_repo, branch,
       include_paths, verification_method, status
@@ -232,9 +212,28 @@ export async function createConnectedRepo(input: {
       ${input.ownerWallet}, ${input.githubOwner}, ${input.githubRepo}, ${input.branch},
       ${input.includePaths}::text[], ${input.verificationMethod}, 'active'
     )
-    RETURNING *
+    ON CONFLICT (github_owner, github_repo) DO UPDATE
+      SET branch = EXCLUDED.branch,
+          include_paths = EXCLUDED.include_paths,
+          verification_method = EXCLUDED.verification_method,
+          status = 'active',
+          updated_at = NOW()
+      WHERE connected_repos.owner_wallet = EXCLUDED.owner_wallet
+    RETURNING *, (xmax = 0) AS inserted
   `;
-  return { ok: true, repo, created: true };
+
+  if (rows.length === 0) {
+    // Conflict row belongs to a different wallet.
+    return {
+      ok: false,
+      status: 409,
+      error: `${input.githubOwner}/${input.githubRepo} is already connected by another wallet.`,
+    };
+  }
+
+  const row = rows[0] as ConnectedRepo & { inserted: boolean };
+  const { inserted, ...repo } = row;
+  return { ok: true, repo: repo as ConnectedRepo, created: inserted };
 }
 
 export async function deleteConnectedRepo(

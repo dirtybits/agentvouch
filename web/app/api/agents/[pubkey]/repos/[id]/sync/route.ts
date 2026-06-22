@@ -27,7 +27,6 @@ export async function POST(
     const { pubkey, id } = await params;
     const body = (await request.json().catch(() => ({}))) as {
       auth?: AuthPayload;
-      skip_review?: boolean;
     };
 
     const auth = verifyConnectAuth(body.auth, pubkey, "sync-repo");
@@ -46,7 +45,7 @@ export async function POST(
 
     const outcomes = await syncConnectedRepo(repo, {
       apply: true,
-      skipReview: Boolean(body.skip_review),
+      skipReview: false,
     });
 
     return NextResponse.json(
