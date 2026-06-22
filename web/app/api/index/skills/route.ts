@@ -39,6 +39,17 @@ export async function GET(request: NextRequest) {
         author_display_name: skill.author_display_name ?? null,
         publisher_identity_key: skill.publisher_identity_key ?? null,
         publisher_tier: skill.publisher_tier ?? null,
+        mirror_source_key: skill.mirror_source_key ?? null,
+        synced_repo_url: skill.synced_repo_url ?? null,
+        mirrored_from: skill.mirror_source_key
+          ? {
+              source_key: skill.mirror_source_key,
+              github_handle: skill.author_handle ?? null,
+              github_url: skill.author_handle
+                ? `https://github.com/${skill.author_handle}`
+                : null,
+            }
+          : null,
         author_trust_summary: skill.author_trust_summary ?? null,
         author_identity: skill.author_identity ?? null,
       })),

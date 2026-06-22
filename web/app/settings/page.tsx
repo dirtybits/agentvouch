@@ -67,6 +67,18 @@ interface GithubLinkedWallet {
   linkedAt: string | null;
 }
 
+interface ConnectedRepoRow {
+  id: string;
+  github_owner: string;
+  github_repo: string;
+  branch: string;
+  status: string;
+  verification_method: string;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+  last_sync_detail: string | null;
+}
+
 export default function SettingsPage() {
   const { status, account } = useAgentVouchWallet();
   const { signMessage } = useAgentVouchTransactionSigner();
@@ -93,6 +105,12 @@ export default function SettingsPage() {
     GithubLinkedWallet[]
   >([]);
   const [linkingGithub, setLinkingGithub] = useState(false);
+  const [connectedRepos, setConnectedRepos] = useState<ConnectedRepoRow[]>([]);
+  const [repoOwner, setRepoOwner] = useState("");
+  const [repoName, setRepoName] = useState("");
+  const [connectingRepo, setConnectingRepo] = useState(false);
+  const [repoBusyId, setRepoBusyId] = useState<string | null>(null);
+  const [repoStatus, setRepoStatus] = useState<string | null>(null);
 
   const signAuth = useCallback(
     async (action: string) => {
@@ -288,6 +306,105 @@ export default function SettingsPage() {
       setError(getErrorMessage(error));
     } finally {
       setLinkingGithub(false);
+    }
+  };
+
+  const loadConnectedRepos = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      const res = await fetch(`/api/agents/${walletAddress}/repos`);
+      const data = await res.json();
+      if (res.ok) setConnectedRepos(data.repos ?? []);
+    } catch {
+      /* non-fatal */
+    }
+  }, [walletAddress]);
+
+  useEffect(() => {
+    if (connected) loadConnectedRepos();
+  }, [connected, loadConnectedRepos]);
+
+  const summarizeSync = (c: Record<string, number> | undefined): string => {
+    const s = c ?? {};
+    return `${s.create ?? 0} new, ${s.update ?? 0} updated, ${
+      s.unchanged ?? 0
+    } unchanged, ${s.skip ?? 0} skipped${s.error ? `, ${s.error} error` : ""}`;
+  };
+
+  const connectRepo = async () => {
+    if (!connected || !walletAddress) return;
+    const owner = repoOwner.trim();
+    const repo = repoName.trim();
+    if (!owner || !repo) return;
+    setConnectingRepo(true);
+    setRepoStatus(null);
+    setError(null);
+    try {
+      const auth = await signAuth("connect-repo");
+      const res = await fetch(`/api/agents/${walletAddress}/repos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auth, owner, repo }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to connect repo");
+      setRepoStatus(
+        `Connected ${owner}/${repo} via ${
+          data.verification
+        }. Synced: ${summarizeSync(data.sync?.counts)}.`
+      );
+      setRepoOwner("");
+      setRepoName("");
+      await loadConnectedRepos();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setConnectingRepo(false);
+    }
+  };
+
+  const syncRepo = async (id: string) => {
+    if (!walletAddress) return;
+    setRepoBusyId(id);
+    setRepoStatus(null);
+    setError(null);
+    try {
+      const auth = await signAuth("sync-repo");
+      const res = await fetch(`/api/agents/${walletAddress}/repos/${id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auth }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sync repo");
+      setRepoStatus(`Synced: ${summarizeSync(data.counts)}.`);
+      await loadConnectedRepos();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setRepoBusyId(null);
+    }
+  };
+
+  const disconnectRepo = async (id: string) => {
+    if (!walletAddress) return;
+    setRepoBusyId(id);
+    setError(null);
+    try {
+      const auth = await signAuth("disconnect-repo");
+      const res = await fetch(`/api/agents/${walletAddress}/repos/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auth }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to disconnect repo");
+      setRepoStatus("Repo disconnected. Existing listings are unchanged.");
+      await loadConnectedRepos();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setRepoBusyId(null);
     }
   };
 
@@ -545,6 +662,138 @@ export default function SettingsPage() {
                     )}
                 </div>
               </div>
+            </div>
+
+            {/* Connected repos */}
+            <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+              <div className="mb-4">
+                <h2 className="flex items-center gap-2 text-sm font-normal uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <FiGithub className="w-4 h-4" />
+                  Connected GitHub Repos
+                </h2>
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  Keep your skills in sync from a public GitHub repo you own.
+                  They publish and update as your own listings; paid or on-chain
+                  listings are left untouched.
+                </p>
+              </div>
+
+              {repoStatus && (
+                <div className="mb-4 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  {repoStatus}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[7rem] flex-1">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Owner
+                  </label>
+                  <input
+                    type="text"
+                    value={repoOwner}
+                    onChange={(e) => setRepoOwner(e.target.value)}
+                    placeholder="your-github-login"
+                    className="w-full rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-sm text-gray-900 focus:border-[var(--sea-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--sea-focus-ring)] dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  />
+                </div>
+                <span className="pb-2 font-mono text-gray-400">/</span>
+                <div className="min-w-[7rem] flex-1">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Repo
+                  </label>
+                  <input
+                    type="text"
+                    value={repoName}
+                    onChange={(e) => setRepoName(e.target.value)}
+                    placeholder="agent-skills"
+                    className="w-full rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-sm text-gray-900 focus:border-[var(--sea-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--sea-focus-ring)] dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={connectRepo}
+                  disabled={
+                    connectingRepo || !repoOwner.trim() || !repoName.trim()
+                  }
+                  className={`${navButtonPrimaryInlineClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  {connectingRepo ? (
+                    <>
+                      <FiLoader className="w-4 h-4 animate-spin" />
+                      Connecting…
+                    </>
+                  ) : (
+                    "Connect"
+                  )}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                Ownership is verified by your linked GitHub account (above) or a
+                <code className="mx-1 rounded bg-gray-100 px-1 dark:bg-gray-800">
+                  .well-known/agentvouch.json
+                </code>
+                file in the repo containing your wallet pubkey.
+              </p>
+
+              {connectedRepos.length > 0 && (
+                <div className="mt-5 space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+                  {connectedRepos.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between gap-3 rounded-sm border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/40"
+                    >
+                      <div className="min-w-0">
+                        <a
+                          href={`https://github.com/${r.github_owner}/${r.github_repo}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex max-w-full items-center gap-1 truncate font-mono text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                        >
+                          <FiGithub className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">
+                            {r.github_owner}/{r.github_repo}
+                          </span>
+                        </a>
+                        <p className="mt-0.5 truncate text-[11px] text-gray-400 dark:text-gray-500">
+                          {r.branch} ·{" "}
+                          {r.last_synced_at
+                            ? `synced ${new Date(
+                                r.last_synced_at
+                              ).toLocaleDateString()}`
+                            : "not synced yet"}
+                          {r.last_sync_status === "error"
+                            ? " · last sync errored"
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => syncRepo(r.id)}
+                          disabled={repoBusyId === r.id}
+                          className={`${navButtonSecondaryInlineClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          {repoBusyId === r.id ? (
+                            <FiLoader className="w-4 h-4 animate-spin" />
+                          ) : (
+                            "Sync"
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => disconnectRepo(r.id)}
+                          disabled={repoBusyId === r.id}
+                          className="text-xs text-gray-400 transition hover:text-red-500 disabled:opacity-50"
+                          title="Disconnect (existing listings stay)"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Create key */}

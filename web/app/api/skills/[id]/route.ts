@@ -105,6 +105,8 @@ type SkillRow = {
   author_display_name?: string | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   skill_id: string;
   name: string;
   description: string | null;
