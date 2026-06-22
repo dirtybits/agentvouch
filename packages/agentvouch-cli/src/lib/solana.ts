@@ -426,6 +426,7 @@ export class AgentVouchSolanaClient {
         authorRewardVaultAuthority,
         authorRewardVault,
         buyer: this.authority,
+        rentPayer: this.authority,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })

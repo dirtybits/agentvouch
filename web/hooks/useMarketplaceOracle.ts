@@ -31,6 +31,11 @@ import { getErrorMessage } from "@/lib/errors";
 import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
+  purchaseSkillWithSponsoredCheckout,
+  SponsoredPurchaseError,
+  sponsoredCheckoutPubliclyEnabled,
+} from "@/lib/sponsoredPurchaseClient";
+import {
   assertUsdcAccountReady,
   formatUsdcMicrosValue,
   getAssociatedTokenAccount,
@@ -252,7 +257,11 @@ async function waitForConfirmedSignature(
 export function useMarketplaceOracle() {
   const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
-  const { signer: activeSigner } = useAgentVouchTransactionSigner();
+  const {
+    signer: activeSigner,
+    connectorSigner,
+    capabilities,
+  } = useAgentVouchTransactionSigner();
 
   const walletAddress: Address | null = connected ? (account as Address) : null;
 
@@ -505,6 +514,44 @@ export function useMarketplaceOracle() {
           purchase: purchasePda,
         };
       }
+      if (
+        sponsoredCheckoutPubliclyEnabled() &&
+        connectorSigner &&
+        capabilities.canSign
+      ) {
+        try {
+          const sponsored = await purchaseSkillWithSponsoredCheckout({
+            signer: connectorSigner,
+            listingAddress: String(skillListingKey),
+            expectedPriceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
+            expectedUsdcMint: getConfiguredUsdcMint(),
+          });
+          const summary = {
+            action: "Purchase skill",
+            token: "USDC" as const,
+            amountUsdcMicros:
+              BigInt(listing.data.priceUsdcMicros) +
+              sponsored.setupFeeUsdcMicros,
+            recipient: listing.data.currentAuthorProceedsVault,
+            feePayer: sponsored.sponsor,
+            cluster: `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`,
+          };
+          logTransactionSummary(summary);
+          return { tx: sponsored.signature, summary };
+        } catch (error) {
+          if (
+            error instanceof SponsoredPurchaseError &&
+            (error.status >= 500 || /not enabled/i.test(error.message))
+          ) {
+            console.warn(
+              "Sponsored checkout unavailable, falling back to direct purchase:",
+              error
+            );
+          } else {
+            throw error;
+          }
+        }
+      }
       let purchaseEstimate: PurchasePreflightAssessment | null = null;
       try {
         purchaseEstimate = await estimatePurchasePreflight(
@@ -566,6 +613,7 @@ export function useMarketplaceOracle() {
         authorRewardVaultAuthority,
         authorRewardVault,
         buyer: signer,
+        rentPayer: signer,
       });
       const summary = {
         action: "Purchase skill",
@@ -623,7 +671,7 @@ export function useMarketplaceOracle() {
         throw error;
       }
     },
-    [signer, walletAddress, sendIx]
+    [capabilities.canSign, connectorSigner, signer, walletAddress, sendIx]
   );
 
   return useMemo(

@@ -1,0 +1,183 @@
+"use client";
+
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
+import { decodeBase64, encodeBase64 } from "@/lib/base64";
+
+type ConnectorTransactionSigner = {
+  address: string;
+  signTransaction(transaction: unknown): Promise<unknown>;
+};
+
+type SponsoredPrepareResponse =
+  | {
+      transaction: string;
+      encoding: "base64";
+      quote: {
+        priceUsdcMicros: string;
+        setupFeeUsdcMicros: string;
+      };
+      accounts: {
+        buyer: string;
+        sponsor: string;
+        skillListing: string;
+        purchase: string;
+      };
+    }
+  | { error: string };
+
+type SponsoredSubmitResponse =
+  | {
+      signature: string;
+      purchasePda: string;
+      buyerPubkey: string;
+      listingAddress: string;
+      setupFeeUsdcMicros: string;
+    }
+  | { error: string };
+
+export class SponsoredPurchaseError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "SponsoredPurchaseError";
+    this.status = status;
+  }
+}
+
+function readResponseError(body: unknown, fallback: string) {
+  return body &&
+    typeof body === "object" &&
+    "error" in body &&
+    typeof (body as { error?: unknown }).error === "string"
+    ? (body as { error: string }).error
+    : fallback;
+}
+
+function formatUsdcMicros(micros: string | bigint) {
+  const value = BigInt(micros);
+  const whole = value / 1_000_000n;
+  const fraction = (value % 1_000_000n).toString().padStart(6, "0");
+  return `${whole}.${fraction.replace(/0+$/, "").padEnd(2, "0")}`;
+}
+
+function decodeBase64Transaction(serialized: string) {
+  return Transaction.from(decodeBase64(serialized));
+}
+
+function encodeSignedTransaction(transaction: unknown) {
+  if (transaction instanceof Uint8Array) {
+    return encodeBase64(transaction);
+  }
+  if (ArrayBuffer.isView(transaction)) {
+    return encodeBase64(
+      new Uint8Array(
+        transaction.buffer,
+        transaction.byteOffset,
+        transaction.byteLength
+      )
+    );
+  }
+  if (
+    transaction instanceof Transaction ||
+    transaction instanceof VersionedTransaction
+  ) {
+    return encodeBase64(transaction.serialize());
+  }
+  if (
+    transaction &&
+    typeof transaction === "object" &&
+    "signedTransaction" in transaction
+  ) {
+    return encodeSignedTransaction(
+      (transaction as { signedTransaction?: unknown }).signedTransaction
+    );
+  }
+  const maybeSerializable = transaction as { serialize?: () => Uint8Array };
+  if (typeof maybeSerializable?.serialize === "function") {
+    return encodeBase64(maybeSerializable.serialize());
+  }
+  throw new Error("Wallet returned an unsupported signed transaction format");
+}
+
+export function sponsoredCheckoutPubliclyEnabled() {
+  return (
+    process.env.NEXT_PUBLIC_AGENTVOUCH_SPONSORED_CHECKOUT_ENABLED === "1" ||
+    process.env.NEXT_PUBLIC_AGENTVOUCH_SPONSORED_CHECKOUT_ENABLED?.toLowerCase() ===
+      "true"
+  );
+}
+
+export async function purchaseSkillWithSponsoredCheckout(input: {
+  signer: ConnectorTransactionSigner;
+  listingAddress: string;
+  expectedPriceUsdcMicros: bigint | string | number;
+  expectedUsdcMint: string;
+}) {
+  const prepareResponse = await fetch(
+    "/api/transactions/sponsored/purchase/prepare",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        buyerPubkey: input.signer.address,
+        listingAddress: input.listingAddress,
+        expectedPriceUsdcMicros: input.expectedPriceUsdcMicros.toString(),
+        expectedUsdcMint: input.expectedUsdcMint,
+      }),
+    }
+  );
+  const prepareBody = (await prepareResponse.json().catch(() => null)) as
+    | SponsoredPrepareResponse
+    | null;
+  if (!prepareResponse.ok || !prepareBody || "error" in prepareBody) {
+    throw new SponsoredPurchaseError(
+      readResponseError(prepareBody, "Sponsored checkout prepare failed"),
+      prepareResponse.status
+    );
+  }
+  if (typeof window !== "undefined" && prepareBody.quote.setupFeeUsdcMicros) {
+    const setupFee = BigInt(prepareBody.quote.setupFeeUsdcMicros);
+    const message =
+      setupFee > 0n
+        ? `Pay ${formatUsdcMicros(
+            prepareBody.quote.priceUsdcMicros
+          )} USDC plus a ${formatUsdcMicros(
+            setupFee
+          )} USDC sponsored checkout setup fee?`
+        : `Pay ${formatUsdcMicros(
+            prepareBody.quote.priceUsdcMicros
+          )} USDC with sponsored checkout?`;
+    if (!window.confirm(message)) {
+      throw new Error("Sponsored checkout cancelled before signing");
+    }
+  }
+
+  const unsignedTransaction = decodeBase64Transaction(prepareBody.transaction);
+  const signed = await input.signer.signTransaction(unsignedTransaction);
+  const signedTransaction = encodeSignedTransaction(signed);
+  const submitResponse = await fetch(
+    "/api/transactions/sponsored/purchase/submit",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedTransaction }),
+    }
+  );
+  const submitBody = (await submitResponse.json().catch(() => null)) as
+    | SponsoredSubmitResponse
+    | null;
+  if (!submitResponse.ok || !submitBody || "error" in submitBody) {
+    throw new SponsoredPurchaseError(
+      readResponseError(submitBody, "Sponsored checkout submit failed"),
+      submitResponse.status
+    );
+  }
+
+  return {
+    signature: submitBody.signature,
+    purchasePda: submitBody.purchasePda,
+    setupFeeUsdcMicros: BigInt(submitBody.setupFeeUsdcMicros),
+    sponsor: prepareBody.accounts.sponsor,
+  };
+}

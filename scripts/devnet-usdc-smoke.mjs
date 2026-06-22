@@ -854,6 +854,7 @@ async function main() {
         authorRewardVaultAuthority,
         authorRewardVault,
         buyer: actor.publicKey,
+        rentPayer: actor.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
