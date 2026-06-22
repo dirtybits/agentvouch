@@ -91,6 +91,7 @@ Strategic read:
 
 - Prove the full protocol surface before migration talk: profiles, author bonds, vouches, listings, purchases, author proceeds, voucher claims, disputes, voucher slashing, refund pools, pause behavior, and x402 settlement.
 - Keep the POC isolated under an EVM workspace and package so Solana remains the canonical implementation while the decision is tested.
+- Make the gasless claim precise: users should not need ETH, but a relayer/paymaster/facilitator/keeper still pays native Base gas and is reimbursed in USDC under bounded protocol rules.
 - Preserve the current accounting invariants: protocol-visible purchase receipts, 60/40 author/voucher economics when backed, no-vouch purchases routing fully to authors, dispute locks, slashed-fund ring-fencing, and one-claim/one-settlement idempotency.
 - Compare concrete evidence, not vibes: smart-account/paymaster UX, x402 settlement trust assumptions, gas costs, implementation size, test coverage, and operator custody burden.
 - Do not update public docs or marketplace defaults to present Base as live until the POC has a decision report and a separate launch plan.

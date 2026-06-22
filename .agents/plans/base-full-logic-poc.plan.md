@@ -71,7 +71,7 @@ This is a decision instrument, not a migration branch. Solana remains the curren
 
 The POC is successful only if it proves all of the following:
 
-1. A buyer can complete a paid skill purchase on Base using USDC without holding ETH in the user wallet, through either CDP smart-account/paymaster flow or x402-compatible EIP-3009 settlement.
+1. A buyer can complete a paid skill purchase on Base using USDC without holding ETH in the user wallet, through either CDP smart-account/paymaster flow or x402-compatible EIP-3009 settlement. Native Base gas is still paid by a relayer, paymaster, facilitator, or keeper; the POC must make that actor and its USDC reimbursement policy explicit.
 2. The Base contract records the same purchase semantics as Solana: buyer, listing, revision, price, author share, voucher pool, timestamp, and idempotency guard.
 3. Paid purchases preserve current economics:
    - if the author has external vouch backing, split by configured `author_share_bps` / `voucher_share_bps`;
@@ -80,7 +80,8 @@ The POC is successful only if it proves all of the following:
 5. Author proceeds, voucher claims, author bonds, vouches, disputes, voucher slashing, refund pools, refunds, and pause behavior have Foundry tests that mirror the Solana tests.
 6. Duplicate purchases and duplicate x402/payment settlement attempts fail deterministically.
 7. Gas and paymaster cost are measured for the core flows, not guessed.
-8. The final report clearly compares Base POC complexity against Solana plus Kora/backing-alpha path.
+8. Atomic purchase lanes prove that if the transaction reverts, no purchase receipt is written and no USDC is moved.
+9. The final report clearly compares Base POC complexity against Solana plus Kora/backing-alpha path.
 
 ## Contract Layout
 
@@ -308,6 +309,37 @@ Preserve both idempotency dimensions:
 
 The contract cannot inspect historical facilitator transactions. If using stock x402 exact settlement to the contract address, the backend/settlement authority must attest to the payment after verifying amount, payer, destination, network, and payment ref off-chain. A stronger POC lane should test `purchaseWithAuthorization`, where the contract itself consumes USDC EIP-3009 authorization and records the purchase in one on-chain call.
 
+## Atomic USDC-Sponsored Execution
+
+Base can make AgentVouch feel USDC-native, but USDC does not pay Base gas at the protocol level. Every gasless UX path must name the native-gas actor:
+
+- AgentVouch backend relayer
+- x402 facilitator
+- ERC-4337 paymaster/bundler
+- third-party sponsored transaction provider
+- permissionless keeper reimbursed in USDC
+
+For user-initiated financial writes, prefer atomic contract execution over "pay server, then server writes state." The target purchase shape is:
+
+1. Buyer signs a USDC authorization or smart-account intent.
+2. Relayer/paymaster pays native Base gas.
+3. AgentVouch contract pulls USDC, writes the purchase receipt, splits author/voucher accounting, records the consumed payment nonce, and pays any allowed USDC relayer reimbursement in the same transaction.
+4. If the transaction reverts, there is no purchase and no USDC movement.
+
+Every signed USDC payment or sponsored intent must bind to exact intent:
+
+- chain id
+- AgentVouch contract address
+- buyer
+- listing id
+- listing revision
+- price
+- sponsor/relayer fee or maximum fee
+- deadline
+- nonce or payment id
+
+Dispute opens can follow the same pattern with a challenger bond authorization. Resolver/governance actions and keeper cranks need a separate reimbursement policy because there may be no user-side payment to charge. Reward claims need a minimum claim threshold, batching, or protocol subsidy so low-value claims do not go negative after gas reimbursement.
+
 ## Payment Lanes To Compare
 
 ### Lane A: Smart Account / Paymaster Direct Purchase
@@ -329,7 +361,7 @@ Flow:
 1. Resource server returns an x402-like quote for Base USDC.
 2. Buyer signs an EIP-3009 authorization.
 3. Backend/paymaster submits `purchaseWithAuthorization(...)`.
-4. Contract calls USDC `transferWithAuthorization` into itself and records the purchase atomically.
+4. Contract calls USDC `transferWithAuthorization` into itself, records the purchase atomically, and pays any bounded USDC relayer reimbursement.
 
 This avoids trusting a backend to say a transfer happened, but may require a custom x402 settlement adapter rather than a stock facilitator.
 
@@ -498,6 +530,7 @@ Every Foundry test/invariant should protect these:
 ## Threat Model
 
 - **Paymaster drain:** CDP/paymaster policy must allow only AgentVouch POC contract and method selectors, with per-user and global spend caps.
+- **Relayer overcharge/liveness:** Sponsored flows can censor, fail to submit, underprice gas, or overcharge. Reimbursement must be bounded by signed intent and/or contract policy, and relayers must not be able to collect a fee when the protocol action fails.
 - **Settlement authority abuse:** If using Lane C, settlement authority can create receipts after off-chain verification. Keep this role separate, monitored, and bounded to POC.
 - **Reentrancy:** USDC-moving methods use `nonReentrant`, checks-effects-interactions, and internal accounting before transfers where safe.
 - **Rounding grief:** micro-USDC math and reward index rounding must be tested with tiny prices and many vouchers.
