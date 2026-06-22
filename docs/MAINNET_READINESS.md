@@ -20,6 +20,8 @@ The core product shape is in place: the USDC-native protocol, marketplace publis
 
 > **Update (2026-06-19): Kora planning added.** Kora/USDC fee abstraction is the preferred next path for removing user-held SOL from AgentVouch flows. It is not yet a shipped readiness claim. If enabled before mainnet, it becomes part of the release candidate scope: Kora signer custody, validation policy, rate limits, fee pricing, monitoring, rollback, and devnet smoke tests must be reviewed alongside the existing wallet-paid path. Plan: `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
 
+> **Update (2026-06-22): Base POC Phase 4.5 gate complete.** PR #44 implemented an isolated Base/EVM Foundry POC for Phases 0-4 under `contracts/base-poc` and recorded the interim decision memo in `docs/BASE_POC_INTERIM.md` with 65/65 tests. Finding: Base can preserve the purchase/accounting model and support gas-free-for-user USDC purchases, but it does not remove the need for relayer/paymaster/facilitator infrastructure and is not a clear RC shortcut over Solana + Kora. Lane B (`purchaseWithAuthorization`) is trust-minimized but has a production fund-stranding edge if an EIP-3009 authorization is submitted directly to USDC without recording a receipt; Lane C (`settleX402Purchase`) is bridge-equivalent and trusts a settlement authority. Base should remain decision evidence unless AgentVouch explicitly funds the x402/Coinbase distribution bet; it is not a mainnet-readiness blocker for the Solana RC.
+
 The next milestone should be framed as **Mainnet Release Candidate**, not final mainnet launch. The release candidate is ready only when the protocol, wallet UX, production config, docs, and operating runbooks can survive repeated end-to-end devnet smoke tests without manual interpretation.
 
 > **Update (2026-06-17): A2 plan review found additional design-lock blockers.** The A2 branch should not move into Anchor implementation until the plan explicitly locks: A2 as a devnet clean break, cancellable pending resolutions, buyer-first paid refunds, program-computed refund pools, zero-refund paid dispute behavior, serialized author-bond exposure, residual/expired fund ownership, reserve-aware treasury sweep rules, and dispute-economic snapshots. See [A2 Extra Review Findings](#a2-extra-review-findings-2026-06-17).
@@ -95,6 +97,7 @@ These findings are now reflected in `.agents/plans/a2-dispute-governance-v1.plan
 - Emergency pause has been exercised on devnet: pause, prove at least one risk-creating flow fails, prove buyer refund or voucher claim still works, unpause, and prove normal operation resumes.
 - Wallet UX is clear for locked wallets, simulation warnings, insufficient SOL, ATA creation, network mismatch, and rejected signatures.
 - If Kora sponsorship is enabled: wallet UX clearly distinguishes sponsored and fallback paths, quotes any USDC fee, proves users can complete the targeted flow without SOL, and never implies unsupported flows are SOL-free.
+- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7.
 - Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
 - If Kora sponsorship is enabled: Kora endpoint, auth mode, fee token, signer backend, payer account, validation allowlists, spend caps, and emergency disable env are frozen and recorded in the production runbook.
 - Public docs match shipped behavior: `web/public/skill.md`, `/docs`, CLI help, paid download instructions, and publish/update flows.
@@ -189,6 +192,7 @@ Before mainnet, complete an external or senior internal review of:
 - active-dispute freezes and slashing paths
 - voucher reward math
 - x402 settlement memo binding and payment-ref uniqueness
+- x402/Base POC lesson applied to any production x402 path: signed-payment flows need a recovery/reconciliation answer for funds delivered without a receipt, and settlement-attestation flows need bounded signer custody, idempotency, monitoring, and rollback.
 - Kora sponsored transaction shape validation, payer outflow controls, fee quote integrity, signer custody, and fallback behavior if the feature is enabled
 - authority rotation and rollback paths
 

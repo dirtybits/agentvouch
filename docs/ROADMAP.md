@@ -8,7 +8,7 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
-Last reviewed: 2026-06-19.
+Last reviewed: 2026-06-22.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
@@ -80,6 +80,7 @@ Kora is the preferred next Solana-native path for removing user-held SOL from no
 Strategic read:
 
 - Do not migrate to Base just to get gasless USDC UX. Solana already supports fee payer separation and batched token reimbursement; Kora packages this into a configurable paymaster/relayer.
+- The Base POC Phase 4.5 memo reinforced this: Base can host gas-free-for-user USDC purchases, but the same UX outcome is achievable on Solana with Kora while preserving the current canonical program state.
 - Preserve Solana program state as the trust source: purchases, vouches, bonds, disputes, slashing, refunds, and rewards should remain protocol-visible.
 - Ship in layers: fee-only sponsorship first, then explicit `rent_payer` program interfaces for full no-SOL first-time flows.
 - Keep x402 as the agent-facing payment envelope where it fits; use Kora to make direct Solana protocol instructions less wallet-hostile.
@@ -89,14 +90,24 @@ Strategic read:
 
 Base remains the strongest expansion candidate for a USDC/x402-native AgentVouch lane, but it should be tested as a **port by spec**, not a migration by transpilation. The plan lives in `.agents/plans/base-full-logic-poc.plan.md`.
 
+Status 2026-06-22: PR #44 reached the Phase 4.5 interim gate. Phases 0-4 are implemented in isolated Foundry code under `contracts/base-poc` with 65/65 tests, including direct purchases, author proceeds, voucher rewards, and two x402 lanes. The interim memo is `docs/BASE_POC_INTERIM.md`.
+
+Gate read:
+
+- Base can preserve the purchase/accounting model and make the buyer experience gas-free-for-user.
+- That UX is not a Base-only win; Solana + Kora can target the same "USDC only, no SOL setup" product outcome with less migration surface.
+- Lane B (`purchaseWithAuthorization`) is the better trust-minimized x402 lane, but EIP-3009 authorizations can be submitted directly to USDC, stranding funds in the contract with no receipt unless production adds recovery/reconciliation.
+- Lane C (`settleX402Purchase`) is bridge-equivalent: it trusts a settlement authority that funds arrived.
+- Do not fund Phases 5-7, Base UI smoke, or a full Base migration report unless AgentVouch explicitly chooses the x402/Coinbase distribution bet. Otherwise, keep Solana canonical and move the RC friction work to Kora.
+
 Strategic read:
 
-- Prove the full protocol surface before migration talk: profiles, author bonds, vouches, listings, purchases, author proceeds, voucher claims, disputes, voucher slashing, refund pools, pause behavior, and x402 settlement.
+- Treat PR #44 as decision evidence, not a migration branch. The purchase/x402 evidence is enough to say "Base is viable, but not necessary for the RC friction problem."
 - Keep the POC isolated under an EVM workspace and package so Solana remains the canonical implementation while the decision is tested.
 - Make the gasless claim precise: users should not need ETH, but a relayer/paymaster/facilitator/keeper still pays native Base gas and is reimbursed in USDC under bounded protocol rules.
-- Preserve the current accounting invariants: protocol-visible purchase receipts, 60/40 author/voucher economics when backed, no-vouch purchases routing fully to authors, dispute locks, slashed-fund ring-fencing, and one-claim/one-settlement idempotency.
+- Preserve the current accounting invariants if the Base track resumes: protocol-visible purchase receipts, 60/40 author/voucher economics when backed, no-vouch purchases routing fully to authors, dispute locks, slashed-fund ring-fencing, and one-claim/one-settlement idempotency.
 - Compare concrete evidence, not vibes: smart-account/paymaster UX, x402 settlement trust assumptions, gas costs, implementation size, test coverage, and operator custody burden.
-- Do not update public docs or marketplace defaults to present Base as live until the POC has a decision report and a separate launch plan.
+- Do not update public docs or marketplace defaults to present Base as live until there is a separate launch plan, deployed contract, audited authority/paymaster policy, and browser/API smoke.
 
 ### Category expansion: MCP servers / connectors
 

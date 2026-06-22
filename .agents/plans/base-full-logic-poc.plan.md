@@ -3,11 +3,11 @@ name: base-full-logic-poc
 overview: "Build an isolated Base/EVM proof of concept that ports AgentVouch's current USDC-native trust, listing, purchase, dispute, slashing, refund, pause, and x402 settlement logic by spec, without migrating production authority away from Solana."
 todos:
   - id: source-parity-spec
-    content: Freeze the Solana-to-EVM parity map (23 core instructions, 14 account structs, A3 pause behavior) and commit the Decision Rubric thresholds (per-action cost ceiling) before building
-    status: in_progress
+    content: Freeze the Solana-to-EVM parity map for the scoped POC and commit the Phase 4.5 Decision Rubric thresholds
+    status: completed
   - id: evm-workspace
-    content: Add an isolated Foundry workspace under contracts/base-poc plus package-level ABI/type export strategy without disturbing Solana workspaces
-    status: in_progress
+    content: Add an isolated Foundry workspace under contracts/base-poc without disturbing Solana workspaces; defer package-level ABI/type exports until a production Base track is funded
+    status: completed
   - id: core-state-roles
     content: Implement AgentVouchEvm config, roles, pause, profiles, bonds, vouches, listings, settlements, and internal USDC accounting
     status: completed
@@ -24,13 +24,13 @@ todos:
     content: Port author disputes, liability scopes, dispute locks, voucher slashing, refund pools, claims, and close/expiry behavior
     status: pending
   - id: parity-tests
-    content: Add Foundry tests that mirror the Solana Anchor happy paths, adversarial paths, accounting invariants, and gas measurements
-    status: pending
+    content: Add Foundry tests for implemented Phases 0-4, including Solana-parity happy paths, adversarial paths, accounting invariants, and gas measurements
+    status: completed
   - id: app-api-cli-spike
     content: Add feature-flagged web/API/CLI adapter stubs for Base chain_context, receipts, and read-only inspection without changing default Solana flows
     status: pending
   - id: decision-report
-    content: Produce the comparison report scored against the Decision Rubric: Solana plus Kora/backing alpha vs Base full-logic POC for UX, cost, custody, security, and operational complexity
+    content: If the Base/x402 distribution bet is funded, produce the full Phase 7 comparison report; the Phase 4.5 interim memo is complete
     status: pending
 isProject: false
 ---
@@ -45,12 +45,13 @@ This is a decision instrument, not a migration branch. Solana remains the curren
 
 ## Status And Assumptions
 
-- Drafted 2026-06-21; lives on branch `feat/base-poc` (3 doc-only commits ahead of `main`).
+- Drafted 2026-06-21; implementation lives on PR branch `feat/base-poc-spike` (#44), rebased onto `main` on 2026-06-22.
 - A3 emergency pause is merged and on `main` (verified 2026-06-21): `set_paused` exists at `programs/agentvouch/src/instructions/set_paused.rs`, is gated by `config.pause_authority`, and `.agents/plans/a3-emergency-pause.plan.md` shows all todos completed. The earlier "this worktree is pre-A3, refresh from `main`" hedge no longer applies; `set_paused` is already in the parity map below. Branch from current `main`/`feat/base-poc` and A3 is present.
 - Parity surface verified against `main` 2026-06-21: `programs/agentvouch/src/lib.rs` exposes **25 instruction handlers** (`pub fn`). Two are M13 migration helpers (`migrate_config_m13`, `migrate_skill_listing_m13`) that the POC does not port, which leaves **23 core protocol instructions** as the parity surface (the 23 rows in the parity map below, `set_paused` included) plus **14 `#[account]` structs**.
 - A3 pause enforcement is distributed, not centralized: `set_paused` only flips `config.paused`; each instruction enforces its own paused behavior. Derive the exact allowed/blocked flow set by grepping `paused` across `programs/agentvouch/src/instructions/*.rs` during Phase 0, not from `set_paused.rs` alone.
 - Existing CAIP-2 labels already include Base as `eip155:8453` (`web/lib/chains.ts`).
 - Do not call this a "transpile." The business rules port; Solana PDAs, rent, ATAs, Anchor constraints, and SPL token vault structure do not.
+- Phase 4.5 is complete as an **interim gate**: `docs/BASE_POC_INTERIM.md` scores Phases 0-4 and recommends stopping before Phases 5-7 unless AgentVouch explicitly funds the Base/x402 distribution bet. The unfinished items are future work, not blockers for PR #44's decision-instrument scope.
 
 ### Implementation log
 
@@ -95,6 +96,8 @@ The POC is successful only if it proves all of the following:
 7. Gas and paymaster cost are measured for the core flows, not guessed.
 8. Atomic purchase lanes prove that if the transaction reverts, no purchase receipt is written and no USDC is moved.
 9. The final report clearly compares Base POC complexity against Solana plus Kora/backing-alpha path.
+
+Phase 4.5 note (2026-06-22): criteria 1-4 and 6-8 are satisfied for the Phases 0-4 interim gate and recorded in `docs/BASE_POC_INTERIM.md`. Criteria covering disputes/slashing/refunds and the full Phase 7 report remain future work only if the Base/x402 distribution bet is funded.
 
 ## Decision Rubric
 
@@ -610,8 +613,8 @@ Expected POC-only path should not touch Anchor code.
 2. Base Sepolia deploy with test USDC/mocked USDC.
 3. Optional Base Sepolia smart-account/paymaster smoke.
 4. Optional x402 testnet facilitator smoke.
-5. Interim decision gate (Phase 4.5): score the rubric on Phases 0-4 evidence; stop here if trending no-go.
-6. Disputes/slashing/refunds and app spike only if the gate says continue.
+5. Interim decision gate (Phase 4.5): score the rubric on Phases 0-4 evidence; stop here if trending no-go. **Completed 2026-06-22 in `docs/BASE_POC_INTERIM.md`; recommendation is to stop before Phases 5-7 unless the Base/x402 distribution bet is funded.**
+6. Disputes/slashing/refunds and app spike only if the gate says continue or the distribution bet is explicitly funded.
 7. Decision report.
 
 Do not deploy to Base Mainnet without a separate production plan.
@@ -625,8 +628,8 @@ Do not deploy to Base Mainnet without a separate production plan.
 
 ## Blockers And Open Questions
 
-- Which x402 lane is the target for proof: contract-consumed EIP-3009 authorization, stock facilitator plus settlement authority, or both?
+- Answered 2026-06-22: both x402 lanes were implemented for comparison. Lane B (`purchaseWithAuthorization`) is preferred for trust minimization but has the documented F-1 mempool-stranding edge; Lane C (`settleX402Purchase`) is bridge-equivalent and trusts `SETTLEMENT_ROLE`.
 - Should the POC implement current dispute resolution exactly, or jump straight to the A2 governance spec for Base? Recommendation: current parity first, A2 as a second pass.
 - Should `link_vouch_to_listing` remain in the POC even though docs describe it as legacy/devnet cleanup? Recommendation: implement only if needed for A1 voucher-slash-set parity.
-- Does Base POC use live Base Sepolia USDC or a local mock with an EIP-3009-compatible interface? Recommendation: local mock first, then Base Sepolia USDC if available and tooling supports it.
-- Does the web app need write flows for the POC? Recommendation: no; read-only inspection and API state mapping first.
+- Base Sepolia/live-USDC deployment remains future work if a follow-up `base-ui-smoke` or production Base track is funded.
+- Web write flows remain future work. The completed PR #44 scope is contract/tests/interim memo; a browser register/list/purchase smoke needs a separate deployed contract, ABI/address export, wallet adapter, and feature-flagged UI path.
