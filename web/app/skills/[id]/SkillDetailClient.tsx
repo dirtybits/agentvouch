@@ -57,7 +57,7 @@ import {
   getConfiguredSolanaExplorerAddressUrl,
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
-import { sanitizeSyncedRepoUrl } from "@/lib/mirror/connectedRepos";
+import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
 import {
   FiAlertTriangle,
   FiInfo,

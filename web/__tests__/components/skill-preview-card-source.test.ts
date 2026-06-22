@@ -46,4 +46,14 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain("skill.author_identity?.githubProfile");
     expect(source).toContain("Linked GitHub");
   });
+
+  it("does not import the server-only connected repos module", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/SkillPreviewCard.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("@/lib/repoUrls");
+    expect(source).not.toContain("@/lib/mirror/connectedRepos");
+  });
 });
