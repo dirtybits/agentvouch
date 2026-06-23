@@ -14,7 +14,11 @@ import {
 } from "@/generated/agentvouch/src/generated";
 import { getPurchaseSkillInstructionDataEncoder } from "@/generated/agentvouch/src/generated/instructions/purchaseSkill";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "@/generated/agentvouch/src/generated/programs";
-import { fetchOnChainSkillListing } from "@/lib/onchain";
+import {
+  fetchOnChainSkillListing,
+  STALE_SKILL_LISTING_RELINK_MESSAGE,
+  validateSkillListingAccountData,
+} from "@/lib/onchain";
 import { getAgentVouchChainContext } from "@/lib/protocolMetadata";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 import {
@@ -345,6 +349,25 @@ async function resolvePurchaseContext(input: {
   const skillListing = requirePubkey(input.listingAddress, "listingAddress");
   const buyer = requirePubkey(input.buyerPubkey, "buyerPubkey");
   assertBuyerIsNotSponsor(buyer, input.sponsor);
+  const skillListingAccountInfo = await connection.getAccountInfo(
+    skillListing,
+    "confirmed"
+  );
+  if (!skillListingAccountInfo) {
+    throw new Error("Skill listing account was not found on-chain");
+  }
+  if (!skillListingAccountInfo.owner.equals(PROGRAM_ID)) {
+    throw new Error("Skill listing account is not owned by AgentVouch");
+  }
+  const listingLayout = validateSkillListingAccountData(
+    skillListingAccountInfo.data
+  );
+  if (!listingLayout.ok) {
+    throw new Error(
+      `${STALE_SKILL_LISTING_RELINK_MESSAGE} (${listingLayout.reason})`
+    );
+  }
+
   const listing = await fetchOnChainSkillListing(skillListing.toBase58(), {
     useCache: false,
   });

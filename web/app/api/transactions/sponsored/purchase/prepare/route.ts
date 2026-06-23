@@ -74,7 +74,9 @@ export async function POST(request: NextRequest) {
     const message = getErrorMessage(error, "Failed to prepare checkout");
     const status = /not enabled|missing|invalid|required/i.test(message)
       ? 400
-      : /balance|already has a purchase|paused/i.test(message)
+      : /balance|already has a purchase|paused|relink|republish|stale/i.test(
+          message
+        )
       ? 409
       : 500;
     console.warn("[sponsored-purchase:prepare]", message);
