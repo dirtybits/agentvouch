@@ -6,6 +6,12 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "npm run dev"],
       "port": 3000
+    },
+    {
+      "name": "Base POC UI",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd contracts/base-poc/ui && npm run dev"],
+      "port": 5173
     }
   ]
 }
