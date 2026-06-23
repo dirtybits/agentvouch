@@ -255,7 +255,9 @@ export async function runSponsoredCheckout(input: {
         error
       );
       confirmDirectPurchaseAfterSponsoredUnavailable(
-        error instanceof Error ? error.message : "Unknown sponsored checkout error"
+        error instanceof Error
+          ? error.message
+          : "Unknown sponsored checkout error"
       );
       return null;
     }
