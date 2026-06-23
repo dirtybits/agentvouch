@@ -19,10 +19,10 @@ todos:
     status: completed
   - id: live-run
     content: Run the live harness on Base Sepolia with a real CDP paymaster key + funded deployer, capture the gas-sponsored numbers, and confirm the paymaster policy allowlist (AgentVouch + USDC.approve)
-    status: pending
+    status: completed
   - id: gasfree-report
     content: Write up the gas-free UX findings (per-flow sponsored cost, smart-account UX notes, CDP policy/allowlist gotchas, Coinbase Smart Wallet vs alt accounts) as the spike's decision output
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -68,12 +68,17 @@ too.
   clean; needs a CDP key + funded smart accounts to run live.
 - `setup.sh` now also vendors `account-abstraction` v0.7 (gitignored, like the other deps).
 
-## What's left (needs the user's infra)
+## Live run (done 2026-06-23)
 
-1. **live-run** — provide `CDP_RPC_URL` (paymaster+bundler), a funded `DEPLOYER_PRIVATE_KEY`,
-   deploy, fund the three smart-account addresses with Base Sepolia USDC, run `npm run demo`.
-   The CDP paymaster policy must allowlist the deployed contract and the USDC `approve` call.
-2. **gasfree-report** — capture the numbers and write the decision output.
+Deployed `AgentVouchEvm` to Base Sepolia at `0x5D90BB39aCaF0DF7462F552D430dc1ff1f24913E`
+and ran the full flow through the CDP paymaster + Coinbase Smart Accounts: all 8 UserOps
+sponsored, every user's ETH delta `0`, USDC split exact (buyer −10, voucher −6, author −4).
+Total gas sponsored ~0.0000209 ETH for the three-party journey. Findings:
+`docs/BASE_POC_GASFREE_REPORT.md`.
+
+Production follow-ups (not blocking the spike's verdict): tighten the CDP paymaster policy
+to a contract+function allowlist (AgentVouch + USDC `approve`) instead of sponsor-all, and
+build the smart-account onboarding UX.
 
 ## Out of scope
 
