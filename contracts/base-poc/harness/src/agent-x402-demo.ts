@@ -46,17 +46,23 @@ const PRICE_USDC = process.env.AGENT_PRICE_USDC || "1";
 // Standard EIP-3009 type hash (matches Circle USDC + the contract's expectation).
 const TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
   stringToHex(
-    "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)",
-  ),
+    "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+  )
 );
 
 const rpc = process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org";
-const publicClient = createPublicClient({ chain: baseSepolia, transport: http(rpc) });
+const publicClient = createPublicClient({
+  chain: baseSepolia,
+  transport: http(rpc),
+});
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function reqEnv(name: string, hint = ""): string {
   const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var ${name}${hint ? ` — ${hint}` : ""}`);
+  if (!v)
+    throw new Error(
+      `Missing required env var ${name}${hint ? ` — ${hint}` : ""}`
+    );
   return v;
 }
 
@@ -73,7 +79,7 @@ const usdcBalance = (a: Address) =>
 async function main() {
   const deployer = privateKeyToAccount(reqEnv("DEPLOYER_PRIVATE_KEY") as Hex);
   const agent = privateKeyToAccount(
-    reqEnv("AGENT_PK", "run `npm run fund-agent` first") as Hex,
+    reqEnv("AGENT_PK", "run `npm run fund-agent` first") as Hex
   );
   const market = createWalletClient({
     account: deployer,
@@ -83,7 +89,7 @@ async function main() {
   const price = parseUnits(PRICE_USDC, 6);
 
   console.log(
-    "x402 agent-purchase simulation — Lane B (trust-minimized) on Base Sepolia\n",
+    "x402 agent-purchase simulation — Lane B (trust-minimized) on Base Sepolia\n"
   );
   console.log("  marketplace / relayer (EOA, pays gas):", deployer.address);
   console.log("  agent / buyer (EOA, signs only):      ", agent.address);
@@ -93,8 +99,11 @@ async function main() {
   const agentUsdc = await usdcBalance(agent.address);
   if (agentUsdc < price) {
     console.error(
-      `Agent has ${formatUnits(agentUsdc, 6)} USDC, needs ${PRICE_USDC}. Run \`npm run fund-agent\`` +
-        ` (or faucet ${agent.address} at https://faucet.circle.com).`,
+      `Agent has ${formatUnits(
+        agentUsdc,
+        6
+      )} USDC, needs ${PRICE_USDC}. Run \`npm run fund-agent\`` +
+        ` (or faucet ${agent.address} at https://faucet.circle.com).`
     );
     process.exitCode = 1;
     return;
@@ -103,7 +112,9 @@ async function main() {
   async function send(label: string, run: () => Promise<Hex>) {
     const hash = await run();
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    console.log(`  ${label.padEnd(22)} ${hash.slice(0, 10)}… ${receipt.status}`);
+    console.log(
+      `  ${label.padEnd(22)} ${hash.slice(0, 10)}… ${receipt.status}`
+    );
     if (receipt.status !== "success") throw new Error(`${label} reverted`);
     return receipt;
   }
@@ -130,7 +141,7 @@ async function main() {
         abi: agentVouchAbi,
         functionName: "registerAgent",
         args: ["ipfs://agentvouch-x402-marketplace"],
-      }),
+      })
     );
   } else {
     console.log("  register author        (already registered — skipping)");
@@ -144,7 +155,7 @@ async function main() {
     encodeAbiParameters(parseAbiParameters("address, bytes32"), [
       deployer.address,
       skillHash,
-    ]),
+    ])
   );
   await send("list skill", () =>
     market.writeContract({
@@ -158,7 +169,7 @@ async function main() {
         "Purchased by an agent via x402 / EIP-3009",
         price,
       ],
-    }),
+    })
   );
   console.log("  listingId:", listingId, "\n");
 
@@ -169,8 +180,8 @@ async function main() {
   const nonce = keccak256(
     encodeAbiParameters(
       parseAbiParameters("address, bytes32, uint64, uint256"),
-      [agent.address, listingId, 1n, price],
-    ),
+      [agent.address, listingId, 1n, price]
+    )
   );
   const domainSeparator = await publicClient.readContract({
     address: usdc,
@@ -188,7 +199,7 @@ async function main() {
   const structHash = keccak256(
     encodeAbiParameters(
       parseAbiParameters(
-        "bytes32, address, address, uint256, uint256, uint256, bytes32",
+        "bytes32, address, address, uint256, uint256, uint256, bytes32"
       ),
       [
         TRANSFER_WITH_AUTHORIZATION_TYPEHASH,
@@ -198,14 +209,14 @@ async function main() {
         validAfter,
         validBefore,
         nonce,
-      ],
-    ),
+      ]
+    )
   );
   const digest = keccak256(
     encodePacked(
       ["bytes2", "bytes32", "bytes32"],
-      ["0x1901", domainSeparator, structHash],
-    ),
+      ["0x1901", domainSeparator, structHash]
+    )
   );
   const signature = await agent.sign({ hash: digest });
   const sig = parseSignature(signature);
@@ -241,10 +252,13 @@ async function main() {
       break;
     } catch (e) {
       const msg = String(e); // full message; the error name lives below the short line
-      const transient = msg.includes("ListingNotFound") || msg.includes("0x7e43e638");
+      const transient =
+        msg.includes("ListingNotFound") || msg.includes("0x7e43e638");
       if (transient && attempt < 15) {
         if (attempt === 1)
-          console.log("  (waiting for the listing to propagate on the public RPC…)");
+          console.log(
+            "  (waiting for the listing to propagate on the public RPC…)"
+          );
         await sleep(1500);
         continue;
       }
@@ -259,7 +273,7 @@ async function main() {
       functionName: "purchaseWithAuthorization",
       args: purchaseArgs,
       gas: 500_000n,
-    }),
+    })
   );
 
   // 4. Report exact deltas around the settlement block. Historical reads are deterministic,
@@ -294,32 +308,50 @@ async function main() {
 
   console.log("\nResult:");
   console.log(
-    `  agent ETH:     ${formatEther(agentEthBefore)} -> ${formatEther(agentEthAfter)}` +
+    `  agent ETH:     ${formatEther(agentEthBefore)} -> ${formatEther(
+      agentEthAfter
+    )}` +
       `  (Δ ${formatEther(agentEthAfter - agentEthBefore)})  ${
         agentEthAfter === agentEthBefore ? "✓ agent paid 0 gas" : ""
-      }`,
+      }`
   );
   console.log(
-    `  agent USDC:    ${formatUnits(agentUsdcBefore, 6)} -> ${formatUnits(agentUsdcAfter, 6)}` +
-      `  (Δ ${formatUnits(agentUsdcAfter - agentUsdcBefore, 6)})  ✓ paid the price`,
+    `  agent USDC:    ${formatUnits(agentUsdcBefore, 6)} -> ${formatUnits(
+      agentUsdcAfter,
+      6
+    )}` +
+      `  (Δ ${formatUnits(
+        agentUsdcAfter - agentUsdcBefore,
+        6
+      )})  ✓ paid the price`
   );
   console.log(
-    `  contract USDC: ${formatUnits(contractUsdcBefore, 6)} -> ${formatUnits(contractUsdcAfter, 6)}` +
-      `  (Δ +${formatUnits(contractUsdcAfter - contractUsdcBefore, 6)})  (author proceeds + any voucher pool)`,
+    `  contract USDC: ${formatUnits(contractUsdcBefore, 6)} -> ${formatUnits(
+      contractUsdcAfter,
+      6
+    )}` +
+      `  (Δ +${formatUnits(
+        contractUsdcAfter - contractUsdcBefore,
+        6
+      )})  (author proceeds + any voucher pool)`
   );
   console.log(
-    `  settlement tx (relayer's gas): https://sepolia.basescan.org/tx/${receipt.transactionHash}`,
+    `  settlement tx (relayer's gas): https://sepolia.basescan.org/tx/${receipt.transactionHash}`
   );
   console.log(
-    "\nThe agent only signed — it sent no transaction and held no ETH. That is the x402 /",
+    "\nThe agent only signed — it sent no transaction and held no ETH. That is the x402 /"
   );
   console.log(
-    "EIP-3009 property: the buyer authorizes a USDC pull, a relayer settles it on-chain.",
+    "EIP-3009 property: the buyer authorizes a USDC pull, a relayer settles it on-chain."
   );
 }
 
 main().catch((err) => {
-  const e = err as { shortMessage?: string; message?: string; metaMessages?: string[] };
+  const e = err as {
+    shortMessage?: string;
+    message?: string;
+    metaMessages?: string[];
+  };
   console.error("\nFAILED:", e.shortMessage || e.message || String(err));
   if (e.metaMessages?.length) console.error(e.metaMessages.join("\n"));
   process.exitCode = 1;

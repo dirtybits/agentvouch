@@ -36,13 +36,16 @@ const TOPUP_USDC = process.env.AGENT_TOPUP_USDC || "5";
 
 const publicClient = createPublicClient({
   chain: baseSepolia,
-  transport: http(process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org"),
+  transport: http(
+    process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org"
+  ),
 });
 const usdc = getAddress(process.env.USDC_ADDRESS || DEFAULT_USDC);
 
 function reqEnv(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var ${name} (see .env.example)`);
+  if (!v)
+    throw new Error(`Missing required env var ${name} (see .env.example)`);
   return v;
 }
 
@@ -60,7 +63,7 @@ function ensureAgentKey(): Hex {
   const pk = generatePrivateKey();
   appendFileSync(
     ".env",
-    `\n# Agent EOA for the x402 demo (signs EIP-3009 off-chain; never sends a tx, never needs ETH)\nAGENT_PK=${pk}\n`,
+    `\n# Agent EOA for the x402 demo (signs EIP-3009 off-chain; never sends a tx, never needs ETH)\nAGENT_PK=${pk}\n`
   );
   process.env.AGENT_PK = pk;
   console.log("Generated a new AGENT_PK and appended it to .env (gitignored).");
@@ -70,7 +73,10 @@ function ensureAgentKey(): Hex {
 async function main() {
   const agent = privateKeyToAccount(ensureAgentKey());
   console.log("Agent EOA (x402 buyer):", agent.address);
-  console.log("  USDC before:", formatUnits(await usdcBalance(agent.address), 6));
+  console.log(
+    "  USDC before:",
+    formatUnits(await usdcBalance(agent.address), 6)
+  );
 
   // Funder: the already-funded v2 author smart account (just a USDC-holding wallet here).
   const funder = await toCoinbaseSmartAccount({
@@ -80,14 +86,20 @@ async function main() {
   });
   const funderBal = await usdcBalance(funder.address);
   console.log(
-    `Funder (v2 smart account ${funder.address}): ${formatUnits(funderBal, 6)} USDC`,
+    `Funder (v2 smart account ${funder.address}): ${formatUnits(
+      funderBal,
+      6
+    )} USDC`
   );
 
   const amount = parseUnits(TOPUP_USDC, 6);
   if (funderBal < amount) {
     console.error(
-      `\nFunder only has ${formatUnits(funderBal, 6)} USDC, wanted to move ${TOPUP_USDC}.` +
-        ` Lower AGENT_TOPUP_USDC or fund the agent directly at https://faucet.circle.com:\n  ${agent.address}`,
+      `\nFunder only has ${formatUnits(
+        funderBal,
+        6
+      )} USDC, wanted to move ${TOPUP_USDC}.` +
+        ` Lower AGENT_TOPUP_USDC or fund the agent directly at https://faucet.circle.com:\n  ${agent.address}`
     );
     process.exitCode = 1;
     return;
@@ -100,7 +112,9 @@ async function main() {
     paymaster: true,
   });
 
-  console.log(`\nMoving ${TOPUP_USDC} USDC -> agent via a sponsored UserOp ...`);
+  console.log(
+    `\nMoving ${TOPUP_USDC} USDC -> agent via a sponsored UserOp ...`
+  );
   try {
     const hash = await bundler.sendUserOperation({
       calls: [
@@ -115,21 +129,24 @@ async function main() {
     const receipt = await bundler.waitForUserOperationReceipt({ hash });
     if (!receipt.success) throw new Error("transfer UserOp reverted");
     console.log(
-      `  ok: https://sepolia.basescan.org/tx/${receipt.receipt.transactionHash}`,
+      `  ok: https://sepolia.basescan.org/tx/${receipt.receipt.transactionHash}`
     );
   } catch (err) {
     console.error(
       "\nSponsored transfer failed (the paymaster allowlist may exclude USDC.transfer):\n  " +
-        ((err as Error).message ?? String(err)),
+        ((err as Error).message ?? String(err))
     );
     console.error(
-      `\nFallback — fund the agent EOA with test USDC at https://faucet.circle.com (Base Sepolia):\n  ${agent.address}`,
+      `\nFallback — fund the agent EOA with test USDC at https://faucet.circle.com (Base Sepolia):\n  ${agent.address}`
     );
     process.exitCode = 1;
     return;
   }
 
-  console.log("  USDC after: ", formatUnits(await usdcBalance(agent.address), 6));
+  console.log(
+    "  USDC after: ",
+    formatUnits(await usdcBalance(agent.address), 6)
+  );
   console.log("\nAgent is funded. Now run: npm run agent-x402");
 }
 
