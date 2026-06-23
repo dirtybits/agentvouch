@@ -31,6 +31,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
+  confirmDirectPurchaseAfterSponsoredUnavailable,
   runSponsoredCheckout,
   sponsoredCheckoutPubliclyEnabled,
 } from "@/lib/sponsoredPurchaseClient";
@@ -513,11 +514,8 @@ export function useMarketplaceOracle() {
           purchase: purchasePda,
         };
       }
-      if (
-        sponsoredCheckoutPubliclyEnabled() &&
-        connectorSigner &&
-        capabilities.canSign
-      ) {
+      const sponsoredCheckoutEnabled = sponsoredCheckoutPubliclyEnabled();
+      if (sponsoredCheckoutEnabled && connectorSigner && capabilities.canSign) {
         const sponsored = await runSponsoredCheckout({
           connectorSigner,
           skillListing: String(skillListingKey),
@@ -538,6 +536,10 @@ export function useMarketplaceOracle() {
           logTransactionSummary(summary);
           return { tx: sponsored.signature, summary };
         }
+      } else if (sponsoredCheckoutEnabled) {
+        confirmDirectPurchaseAfterSponsoredUnavailable(
+          "This wallet connection cannot sign the prepared sponsored transaction."
+        );
       }
       let purchaseEstimate: PurchasePreflightAssessment | null = null;
       try {

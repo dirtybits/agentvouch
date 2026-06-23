@@ -64,6 +64,24 @@ export function sponsoredCheckoutShouldFallBack(error: unknown): boolean {
   return /not enabled/i.test(error.message);
 }
 
+export function confirmDirectPurchaseAfterSponsoredUnavailable(reason: string) {
+  const message = [
+    "Sponsored checkout is unavailable for this purchase.",
+    reason ? `Reason: ${reason}` : "",
+    "",
+    "Use direct purchase instead?",
+    "Direct purchase will ask your wallet to pay Solana network fees and rent in SOL.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  if (typeof window === "undefined" || !window.confirm(message)) {
+    throw new Error(
+      "Sponsored checkout unavailable; direct SOL-paying purchase was not confirmed"
+    );
+  }
+}
+
 function readResponseError(body: unknown, fallback: string) {
   return body &&
     typeof body === "object" &&
@@ -233,8 +251,11 @@ export async function runSponsoredCheckout(input: {
   } catch (error) {
     if (sponsoredCheckoutShouldFallBack(error)) {
       console.warn(
-        "Sponsored checkout unavailable, falling back to direct purchase:",
+        "Sponsored checkout unavailable; asking before direct purchase fallback:",
         error
+      );
+      confirmDirectPurchaseAfterSponsoredUnavailable(
+        error instanceof Error ? error.message : "Unknown sponsored checkout error"
       );
       return null;
     }
