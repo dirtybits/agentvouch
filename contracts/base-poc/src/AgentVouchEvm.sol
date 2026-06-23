@@ -6,7 +6,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20TransferWithAuthorization} from "./interfaces/IERC20TransferWithAuthorization.sol";
+import {IERC20ReceiveWithAuthorization} from "./interfaces/IERC20ReceiveWithAuthorization.sol";
 import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
 
 /// @title AgentVouchEvm (Base POC)
@@ -335,6 +335,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     ///         no settlement authority is trusted. The authorization nonce is bound to
     ///         `(buyer, listingId, revision, price)`, so a relayer cannot redirect a signed
     ///         payment to a different listing, and the token consumes the nonce (replay-safe).
+    ///         Uses `receiveWithAuthorization` (caller-bound to the payee), so the signed
+    ///         authorization cannot be submitted straight to the token to strand funds (F-1).
     function purchaseWithAuthorization(
         bytes32 id,
         address buyer,
@@ -351,8 +353,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         (pId,,) = _recordPurchase(id, l, buyer);
 
         // Pull the buyer's funds via their signed EIP-3009 authorization (value == price).
-        IERC20TransferWithAuthorization(address(usdc))
-            .transferWithAuthorization(buyer, address(this), price, validAfter, validBefore, boundNonce, v, r, s);
+        // receiveWithAuthorization requires msg.sender == to, so only this contract can consume
+        // the authorization — it can't be replayed straight to the token to strand funds (F-1).
+        IERC20ReceiveWithAuthorization(address(usdc))
+            .receiveWithAuthorization(buyer, address(this), price, validAfter, validBefore, boundNonce, v, r, s);
     }
 
     /// @notice Lane C — bridge-equivalent: a SETTLEMENT_ROLE attests an off-chain x402

@@ -6,8 +6,9 @@ import {AgentVouchEvm} from "../src/AgentVouchEvm.sol";
 import {AgentVouchTypes} from "../src/libraries/AgentVouchTypes.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
-/// Phase 4: x402 lanes. Lane B = EIP-3009 contract-consumed (trust-minimized);
-/// Lane C = settlement-authority attestation (bridge-equivalent), with idempotency guards.
+/// Phase 4: x402 lanes. Lane B = EIP-3009 `receiveWithAuthorization`, contract-consumed and
+/// caller-bound to the payee (trust-minimized, F-1-safe); Lane C = settlement-authority
+/// attestation (bridge-equivalent), with idempotency guards.
 contract X402Test is Test {
     AgentVouchEvm internal av;
     MockUSDC internal usdc;
@@ -72,7 +73,7 @@ contract X402Test is Test {
     {
         bytes32 structHash = keccak256(
             abi.encode(
-                usdc.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), from, address(av), value, validAfter, validBefore, nonce
+                usdc.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), from, address(av), value, validAfter, validBefore, nonce
             )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", usdc.DOMAIN_SEPARATOR(), structHash));
@@ -294,27 +295,34 @@ contract X402Test is Test {
         av.purchaseSkill(listingId); // Lane A, same (buyer, listing, revision)
     }
 
-    // Documents audit finding F-1: the EIP-3009 authorization names the contract as `to`, so
-    // anyone can submit it directly to the token — depositing the funds and consuming the nonce
-    // WITHOUT creating a purchase receipt. The buyer's funds are then stranded (no receipt, and
-    // the POC has no sweep). A decision-relevant property of the contract-consumed x402 lane.
-    function test_laneB_frontRunStrandsFundsNoReceipt() public {
+    // F-1 (fixed): Lane B uses receiveWithAuthorization, which is caller-bound to the payee, so a
+    // buyer's signed authorization cannot be consumed straight at the token to strand the funds.
+    function test_laneB_receiveAuthCannotBeFrontRunOrStranded() public {
         bytes32 nonce = _boundNonce(buyer, listingId, 1, PRICE);
         uint256 validBefore = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = _signAuth(BUYER_PK, buyer, PRICE, 0, validBefore, nonce);
 
-        // Attacker front-runs by calling the token directly: funds arrive, nonce is consumed.
+        // Attack A: submit straight to the token's open transfer path. The signature is over the
+        // ReceiveWithAuthorization type hash, so it doesn't recover the buyer for a Transfer
+        // digest — the token rejects it.
         vm.prank(relayer);
+        vm.expectRevert(bytes("auth: invalid signature"));
         usdc.transferWithAuthorization(buyer, address(av), PRICE, 0, validBefore, nonce, v, r, s);
-        assertEq(usdc.balanceOf(address(av)), PRICE);
 
-        bytes32 pId = av.purchaseId(buyer, listingId, 1);
-        assertFalse(av.getPurchase(pId).exists); // funds in, but no purchase recorded
-
-        // The intended call now reverts (nonce already used); funds remain stranded.
+        // Attack B: call receiveWithAuthorization directly — only the payee (the contract) may
+        // submit it, so a relayer is rejected.
         vm.prank(relayer);
-        vm.expectRevert(bytes("auth: nonce used"));
-        av.purchaseWithAuthorization(listingId, buyer, 0, validBefore, v, r, s);
-        assertFalse(av.getPurchase(pId).exists);
+        vm.expectRevert(bytes("auth: caller must be the payee"));
+        usdc.receiveWithAuthorization(buyer, address(av), PRICE, 0, validBefore, nonce, v, r, s);
+
+        // Neither attack moved funds or burned the nonce; the legit lane still settles cleanly.
+        assertEq(usdc.balanceOf(address(av)), 0);
+        assertFalse(usdc.authorizationState(buyer, nonce));
+
+        vm.prank(relayer);
+        bytes32 pId = av.purchaseWithAuthorization(listingId, buyer, 0, validBefore, v, r, s);
+        assertTrue(av.getPurchase(pId).exists);
+        assertEq(usdc.balanceOf(address(av)), PRICE);
+        assertEq(av.getSettlement(listingId, 1).authorProceedsUsdcMicros, PRICE);
     }
 }

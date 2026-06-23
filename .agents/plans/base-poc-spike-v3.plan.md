@@ -49,8 +49,9 @@ Solana stays canonical.**
 ## What already exists (do not rebuild)
 
 - **Deployed contract (Base Sepolia):** `AgentVouchEvm` at
-  `0x5D90BB39aCaF0DF7462F552D430dc1ff1f24913E`, config initialized, against Circle USDC
-  `0x036CbD53842c5426634e7929541eC2318f3dCF7e`. (Redeploy with
+  `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`, config initialized, against Circle USDC
+  `0x036CbD53842c5426634e7929541eC2318f3dCF7e`. (Redeployed for the F-1 fix — Lane B now uses
+  `receiveWithAuthorization`; pre-F-1 contract was `0x5D90…913E`. Redeploy with
   `contracts/base-poc/script/Deploy.s.sol` if needed.)
 - **The exact call sequence + economics + `listingId` computation:**
   `contracts/base-poc/harness/src/gasless-demo.ts` — the UI should mirror its calls

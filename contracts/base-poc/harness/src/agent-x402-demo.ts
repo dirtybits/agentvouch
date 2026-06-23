@@ -2,7 +2,7 @@
  * x402 agent-purchase simulation for the AgentVouch Base POC (Base Sepolia).
  *
  * Simulates an AGENT (not a human) buying a skill the agent-native way: the agent is a plain
- * EOA that signs an EIP-3009 `transferWithAuthorization` off-chain and NEVER sends a
+ * EOA that signs an EIP-3009 `receiveWithAuthorization` off-chain and NEVER sends a
  * transaction (so it spends zero gas and needs no smart account). A relayer — here the
  * marketplace, played by the deployer EOA — submits the contract's Lane B
  * `purchaseWithAuthorization`, which pulls the USDC via the agent's signature and records the
@@ -43,10 +43,11 @@ import { agentVouchAbi } from "./abi";
 const DEFAULT_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const PRICE_USDC = process.env.AGENT_PRICE_USDC || "1";
 
-// Standard EIP-3009 type hash (matches Circle USDC + the contract's expectation).
-const TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+// EIP-3009 ReceiveWithAuthorization type hash. Lane B uses receiveWithAuthorization (caller-
+// bound to the payee), so the agent signs THIS type — not TransferWithAuthorization (F-1).
+const RECEIVE_WITH_AUTHORIZATION_TYPEHASH = keccak256(
   stringToHex(
-    "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
   )
 );
 
@@ -202,7 +203,7 @@ async function main() {
         "bytes32, address, address, uint256, uint256, uint256, bytes32"
       ),
       [
-        TRANSFER_WITH_AUTHORIZATION_TYPEHASH,
+        RECEIVE_WITH_AUTHORIZATION_TYPEHASH,
         agent.address,
         av,
         price,
@@ -223,7 +224,7 @@ async function main() {
   const v = sig.v !== undefined ? Number(sig.v) : (sig.yParity as number) + 27;
 
   console.log("Agent signs the x402 payment off-chain (zero gas, no tx):");
-  console.log("  EIP-3009 transferWithAuthorization signed by", agent.address);
+  console.log("  EIP-3009 receiveWithAuthorization signed by", agent.address);
   console.log("  nonce bound to (buyer, listingId, revision=1, price)\n");
 
   // 3. Relayer submits Lane B; the contract pulls USDC via the signature + records the purchase.
