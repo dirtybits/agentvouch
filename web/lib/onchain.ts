@@ -15,7 +15,7 @@ const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const asBase64 = (bytes: Uint8Array) =>
   Buffer.from(bytes).toString("base64") as Base64EncodedBytes;
 const ALL_LISTINGS_CACHE_KEY = "all-skill-listings";
-export const SKILL_LISTING_ACCOUNT_SIZE = 859;
+export const SKILL_LISTING_ACCOUNT_SIZE = 892;
 const listingCache = new Map<
   string,
   { value: OnChainSkillListingRecord | null; expiresAt: number }

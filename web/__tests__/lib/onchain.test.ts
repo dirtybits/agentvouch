@@ -59,7 +59,7 @@ function buildCurrentSkillListingAccountData() {
 }
 
 describe("on-chain skill listing guards", () => {
-  it("accepts current M13 skill listing account data", () => {
+  it("accepts current padded skill listing account data", () => {
     const { data } = buildCurrentSkillListingAccountData();
 
     expect(isCurrentSkillListingAccountData(data)).toBe(true);
