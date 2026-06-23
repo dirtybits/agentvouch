@@ -33,8 +33,13 @@ margin = 0.1
 # CreateAccount with the sponsor as rent payer, so WITHOUT the line below signTransaction rejects
 # with: "Fee payer cannot be used for 'System Create Account'". Proven by sign-create-account-test.cjs.
 # Everything else stays false (anti-drain): the sponsor still can't be a transfer/burn/close/assign source.
-[validation.fee_payer_policy]
-system.allow_create_account = true
+# All four system fields must be listed: SystemInstructionPolicy's bools lack per-field #[serde(default)],
+# so once the [system] table is present serde requires every one (only `nonce` defaults).
+[validation.fee_payer_policy.system]
+allow_transfer = false
+allow_assign = false
+allow_create_account = true
+allow_allocate = false
 
 [kora]
 rate_limit = 100

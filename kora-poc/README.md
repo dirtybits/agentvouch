@@ -16,7 +16,8 @@ This is an evaluation artifact, not production wiring.
 
 - `getConfig` → `fee_payers: [89CGD862…]`, `allowed_programs` = [AgentVouch `AGNtBj…`,
   System, SPL Token, ATA, ComputeBudget], `allowed_tokens`/`allowed_spl_paid_tokens` =
-  [devnet USDC `4zMMC9…`], `price_source: "Mock"`, `fee_payer_policy.system.allow_create_account: false`.
+  [devnet USDC `4zMMC9…`], `price_source: "Mock"`, `fee_payer_policy.system.allow_create_account: true`
+  (the one `allow_*` deliberately enabled — see finding #4; every other policy bit stays false).
 - `getSupportedTokens` → `[4zMMC9…]` (USDC only).
 - `getPayerSigner` → `89CGD862…` (signer == payment address).
 - `getBlockhash` → live devnet blockhash.
@@ -24,6 +25,15 @@ This is an evaluation artifact, not production wiring.
   `fee_in_lamports: 5775` (5250 base × 1.10 margin), `fee_in_token: 57750` micro-USDC
   (0.0578 USDC at the Mock 0.0001 SOL/USDC rate). Signer funded via devnet tx
   `26hWPGuJPobpekgL7SSnkKRQ4FUzWaK551JSYRCgp8v5v1yQNxTaNDGtsLKXWQNWyX3c8YdMKJY3zLW1DzZAhRGo`.
+- **Rent gate, proven both directions** (`sign-create-account-test.cjs`, a sponsor-funded
+  `System::CreateAccount` partial-signed so only the fee-payer signature is missing):
+  - `allow_create_account = false` → `signTransaction` **REJECTED**:
+    `"Fee payer cannot be used for 'System Create Account'"`.
+  - `allow_create_account = true` → CreateAccount gate **passes**; the tx advances to the
+    *next* validation and stops at `"Insufficient token payment. Required 991023 lamports"`
+    (expected — the probe tx carries no buyer-reimbursement transfer).
+  - `estimateTransactionFee` does **not** enforce `fee_payer_policy` (it priced the same tx
+    at 9.91 USDC); only `signTransaction` runs `validate_transaction`.
 
 ## Files
 
@@ -32,6 +42,8 @@ This is an evaluation artifact, not production wiring.
 | `kora.toml` | Validation allowlist + Margin pricing |
 | `signers.toml` | Single in-memory sponsor signer (`KORA_PRIVATE_KEY`) |
 | `estimate-fee.cjs` | Fee-quote probe (`@solana/web3.js`) |
+| `create-account-test.cjs` | `estimateTransactionFee` probe for a sponsor-funded CreateAccount (shows estimate does *not* enforce the policy) |
+| `sign-create-account-test.cjs` | `signTransaction` rent-gate proof — REJECTED when `allow_create_account=false`, passes the gate when `true` |
 | `.agent-keys/kora/signer.json` | Sponsor keypair (gitignored, NOT in repo) |
 
 ## Run
@@ -51,10 +63,10 @@ print('1'*p+o)
 PY
 )"
 
-kora --config contracts/kora-poc/kora.toml --rpc-url https://api.devnet.solana.com \
-  rpc start --signers-config contracts/kora-poc/signers.toml -p 8080 &
+kora --config kora-poc/kora.toml --rpc-url https://api.devnet.solana.com \
+  rpc start --signers-config kora-poc/signers.toml -p 8080 &
 
-node contracts/kora-poc/estimate-fee.cjs   # -> USDC fee quote
+node kora-poc/estimate-fee.cjs   # -> USDC fee quote
 ```
 
 ## Findings for AgentVouch
@@ -66,20 +78,37 @@ node contracts/kora-poc/estimate-fee.cjs   # -> USDC fee quote
    only to broadcast.
 3. **Anti-drain by default.** With `fee_payer_policy` omitted, the sponsor can never be the
    source of a transfer/burn/close/assign.
-4. **Rent — the crux, partially open.** `getConfig` shows `system.allow_create_account =
-   false`. AgentVouch `purchase_skill` creates the Purchase PDA via Anchor `init`, i.e. a
-   **CPI'd** `System::CreateAccount`, not a top-level instruction. Kora validates only the
-   **top-level** message instructions, so the CPI'd rent is not seen by the policy and the
-   sponsor (as fee payer) funds it. **Reasoned-compatible, but not yet tested with a real
-   `purchase_skill` tx** — that is the next verification.
+4. **Rent — the crux, now CLOSED (overturns the earlier reasoning).** An earlier draft
+   assumed Kora inspects only **top-level** message instructions, so an Anchor `init`'s
+   **CPI'd** `System::CreateAccount` would slip past the policy. **Source and empirical test
+   prove the opposite.** `validate_transaction` (kora-lib 2.0.5
+   `src/validator/transaction_validator.rs:97`) runs over `transaction_resolved.all_instructions`,
+   which is built from simulation and **includes inner/CPI instructions**, and
+   `validate_fee_payer_usage` gates every `System::CreateAccount { payer == fee_payer }` on
+   `allow_create_account`. So with the default `false`, `purchase_skill` (Purchase PDA + ATAs
+   created with the sponsor as rent payer) is **rejected at sign time**. Setting
+   `[validation.fee_payer_policy.system] allow_create_account = true` unblocks exactly that
+   one action while keeping the sponsor un-drainable on transfer/burn/close/assign. Proven in
+   both directions (see Evidence). **Config gotcha:** `SystemInstructionPolicy`'s bool fields
+   carry no per-field `#[serde(default)]`, so once the `[…system]` table is present you must
+   spell out **all four** (`allow_transfer`, `allow_assign`, `allow_create_account`,
+   `allow_allocate`) or the config fails to parse with `missing field allow_transfer`.
 5. `max_allowed_lamports` caps total outflow (1 SOL here), far above the purchase receipt
    rent (~0.0021 SOL) + fee.
 
 ## Next step if pursuing Kora
 
-Build a real devnet `purchase_skill` transaction (sponsor as fee payer + `rent_payer`,
-buyer partial-signs, USDC setup-fee transfer), then call `estimateTransactionFee` and
-`signTransaction` to confirm Kora co-signs **and** the CPI'd rent is sponsored. That proves
-parity with the existing bespoke sponsor — at which point Kora's validation policy, signer
-custody options (Turnkey/Vault/Privy), and live Jupiter pricing become the upgrade over the
-hand-rolled service.
+The rent question (finding #4) is closed — Kora can sponsor the CPI'd `CreateAccount` once
+`allow_create_account = true`, and the only remaining gate is the buyer-reimbursement
+payment, which is the intended mechanism. The remaining work to reach full bespoke-sponsor
+parity is plumbing, not an open risk:
+
+- Build the full `purchase_skill` round-trip with the buyer-reimbursement USDC transfer
+  (`estimateTransactionFee` → add SPL transfer of `fee_in_token` to the sponsor →
+  `signTransaction`) to land a clean `SIGNED` end to end. Needs a funded buyer keypair +
+  devnet-USDC ATAs (the spike has only the sponsor signer today).
+- Then evaluate signer custody (Turnkey/Vault/Privy) and live Jupiter pricing — the actual
+  upgrades over the hand-rolled service.
+
+Per the ship-minimal bias this is documented hardening, **not a launch blocker**: the
+bespoke sponsor ships launch.
