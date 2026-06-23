@@ -11,6 +11,8 @@ This is an evaluation artifact, not production wiring.
 - **Margin pricing** produces a live USDC quote — the replacement for the static
   `AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE` env the sponsored-checkout handoff flagged.
 - The **anti-drain `fee_payer_policy`** (every `allow_*` = false) is on by default.
+- **Fully gasless for the user, proven end-to-end on devnet** — a zero-SOL wallet
+  transacted, paying only USDC, while Kora sponsored gas **and** rent (see below).
 
 ## Evidence (live RPC against the running node)
 
@@ -34,6 +36,16 @@ This is an evaluation artifact, not production wiring.
     (expected — the probe tx carries no buyer-reimbursement transfer).
   - `estimateTransactionFee` does **not** enforce `fee_payer_policy` (it priced the same tx
     at 9.91 USDC); only `signTransaction` runs `validate_transaction`.
+- **Fully-gasless-for-the-user round trip, submitted to devnet** (`gasless-user-roundtrip.cjs`):
+  a freshly generated buyer with **0 SOL / 20 USDC** signs one tx — fee payer = sponsor,
+  rent payer = sponsor (a new account's 890,880-lamport rent), plus a `transfer_checked`
+  reimbursing the sponsor in USDC. `estimateTransactionFee` → `signTransaction` → submitted:
+  - tx [`32qjUv…KFQvK`](https://explorer.solana.com/tx/32qjUv38fmfFtcjDKf1rx959jHDHwD1q1NwwnePaW3jHBv1hQw5zM6p22TSAQJsvJoHakSginQpamtLhYc6KFQvK?cluster=devnet)
+    landed. Buyer **SOL delta = 0** (paid no gas, no rent); **USDC delta = −10.16** (the
+    reimbursement); the new account's rent was paid by the sponsor.
+  - The 10.16 USDC fee is a **Mock-pricing artifact** (devnet Mock rate prices ~0.001 SOL of
+    rent at ~10 USDC). Live `price_source = "Jupiter"` on mainnet yields a realistic cent-scale
+    fee. Verify the *mechanism* here, not the magnitude.
 
 ## Files
 
@@ -44,7 +56,9 @@ This is an evaluation artifact, not production wiring.
 | `estimate-fee.cjs` | Fee-quote probe (`@solana/web3.js`) |
 | `create-account-test.cjs` | `estimateTransactionFee` probe for a sponsor-funded CreateAccount (shows estimate does *not* enforce the policy) |
 | `sign-create-account-test.cjs` | `signTransaction` rent-gate proof — REJECTED when `allow_create_account=false`, passes the gate when `true` |
+| `gasless-user-roundtrip.cjs` | Full gasless-for-user round trip: zero-SOL buyer, sponsor pays gas+rent, buyer reimburses in USDC, submitted to devnet |
 | `.agent-keys/kora/signer.json` | Sponsor keypair (gitignored, NOT in repo) |
+| `.agent-keys/kora/buyer.json` | Zero-SOL test buyer holding only devnet USDC (gitignored) |
 
 ## Run
 
@@ -95,20 +109,31 @@ node kora-poc/estimate-fee.cjs   # -> USDC fee quote
    `allow_allocate`) or the config fails to parse with `missing field allow_transfer`.
 5. `max_allowed_lamports` caps total outflow (1 SOL here), far above the purchase receipt
    rent (~0.0021 SOL) + fee.
+6. **`register_agent` is NOT gasless-ready; `purchase_skill` is.** This is the one program-side
+   gap, and it's structural. `purchase_skill` exposes **two** distinct signers — `buyer` and
+   `rent_payer` (`programs/agentvouch/src/instructions/purchase_skill.rs`) — so the sponsor can
+   be fee payer + `rent_payer` while the buyer only authorizes the USDC `transfer_checked`s.
+   That split is exactly what makes the gasless round trip above possible.
+   `register_agent` (`programs/agentvouch/src/instructions/register_agent.rs:8`) instead hard-codes
+   `payer = authority`, and `authority` is the user being registered — there is no separate
+   rent payer. For a *new* profile, Anchor debits rent from the user, so the user needs SOL and
+   Kora can only cover gas. **To make first-time `register_agent` gasless, add a `rent_payer:
+   Signer` and set `payer = rent_payer`** (mirror `purchase_skill`), then redeploy. Re-registration
+   (`init_if_needed`, no `CreateAccount`) is already gasless.
 
 ## Next step if pursuing Kora
 
-The rent question (finding #4) is closed — Kora can sponsor the CPI'd `CreateAccount` once
-`allow_create_account = true`, and the only remaining gate is the buyer-reimbursement
-payment, which is the intended mechanism. The remaining work to reach full bespoke-sponsor
-parity is plumbing, not an open risk:
+The rent question (finding #4) and the gasless-for-user claim are both **closed and proven on
+devnet** (see Evidence). Remaining work, in priority order:
 
-- Build the full `purchase_skill` round-trip with the buyer-reimbursement USDC transfer
-  (`estimateTransactionFee` → add SPL transfer of `fee_in_token` to the sponsor →
-  `signTransaction`) to land a clean `SIGNED` end to end. Needs a funded buyer keypair +
-  devnet-USDC ATAs (the spike has only the sponsor signer today).
-- Then evaluate signer custody (Turnkey/Vault/Privy) and live Jupiter pricing — the actual
-  upgrades over the hand-rolled service.
+1. **`purchase_skill` against real marketplace state.** The round trip above proves the
+   fee-payer/rent-payer/USDC-reimbursement mechanism with the canonical devnet USDC mint; the
+   only delta to a real purchase is the full account set (config, listing, settlement, proceeds
+   + reward vaults) and a buyer funded with that USDC. No new risk — same pattern, more accounts.
+2. **`register_agent` program change** (finding #6) if first-time registration must be gasless —
+   add the `rent_payer` signer + redeploy. Required before the UI can offer SOL-free onboarding.
+3. **Signer custody + live pricing.** Move the sponsor key to Turnkey/Vault/Privy and flip
+   `price_source = "Jupiter"` so fees are realistic (the Mock rate over-prices ~100×).
 
-Per the ship-minimal bias this is documented hardening, **not a launch blocker**: the
-bespoke sponsor ships launch.
+Per the ship-minimal bias this is documented hardening, **not a launch blocker**: the bespoke
+sponsor ships launch. But the direction is now de-risked end to end.
