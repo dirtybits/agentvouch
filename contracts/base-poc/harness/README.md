@@ -41,6 +41,35 @@ npm run demo
 On the final run you'll see each UserOp's sponsored gas, then a report showing the
 users' ETH deltas are `0` and the USDC split (buyer −10, voucher −6, author −4).
 
+## Paymaster allowlist
+
+An empty CDP contract allowlist sponsors **everything** — fine for testnet, unsafe for
+mainnet (an open gas faucet). To lock it down, allowlist two contracts and restrict each
+to the functions this flow actually calls:
+
+**`AGENTVOUCH_ADDRESS`** (the deployed contract):
+
+| Function | Selector |
+|---|---|
+| `registerAgent(string)` | `0x2d2a9585` |
+| `depositAuthorBond(uint256)` | `0xaa4c78d7` |
+| `vouch(address,uint256)` | `0x0f6c5572` |
+| `createSkillListing(bytes32,string,string,string,uint256)` | `0x59ce785c` |
+| `purchaseSkill(bytes32)` | `0xe5c2ffb2` |
+| `claimVoucherRevenue(address)` | `0x760ea771` |
+| `withdrawAuthorProceeds(bytes32,uint64,uint256)` | `0x33f3de46` |
+
+**`USDC_ADDRESS`** (Base USDC):
+
+| Function | Selector |
+|---|---|
+| `approve(address,uint256)` | `0x095ea7b3` |
+
+Notes: the `approve` is needed because Lane A (`purchaseSkill`) and the bond/vouch flows
+pull USDC via allowance. If you later sponsor more of the protocol (e.g. `revokeVouch`,
+`removeSkillListing`, `withdrawAuthorBond`, the x402 `purchaseWithAuthorization` lane),
+add those selectors too. Regenerate any selector with `cast sig "<signature>"`.
+
 ## Notes
 
 - No contract changes are needed for gas-free UX: `AgentVouchEvm` keys every action off

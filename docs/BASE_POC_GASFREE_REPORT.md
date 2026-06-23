@@ -55,7 +55,8 @@ so gas is negligible next to the USDC amounts moving through the protocol.
   an opex line and a sponsorship surface — scope the CDP policy with a contract+function
   **allowlist** (AgentVouch + USDC `approve`) and per-account rate limits, plus the global
   monthly cap, before mainnet. This run used an empty allowlist (sponsor-all), fine for
-  testnet only.
+  testnet only. The exact functions + selectors to allowlist are in
+  `contracts/base-poc/harness/README.md` ("Paymaster allowlist").
 - **Smart-account onboarding** is the real UX work: users need a Coinbase Smart Wallet (or
   equivalent). Counterfactual deploy means the account is created inside the first
   sponsored UserOp (initCode) — also gas-free — so onboarding can be one tap.
