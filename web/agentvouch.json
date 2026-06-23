@@ -2453,6 +2453,11 @@
           "signer": true
         },
         {
+          "name": "rent_payer",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },

@@ -28,6 +28,12 @@ isProject: false
 
 # Kora USDC Fee Abstraction
 
+## Status
+
+Deferred as of 2026-06-22 behind `.agents/plans/solana-usdc-sponsored-checkout.plan.md`.
+
+Kora remains the preferred production hardening path for Solana fee abstraction, but the next implementation branch should first prove the native sponsored checkout shape without Kora: typed server-side prepare/submit, buyer partial signing, sponsor-paid SOL fee/rent, buyer-signed USDC reimbursement, and direct `purchase_skill` verification. If that spike works, Kora can replace the bespoke sponsor service with stronger validation policy, signer custody, rate limits, fee collection, and monitoring.
+
 ## Goal
 
 Make Solana transaction friction stop being the reason a buyer, author, voucher, or challenger fails an AgentVouch flow. The target user experience is: users hold USDC, sign AgentVouch actions, and do not need to acquire SOL. Kora pays SOL at the transaction layer and receives a configured SPL-token fee, preferably USDC.

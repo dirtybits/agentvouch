@@ -16,7 +16,7 @@ pub struct PurchaseSkill<'info> {
 
     #[account(
         init,
-        payer = buyer,
+        payer = rent_payer,
         space = Purchase::SPACE,
         seeds = [
             b"purchase",
@@ -97,7 +97,7 @@ pub struct PurchaseSkill<'info> {
 
     #[account(
         init_if_needed,
-        payer = buyer,
+        payer = rent_payer,
         token::mint = usdc_mint,
         token::authority = author_reward_vault_authority,
         token::token_program = token_program,
@@ -111,6 +111,9 @@ pub struct PurchaseSkill<'info> {
 
     #[account(mut)]
     pub buyer: Signer<'info>,
+
+    #[account(mut)]
+    pub rent_payer: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -130,7 +133,7 @@ pub fn handler(ctx: Context<PurchaseSkill>) -> Result<()> {
 
     if ctx.accounts.author_profile.reward_vault != ctx.accounts.author_reward_vault.key() {
         ctx.accounts.author_profile.reward_vault = ctx.accounts.author_reward_vault.key();
-        ctx.accounts.author_profile.reward_vault_rent_payer = ctx.accounts.buyer.key();
+        ctx.accounts.author_profile.reward_vault_rent_payer = ctx.accounts.rent_payer.key();
         ctx.accounts.author_profile.reward_vault_bump = ctx.bumps.author_reward_vault;
     }
 

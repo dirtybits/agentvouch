@@ -2465,6 +2465,11 @@ export type Agentvouch = {
           "signer": true
         },
         {
+          "name": "rentPayer",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -5948,6 +5953,10 @@ export type Agentvouch = {
           },
           {
             "name": "protocolFeeBps",
+            "docs": [
+              "Reserved/deferred. Current purchases route only author + voucher shares,",
+              "so live configs must keep this at 0 until protocol fee collection ships."
+            ],
             "type": "u16"
           },
           {

@@ -72,6 +72,7 @@ export type PurchaseSkillInstruction<
     string,
   TAccountAuthorRewardVault extends string | AccountMeta<string> = string,
   TAccountBuyer extends string | AccountMeta<string> = string,
+  TAccountRentPayer extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -121,6 +122,10 @@ export type PurchaseSkillInstruction<
         ? WritableSignerAccount<TAccountBuyer> &
             AccountSignerMeta<TAccountBuyer>
         : TAccountBuyer,
+      TAccountRentPayer extends string
+        ? WritableSignerAccount<TAccountRentPayer> &
+            AccountSignerMeta<TAccountRentPayer>
+        : TAccountRentPayer,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -174,6 +179,7 @@ export type PurchaseSkillAsyncInput<
   TAccountAuthorRewardVaultAuthority extends string = string,
   TAccountAuthorRewardVault extends string = string,
   TAccountBuyer extends string = string,
+  TAccountRentPayer extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
@@ -190,6 +196,7 @@ export type PurchaseSkillAsyncInput<
   authorRewardVaultAuthority?: Address<TAccountAuthorRewardVaultAuthority>;
   authorRewardVault?: Address<TAccountAuthorRewardVault>;
   buyer: TransactionSigner<TAccountBuyer>;
+  rentPayer: TransactionSigner<TAccountRentPayer>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
 };
@@ -208,6 +215,7 @@ export async function getPurchaseSkillInstructionAsync<
   TAccountAuthorRewardVaultAuthority extends string,
   TAccountAuthorRewardVault extends string,
   TAccountBuyer extends string,
+  TAccountRentPayer extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
@@ -226,6 +234,7 @@ export async function getPurchaseSkillInstructionAsync<
     TAccountAuthorRewardVaultAuthority,
     TAccountAuthorRewardVault,
     TAccountBuyer,
+    TAccountRentPayer,
     TAccountTokenProgram,
     TAccountSystemProgram
   >,
@@ -246,6 +255,7 @@ export async function getPurchaseSkillInstructionAsync<
     TAccountAuthorRewardVaultAuthority,
     TAccountAuthorRewardVault,
     TAccountBuyer,
+    TAccountRentPayer,
     TAccountTokenProgram,
     TAccountSystemProgram
   >
@@ -286,6 +296,7 @@ export async function getPurchaseSkillInstructionAsync<
       isWritable: true,
     },
     buyer: { value: input.buyer ?? null, isWritable: true },
+    rentPayer: { value: input.rentPayer ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
@@ -355,6 +366,7 @@ export async function getPurchaseSkillInstructionAsync<
       ),
       getAccountMeta("authorRewardVault", accounts.authorRewardVault),
       getAccountMeta("buyer", accounts.buyer),
+      getAccountMeta("rentPayer", accounts.rentPayer),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
@@ -375,6 +387,7 @@ export async function getPurchaseSkillInstructionAsync<
     TAccountAuthorRewardVaultAuthority,
     TAccountAuthorRewardVault,
     TAccountBuyer,
+    TAccountRentPayer,
     TAccountTokenProgram,
     TAccountSystemProgram
   >);
@@ -394,6 +407,7 @@ export type PurchaseSkillInput<
   TAccountAuthorRewardVaultAuthority extends string = string,
   TAccountAuthorRewardVault extends string = string,
   TAccountBuyer extends string = string,
+  TAccountRentPayer extends string = string,
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
@@ -410,6 +424,7 @@ export type PurchaseSkillInput<
   authorRewardVaultAuthority: Address<TAccountAuthorRewardVaultAuthority>;
   authorRewardVault: Address<TAccountAuthorRewardVault>;
   buyer: TransactionSigner<TAccountBuyer>;
+  rentPayer: TransactionSigner<TAccountRentPayer>;
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
 };
@@ -428,6 +443,7 @@ export function getPurchaseSkillInstruction<
   TAccountAuthorRewardVaultAuthority extends string,
   TAccountAuthorRewardVault extends string,
   TAccountBuyer extends string,
+  TAccountRentPayer extends string,
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
@@ -446,6 +462,7 @@ export function getPurchaseSkillInstruction<
     TAccountAuthorRewardVaultAuthority,
     TAccountAuthorRewardVault,
     TAccountBuyer,
+    TAccountRentPayer,
     TAccountTokenProgram,
     TAccountSystemProgram
   >,
@@ -465,6 +482,7 @@ export function getPurchaseSkillInstruction<
   TAccountAuthorRewardVaultAuthority,
   TAccountAuthorRewardVault,
   TAccountBuyer,
+  TAccountRentPayer,
   TAccountTokenProgram,
   TAccountSystemProgram
 > {
@@ -504,6 +522,7 @@ export function getPurchaseSkillInstruction<
       isWritable: true,
     },
     buyer: { value: input.buyer ?? null, isWritable: true },
+    rentPayer: { value: input.rentPayer ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
@@ -544,6 +563,7 @@ export function getPurchaseSkillInstruction<
       ),
       getAccountMeta("authorRewardVault", accounts.authorRewardVault),
       getAccountMeta("buyer", accounts.buyer),
+      getAccountMeta("rentPayer", accounts.rentPayer),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
@@ -564,6 +584,7 @@ export function getPurchaseSkillInstruction<
     TAccountAuthorRewardVaultAuthority,
     TAccountAuthorRewardVault,
     TAccountBuyer,
+    TAccountRentPayer,
     TAccountTokenProgram,
     TAccountSystemProgram
   >);
@@ -588,8 +609,9 @@ export type ParsedPurchaseSkillInstruction<
     authorRewardVaultAuthority: TAccountMetas[10];
     authorRewardVault: TAccountMetas[11];
     buyer: TAccountMetas[12];
-    tokenProgram: TAccountMetas[13];
-    systemProgram: TAccountMetas[14];
+    rentPayer: TAccountMetas[13];
+    tokenProgram: TAccountMetas[14];
+    systemProgram: TAccountMetas[15];
   };
   data: PurchaseSkillInstructionData;
 };
@@ -602,12 +624,12 @@ export function parsePurchaseSkillInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedPurchaseSkillInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 15) {
+  if (instruction.accounts.length < 16) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 15,
+        expectedAccountMetas: 16,
       },
     );
   }
@@ -633,6 +655,7 @@ export function parsePurchaseSkillInstruction<
       authorRewardVaultAuthority: getNextAccount(),
       authorRewardVault: getNextAccount(),
       buyer: getNextAccount(),
+      rentPayer: getNextAccount(),
       tokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
     },

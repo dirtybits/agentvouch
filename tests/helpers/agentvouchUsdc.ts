@@ -809,8 +809,10 @@ export async function purchaseSkill(
   author: TestActor,
   skillListing: PublicKey,
   rewardTokenVault: PublicKey,
-  label?: string
+  label?: string,
+  options: { rentPayer?: Keypair } = {}
 ) {
+  const rentPayer = options.rentPayer ?? buyer.keypair;
   const listingAccount = await ctx.program.account.skillListing.fetch(
     skillListing
   );
@@ -845,10 +847,15 @@ export async function purchaseSkill(
       ),
       authorRewardVault: authorRewardVault(ctx.program, author.profile),
       buyer: buyer.keypair.publicKey,
+      rentPayer: rentPayer.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
-    .signers([buyer.keypair]);
+    .signers(
+      rentPayer.publicKey.equals(buyer.keypair.publicKey)
+        ? [buyer.keypair]
+        : [buyer.keypair, rentPayer]
+    );
   if (label) await sendWithMetrics(ctx, label, builder);
   else await builder.rpc();
   return purchase;

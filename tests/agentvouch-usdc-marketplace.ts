@@ -1,4 +1,4 @@
-import { SystemProgram } from "@solana/web3.js";
+import { Keypair, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { assert } from "chai";
 import {
@@ -13,6 +13,7 @@ import {
   createVouch,
   depositAuthorBond,
   expectFailure,
+  fundSol,
   fundX402SettlementVault,
   getTestContext,
   linkVouchToListing,
@@ -369,6 +370,59 @@ describe("agentvouch usdc marketplace rewards", () => {
     assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 0);
   });
 
+  it("allows a separate rent payer to sponsor purchase account creation", async () => {
+    const ctx = await getTestContext();
+    const author = await createActor(ctx);
+    const buyer = await createActor(ctx);
+    await registerAgent(ctx, author);
+    const listing = await createSkillListing(
+      ctx,
+      author,
+      uniqueSkillId("rentpay"),
+      5 * ONE_USDC
+    );
+    const rentPayer = Keypair.generate();
+    await fundSol(ctx.provider, rentPayer, 1);
+
+    const buyerLamportsBefore = await ctx.provider.connection.getBalance(
+      buyer.keypair.publicKey
+    );
+    const rentPayerLamportsBefore = await ctx.provider.connection.getBalance(
+      rentPayer.publicKey
+    );
+    const purchase = await purchaseSkill(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      listing.vault,
+      "purchase_skill sponsored rent payer",
+      { rentPayer }
+    );
+    const buyerLamportsAfter = await ctx.provider.connection.getBalance(
+      buyer.keypair.publicKey
+    );
+    const rentPayerLamportsAfter = await ctx.provider.connection.getBalance(
+      rentPayer.publicKey
+    );
+
+    assert.equal(buyerLamportsAfter, buyerLamportsBefore);
+    assert.isBelow(rentPayerLamportsAfter, rentPayerLamportsBefore);
+
+    const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
+    const authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
+    );
+    assert.equal(
+      purchaseAccount.buyer.toBase58(),
+      buyer.keypair.publicKey.toBase58()
+    );
+    assert.equal(
+      authorProfile.rewardVaultRentPayer.toBase58(),
+      rentPayer.publicKey.toBase58()
+    );
+  });
+
   it("rejects invalid purchase and claim accounts", async () => {
     const ctx = await getTestContext();
     const { author, voucher, buyer, vouch, listing, position } =
@@ -396,6 +450,7 @@ describe("agentvouch usdc marketplace rewards", () => {
           authorRewardVaultAuthority: listing.vaultAuthority,
           authorRewardVault: listing.vault,
           buyer: buyer.keypair.publicKey,
+          rentPayer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
@@ -421,6 +476,7 @@ describe("agentvouch usdc marketplace rewards", () => {
           authorRewardVaultAuthority: listing.vaultAuthority,
           authorRewardVault: ctx.protocolTreasuryVault,
           buyer: buyer.keypair.publicKey,
+          rentPayer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })

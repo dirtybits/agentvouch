@@ -15,7 +15,7 @@ const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const asBase64 = (bytes: Uint8Array) =>
   Buffer.from(bytes).toString("base64") as Base64EncodedBytes;
 const ALL_LISTINGS_CACHE_KEY = "all-skill-listings";
-export const SKILL_LISTING_ACCOUNT_SIZE = 859;
+export const SKILL_LISTING_ACCOUNT_SIZE = 892;
 const listingCache = new Map<
   string,
   { value: OnChainSkillListingRecord | null; expiresAt: number }
@@ -30,8 +30,128 @@ export type OnChainSkillListingRecord = {
   data: SkillListing;
 };
 
+export const STALE_SKILL_LISTING_RELINK_MESSAGE =
+  "This on-chain skill listing uses a stale AgentVouch layout. The author must relink or republish the listing before sponsored checkout.";
+
+export type SkillListingAccountDataValidation =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+const SKILL_LISTING_MAX_URI_LEN = 256;
+const SKILL_LISTING_MAX_NAME_LEN = 64;
+const SKILL_LISTING_MAX_DESCRIPTION_LEN = 256;
+
+function hasRemaining(data: Uint8Array, offset: number, bytes: number) {
+  return offset >= 0 && bytes >= 0 && offset + bytes <= data.length;
+}
+
+function readStringLength(
+  data: Uint8Array,
+  offset: number,
+  maxLength: number,
+  field: string
+): { ok: true; nextOffset: number } | { ok: false; reason: string } {
+  if (!hasRemaining(data, offset, 4)) {
+    return { ok: false, reason: `${field} length is truncated` };
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const length = view.getUint32(offset, true);
+  if (length > maxLength) {
+    return { ok: false, reason: `${field} length exceeds current layout` };
+  }
+  const nextOffset = offset + 4 + length;
+  if (!hasRemaining(data, offset + 4, length)) {
+    return { ok: false, reason: `${field} bytes are truncated` };
+  }
+  return { ok: true, nextOffset };
+}
+
+export function validateSkillListingAccountData(
+  data: Uint8Array
+): SkillListingAccountDataValidation {
+  if (data.length !== SKILL_LISTING_ACCOUNT_SIZE) {
+    return {
+      ok: false,
+      reason: `expected ${SKILL_LISTING_ACCOUNT_SIZE} bytes, found ${data.length}`,
+    };
+  }
+
+  for (let index = 0; index < SKILL_LISTING_DISCRIMINATOR.length; index += 1) {
+    if (data[index] !== SKILL_LISTING_DISCRIMINATOR[index]) {
+      return { ok: false, reason: "SkillListing discriminator mismatch" };
+    }
+  }
+
+  let offset = 8 + 32; // discriminator + author.
+  for (const [field, maxLength] of [
+    ["skill_uri", SKILL_LISTING_MAX_URI_LEN],
+    ["name", SKILL_LISTING_MAX_NAME_LEN],
+    ["description", SKILL_LISTING_MAX_DESCRIPTION_LEN],
+  ] as const) {
+    const result = readStringLength(data, offset, maxLength, field);
+    if (!result.ok) return result;
+    offset = result.nextOffset;
+  }
+
+  // Fixed fields from price_usdc_micros through updated_at.
+  const fixedBytesBeforeStatus =
+    8 + // price_usdc_micros
+    32 + // reward_vault
+    32 + // reward_vault_rent_payer
+    8 + // current_revision
+    32 + // current_settlement
+    32 + // current_author_proceeds_vault
+    8 + // total_downloads
+    8 + // total_revenue_usdc_micros
+    8 + // total_author_revenue_usdc_micros
+    8 + // total_voucher_revenue_usdc_micros
+    8 + // active_reward_stake_usdc_micros
+    4 + // active_reward_position_count
+    16 + // reward_index_usdc_micros_x1e12
+    8 + // unclaimed_voucher_revenue_usdc_micros
+    8 + // created_at
+    8; // updated_at
+  if (!hasRemaining(data, offset, fixedBytesBeforeStatus + 1)) {
+    return { ok: false, reason: "SkillListing fixed fields are truncated" };
+  }
+  offset += fixedBytesBeforeStatus;
+
+  const status = data[offset];
+  offset += 1;
+  if (status > 2) {
+    return { ok: false, reason: "SkillListing status is invalid" };
+  }
+
+  if (!hasRemaining(data, offset, 1)) {
+    return { ok: false, reason: "locked_by_dispute option tag is missing" };
+  }
+  const lockedByDisputeOption = data[offset];
+  offset += 1;
+  if (lockedByDisputeOption !== 0 && lockedByDisputeOption !== 1) {
+    return {
+      ok: false,
+      reason: "locked_by_dispute option tag is invalid",
+    };
+  }
+  if (lockedByDisputeOption === 1) {
+    if (!hasRemaining(data, offset, 32)) {
+      return {
+        ok: false,
+        reason: "locked_by_dispute pubkey is truncated",
+      };
+    }
+    offset += 32;
+  }
+
+  if (!hasRemaining(data, offset, 2)) {
+    return { ok: false, reason: "SkillListing bump fields are truncated" };
+  }
+
+  return { ok: true };
+}
+
 export function isCurrentSkillListingAccountData(data: Uint8Array): boolean {
-  return data.length === SKILL_LISTING_ACCOUNT_SIZE;
+  return validateSkillListingAccountData(data).ok;
 }
 
 async function loadAllOnChainSkillListings(): Promise<
