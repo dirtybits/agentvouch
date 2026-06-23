@@ -202,3 +202,42 @@ export async function purchaseSkillWithSponsoredCheckout(input: {
     sponsor: prepareBody.accounts.sponsor,
   };
 }
+
+export type SponsoredCheckoutResult = {
+  signature: string;
+  setupFeeUsdcMicros: bigint;
+  sponsor: string;
+};
+
+/**
+ * Shared sponsored-checkout call + fallback decision for the marketplace and
+ * reputation purchase hooks. Returns the on-chain result, or `null` when the
+ * caller should fall back to a direct purchase (a safe-to-retry failure per
+ * `sponsoredCheckoutShouldFallBack`); otherwise throws. Each hook still builds
+ * its own transaction summary (which legitimately differs) and gates on
+ * enablement + signer availability first, so its mint/cluster lookups stay lazy.
+ */
+export async function runSponsoredCheckout(input: {
+  connectorSigner: ConnectorTransactionSigner;
+  skillListing: string;
+  priceUsdcMicros: bigint | string | number;
+  expectedUsdcMint: string;
+}): Promise<SponsoredCheckoutResult | null> {
+  try {
+    return await purchaseSkillWithSponsoredCheckout({
+      signer: input.connectorSigner,
+      listingAddress: input.skillListing,
+      expectedPriceUsdcMicros: BigInt(input.priceUsdcMicros),
+      expectedUsdcMint: input.expectedUsdcMint,
+    });
+  } catch (error) {
+    if (sponsoredCheckoutShouldFallBack(error)) {
+      console.warn(
+        "Sponsored checkout unavailable, falling back to direct purchase:",
+        error
+      );
+      return null;
+    }
+    throw error;
+  }
+}

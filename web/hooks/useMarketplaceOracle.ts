@@ -31,9 +31,8 @@ import { getErrorMessage } from "@/lib/errors";
 import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
-  purchaseSkillWithSponsoredCheckout,
+  runSponsoredCheckout,
   sponsoredCheckoutPubliclyEnabled,
-  sponsoredCheckoutShouldFallBack,
 } from "@/lib/sponsoredPurchaseClient";
 import {
   assertUsdcAccountReady,
@@ -519,13 +518,13 @@ export function useMarketplaceOracle() {
         connectorSigner &&
         capabilities.canSign
       ) {
-        try {
-          const sponsored = await purchaseSkillWithSponsoredCheckout({
-            signer: connectorSigner,
-            listingAddress: String(skillListingKey),
-            expectedPriceUsdcMicros: BigInt(listing.data.priceUsdcMicros),
-            expectedUsdcMint: getConfiguredUsdcMint(),
-          });
+        const sponsored = await runSponsoredCheckout({
+          connectorSigner,
+          skillListing: String(skillListingKey),
+          priceUsdcMicros: listing.data.priceUsdcMicros,
+          expectedUsdcMint: getConfiguredUsdcMint(),
+        });
+        if (sponsored) {
           const summary = {
             action: "Purchase skill",
             token: "USDC" as const,
@@ -538,15 +537,6 @@ export function useMarketplaceOracle() {
           };
           logTransactionSummary(summary);
           return { tx: sponsored.signature, summary };
-        } catch (error) {
-          if (sponsoredCheckoutShouldFallBack(error)) {
-            console.warn(
-              "Sponsored checkout unavailable, falling back to direct purchase:",
-              error
-            );
-          } else {
-            throw error;
-          }
         }
       }
       let purchaseEstimate: PurchasePreflightAssessment | null = null;
