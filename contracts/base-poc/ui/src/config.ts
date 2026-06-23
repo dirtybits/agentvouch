@@ -2,7 +2,8 @@ import { createPublicClient, http, getAddress, type Address } from "viem";
 import { baseSepolia } from "viem/chains";
 
 // Deployed AgentVouchEvm + Circle USDC on Base Sepolia (see the plan / harness .env).
-const DEFAULT_AGENTVOUCH = "0x5D90BB39aCaF0DF7462F552D430dc1ff1f24913E";
+// Redeployed for the F-1 fix (Lane B uses receiveWithAuthorization). Pre-F-1: 0x5D90…913E.
+const DEFAULT_AGENTVOUCH = "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854";
 const DEFAULT_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
 export const chain = baseSepolia;
