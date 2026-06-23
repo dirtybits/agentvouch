@@ -6,6 +6,8 @@
   "description": "Gas-free UX harness for the AgentVouch Base POC: drives register/list/purchase/rev-split through Coinbase Smart Accounts + a paymaster on Base Sepolia, proving the user pays zero gas.",
   "scripts": {
     "demo": "tsx src/gasless-demo.ts",
+    "fund-agent": "tsx src/fund-agent.ts",
+    "agent-x402": "tsx src/agent-x402-demo.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
