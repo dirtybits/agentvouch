@@ -1,0 +1,20 @@
+{
+  "name": "agentvouch-base-poc-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gas-free UX harness for the AgentVouch Base POC: drives register/list/purchase/rev-split through Coinbase Smart Accounts + a paymaster on Base Sepolia, proving the user pays zero gas.",
+  "scripts": {
+    "demo": "tsx src/gasless-demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "viem": "^2.21.40"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0"
+  }
+}

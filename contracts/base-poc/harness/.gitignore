@@ -1,0 +1,5 @@
+node_modules/
+.env
+*.log
+# Root .gitignore has `.env*`; keep the (secret-free) template tracked.
+!.env.example
