@@ -1,11 +1,12 @@
 // getAdapter(chainContext) -> the ChainAdapter for that chain.
 //
-// Phase 1 (define-chainadapter): returns not-implemented stubs so the seam exists with no
-// behavior change and no callers yet. SolanaAdapter lands in Phase 2 (./solana.ts) and
-// BaseAdapter in Phases 3/5 (./base.ts); swap the stubs for `new SolanaAdapter(ctx)` /
-// `new BaseAdapter(ctx)` then. See .agents/plans/base-port-chain-adapter.plan.md.
+// Phase 2a: solana:* resolves to SolanaAdapter (reads + formatting live; wallet/writes are
+// Phase 2b). eip155:* is still a not-implemented stub until BaseAdapter (Phases 3/5). There are
+// still no UI callers — repointing them is later in Phase 2.
+// See .agents/plans/base-port-chain-adapter.plan.md.
 
 import { normalizeInputChainContext } from "@/lib/chains";
+import { SolanaAdapter } from "./solana";
 import type { ChainAdapter, ChainContext } from "./types";
 
 export type {
@@ -61,7 +62,6 @@ export function getAdapter(ctx: ChainContext): ChainAdapter {
       // Phase 3/5: return new BaseAdapter(ctx)
       return notImplementedAdapter(ctx, "Base");
     case "solana":
-      // Phase 2: return new SolanaAdapter(ctx)
-      return notImplementedAdapter(ctx, "Solana");
+      return new SolanaAdapter(ctx);
   }
 }

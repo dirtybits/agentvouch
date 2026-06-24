@@ -6,8 +6,8 @@ todos:
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: completed
   - id: extract-solana-adapter
-    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana."
-    status: pending
+    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a adapter reads DONE; 2b wallet/writes (needs signer-injection design), 2c repoint callers, 2d x402 remain — full Done-when needs running-app devnet verification."
+    status: in_progress
   - id: base-adapter-readslice
     content: "Phase 3. Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing/getProfile vs AgentVouchEvm). Render one Base listing in the real UI selected by chain_context. Vertical slice proving the seam."
     status: pending
@@ -209,17 +209,35 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
   Base stub and `getAdapter(<solana ctx>)` the Solana stub; the live app is otherwise untouched
   (`git grep -l getAdapter web/app web/components web/hooks` is empty).
 
-### Phase 2 — `extract-solana-adapter` [pending]  ⚠ live-app refactor
+### Phase 2 — `extract-solana-adapter` [in_progress]  ⚠ live-app refactor
 - **Goal:** route all existing Solana behavior through `SolanaAdapter` with zero UX change.
-- **Files:** new `web/lib/adapters/solana.ts`; refactor (move, don't rewrite) `web/lib/onchain.ts`,
+- **Why sub-sliced:** this spans server (API routes) + client (hooks/components/provider), ~20
+  files, and only some slices are verifiable without a running app + wallet. Split into separate
+  verifiable commits:
+  - **2a — adapter reads [completed 2026-06-23]:** `web/lib/adapters/solana.ts` implements reads
+    (delegating to `lib/onchain.ts`, mapping `OnChainSkillListingRecord` → `SkillListingView`) +
+    identity/explorer (delegating to `lib/chains.ts`). `getAdapter("solana:…")` returns it.
+    `onchain` is dynamically imported inside the read methods so the adapter registry never pulls
+    it (Buffer/RPC) into a client bundle. Wallet/write methods throw (Phase 2b). **No callers
+    repointed — live app untouched.** typecheck + prettier green; `git grep getAdapter web/app
+    web/components web/hooks` empty.
+  - **2b — wallet + writes [pending]:** implement `connect/disconnect/registerAgent/
+    createSkillListing/purchaseSkill/buildX402Payment`. **DESIGN DECISION first:** the adapter is a
+    plain object, but Solana signing lives in the React context (`useAgentVouchWallet`) and
+    sponsored purchase in `/api/transactions/sponsored/*`. Decide signer injection (adapter takes a
+    signer/wallet handle, or write methods accept one) before implementing.
+  - **2c — repoint callers [pending]:** flip server read routes (`app/api/skills/*`) and client
+    orchestration (`useMarketplaceOracle`, the `useAgentVouchWallet` consumers) to `getAdapter(ctx)`.
+    Behavior-touching: routes read `OnChainSkillListingRecord` fields — confirm `SkillListingView`
+    carries everything they use, or map at the boundary. **Needs a running app + wallet to verify.**
+  - **2d — x402 [pending]:** `browserX402` / `x402ProtocolBridge` + `/api/x402/*` behind the adapter.
+- **Files:** `web/lib/adapters/solana.ts` (2a ✓); then `web/lib/onchain.ts`,
   `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`, `web/lib/browserX402.ts`,
-  `web/lib/x402ProtocolBridge.ts`, `web/components/WalletContextProvider.tsx`; repoint their
-  callers at `getAdapter(ctx)`.
-- **Steps:** implement `SolanaAdapter` by delegating to the existing functions; flip pages/hooks
-  to call the adapter; keep `useAgentVouchWallet` as the wallet entry but back it with the adapter.
-- **Done when:** the live Solana flow (connect → browse → sponsored purchase) works **identically**
-  on devnet; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
-  files (no scattered `@solana/*` in pages); `npm run typecheck && npm test` green.
+  `web/lib/x402ProtocolBridge.ts`, `web/components/WalletContextProvider.tsx` + their callers.
+- **Done when (full phase):** the live Solana flow (connect → browse → sponsored purchase) works
+  **identically on devnet** — requires a running app + wallet, **NOT verifiable in a headless
+  session**; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
+  files; `npm run typecheck && npm test` green.
 
 ### Phase 3 — `base-adapter-readslice` [pending]
 - **Goal:** prove the seam end-to-end with a real Base read in the live UI.
