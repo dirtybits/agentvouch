@@ -333,6 +333,20 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
 
 ### Phase 5 — `base-adapter-write` [pending]
 - **Goal:** register/list/buy on Base from the UI + agent x402 settlement.
+
+> **Note (2026-06-24 review). Rev-split is already contract-proven — Phase 5 is wiring, not
+> mechanism.** The 60/40 author/voucher split is shared settlement math (`_recordPurchase`) and
+> passes green on both x402 lanes (`test_laneB_backedSplit6040`, `test_laneC_backedSplitAndClaim`;
+> run locally 2026-06-24 — CI runs no forge, so re-run before trusting). **vs Solana, Base is more
+> seamless:** Lane B (`purchaseWithAuthorization`) fuses the USDC pull + the 60/40 split into ONE
+> atomic tx via USDC's EIP-3009 `receiveWithAuthorization` (buyer signs one EIP-712 msg, relayer
+> submits; **no backend key, no custodial vault**). The Solana x402-bridge (`web/lib/x402ProtocolBridge.ts`,
+> not yet enabled) has no EIP-3009 analog, so it is two-step + custodial: the x402 payment lands in an
+> intermediate `x402_settlement_vault`, then a trusted backend `settlementAuthority` runs a separate
+> `settle_x402_purchase` to do the split. **Wire Base Lane B for the agent path** — it drops the hot
+> settlement key and the custodial-float failure mode the Solana bridge carries. (Base Lane C /
+> `settleX402Purchase` under `SETTLEMENT_ROLE` also exists if a facilitator-settled model is ever needed.)
+
 - **Prereq:** resolve the **agent-identity** open question.
 - **Files:** `web/lib/adapters/base.ts` writes (lift `contracts/base-poc/ui/src/flow.ts`); EVM
   branch in route handlers `web/app/api/transactions/sponsored/*` and `web/app/api/x402/*`
