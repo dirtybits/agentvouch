@@ -2,10 +2,11 @@
 //
 // getAdapter returns a ChainAdapter (server-safe reads + formatting). Wallet-bound WRITES are a
 // separate client-only ChainWallet from the chain-aware wallet hook (Phase 2b) — not here.
-// Phase 2a: solana:* -> SolanaAdapter (reads live); eip155:* is a not-implemented stub until
-// BaseAdapter (Phases 3/5). No UI callers yet. See .agents/plans/base-port-chain-adapter.plan.md.
+// Reads are live for both families: solana:* -> SolanaAdapter, eip155:* -> BaseAdapter (Phase 3a).
+// No UI callers repoint yet. See .agents/plans/base-port-chain-adapter.plan.md.
 
 import { normalizeInputChainContext } from "@/lib/chains";
+import { BaseAdapter } from "./base";
 import { SolanaAdapter } from "./solana";
 import type { ChainAdapter, ChainContext } from "./types";
 
@@ -28,33 +29,10 @@ function chainFamily(ctx: ChainContext): ChainFamily {
   throw new Error(`Unsupported chain context: ${ctx}`);
 }
 
-// A ChainAdapter whose every operation throws — replaced per family in later phases.
-function notImplementedAdapter(
-  chainContext: ChainContext,
-  label: string
-): ChainAdapter {
-  const todo = (): never => {
-    throw new Error(
-      `${label} chain adapter is not implemented yet (chain ${chainContext}). ` +
-        `See .agents/plans/base-port-chain-adapter.plan.md.`
-    );
-  };
-  return {
-    chainContext,
-    isValidAddress: () => todo(),
-    shortenAddress: () => todo(),
-    explorerTxUrl: () => todo(),
-    explorerAddressUrl: () => todo(),
-    listSkillListings: () => todo(),
-    fetchSkillListing: () => todo(),
-  };
-}
-
 export function getAdapter(ctx: ChainContext): ChainAdapter {
   switch (chainFamily(ctx)) {
     case "evm":
-      // Phase 3/5: return new BaseAdapter(ctx)
-      return notImplementedAdapter(ctx, "Base");
+      return new BaseAdapter(ctx);
     case "solana":
       return new SolanaAdapter(ctx);
   }

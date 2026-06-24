@@ -10,7 +10,7 @@ todos:
     status: in_progress
   - id: base-adapter-readslice
     content: "Phase 3. RECOMMENDED NEXT (wallet-free reads; do before 2c — see NEXT STEP OVERRIDE). Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing vs AgentVouchEvm; lift full ABI via `forge build` — harness abi.ts is write-only). listSkillListings has NO getProgramAccounts equivalent — enumerate DB-driven (skills table) or via SkillListingCreated events. Contract 0x6Fd9…D854 likely has no listing yet (zero activity ~53d, verified 2026-06-24) — seed first. Render one Base listing in the real UI selected by chain_context."
-    status: pending
+    status: in_progress
   - id: base-adapter-wallet
     content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts, + wagmi/MetaMask) behind the adapter + a 'use client' provider. LONG POLE. Resolve the wallet-provider open question first."
     status: pending

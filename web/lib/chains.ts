@@ -6,6 +6,7 @@ export const SOLANA_TESTNET_CHAIN_CONTEXT =
   "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z";
 export const ETHEREUM_MAINNET_CHAIN_CONTEXT = "eip155:1";
 export const BASE_CHAIN_CONTEXT = "eip155:8453";
+export const BASE_SEPOLIA_CHAIN_CONTEXT = "eip155:84532";
 export const POLYGON_CHAIN_CONTEXT = "eip155:137";
 
 export const CHAIN_ALIASES: Record<string, string> = {
@@ -14,6 +15,7 @@ export const CHAIN_ALIASES: Record<string, string> = {
   [SOLANA_TESTNET_CHAIN_CONTEXT]: "Solana Testnet",
   [ETHEREUM_MAINNET_CHAIN_CONTEXT]: "Ethereum",
   [BASE_CHAIN_CONTEXT]: "Base",
+  [BASE_SEPOLIA_CHAIN_CONTEXT]: "Base Sepolia",
   [POLYGON_CHAIN_CONTEXT]: "Polygon",
 };
 
@@ -27,6 +29,8 @@ const LEGACY_CHAIN_CONTEXTS: Record<string, string> = {
   "solana:testnet": SOLANA_TESTNET_CHAIN_CONTEXT,
   ethereum: ETHEREUM_MAINNET_CHAIN_CONTEXT,
   base: BASE_CHAIN_CONTEXT,
+  "base-sepolia": BASE_SEPOLIA_CHAIN_CONTEXT,
+  "base:sepolia": BASE_SEPOLIA_CHAIN_CONTEXT,
   polygon: POLYGON_CHAIN_CONTEXT,
 };
 
