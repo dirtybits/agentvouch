@@ -89,6 +89,7 @@ import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
   confirmDirectPurchaseAfterSponsoredUnavailable,
   runSponsoredCheckout,
+  runSponsoredRegisterAgent,
   sponsoredCheckoutPubliclyEnabled,
 } from "@/lib/sponsoredPurchaseClient";
 import {
@@ -1160,10 +1161,29 @@ export function useReputationOracle() {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
       const authorAddress = getConnectedAuthorAddress(walletAddress, signer);
       await assertRegisterAgentClusterReady(walletAddress);
+
+      // Gasless onboarding: route through the sponsor so a USDC-only wallet (no
+      // SOL) can register. The sponsor pays gas + the AgentProfile rent; the user
+      // reimburses in USDC. Falls back to direct self-pay when unavailable.
+      const sponsoredCheckoutEnabled = sponsoredCheckoutPubliclyEnabled();
+      if (sponsoredCheckoutEnabled && connectorSigner && capabilities.canSign) {
+        const sponsored = await runSponsoredRegisterAgent({
+          connectorSigner,
+          metadataUri,
+        });
+        if (sponsored) {
+          const agentProfile = await getAgentPDA(authorAddress);
+          return { tx: sponsored.signature, agentProfile };
+        }
+      } else if (sponsoredCheckoutEnabled) {
+        confirmDirectPurchaseAfterSponsoredUnavailable(
+          "This wallet connection cannot sign the prepared sponsored transaction."
+        );
+      }
+
+      // Direct (self-pay) path: the connected wallet pays its own gas + rent in SOL.
       const ix = await getRegisterAgentInstructionAsync({
         authority: signer,
-        // Self-funded path: the connected wallet pays its own rent. Gasless onboarding
-        // (sponsor as rentPayer) is supported by the program but not yet wired into the UI.
         rentPayer: signer,
         metadataUri,
       });
@@ -1171,7 +1191,7 @@ export function useReputationOracle() {
       const agentProfile = await getAgentPDA(authorAddress);
       return { tx, agentProfile };
     },
-    [signer, walletAddress, sendIx]
+    [signer, walletAddress, sendIx, connectorSigner, capabilities.canSign]
   );
 
   /**

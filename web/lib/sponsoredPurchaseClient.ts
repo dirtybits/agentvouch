@@ -264,3 +264,136 @@ export async function runSponsoredCheckout(input: {
     throw error;
   }
 }
+
+// ----------------------------------------------------------------------------
+// Sponsored register_agent — gasless onboarding. Mirrors the purchase flow:
+// the sponsor pays SOL gas + the AgentProfile rent, the user reimburses in USDC.
+// ----------------------------------------------------------------------------
+
+type SponsoredRegisterPrepareResponse =
+  | {
+      transaction: string;
+      encoding: "base64";
+      quote: { setupFeeUsdcMicros: string };
+      accounts: { authority: string; sponsor: string; agentProfile: string };
+    }
+  | { error: string };
+
+type SponsoredRegisterSubmitResponse =
+  | {
+      signature: string;
+      agentProfile: string;
+      authorityPubkey: string;
+      setupFeeUsdcMicros: string;
+    }
+  | { error: string };
+
+export type SponsoredRegisterAgentResult = {
+  signature: string;
+  agentProfile: string;
+  setupFeeUsdcMicros: bigint;
+  sponsor: string;
+};
+
+function confirmSponsoredRegistrationSetupFee(setupFeeUsdcMicros: string) {
+  if (typeof window === "undefined") return;
+  const setupFee = BigInt(setupFeeUsdcMicros);
+  const message =
+    setupFee > 0n
+      ? `Register your agent with sponsored checkout for a ${formatUsdcMicros(
+          setupFee
+        )} USDC setup fee (no SOL needed)?`
+      : "Register your agent with sponsored checkout (no SOL needed)?";
+  if (!window.confirm(message)) {
+    throw new Error("Sponsored registration cancelled before signing");
+  }
+}
+
+export async function registerAgentWithSponsoredCheckout(input: {
+  signer: ConnectorTransactionSigner;
+  metadataUri: string;
+}) {
+  const prepareResponse = await fetch(
+    "/api/transactions/sponsored/register-agent/prepare",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        authorityPubkey: input.signer.address,
+        metadataUri: input.metadataUri,
+      }),
+    }
+  );
+  const prepareBody = (await prepareResponse
+    .json()
+    .catch(() => null)) as SponsoredRegisterPrepareResponse | null;
+  if (!prepareResponse.ok || !prepareBody || "error" in prepareBody) {
+    throw new SponsoredPurchaseError(
+      readResponseError(prepareBody, "Sponsored registration prepare failed"),
+      prepareResponse.status,
+      "prepare"
+    );
+  }
+  confirmSponsoredRegistrationSetupFee(prepareBody.quote.setupFeeUsdcMicros);
+
+  const unsignedTransaction = decodeBase64Transaction(prepareBody.transaction);
+  const signed = await input.signer.signTransaction(unsignedTransaction);
+  const signedTransaction = encodeSignedTransaction(signed);
+  const submitResponse = await fetch(
+    "/api/transactions/sponsored/register-agent/submit",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedTransaction }),
+    }
+  );
+  const submitBody = (await submitResponse
+    .json()
+    .catch(() => null)) as SponsoredRegisterSubmitResponse | null;
+  if (!submitResponse.ok || !submitBody || "error" in submitBody) {
+    throw new SponsoredPurchaseError(
+      readResponseError(submitBody, "Sponsored registration submit failed"),
+      submitResponse.status,
+      "submit"
+    );
+  }
+
+  return {
+    signature: submitBody.signature,
+    agentProfile: submitBody.agentProfile,
+    setupFeeUsdcMicros: BigInt(submitBody.setupFeeUsdcMicros),
+    sponsor: prepareBody.accounts.sponsor,
+  };
+}
+
+/**
+ * Shared sponsored register_agent call + fallback decision. Returns the on-chain
+ * result, or `null` when the caller should fall back to direct (self-pay)
+ * registration (a safe-to-retry failure per `sponsoredCheckoutShouldFallBack`);
+ * otherwise throws.
+ */
+export async function runSponsoredRegisterAgent(input: {
+  connectorSigner: ConnectorTransactionSigner;
+  metadataUri: string;
+}): Promise<SponsoredRegisterAgentResult | null> {
+  try {
+    return await registerAgentWithSponsoredCheckout({
+      signer: input.connectorSigner,
+      metadataUri: input.metadataUri,
+    });
+  } catch (error) {
+    if (sponsoredCheckoutShouldFallBack(error)) {
+      console.warn(
+        "Sponsored registration unavailable; asking before direct fallback:",
+        error
+      );
+      confirmDirectPurchaseAfterSponsoredUnavailable(
+        error instanceof Error
+          ? error.message
+          : "Unknown sponsored registration error"
+      );
+      return null;
+    }
+    throw error;
+  }
+}

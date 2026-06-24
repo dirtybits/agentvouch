@@ -26,8 +26,8 @@ import {
   quoteSponsoredCheckoutSetupFee,
 } from "@/lib/sponsoredCheckout";
 
-const PROGRAM_ID = new PublicKey(AGENTVOUCH_PROGRAM_ADDRESS);
-const TOKEN_PROGRAM_ID = new PublicKey(
+export const PROGRAM_ID = new PublicKey(AGENTVOUCH_PROGRAM_ADDRESS);
+export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 );
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
@@ -42,7 +42,7 @@ const SYSTEM_PROGRAM_ID = SystemProgram.programId;
 const PURCHASE_ACCOUNT_SPACE = 177;
 // SPL token account is a fixed 165 bytes.
 const TOKEN_ACCOUNT_SPACE = 165;
-const USDC_DECIMALS = 6;
+export const USDC_DECIMALS = 6;
 
 type SponsoredPurchasePrepareInput = {
   buyerPubkey: string;
@@ -95,13 +95,13 @@ function isTruthy(value: string | undefined) {
   return value === "1" || value?.toLowerCase() === "true";
 }
 
-function requireEnabled() {
+export function requireEnabled() {
   if (!isTruthy(process.env.AGENTVOUCH_SPONSORED_CHECKOUT_ENABLED)) {
     throw new Error("Sponsored checkout is not enabled");
   }
 }
 
-function parseNonNegativeBigInt(
+export function parseNonNegativeBigInt(
   value: string | number | bigint | null | undefined,
   label: string
 ) {
@@ -111,7 +111,7 @@ function parseNonNegativeBigInt(
   return parsed;
 }
 
-function requirePubkey(value: string | undefined | null, label: string) {
+export function requirePubkey(value: string | undefined | null, label: string) {
   if (!value) throw new Error(`${label} is required`);
   try {
     return new PublicKey(value);
@@ -169,7 +169,7 @@ function parseSecretBytes(raw: string, label: string) {
 // path). Module-scoped, so it never leaves the server process.
 let cachedSponsorKeypair: Keypair | null = null;
 
-function loadSponsorKeypair() {
+export function loadSponsorKeypair() {
   if (cachedSponsorKeypair) return cachedSponsorKeypair;
   const inlineSecret = process.env.AGENTVOUCH_SPONSOR_SECRET_KEY;
   const keypairPath = process.env.AGENTVOUCH_SPONSOR_KEYPAIR_PATH;
@@ -198,21 +198,21 @@ function u64Le(value: bigint | number | string) {
   return buffer;
 }
 
-function pda(...seeds: Array<string | Buffer | Uint8Array>) {
+export function pda(...seeds: Array<string | Buffer | Uint8Array>) {
   return PublicKey.findProgramAddressSync(
     seeds.map((seed) => (typeof seed === "string" ? Buffer.from(seed) : seed)),
     PROGRAM_ID
   )[0];
 }
 
-function deriveAta(owner: PublicKey, mint: PublicKey) {
+export function deriveAta(owner: PublicKey, mint: PublicKey) {
   return PublicKey.findProgramAddressSync(
     [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
     ASSOCIATED_TOKEN_PROGRAM_ID
   )[0];
 }
 
-async function fetchTokenAccountState(
+export async function fetchTokenAccountState(
   connection: Connection,
   tokenAccount: PublicKey
 ): Promise<TokenAccountState> {
@@ -233,7 +233,7 @@ async function fetchTokenAccountState(
   };
 }
 
-function createTransferCheckedInstruction(input: {
+export function createTransferCheckedInstruction(input: {
   source: PublicKey;
   mint: PublicKey;
   destination: PublicKey;
@@ -258,7 +258,7 @@ function createTransferCheckedInstruction(input: {
   });
 }
 
-function readTransferCheckedAmount(instruction: TransactionInstruction) {
+export function readTransferCheckedAmount(instruction: TransactionInstruction) {
   if (
     !instruction.programId.equals(TOKEN_PROGRAM_ID) ||
     instruction.data.length !== 10 ||
@@ -481,7 +481,7 @@ async function resolvePurchaseContext(input: {
   };
 }
 
-function getSponsorFeeDestination(setupFeeUsdcMicros: bigint) {
+export function getSponsorFeeDestination(setupFeeUsdcMicros: bigint) {
   if (setupFeeUsdcMicros === 0n) return null;
   return requirePubkey(
     process.env.AGENTVOUCH_SPONSOR_USDC_FEE_DESTINATION,
@@ -489,7 +489,7 @@ function getSponsorFeeDestination(setupFeeUsdcMicros: bigint) {
   );
 }
 
-function getMaxSetupFeeCap() {
+export function getMaxSetupFeeCap() {
   return parseNonNegativeBigInt(
     process.env.AGENTVOUCH_SPONSOR_MAX_FEE_USDC_MICROS,
     "AGENTVOUCH_SPONSOR_MAX_FEE_USDC_MICROS"
@@ -542,7 +542,7 @@ function buildTransaction(input: {
   return transaction;
 }
 
-async function getTransactionFeeLamports(
+export async function getTransactionFeeLamports(
   connection: Connection,
   transaction: Transaction
 ) {
@@ -648,7 +648,11 @@ export async function prepareSponsoredPurchase(
   };
 }
 
-function assertKey(actual: PublicKey, expected: PublicKey, label: string) {
+export function assertKey(
+  actual: PublicKey,
+  expected: PublicKey,
+  label: string
+) {
   if (!actual.equals(expected)) {
     throw new Error(`${label} mismatch`);
   }
