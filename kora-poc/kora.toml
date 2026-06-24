@@ -6,7 +6,11 @@
 [validation]
 max_allowed_lamports = 10000000       # ~0.01 SOL drain cap/tx (tune to just above real purchase rent+fee)
 max_signatures = 10
-price_source = "Mock"                 # "Mock" for devnet; "Jupiter" for live mainnet pricing
+# DEVNET stays "Mock": Jupiter prices only MAINNET mints, so it cannot quote the devnet USDC
+# mint below — setting "Jupiter" here would leave the node unable to produce a fee. The Mock
+# rate is intentionally unrealistic (~100x), so verify the mechanism on devnet, not the cost.
+# See the MAINNET block under [validation.price] for the production flip.
+price_source = "Mock"
 
 # Only AgentVouch + the programs its instructions touch may appear in a sponsored tx.
 allowed_programs = [
@@ -27,6 +31,18 @@ disallowed_accounts = []
 [validation.price]
 type = "margin"
 margin = 0.1
+
+# ---------------------------------------------------------------------------
+# MAINNET FLIP (do NOT enable on devnet — see price_source note above):
+#   price_source = "Jupiter"        # live SOL/USDC, replaces the Mock ~100x rate
+#   allowed_tokens          = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]  # mainnet USDC
+#   allowed_spl_paid_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+#   allowed_programs[0]     = <mainnet AgentVouch program id>
+# SIGNER CUSTODY (BLOCKER before mainnet): the sponsor key is a local file read via the
+# KORA_PRIVATE_KEY env (see signers.toml / .agent-keys/kora/signer.json). That is fine for a
+# devnet spike but MUST move to a managed signer (Turnkey / HashiCorp Vault / Privy) before
+# mainnet — a hot key in a file that can sign as fee payer is an unacceptable production risk.
+# ---------------------------------------------------------------------------
 
 # CLOSED (2026-06-23): Kora validates RESOLVED instructions (outer + CPI inner, resolved via
 # simulation) at signTransaction time. purchase_skill creates the Purchase PDA + ATAs via CPI'd

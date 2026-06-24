@@ -46,6 +46,13 @@ This is an evaluation artifact, not production wiring.
   - The 10.16 USDC fee is a **Mock-pricing artifact** (devnet Mock rate prices ~0.001 SOL of
     rent at ~10 USDC). Live `price_source = "Jupiter"` on mainnet yields a realistic cent-scale
     fee. Verify the *mechanism* here, not the magnitude.
+- **Gasless `register_agent` round trip, submitted to devnet** (`gasless-register-agent.cjs`,
+  against the redeployed program): the same zero-SOL wallet — as the `authority` being
+  registered — signs `register_agent` with `rent_payer = sponsor`, plus a USDC reimbursement.
+  - tx [`ZP73fg…JMUteV`](https://explorer.solana.com/tx/ZP73fgdvGxxa3uweubNpk7uWQ4ATgeUmpCAac3D2XkbenDSkCfjaCzJ8nDc7JDFish5KcLfdBG7yZjbh6JMUteV?cluster=devnet)
+    landed. Authority **SOL delta = 0**; the `agent_profile` PDA was created (owned by the
+    program, **3,605,280 lamports rent paid by the sponsor**); USDC delta = −40.56 (Mock-priced
+    reimbursement). Confirms the program redeploy made first-time registration gasless.
 
 ## Files
 
@@ -57,6 +64,7 @@ This is an evaluation artifact, not production wiring.
 | `create-account-test.cjs` | `estimateTransactionFee` probe for a sponsor-funded CreateAccount (shows estimate does *not* enforce the policy) |
 | `sign-create-account-test.cjs` | `signTransaction` rent-gate proof — REJECTED when `allow_create_account=false`, passes the gate when `true` |
 | `gasless-user-roundtrip.cjs` | Full gasless-for-user round trip: zero-SOL buyer, sponsor pays gas+rent, buyer reimburses in USDC, submitted to devnet |
+| `gasless-register-agent.cjs` | Gasless `register_agent` against the redeployed program: zero-SOL authority, sponsor pays the profile-PDA rent, user reimburses in USDC |
 | `.agent-keys/kora/signer.json` | Sponsor keypair (gitignored, NOT in repo) |
 | `.agent-keys/kora/buyer.json` | Zero-SOL test buyer holding only devnet USDC (gitignored) |
 
@@ -109,31 +117,34 @@ node kora-poc/estimate-fee.cjs   # -> USDC fee quote
    `allow_allocate`) or the config fails to parse with `missing field allow_transfer`.
 5. `max_allowed_lamports` caps total outflow (1 SOL here), far above the purchase receipt
    rent (~0.0021 SOL) + fee.
-6. **`register_agent` is NOT gasless-ready; `purchase_skill` is.** This is the one program-side
-   gap, and it's structural. `purchase_skill` exposes **two** distinct signers — `buyer` and
-   `rent_payer` (`programs/agentvouch/src/instructions/purchase_skill.rs`) — so the sponsor can
-   be fee payer + `rent_payer` while the buyer only authorizes the USDC `transfer_checked`s.
-   That split is exactly what makes the gasless round trip above possible.
-   `register_agent` (`programs/agentvouch/src/instructions/register_agent.rs:8`) instead hard-codes
-   `payer = authority`, and `authority` is the user being registered — there is no separate
-   rent payer. For a *new* profile, Anchor debits rent from the user, so the user needs SOL and
-   Kora can only cover gas. **To make first-time `register_agent` gasless, add a `rent_payer:
-   Signer` and set `payer = rent_payer`** (mirror `purchase_skill`), then redeploy. Re-registration
-   (`init_if_needed`, no `CreateAccount`) is already gasless.
+6. **Both `register_agent` and `purchase_skill` are now gasless-ready (`register_agent` fixed +
+   redeployed 2026-06-23).** `purchase_skill` always exposed two distinct signers — `buyer` and
+   `rent_payer` — so the sponsor pays gas + rent while the buyer only authorizes USDC transfers.
+   `register_agent` originally hard-coded `payer = authority` (the user), so a new profile forced
+   the user to pay rent in SOL. It now takes a separate `rent_payer: Signer` and uses
+   `payer = rent_payer` (mirrors `purchase_skill`); `authority` still signs as identity but pays
+   no rent. Redeployed to devnet (program ID unchanged; see `docs/DEPLOY.md` change log) and
+   **proven gasless end to end** — see the register_agent round trip in Evidence.
 
-## Next step if pursuing Kora
+## Status & next steps
 
-The rent question (finding #4) and the gasless-for-user claim are both **closed and proven on
-devnet** (see Evidence). Remaining work, in priority order:
+**Done and proven on devnet:** dynamic USDC pricing (finding #1), rent-via-CPI sponsorship
+(finding #4), fully-gasless-for-user `purchase_skill`-shaped round trip, and gasless
+`register_agent` (finding #6 — program fixed + redeployed). The `register_agent` rent_payer
+seam is in `main` program code and the deploy is logged in `docs/DEPLOY.md`.
 
-1. **`purchase_skill` against real marketplace state.** The round trip above proves the
+Remaining work, in priority order:
+
+1. **`purchase_skill` against real marketplace state.** The round trips above prove the
    fee-payer/rent-payer/USDC-reimbursement mechanism with the canonical devnet USDC mint; the
    only delta to a real purchase is the full account set (config, listing, settlement, proceeds
    + reward vaults) and a buyer funded with that USDC. No new risk — same pattern, more accounts.
-2. **`register_agent` program change** (finding #6) if first-time registration must be gasless —
-   add the `rent_payer` signer + redeploy. Required before the UI can offer SOL-free onboarding.
-3. **Signer custody + live pricing.** Move the sponsor key to Turnkey/Vault/Privy and flip
-   `price_source = "Jupiter"` so fees are realistic (the Mock rate over-prices ~100×).
+2. **Wire the UI** to route `register_agent` / `purchase_skill` through Kora's estimate→sign
+   flow (`web/lib/sponsoredPurchase.ts` is the template; pass the sponsor as `rent_payer`). Deferred.
+3. **Mainnet hardening (BLOCKERS before mainnet, documented in `kora.toml`):** flip
+   `price_source = "Jupiter"` with the mainnet USDC mint (the Mock rate over-prices ~100×, which
+   is why the devnet fees above read ~10–40 USDC instead of cents), and move the sponsor key off
+   the local file to a managed signer (Turnkey / Vault / Privy).
 
 Per the ship-minimal bias this is documented hardening, **not a launch blocker**: the bespoke
-sponsor ships launch. But the direction is now de-risked end to end.
+sponsor ships launch. But the gasless direction is now de-risked end to end.

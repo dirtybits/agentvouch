@@ -14,64 +14,84 @@ import {
 } from "@solana/kit";
 import { AGENTVOUCH_PROGRAM_ADDRESS } from "../programs";
 
+/** SkillNotActive: Skill is not active */
+export const AGENTVOUCH_ERROR__SKILL_NOT_ACTIVE = 0x1770; // 6000
+/** InvalidAuthor: Invalid author */
+export const AGENTVOUCH_ERROR__INVALID_AUTHOR = 0x1771; // 6001
 /** ProtocolPaused: Protocol is paused */
-export const AGENTVOUCH_ERROR__PROTOCOL_PAUSED = 0x1770; // 6000
-/** NotAuthor: Only the listing author can withdraw proceeds */
-export const AGENTVOUCH_ERROR__NOT_AUTHOR = 0x1771; // 6001
-/** InvalidAmount: Withdrawal amount must be positive */
-export const AGENTVOUCH_ERROR__INVALID_AMOUNT = 0x1772; // 6002
-/** SettlementMismatch: Listing settlement account does not match the listing */
-export const AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH = 0x1773; // 6003
-/** AuthorProceedsVaultMismatch: Author proceeds vault does not match settlement state */
-export const AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH = 0x1774; // 6004
-/** ProceedsLocked: Author proceeds are still locked */
-export const AGENTVOUCH_ERROR__PROCEEDS_LOCKED = 0x1775; // 6005
-/** SettlementLocked: Author proceeds are locked by an open dispute */
-export const AGENTVOUCH_ERROR__SETTLEMENT_LOCKED = 0x1776; // 6006
-/** InsufficientWithdrawableProceeds: Insufficient withdrawable author proceeds */
-export const AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS = 0x1777; // 6007
-/** LockOverflow: Author proceeds lock calculation overflowed */
-export const AGENTVOUCH_ERROR__LOCK_OVERFLOW = 0x1778; // 6008
-/** WithdrawalOverflow: Withdrawal accounting overflowed */
-export const AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW = 0x1779; // 6009
+export const AGENTVOUCH_ERROR__PROTOCOL_PAUSED = 0x1772; // 6002
+/** FreeSkillNotPurchased: Free skills do not require purchase */
+export const AGENTVOUCH_ERROR__FREE_SKILL_NOT_PURCHASED = 0x1773; // 6003
+/** InvalidSettlementAmount: x402 settlement amount must match the listing price */
+export const AGENTVOUCH_ERROR__INVALID_SETTLEMENT_AMOUNT = 0x1774; // 6004
+/** PaymentOverflow: Payment calculation overflowed */
+export const AGENTVOUCH_ERROR__PAYMENT_OVERFLOW = 0x1775; // 6005
+/** VoucherPoolTooSmall: Voucher pool is too small */
+export const AGENTVOUCH_ERROR__VOUCHER_POOL_TOO_SMALL = 0x1776; // 6006
+/** RewardIndexOverflow: Reward index overflowed */
+export const AGENTVOUCH_ERROR__REWARD_INDEX_OVERFLOW = 0x1777; // 6007
 /** InvalidUsdcMint: USDC mint does not match config */
-export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x177a; // 6010
+export const AGENTVOUCH_ERROR__INVALID_USDC_MINT = 0x1778; // 6008
 /** InvalidTokenMint: Token account mint does not match config */
-export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x177b; // 6011
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_MINT = 0x1779; // 6009
 /** InvalidTokenOwner: Token account owner is invalid */
-export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x177c; // 6012
+export const AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER = 0x177a; // 6010
+/** SettlementMismatch: Listing settlement account does not match the active listing revision */
+export const AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH = 0x177b; // 6011
+/** AuthorProceedsVaultMismatch: Author proceeds vault does not match settlement state */
+export const AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH = 0x177c; // 6012
+/** X402SettlementVaultMismatch: x402 settlement vault does not match config */
+export const AGENTVOUCH_ERROR__X402_SETTLEMENT_VAULT_MISMATCH = 0x177d; // 6013
+/** InvalidSettlementAuthority: x402 settlement authority does not match config */
+export const AGENTVOUCH_ERROR__INVALID_SETTLEMENT_AUTHORITY = 0x177e; // 6014
+/** SettlementLocked: Author proceeds settlement is locked by an open dispute */
+export const AGENTVOUCH_ERROR__SETTLEMENT_LOCKED = 0x177f; // 6015
+/** InvalidPaymentRefHash: Payment reference hash cannot be all zeros */
+export const AGENTVOUCH_ERROR__INVALID_PAYMENT_REF_HASH = 0x1780; // 6016
+/** InvalidSettlementSignatureHash: Settlement transaction signature hash cannot be all zeros */
+export const AGENTVOUCH_ERROR__INVALID_SETTLEMENT_SIGNATURE_HASH = 0x1781; // 6017
 
 export type AgentvouchError =
   | typeof AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH
-  | typeof AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS
-  | typeof AGENTVOUCH_ERROR__INVALID_AMOUNT
+  | typeof AGENTVOUCH_ERROR__FREE_SKILL_NOT_PURCHASED
+  | typeof AGENTVOUCH_ERROR__INVALID_AUTHOR
+  | typeof AGENTVOUCH_ERROR__INVALID_PAYMENT_REF_HASH
+  | typeof AGENTVOUCH_ERROR__INVALID_SETTLEMENT_AMOUNT
+  | typeof AGENTVOUCH_ERROR__INVALID_SETTLEMENT_AUTHORITY
+  | typeof AGENTVOUCH_ERROR__INVALID_SETTLEMENT_SIGNATURE_HASH
   | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_MINT
   | typeof AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER
   | typeof AGENTVOUCH_ERROR__INVALID_USDC_MINT
-  | typeof AGENTVOUCH_ERROR__LOCK_OVERFLOW
-  | typeof AGENTVOUCH_ERROR__NOT_AUTHOR
-  | typeof AGENTVOUCH_ERROR__PROCEEDS_LOCKED
+  | typeof AGENTVOUCH_ERROR__PAYMENT_OVERFLOW
   | typeof AGENTVOUCH_ERROR__PROTOCOL_PAUSED
+  | typeof AGENTVOUCH_ERROR__REWARD_INDEX_OVERFLOW
   | typeof AGENTVOUCH_ERROR__SETTLEMENT_LOCKED
   | typeof AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH
-  | typeof AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW;
+  | typeof AGENTVOUCH_ERROR__SKILL_NOT_ACTIVE
+  | typeof AGENTVOUCH_ERROR__VOUCHER_POOL_TOO_SMALL
+  | typeof AGENTVOUCH_ERROR__X402_SETTLEMENT_VAULT_MISMATCH;
 
 let agentvouchErrorMessages: Record<AgentvouchError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
   agentvouchErrorMessages = {
     [AGENTVOUCH_ERROR__AUTHOR_PROCEEDS_VAULT_MISMATCH]: `Author proceeds vault does not match settlement state`,
-    [AGENTVOUCH_ERROR__INSUFFICIENT_WITHDRAWABLE_PROCEEDS]: `Insufficient withdrawable author proceeds`,
-    [AGENTVOUCH_ERROR__INVALID_AMOUNT]: `Withdrawal amount must be positive`,
+    [AGENTVOUCH_ERROR__FREE_SKILL_NOT_PURCHASED]: `Free skills do not require purchase`,
+    [AGENTVOUCH_ERROR__INVALID_AUTHOR]: `Invalid author`,
+    [AGENTVOUCH_ERROR__INVALID_PAYMENT_REF_HASH]: `Payment reference hash cannot be all zeros`,
+    [AGENTVOUCH_ERROR__INVALID_SETTLEMENT_AMOUNT]: `x402 settlement amount must match the listing price`,
+    [AGENTVOUCH_ERROR__INVALID_SETTLEMENT_AUTHORITY]: `x402 settlement authority does not match config`,
+    [AGENTVOUCH_ERROR__INVALID_SETTLEMENT_SIGNATURE_HASH]: `Settlement transaction signature hash cannot be all zeros`,
     [AGENTVOUCH_ERROR__INVALID_TOKEN_MINT]: `Token account mint does not match config`,
     [AGENTVOUCH_ERROR__INVALID_TOKEN_OWNER]: `Token account owner is invalid`,
     [AGENTVOUCH_ERROR__INVALID_USDC_MINT]: `USDC mint does not match config`,
-    [AGENTVOUCH_ERROR__LOCK_OVERFLOW]: `Author proceeds lock calculation overflowed`,
-    [AGENTVOUCH_ERROR__NOT_AUTHOR]: `Only the listing author can withdraw proceeds`,
-    [AGENTVOUCH_ERROR__PROCEEDS_LOCKED]: `Author proceeds are still locked`,
+    [AGENTVOUCH_ERROR__PAYMENT_OVERFLOW]: `Payment calculation overflowed`,
     [AGENTVOUCH_ERROR__PROTOCOL_PAUSED]: `Protocol is paused`,
-    [AGENTVOUCH_ERROR__SETTLEMENT_LOCKED]: `Author proceeds are locked by an open dispute`,
-    [AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH]: `Listing settlement account does not match the listing`,
-    [AGENTVOUCH_ERROR__WITHDRAWAL_OVERFLOW]: `Withdrawal accounting overflowed`,
+    [AGENTVOUCH_ERROR__REWARD_INDEX_OVERFLOW]: `Reward index overflowed`,
+    [AGENTVOUCH_ERROR__SETTLEMENT_LOCKED]: `Author proceeds settlement is locked by an open dispute`,
+    [AGENTVOUCH_ERROR__SETTLEMENT_MISMATCH]: `Listing settlement account does not match the active listing revision`,
+    [AGENTVOUCH_ERROR__SKILL_NOT_ACTIVE]: `Skill is not active`,
+    [AGENTVOUCH_ERROR__VOUCHER_POOL_TOO_SMALL]: `Voucher pool is too small`,
+    [AGENTVOUCH_ERROR__X402_SETTLEMENT_VAULT_MISMATCH]: `x402 settlement vault does not match config`,
   };
 }
 

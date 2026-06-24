@@ -1162,6 +1162,9 @@ export function useReputationOracle() {
       await assertRegisterAgentClusterReady(walletAddress);
       const ix = await getRegisterAgentInstructionAsync({
         authority: signer,
+        // Self-funded path: the connected wallet pays its own rent. Gasless onboarding
+        // (sponsor as rentPayer) is supported by the program but not yet wired into the UI.
+        rentPayer: signer,
         metadataUri,
       });
       const tx = await sendIx(ix);

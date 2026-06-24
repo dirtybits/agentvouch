@@ -2505,6 +2505,18 @@
         },
         {
           "name": "authority",
+          "docs": [
+            "The agent identity being registered. Signs to authorize, but does NOT pay rent —",
+            "so a gas/rent sponsor (e.g. Kora) can register a user holding zero SOL."
+          ],
+          "signer": true
+        },
+        {
+          "name": "rent_payer",
+          "docs": [
+            "Funds the AgentProfile PDA rent on first registration. Set equal to `authority` for",
+            "the self-funded path, or to a sponsor for gasless onboarding. Mirrors purchase_skill."
+          ],
           "writable": true,
           "signer": true
         },
@@ -4732,68 +4744,93 @@
   "errors": [
     {
       "code": 6000,
+      "name": "SkillNotActive",
+      "msg": "Skill is not active"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidAuthor",
+      "msg": "Invalid author"
+    },
+    {
+      "code": 6002,
       "name": "ProtocolPaused",
       "msg": "Protocol is paused"
     },
     {
-      "code": 6001,
-      "name": "NotAuthor",
-      "msg": "Only the listing author can withdraw proceeds"
-    },
-    {
-      "code": 6002,
-      "name": "InvalidAmount",
-      "msg": "Withdrawal amount must be positive"
-    },
-    {
       "code": 6003,
-      "name": "SettlementMismatch",
-      "msg": "Listing settlement account does not match the listing"
+      "name": "FreeSkillNotPurchased",
+      "msg": "Free skills do not require purchase"
     },
     {
       "code": 6004,
-      "name": "AuthorProceedsVaultMismatch",
-      "msg": "Author proceeds vault does not match settlement state"
+      "name": "InvalidSettlementAmount",
+      "msg": "x402 settlement amount must match the listing price"
     },
     {
       "code": 6005,
-      "name": "ProceedsLocked",
-      "msg": "Author proceeds are still locked"
+      "name": "PaymentOverflow",
+      "msg": "Payment calculation overflowed"
     },
     {
       "code": 6006,
-      "name": "SettlementLocked",
-      "msg": "Author proceeds are locked by an open dispute"
+      "name": "VoucherPoolTooSmall",
+      "msg": "Voucher pool is too small"
     },
     {
       "code": 6007,
-      "name": "InsufficientWithdrawableProceeds",
-      "msg": "Insufficient withdrawable author proceeds"
+      "name": "RewardIndexOverflow",
+      "msg": "Reward index overflowed"
     },
     {
       "code": 6008,
-      "name": "LockOverflow",
-      "msg": "Author proceeds lock calculation overflowed"
-    },
-    {
-      "code": 6009,
-      "name": "WithdrawalOverflow",
-      "msg": "Withdrawal accounting overflowed"
-    },
-    {
-      "code": 6010,
       "name": "InvalidUsdcMint",
       "msg": "USDC mint does not match config"
     },
     {
-      "code": 6011,
+      "code": 6009,
       "name": "InvalidTokenMint",
       "msg": "Token account mint does not match config"
     },
     {
-      "code": 6012,
+      "code": 6010,
       "name": "InvalidTokenOwner",
       "msg": "Token account owner is invalid"
+    },
+    {
+      "code": 6011,
+      "name": "SettlementMismatch",
+      "msg": "Listing settlement account does not match the active listing revision"
+    },
+    {
+      "code": 6012,
+      "name": "AuthorProceedsVaultMismatch",
+      "msg": "Author proceeds vault does not match settlement state"
+    },
+    {
+      "code": 6013,
+      "name": "X402SettlementVaultMismatch",
+      "msg": "x402 settlement vault does not match config"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidSettlementAuthority",
+      "msg": "x402 settlement authority does not match config"
+    },
+    {
+      "code": 6015,
+      "name": "SettlementLocked",
+      "msg": "Author proceeds settlement is locked by an open dispute"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidPaymentRefHash",
+      "msg": "Payment reference hash cannot be all zeros"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidSettlementSignatureHash",
+      "msg": "Settlement transaction signature hash cannot be all zeros"
     }
   ],
   "types": [

@@ -311,6 +311,9 @@ export class AgentVouchSolanaClient {
       .accountsPartial({
         agentProfile,
         authority: this.authority,
+        // Self-funded path: the CLI wallet pays its own rent. A sponsor would pass a
+        // different rent_payer here (the program supports it for gasless onboarding).
+        rentPayer: this.authority,
         systemProgram: SystemProgram.programId,
       })
       .signers([this.keypair])

@@ -2,6 +2,27 @@
 
 This runbook covers the USDC-native `agentvouch` v0.2.0 program.
 
+## Change Log
+
+### 2026-06-23 — `register_agent` gains a `rent_payer` signer (gasless onboarding)
+
+`register_agent` previously hard-coded `payer = authority`, so a new agent paid its own
+profile-PDA rent and needed SOL. It now takes a separate `rent_payer: Signer` (mirroring
+`purchase_skill`) and uses `payer = rent_payer`, so a gas/rent sponsor (e.g. Kora) can register
+a user holding **zero SOL**. `authority` still signs (identity) but no longer pays rent.
+
+- **Account order is now**: `agent_profile`, `authority`, `rent_payer`, `system_program`.
+  This is a **breaking instruction change** — all callers must pass `rent_payer`. Self-funded
+  callers set `rent_payer = authority` (the CLI, the web hook, and test helpers do this, so
+  existing behavior is unchanged); a sponsor sets it to the sponsor key.
+- **Redeployed to devnet** via the standard `anchor deploy` flow below — program ID unchanged
+  (`AGNtBj…`), in-place upgrade signed by the upgrade authority `~/dev-keypair.json`
+  (`dmt4…NTou`). Deploy signature `34qDBN34mCwJSphm1zCuMVVfbRXJ1NvmVS95pfySze8ixxHSkdfnunid4CwSWsmZvp6QytfExdry3sfiwccxAXwV`.
+  Verified: on-chain binary's first `len(.so)` bytes hash-match the local build, and the on-chain
+  IDL carries `rent_payer`. Gasless registration proven on devnet (kora-poc/, tx `ZP73fg…`).
+- Web IDL + generated client re-synced (`cp target/idl/agentvouch.json web/agentvouch.json`,
+  `npm run generate:client`).
+
 ## Active Devnet Program
 
 - Program ID: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
