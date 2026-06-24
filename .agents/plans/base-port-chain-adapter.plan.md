@@ -1,33 +1,33 @@
 ---
 name: base-port-chain-adapter
-overview: "Port agentvouch.xyz (web/) from Solana to Base/EVM by introducing a ChainAdapter seam UNDER the existing UI — no rebuild. Extract today's Solana logic behind a SolanaAdapter, add a BaseAdapter that lifts the proven contracts/base-poc viem code, make Base canonical, keep Solana dormant behind the seam. Chain coupling is concentrated (~50 of ~375 files, ~6 modules; mapped 2026-06-23); the UI, routes, and DB schema stay."
+overview: "Port agentvouch.xyz (web/) from Solana to Base/EVM by introducing a ChainAdapter seam UNDER the existing UI — no rebuild. Extract today's Solana logic behind a SolanaAdapter, add a BaseAdapter that lifts the proven contracts/base-poc viem code, make Base canonical, keep Solana dormant. Coupling is concentrated (~50 of ~375 files, ~6 modules; mapped 2026-06-23). Each phase below is one PR-sized, independently-verifiable unit so a different session can take over by reading the todo statuses."
 todos:
   - id: define-chainadapter
-    content: "Define the ChainAdapter interface + shared view types in web/lib/chains/adapter.ts and a getAdapter(chainContext) registry. No behavior change yet."
+    content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: pending
   - id: extract-solana-adapter
-    content: "Implement SolanaAdapter by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind the interface. UI/hooks call the adapter, not @solana/* directly. Verify the Solana flow is unchanged."
+    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana."
     status: pending
   - id: base-adapter-readslice
-    content: "Vertical slice: implement BaseAdapter reads (viem publicClient + getListing/getProfile against AgentVouchEvm) and render one Base listing in the real UI, selected by chain_context. Proves the seam end-to-end before refactoring everything."
+    content: "Phase 3. Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing/getProfile vs AgentVouchEvm). Render one Base listing in the real UI selected by chain_context. Vertical slice proving the seam."
     status: pending
   - id: base-adapter-wallet
-    content: "Add EVM wallet connection into a chain-aware useAgentVouchWallet: Coinbase Smart Wallet passkey (lift contracts/base-poc/ui/src/accounts/passkey.ts) + wagmi/MetaMask. Pick provider stack here (see Open questions)."
+    content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts, + wagmi/MetaMask) behind the adapter + a 'use client' provider. LONG POLE. Resolve the wallet-provider open question first."
     status: pending
   - id: base-adapter-write
-    content: "Implement BaseAdapter writes (register/list/buy) by lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337 UserOps). Wire EVM x402 receiveWithAuthorization (Lane B) into /api/transactions/sponsored/* and /api/x402/*."
+    content: "Phase 5. BaseAdapter writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337). Wire EVM x402 receiveWithAuthorization into the route handlers /api/transactions/sponsored/* and /api/x402/*. Resolve the agent-identity open question first."
     status: pending
   - id: db-multichain
-    content: "Extend the Postgres schema for EVM alongside Solana: contract address + tx hash columns keyed by chain_context (generalize on_chain_address / tx_signature, or add evm_* columns). Guard reads/writes by chain_context."
+    content: "Phase 6. Extend Postgres for EVM alongside Solana: contract address + tx hash keyed by chain_context (generalize on_chain_address/tx_signature or add evm_* columns). Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
     status: pending
   - id: address-type-sweep
-    content: "Replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the ~50 touched files. Mostly mechanical."
+    content: "Phase 7. Replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
     status: pending
   - id: make-base-canonical
-    content: "Flip the default chain_context to Base (web/lib/chains.ts getConfiguredChainContext). Keep SolanaAdapter registered but dormant behind the seam / a flag."
+    content: "Phase 8. Flip the default chain_context to Base (web/lib/chains.ts getConfiguredChainContext). Keep SolanaAdapter registered but dormant behind a flag."
     status: pending
   - id: verify-e2e
-    content: "E2E on Base (passkey register->list->buy gas-free; agent x402 purchase) + regression that the Solana adapter still works when selected. forge (contracts job) + web format/lint/typecheck/vitest green; Vercel build green."
+    content: "Phase 9. E2E on Base (passkey register->list->buy gas-free; agent x402) + Solana regression. forge contracts job + web format/lint/typecheck/vitest green; Vercel build green."
     status: pending
 isProject: false
 ---
@@ -37,15 +37,15 @@ isProject: false
 ## Decision (2026-06-23)
 
 Base becomes the **canonical** chain; Solana is **demoted, not deleted** — `SolanaAdapter`
-stays registered but dormant behind the seam. This is **NOT** a from-scratch rebuild and
-**NOT** permanent multi-chain.
+stays registered but dormant behind the seam. **NOT** a from-scratch rebuild and **NOT**
+permanent multi-chain.
 
 Rationale (architecture map, verified 2026-06-23): chain coupling in `web/` is concentrated
 — ~50 of ~375 files, real logic in ~6 modules — so a seam-swap keeps the entire UI, routing,
 and DB schema, and lets the already-built `contracts/base-poc` code become the Base adapter's
-engine. Multi-chain-forever was rejected: two wallet stacks + two settlement paths is
-permanent overhead for a pre-PMF product. Revisit only if real demand for both chains appears.
-The default-chain flip is the reversible on/off switch (see Rollback).
+engine. Multi-chain-forever was rejected: two wallet stacks + two settlement paths is permanent
+overhead for a pre-PMF product. Revisit only if real demand for both chains appears. The
+default-chain flip (Phase 8) is the reversible on/off switch.
 
 ## Goal
 
@@ -55,28 +55,44 @@ but off by default.
 
 ## Scope
 
-- **In scope:** a `ChainAdapter` interface; `SolanaAdapter` (extraction, not rewrite);
-  `BaseAdapter` (new, lifting `contracts/base-poc`); EVM wallet connection; DB multi-chain
-  columns; address-type generalization; flip the default to Base.
-- **Out of scope:** UI redesign (keep it as-is — it is chain-agnostic), disputes/slashing
-  (Phase 5-7, still deferred — see [[mvp-ship-minimal-bias]]), deleting Solana code, archiving
-  `web/`.
+- **In scope:** the `ChainAdapter` seam; `SolanaAdapter` (extraction, not rewrite); `BaseAdapter`
+  (new, lifting `contracts/base-poc`); EVM wallet connection; DB multi-chain columns;
+  address-type generalization; flip default to Base.
+- **Out of scope:** UI redesign (keep as-is — it is chain-agnostic), disputes/slashing
+  (deferred — see [[mvp-ship-minimal-bias]]), deleting Solana code, archiving `web/`,
+  Base **mainnet** cutover (the POC contract is Sepolia — see Open questions).
+
+## Resuming this plan in a fresh session (HANDOFF)
+
+The plan and the implementation live together on branch **`feat/base-port-chain-adapter`**
+(the plan also exists on `main` as commit `d4c8b68`, but the up-to-date copy travels with the
+branch). To take over:
+
+1. `git checkout feat/base-port-chain-adapter` (fresh worktree setup: [[agentvouch-worktree-setup]]).
+2. Read the frontmatter `todos`. **The first non-`completed` id is the next phase.**
+3. Read that phase's section under "## Phases" — each is self-contained (files, steps,
+   Done-when). **Phases are ordered; each depends on the previous.**
+4. Set the todo to `in_progress` when you start; `completed` only when its **Done when** passes
+   (verification, not just compile). If you diverge from the plan, append a dated note at that
+   phase. See the plan-writing skill for status discipline.
+5. **One phase = one commit/PR** off `feat/base-port-chain-adapter`, so each step is reviewable
+   and the handoff boundary is clean. Suggested branch per phase:
+   `feat/base-port-p<N>-<slug>`.
 
 ## What already exists to build on
 
-- **Multi-chain seam is half-stubbed:** `web/lib/chains.ts` already defines `base`
-  (`eip155:8453`) and the `skills` table already has a `chain_context` column — both used
-  only for display/config today. Make them load-bearing.
-- **Fixed Base contract:** `AgentVouchEvm` at
-  `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854` (Base Sepolia, F-1-fixed — Lane B uses
-  `receiveWithAuthorization`). Mirrors the Solana core economics (60/40 split, USDC micros).
-  See [[base-poc-gasfree-spike]].
+- **Seam is half-stubbed:** `web/lib/chains.ts` already defines `base` (`eip155:8453`) and the
+  `skills` table already has a `chain_context` column — both used only for display/config today.
+  Make them load-bearing.
+- **Fixed Base contract:** `AgentVouchEvm` at `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`
+  (Base Sepolia, F-1-fixed — Lane B uses `receiveWithAuthorization`). Mirrors the Solana core
+  economics (60/40 split, USDC micros). See [[base-poc-gasfree-spike]].
 - **The BaseAdapter's engine already exists** in `contracts/base-poc` — lift, don't rewrite:
-  - `contracts/base-poc/ui/src/flow.ts` — register / list / buy as sponsored 4337 UserOps
-    (the `listingId`/`skillIdHash` calc + ABI calls).
+  - `contracts/base-poc/ui/src/flow.ts` — register/list/buy as sponsored 4337 UserOps
+    (`listingId`/`skillIdHash` calc + ABI calls).
   - `contracts/base-poc/ui/src/accounts/*` — local-key + Coinbase Smart Wallet passkey connectors.
   - `contracts/base-poc/harness/src/agent-x402-demo.ts` — x402 `receiveWithAuthorization`
-    settlement (Lane B), with the exact EIP-712 signing recipe.
+    (Lane B) with the exact EIP-712 signing recipe.
   - `contracts/base-poc/harness/src/abi.ts` — AgentVouchEvm ABI fragments.
 
 ## The coupling map — what swaps (verified 2026-06-23)
@@ -84,18 +100,25 @@ but off by default.
 | File / area | Today (Solana) | After (behind the adapter) |
 |---|---|---|
 | `web/components/WalletContextProvider.tsx` + exported `useAgentVouchWallet` | ConnectorKit / Phantom, hardcoded Solana | chain-aware provider; EVM via wagmi + Coinbase Smart Wallet / passkey |
-| `web/lib/onchain.ts` | `getProgramAccounts` browser reads | `SolanaAdapter.listListings`; `BaseAdapter` uses viem `getListing` |
+| `web/lib/onchain.ts` | `getProgramAccounts` browser reads | `SolanaAdapter.listSkillListings`; `BaseAdapter` uses viem `getListing` |
 | `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts` | Solana instructions + PDAs | `adapter.purchaseSkill` (Base lifts `flow.ts`) |
 | `web/lib/browserX402.ts`, `web/lib/x402ProtocolBridge.ts`, `/api/x402/*`, `/api/transactions/sponsored/*` | Solana sponsored / x402 | EVM Lane B `receiveWithAuthorization` |
 | address handling (`@solana/kit` `Address`, base58, PDAs), explorer URLs | Solana-only | chain-tagged address type + per-chain explorer helpers |
 
-**Chain-agnostic — unchanged:** all routes/pages, the 27 components, styling, copy, the
-Postgres schema (extend, not replace), GitHub OAuth, search/indexing, markdown.
+**Chain-agnostic — unchanged:** all routes/pages, the 27 components, styling, copy, the Postgres
+schema (extend, not replace), GitHub OAuth, search/indexing, markdown.
 
 ## The seam: `ChainAdapter` interface
 
-New file `web/lib/chains/adapter.ts`. Every page/hook talks to this instead of `@solana/*`
-or `viem` directly.
+New directory **`web/lib/adapters/`** (NOT `web/lib/chains/` — `web/lib/chains.ts` already
+exists and a sibling dir of the same name causes import ambiguity):
+
+- `web/lib/adapters/types.ts` — the interface + view types (below). **Server-safe**: no
+  `'use client'`, no browser-only or wallet-SDK imports at module top, so Server Components and
+  route handlers can import the types and call read methods.
+- `web/lib/adapters/index.ts` — `getAdapter(ctx)` registry.
+- `web/lib/adapters/solana.ts` — `SolanaAdapter` (Phase 2).
+- `web/lib/adapters/base.ts` — `BaseAdapter` (Phases 3/5).
 
 ```ts
 export type ChainContext = string; // "solana:5eykt4…" | "eip155:8453" | "eip155:84532"
@@ -126,21 +149,19 @@ export interface ConnectedWallet {
 export interface ChainAdapter {
   chainContext: ChainContext;
 
-  // identity / formatting
+  // identity / formatting (pure — safe on server)
   isValidAddress(value: string): boolean;
   shortenAddress(value: string): string;
   explorerTxUrl(ref: string): string;
   explorerAddressUrl(address: string): string;
 
-  // wallet
-  connect(): Promise<ConnectedWallet>;
-  disconnect(): Promise<void>;
-
-  // reads
+  // reads (safe on server — prefer calling these from Server Components / route handlers)
   listSkillListings(): Promise<SkillListingView[]>;
   fetchSkillListing(listingId: string): Promise<SkillListingView | null>;
 
-  // writes (sponsored where supported)
+  // wallet + writes (CLIENT-ONLY — only invoked from 'use client' code)
+  connect(): Promise<ConnectedWallet>;
+  disconnect(): Promise<void>;
   registerAgent(metadataUri: string): Promise<TxResult>;
   createSkillListing(p: {
     skillId: string; uri: string; name: string; description: string; priceUsdcMicros: bigint;
@@ -155,53 +176,134 @@ export interface ChainAdapter {
 export function getAdapter(ctx: ChainContext): ChainAdapter;
 ```
 
-## Implementation steps (phased — each phase independently verifiable)
+## Next.js boundaries (App Router) — keep these straight
 
-1. **define-chainadapter** — add the interface + `getAdapter` registry (throwing stubs). No behavior change.
-2. **extract-solana-adapter** — move the Solana modules behind `SolanaAdapter`; repoint UI/hooks at `getAdapter(ctx)`. Verify the live Solana app is byte-for-byte unchanged in behavior.
-3. **base-adapter-readslice** — `BaseAdapter` reads only (viem `publicClient` + `getListing`), render one Base listing in the real UI by `chain_context`. First proof the seam works end-to-end.
-4. **base-adapter-wallet** — chain-aware `useAgentVouchWallet`; EVM connect via passkey (lift `accounts/passkey.ts`) + wagmi/MetaMask. **Long pole — budget the most time here.**
-5. **base-adapter-write** — lift `flow.ts` for register/list/buy (sponsored 4337); wire EVM x402 `receiveWithAuthorization` into the sponsored + x402 API routes.
-6. **db-multichain** — EVM contract address + tx-hash columns keyed by `chain_context`.
-7. **address-type-sweep** — chain-tagged address type + explorer helpers across the touched files.
-8. **make-base-canonical** — flip the default `chain_context` to Base; keep `SolanaAdapter` dormant.
-9. **verify-e2e** — full Base flow + Solana regression; all CI green.
+- **Wallet provider is a client boundary.** `WalletContextProvider` is `'use client'`; the EVM
+  provider (wagmi / Coinbase Smart Wallet) is too. Keep wallet/write methods behind dynamic
+  (`await import(...)`) imports inside the client adapter so wallet SDKs + viem
+  `account-abstraction` never get pulled into Server Component / RSC bundles.
+- **Reads can be server-side.** The `listSkillListings`/`fetchSkillListing` methods are
+  server-safe; prefer fetching listings in Server Components to avoid client RPC waterfalls (and
+  the read-after-write lag bites less server-side). Use a consistent RPC regardless.
+- **Settlement stays in Route Handlers, not Server Actions.** `/api/x402/*` and
+  `/api/transactions/sponsored/*` are agent- and client-facing endpoints (external callers),
+  so they remain `route.ts` handlers — don't convert them to Server Actions.
 
-## Verification
+## Phases
 
-- **Per phase:** after `extract-solana-adapter`, the Solana flow (connect → browse → sponsored
-  purchase) must work exactly as before. After each Base phase, exercise that slice on Base
-  Sepolia.
-- **Final (verify-e2e):**
-  - Human: passkey connect → register → list → buy on Base, user pays 0 gas (ETH delta 0).
-  - Agent: x402 purchase settles via `receiveWithAuthorization`.
-  - Regression: switch `chain_context` to Solana → the old flow still works.
-  - Gates: `forge test` (contracts job, added PR #56) 66/66; web `npm run format:check && lint && typecheck && test`; Vercel build green (Vercel is the real web typecheck gate — the `test` job does not run `next build`). See [[agentvouch-ci-next-build-gate]].
+> Order matters; each phase depends on the previous. One commit/PR per phase.
+
+### Phase 1 — `define-chainadapter` [pending]
+- **Goal:** materialize the seam with no behavior change.
+- **Files:** create `web/lib/adapters/types.ts` (interface + view types above) and
+  `web/lib/adapters/index.ts` (`getAdapter(ctx)` mapping `eip155:*`→Base stub, `solana:*`→Solana
+  stub; stubs throw `Error("<adapter> not implemented")`). Reuse `normalizeChainContext` from
+  `web/lib/chains.ts` to resolve `ctx`.
+- **Steps:** define types; write `getAdapter` returning the two stub objects; export nothing into
+  UI yet (no callers change).
+- **Done when:** `cd web && npm run typecheck` passes; `getAdapter("eip155:84532")` returns the
+  Base stub and `getAdapter(<solana ctx>)` the Solana stub; the live app is otherwise untouched
+  (`git grep -l getAdapter web/app web/components web/hooks` is empty).
+
+### Phase 2 — `extract-solana-adapter` [pending]  ⚠ live-app refactor
+- **Goal:** route all existing Solana behavior through `SolanaAdapter` with zero UX change.
+- **Files:** new `web/lib/adapters/solana.ts`; refactor (move, don't rewrite) `web/lib/onchain.ts`,
+  `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`, `web/lib/browserX402.ts`,
+  `web/lib/x402ProtocolBridge.ts`, `web/components/WalletContextProvider.tsx`; repoint their
+  callers at `getAdapter(ctx)`.
+- **Steps:** implement `SolanaAdapter` by delegating to the existing functions; flip pages/hooks
+  to call the adapter; keep `useAgentVouchWallet` as the wallet entry but back it with the adapter.
+- **Done when:** the live Solana flow (connect → browse → sponsored purchase) works **identically**
+  on devnet; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
+  files (no scattered `@solana/*` in pages); `npm run typecheck && npm test` green.
+
+### Phase 3 — `base-adapter-readslice` [pending]
+- **Goal:** prove the seam end-to-end with a real Base read in the live UI.
+- **Files:** new `web/lib/adapters/base.ts` (reads only): viem `createPublicClient(baseSepolia)`
+  + `getListing`/profile reads against `AgentVouchEvm`; lift the ABI from
+  `contracts/base-poc/harness/src/abi.ts`.
+- **Steps:** implement `listSkillListings`/`fetchSkillListing`; seed one Base listing (run the
+  base-poc harness or list via the POC UI); render it on `/skills` when `chain_context = eip155:84532`.
+- **Done when:** the Base listing renders in the real UI, fetched live from the contract (server-side
+  read); the Solana listings still render. Use `https://base-sepolia-rpc.publicnode.com` (read lag).
+
+### Phase 4 — `base-adapter-wallet` [pending]  ⚠ long pole
+- **Goal:** connect an EVM wallet through the chain-aware wallet layer.
+- **Prereq:** resolve the **wallet-provider** open question.
+- **Files:** EVM connect in `web/lib/adapters/base.ts` (lift `contracts/base-poc/ui/src/accounts/passkey.ts`
+  + `localKey.ts`); make `WalletContextProvider`/`useAgentVouchWallet` chain-aware (a `'use client'`
+  EVM provider, e.g. wagmi, mounted alongside the Solana one and selected by `chain_context`).
+- **Steps:** add the EVM provider; implement `connect`/`disconnect`/`ConnectedWallet` for Base;
+  keep wallet SDK imports dynamic so they stay out of server bundles.
+- **Done when:** a user connects a Base wallet (passkey) in the live UI and the address renders;
+  switching `chain_context` back to Solana still connects a Solana wallet (no regression).
+
+### Phase 5 — `base-adapter-write` [pending]
+- **Goal:** register/list/buy on Base from the UI + agent x402 settlement.
+- **Prereq:** resolve the **agent-identity** open question.
+- **Files:** `web/lib/adapters/base.ts` writes (lift `contracts/base-poc/ui/src/flow.ts`); EVM
+  branch in route handlers `web/app/api/transactions/sponsored/*` and `web/app/api/x402/*`
+  (lift the `receiveWithAuthorization` signing recipe from `agent-x402-demo.ts`).
+- **Steps:** implement `registerAgent`/`createSkillListing`/`purchaseSkill` as sponsored 4337
+  UserOps; add the EVM x402 lane to the settlement route handlers; branch by `chain_context`.
+- **Done when:** human passkey flow register→list→buy on Base Sepolia with **user ETH delta 0**;
+  an agent x402 purchase settles via `receiveWithAuthorization`; Solana writes still work.
+
+### Phase 6 — `db-multichain` [pending]
+- **Goal:** persist EVM purchases/listings alongside Solana.
+- **Files:** a migration + `web/lib/db.ts`. Generalize `on_chain_address`/`tx_signature` (or add
+  `evm_contract_address`/`evm_tx_hash`) keyed by `chain_context`; guard reads/writes by chain.
+- **Done when:** a Base purchase persists (contract addr + tx hash) and renders in the dashboard;
+  existing Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project).
+
+### Phase 7 — `address-type-sweep` [pending]
+- **Goal:** stop assuming Solana base58/PDA addresses app-wide.
+- **Files:** a chain-tagged address type + `explorerTxUrl`/`explorerAddressUrl` helpers (already on
+  the adapter); replace `@solana/kit` `Address`/`isAddress` assumptions across the touched files.
+- **Done when:** addresses + explorer links render correctly for both a Base and a Solana listing;
+  `npm run typecheck` green.
+
+### Phase 8 — `make-base-canonical` [pending]
+- **Goal:** Base by default, Solana dormant.
+- **Files:** `web/lib/chains.ts` `getConfiguredChainContext()` default → Base; a flag to keep
+  Solana selectable.
+- **Done when:** a fresh visit defaults to Base listings/wallet; setting the flag restores Solana
+  (this is the rollback switch).
+
+### Phase 9 — `verify-e2e` [pending]
+- **Goal:** prove the whole thing + no regression.
+- **Done when:** Base human flow (passkey, 0 gas) + agent x402 both pass; Solana regression passes
+  when selected; all CI gates below green.
+
+## Cross-cutting verification & CI gates
+
+- `forge test` runs in CI (contracts `job`, added PR #56) — keep it green if contracts change.
+- Web `test` job = `npm run format:check && lint && typecheck && test` (vitest). It does **not**
+  run `next build` — **Vercel is the real web build/typecheck gate**. See [[agentvouch-ci-next-build-gate]].
+- The UI dir under `contracts/base-poc/ui` is `.prettierignore`d; `web/` is not — keep `web/` prettier-clean.
 
 ## Gotchas (carried from the Base POC, 2026-06-23)
 
-- Public `https://sepolia.base.org` is load-balanced and lags on read-after-write
-  (intermittent `ListingNotFound` right after a fresh write). Use a consistent RPC
-  (e.g. `https://base-sepolia-rpc.publicnode.com`) for browser reads; compute balance deltas
-  at explicit block numbers.
-- The agent (x402 Lane B) must be a plain **EOA** — `receiveWithAuthorization` uses ECDSA, so
-  a smart-account / EIP-1271 agent will not work as coded.
-- Wallet UX is the long pole: Solana wallet-adapter and EVM passkey/wagmi are different stacks.
-- See [[agentvouch-worktree-setup]] for fresh-worktree setup (gitignored node_modules,
-  web/.env.local), and [[neon-db-two-projects]] before touching the DB.
+- Public `https://sepolia.base.org` is load-balanced and lags on read-after-write (intermittent
+  `ListingNotFound` right after a fresh write). Use `https://base-sepolia-rpc.publicnode.com` for
+  reads; compute balance deltas at explicit block numbers.
+- The agent (x402 Lane B) must be a plain **EOA** — `receiveWithAuthorization` uses ECDSA, so a
+  smart-account / EIP-1271 agent will not work as coded.
+- Wallet UX is the long pole (Phase 4): Solana wallet-adapter and EVM passkey/wagmi are different stacks.
+- Keep wallet SDK + viem `account-abstraction` imports dynamic in the client adapter so they don't
+  leak into Server Component bundles.
 
 ## Rollback
 
-The default `chain_context` flip (make-base-canonical) is the on/off switch — set it back to
-the Solana context to restore the old UX while keeping both adapters in the tree. No
-destructive deletes; Solana code is retained, just dormant.
+The default `chain_context` flip (Phase 8) is the on/off switch — set it back to the Solana context
+to restore the old UX while keeping both adapters in the tree. No destructive deletes; Solana code is
+retained, just dormant. Per-phase: revert that phase's single PR.
 
 ## Open questions / blockers
 
-- **Agent identity:** `/api/agents/[pubkey]` reads a Solana identity program. Decide the EVM
-  story (an on-Base identity contract vs DB-only) before `base-adapter-write`.
-- **Mainnet vs Sepolia:** the POC contract is on Base **Sepolia**. A production cutover needs a
-  Base **mainnet** deploy + mainnet USDC + CDP mainnet paymaster. Treat as a later gate.
-- **Wallet provider choice (Phase 4):** Coinbase Smart Wallet passkey (proven in the POC, best
-  gas-free UX) vs wagmi/RainbowKit (broader wallet support) vs both. Pick before building the
-  wallet layer.
+- **Agent identity (gates Phase 5):** `/api/agents/[pubkey]` reads a Solana identity program.
+  Decide the EVM story — an on-Base identity contract vs DB-only.
+- **Wallet provider choice (gates Phase 4):** Coinbase Smart Wallet passkey (proven in the POC,
+  best gas-free UX) vs wagmi/RainbowKit (broader wallets) vs both.
+- **Mainnet vs Sepolia (later gate):** the POC contract is Base **Sepolia**. Production needs a
+  Base **mainnet** deploy + mainnet USDC + CDP mainnet paymaster.
