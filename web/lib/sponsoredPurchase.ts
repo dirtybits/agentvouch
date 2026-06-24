@@ -25,6 +25,15 @@ import {
   parseSponsoredCheckoutMicroUsdcPerSol,
   quoteSponsoredCheckoutSetupFee,
 } from "@/lib/sponsoredCheckout";
+import {
+  estimateKoraSetupFeeUsdcMicros,
+  getKoraFeeDestination,
+  getKoraFeePayer,
+  getKoraFeeToken,
+  getSponsoredSponsorMode,
+  signTransactionWithKora,
+  type SponsorMode,
+} from "@/lib/koraSponsor";
 
 export const PROGRAM_ID = new PublicKey(AGENTVOUCH_PROGRAM_ADDRESS);
 export const TOKEN_PROGRAM_ID = new PublicKey(
@@ -32,6 +41,9 @@ export const TOKEN_PROGRAM_ID = new PublicKey(
 );
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+);
+const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey(
+  "ComputeBudget111111111111111111111111111111"
 );
 const SYSTEM_PROGRAM_ID = SystemProgram.programId;
 // Must stay in sync with `Purchase::SPACE` in
@@ -120,6 +132,38 @@ export function requirePubkey(value: string | undefined | null, label: string) {
   }
 }
 
+export function formatUsdcMicros(value: bigint | number | string) {
+  const micros = BigInt(value);
+  const sign = micros < 0n ? "-" : "";
+  const absolute = micros < 0n ? -micros : micros;
+  const whole = absolute / 1_000_000n;
+  const fraction = (absolute % 1_000_000n).toString().padStart(6, "0");
+  return `${sign}${whole}.${fraction.replace(/0+$/, "").padEnd(2, "0")} USDC`;
+}
+
+function koraMockPricingHint(sponsorMode: SponsorMode) {
+  return sponsorMode === "kora"
+    ? " Kora devnet Mock pricing can make setup fees much higher than direct Solana fees."
+    : "";
+}
+
+function buyerBalanceError(input: {
+  balanceUsdcMicros: bigint;
+  priceUsdcMicros: bigint;
+  setupFeeUsdcMicros: bigint;
+  sponsorMode: SponsorMode;
+}) {
+  const required = input.priceUsdcMicros + input.setupFeeUsdcMicros;
+  return [
+    "Buyer USDC balance is below price plus setup fee",
+    `(balance ${formatUsdcMicros(input.balanceUsdcMicros)},`,
+    `price ${formatUsdcMicros(input.priceUsdcMicros)},`,
+    `setup fee ${formatUsdcMicros(input.setupFeeUsdcMicros)},`,
+    `required ${formatUsdcMicros(required)}).`,
+    koraMockPricingHint(input.sponsorMode),
+  ].join(" ");
+}
+
 /**
  * SECURITY: the sponsor co-signs the prepared transaction as fee payer + rent
  * payer. If the buyer is *also* the sponsor, the buyer / rent_payer / fee_payer
@@ -190,6 +234,19 @@ export function loadSponsorKeypair() {
     );
   }
   return cachedSponsorKeypair;
+}
+
+export type SponsorSigningContext =
+  | { mode: "bespoke"; publicKey: PublicKey; keypair: Keypair }
+  | { mode: "kora"; publicKey: PublicKey; keypair: null };
+
+export function resolveSponsorSigningContext(): SponsorSigningContext {
+  const mode = getSponsoredSponsorMode();
+  if (mode === "kora") {
+    return { mode, publicKey: getKoraFeePayer(), keypair: null };
+  }
+  const keypair = loadSponsorKeypair();
+  return { mode, publicKey: keypair.publicKey, keypair };
 }
 
 function u64Le(value: bigint | number | string) {
@@ -483,6 +540,9 @@ async function resolvePurchaseContext(input: {
 
 export function getSponsorFeeDestination(setupFeeUsdcMicros: bigint) {
   if (setupFeeUsdcMicros === 0n) return null;
+  if (getSponsoredSponsorMode() === "kora") {
+    return getKoraFeeDestination();
+  }
   return requirePubkey(
     process.env.AGENTVOUCH_SPONSOR_USDC_FEE_DESTINATION,
     "AGENTVOUCH_SPONSOR_USDC_FEE_DESTINATION"
@@ -494,6 +554,21 @@ export function getMaxSetupFeeCap() {
     process.env.AGENTVOUCH_SPONSOR_MAX_FEE_USDC_MICROS,
     "AGENTVOUCH_SPONSOR_MAX_FEE_USDC_MICROS"
   );
+}
+
+export async function assertSponsorFeeDestinationReady(
+  connection: Connection,
+  sponsorFeeDestination: PublicKey | null,
+  usdcMint: PublicKey
+) {
+  if (!sponsorFeeDestination) return;
+  const destinationState = await fetchTokenAccountState(
+    connection,
+    sponsorFeeDestination
+  );
+  if (!destinationState.exists || !destinationState.mint?.equals(usdcMint)) {
+    throw new Error("Sponsor USDC fee destination is missing or wrong mint");
+  }
 }
 
 function buildTransaction(input: {
@@ -557,7 +632,7 @@ export async function prepareSponsoredPurchase(
   input: SponsoredPurchasePrepareInput
 ): Promise<SponsoredPurchasePrepareResult> {
   requireEnabled();
-  const sponsor = loadSponsorKeypair();
+  const sponsor = resolveSponsorSigningContext();
   const context = await resolvePurchaseContext({
     ...input,
     sponsor: sponsor.publicKey,
@@ -565,24 +640,61 @@ export async function prepareSponsoredPurchase(
   const latestBlockhash = await context.connection.getLatestBlockhash(
     "confirmed"
   );
-  const prelim = buildTransaction({
-    context,
-    blockhash: latestBlockhash.blockhash,
-    setupFeeUsdcMicros: 0n,
-    sponsorFeeDestination: null,
-  });
-  const transactionFeeLamports = await getTransactionFeeLamports(
-    context.connection,
-    prelim
-  );
-  const quote = quoteSponsoredCheckoutSetupFee({
-    rentLamports: context.rentLamports,
-    transactionFeeLamports,
-    microUsdcPerSol: parseSponsoredCheckoutMicroUsdcPerSol(
-      process.env.AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE
-    ),
-    capUsdcMicros: getMaxSetupFeeCap(),
-  });
+  let sponsorFeeDestination: PublicKey | null = null;
+  let transactionFeeLamports: bigint;
+  let quote: { setupFeeUsdcMicros: bigint; capped: boolean };
+  if (sponsor.mode === "kora") {
+    sponsorFeeDestination = getSponsorFeeDestination(1n);
+    await assertSponsorFeeDestinationReady(
+      context.connection,
+      sponsorFeeDestination,
+      context.usdcMint
+    );
+    const prelim = buildTransaction({
+      context,
+      blockhash: latestBlockhash.blockhash,
+      setupFeeUsdcMicros: 1n,
+      sponsorFeeDestination,
+    });
+    const koraQuote = await estimateKoraSetupFeeUsdcMicros({
+      transaction: prelim,
+      feeToken: getKoraFeeToken(context.usdcMint),
+      capUsdcMicros: getMaxSetupFeeCap(),
+    });
+    transactionFeeLamports =
+      koraQuote.feeInLamports > context.rentLamports
+        ? koraQuote.feeInLamports - context.rentLamports
+        : koraQuote.feeInLamports;
+    quote = {
+      setupFeeUsdcMicros: koraQuote.setupFeeUsdcMicros,
+      capped: koraQuote.capped,
+    };
+  } else {
+    const prelim = buildTransaction({
+      context,
+      blockhash: latestBlockhash.blockhash,
+      setupFeeUsdcMicros: 0n,
+      sponsorFeeDestination: null,
+    });
+    transactionFeeLamports = await getTransactionFeeLamports(
+      context.connection,
+      prelim
+    );
+    quote = quoteSponsoredCheckoutSetupFee({
+      rentLamports: context.rentLamports,
+      transactionFeeLamports,
+      microUsdcPerSol: parseSponsoredCheckoutMicroUsdcPerSol(
+        process.env.AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE
+      ),
+      capUsdcMicros: getMaxSetupFeeCap(),
+    });
+    sponsorFeeDestination = getSponsorFeeDestination(quote.setupFeeUsdcMicros);
+    await assertSponsorFeeDestinationReady(
+      context.connection,
+      sponsorFeeDestination,
+      context.usdcMint
+    );
+  }
   const buyerMaxSetupFee = parseNonNegativeBigInt(
     input.maxSetupFeeUsdcMicros,
     "maxSetupFeeUsdcMicros"
@@ -595,23 +707,14 @@ export async function prepareSponsoredPurchase(
   }
   const totalBuyerUsdc = context.priceUsdcMicros + quote.setupFeeUsdcMicros;
   if (context.buyerUsdcBalance < totalBuyerUsdc) {
-    throw new Error("Buyer USDC balance is below price plus setup fee");
-  }
-
-  const sponsorFeeDestination = getSponsorFeeDestination(
-    quote.setupFeeUsdcMicros
-  );
-  if (sponsorFeeDestination) {
-    const destinationState = await fetchTokenAccountState(
-      context.connection,
-      sponsorFeeDestination
+    throw new Error(
+      buyerBalanceError({
+        balanceUsdcMicros: context.buyerUsdcBalance,
+        priceUsdcMicros: context.priceUsdcMicros,
+        setupFeeUsdcMicros: quote.setupFeeUsdcMicros,
+        sponsorMode: sponsor.mode,
+      })
     );
-    if (
-      !destinationState.exists ||
-      !destinationState.mint?.equals(context.usdcMint)
-    ) {
-      throw new Error("Sponsor USDC fee destination is missing or wrong mint");
-    }
   }
 
   const transaction = buildTransaction({
@@ -620,7 +723,9 @@ export async function prepareSponsoredPurchase(
     setupFeeUsdcMicros: quote.setupFeeUsdcMicros,
     sponsorFeeDestination,
   });
-  transaction.partialSign(sponsor);
+  if (sponsor.mode === "bespoke") {
+    transaction.partialSign(sponsor.keypair);
+  }
 
   return {
     transaction: transaction
@@ -658,30 +763,115 @@ export function assertKey(
   }
 }
 
+export function assertSponsoredTransactionSignatures(input: {
+  transaction: Transaction;
+  sponsor: PublicKey;
+  sponsorMode: SponsorMode;
+  label: string;
+}) {
+  const sponsorSignature = input.transaction.signatures.find((signature) =>
+    signature.publicKey.equals(input.sponsor)
+  );
+  if (!sponsorSignature) {
+    throw new Error(`${input.label} is missing the sponsor signer`);
+  }
+
+  if (input.sponsorMode === "bespoke") {
+    if (
+      input.transaction.signatures.some(
+        (signature) => signature.signature === null
+      )
+    ) {
+      throw new Error(`${input.label} is missing signatures`);
+    }
+    if (!input.transaction.verifySignatures()) {
+      throw new Error(`${input.label} signatures are invalid`);
+    }
+    return;
+  }
+
+  if (sponsorSignature.signature !== null) {
+    throw new Error(
+      `${input.label} sponsor signature must be added by Kora on submit`
+    );
+  }
+  const missingUserSignature = input.transaction.signatures.find(
+    (signature) =>
+      !signature.publicKey.equals(input.sponsor) && signature.signature === null
+  );
+  if (missingUserSignature) {
+    throw new Error(`${input.label} is missing user signatures`);
+  }
+  if (!input.transaction.verifySignatures(false)) {
+    throw new Error(`${input.label} user signatures are invalid`);
+  }
+}
+
+function assertAllowedComputeBudgetInstruction(
+  instruction: TransactionInstruction,
+  label: string
+) {
+  if (instruction.keys.length !== 0) {
+    throw new Error(`${label} has unexpected account metas`);
+  }
+  const opcode = instruction.data[0];
+  const expectedLengths: Record<number, number> = {
+    0: 9, // RequestUnitsDeprecated
+    1: 5, // RequestHeapFrame
+    2: 5, // SetComputeUnitLimit
+    3: 9, // SetComputeUnitPrice
+    4: 5, // SetLoadedAccountsDataSizeLimit
+  };
+  if (expectedLengths[opcode] !== instruction.data.length) {
+    throw new Error(`${label} data is malformed`);
+  }
+}
+
+export function getSponsoredCoreInstructions(input: {
+  transaction: Transaction;
+  sponsorMode: SponsorMode;
+  label: string;
+}) {
+  if (input.sponsorMode !== "kora") return input.transaction.instructions;
+
+  const coreInstructions: TransactionInstruction[] = [];
+  for (const instruction of input.transaction.instructions) {
+    if (instruction.programId.equals(COMPUTE_BUDGET_PROGRAM_ID)) {
+      assertAllowedComputeBudgetInstruction(
+        instruction,
+        `${input.label} compute budget instruction`
+      );
+      continue;
+    }
+    coreInstructions.push(instruction);
+  }
+  return coreInstructions;
+}
+
 async function validateSubmittedTransaction(transaction: Transaction) {
-  const sponsor = loadSponsorKeypair();
+  const sponsor = resolveSponsorSigningContext();
   if (!transaction.feePayer) {
     throw new Error("Sponsored checkout transaction is missing a fee payer");
   }
   assertKey(transaction.feePayer, sponsor.publicKey, "fee payer");
-  if (
-    transaction.instructions.length < 1 ||
-    transaction.instructions.length > 2
-  ) {
+  const instructions = getSponsoredCoreInstructions({
+    transaction,
+    sponsorMode: sponsor.mode,
+    label: "Sponsored checkout transaction",
+  });
+  if (instructions.length < 1 || instructions.length > 2) {
     throw new Error(
-      "Sponsored checkout transaction has unexpected instruction count"
+      `Sponsored checkout transaction has unexpected instruction count (${instructions.length} core, ${transaction.instructions.length} total)`
     );
   }
-  if (
-    transaction.signatures.some((signature) => signature.signature === null)
-  ) {
-    throw new Error("Sponsored checkout transaction is missing signatures");
-  }
-  if (!transaction.verifySignatures()) {
-    throw new Error("Sponsored checkout transaction signatures are invalid");
-  }
+  assertSponsoredTransactionSignatures({
+    transaction,
+    sponsor: sponsor.publicKey,
+    sponsorMode: sponsor.mode,
+    label: "Sponsored checkout transaction",
+  });
 
-  const purchaseInstruction = transaction.instructions[0];
+  const purchaseInstruction = instructions[0];
   if (!purchaseInstruction.programId.equals(PROGRAM_ID)) {
     throw new Error("First instruction must be AgentVouch purchase_skill");
   }
@@ -743,12 +933,12 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   });
 
   let setupFeeUsdcMicros = 0n;
-  if (transaction.instructions.length === 2) {
+  if (instructions.length === 2) {
     const sponsorFeeDestination = getSponsorFeeDestination(1n);
     if (!sponsorFeeDestination) {
       throw new Error("Sponsor reimbursement destination is required");
     }
-    const reimbursement = transaction.instructions[1];
+    const reimbursement = instructions[1];
     setupFeeUsdcMicros = readTransferCheckedAmount(reimbursement);
     const keys = reimbursement.keys;
     if (keys.length !== 4) {
@@ -770,12 +960,27 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   if (maxCap !== null && setupFeeUsdcMicros > maxCap) {
     throw new Error("Sponsor reimbursement exceeds configured cap");
   }
+  if (sponsor.mode === "kora") {
+    const koraQuote = await estimateKoraSetupFeeUsdcMicros({
+      transaction,
+      feeToken: getKoraFeeToken(context.usdcMint),
+      capUsdcMicros: maxCap,
+    });
+    if (setupFeeUsdcMicros < koraQuote.setupFeeUsdcMicros) {
+      throw new Error(
+        `Sponsor reimbursement is below Kora fee quote (submitted ${formatUsdcMicros(
+          setupFeeUsdcMicros
+        )}, required ${formatUsdcMicros(koraQuote.setupFeeUsdcMicros)})`
+      );
+    }
+  }
   if (context.buyerUsdcBalance < context.priceUsdcMicros + setupFeeUsdcMicros) {
     throw new Error("Buyer USDC balance is below submitted transaction amount");
   }
 
   return {
     connection: context.connection,
+    sponsorMode: sponsor.mode,
     setupFeeUsdcMicros,
     buyerPubkey: context.buyer.toBase58(),
     listingAddress: context.skillListing.toBase58(),
@@ -790,10 +995,16 @@ export async function submitSponsoredPurchase(
   if (!serializedTransaction || typeof serializedTransaction !== "string") {
     throw new Error("serializedTransaction is required");
   }
-  const transaction = Transaction.from(
+  let transaction = Transaction.from(
     Buffer.from(serializedTransaction, "base64")
   );
   const validation = await validateSubmittedTransaction(transaction);
+  if (validation.sponsorMode === "kora") {
+    transaction = await signTransactionWithKora(transaction);
+    if (!transaction.verifySignatures()) {
+      throw new Error("Kora-signed sponsored checkout signatures are invalid");
+    }
+  }
   const simulation = await validation.connection.simulateTransaction(
     transaction
   );

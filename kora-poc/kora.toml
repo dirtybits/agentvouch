@@ -1,15 +1,15 @@
 # AgentVouch <> Kora spike (devnet)
 # Goal: prove Kora can act as fee payer for AgentVouch purchase_skill txs,
-# quote the fee in USDC via Margin pricing (replacing the static SOL/USDC env),
+# quote the setup fee in USDC without the devnet Mock oracle overpricing the UI,
 # and reject anything outside the AgentVouch allowlist.
 
 [validation]
 max_allowed_lamports = 10000000       # ~0.01 SOL drain cap/tx (tune to just above real purchase rent+fee)
 max_signatures = 10
 # DEVNET stays "Mock": Jupiter prices only MAINNET mints, so it cannot quote the devnet USDC
-# mint below — setting "Jupiter" here would leave the node unable to produce a fee. The Mock
-# rate is intentionally unrealistic (~100x), so verify the mechanism on devnet, not the cost.
-# See the MAINNET block under [validation.price] for the production flip.
+# mint below. The Mock rate is intentionally unrealistic, so devnet UI testing uses fixed
+# pricing under [validation.price] instead of margin pricing against Mock.
+# See the MAINNET block under [validation.price] for the production/dynamic-pricing flip.
 price_source = "Mock"
 
 # Only AgentVouch + the programs its instructions touch may appear in a sponsored tx.
@@ -26,17 +26,24 @@ allowed_tokens = ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
 allowed_spl_paid_tokens = ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
 disallowed_accounts = []
 
-# Margin pricing: user pays live network cost + 10%. This is the replacement
-# for the static AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE env.
+# Fixed devnet pricing: charge a predictable 0.20 USDC setup fee so the UI can exercise the
+# Kora path without the Mock oracle's inflated SOL/USDC conversion. `strict = false` means this
+# is an intentional devnet subsidy: Kora still validates/sponsors the transaction, but the fixed
+# token fee may be lower than the sponsor's actual SOL rent/fee outflow.
 [validation.price]
-type = "margin"
-margin = 0.1
+type = "fixed"
+amount = 200000
+token = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+strict = false
 
 # ---------------------------------------------------------------------------
 # MAINNET FLIP (do NOT enable on devnet — see price_source note above):
 #   price_source = "Jupiter"        # live SOL/USDC, replaces the Mock ~100x rate
 #   allowed_tokens          = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]  # mainnet USDC
 #   allowed_spl_paid_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+#   [validation.price]
+#   type = "margin"
+#   margin = 0.1
 #   allowed_programs[0]     = <mainnet AgentVouch program id>
 # SIGNER CUSTODY (BLOCKER before mainnet): the sponsor key is a local file read via the
 # KORA_PRIVATE_KEY env (see signers.toml / .agent-keys/kora/signer.json). That is fine for a

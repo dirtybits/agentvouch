@@ -1,20 +1,22 @@
 # AgentVouch &lt;&gt; Kora local spike
 
 **Result: proven on devnet (2026-06-23).** A local Kora node stands up as an
-AgentVouch-scoped, USDC-denominated fee-payer relayer and quotes fees dynamically.
+AgentVouch-scoped, USDC-denominated fee-payer relayer. The current devnet UI
+test config charges a fixed `0.20 USDC` setup fee so Kora can be tested without
+the devnet Mock oracle's inflated conversion rate.
 This is an evaluation artifact, not production wiring.
 
 ## What it proves
 
 - Kora runs locally against devnet with an **AgentVouch-only program allowlist**.
 - **USDC is the sole accepted fee token**; the sponsor signer is the fee payer.
-- **Margin pricing** produces a live USDC quote — the replacement for the static
-  `AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE` env the sponsored-checkout handoff flagged.
+- **Fixed devnet pricing** produces a predictable `0.20 USDC` Kora setup fee.
+  This is a UI-test setting, not the final production pricing policy.
 - The **anti-drain `fee_payer_policy`** (every `allow_*` = false) is on by default.
 - **Fully gasless for the user, proven end-to-end on devnet** — a zero-SOL wallet
   transacted, paying only USDC, while Kora sponsored gas **and** rent (see below).
 
-## Evidence (live RPC against the running node)
+## Evidence and expected checks
 
 - `getConfig` → `fee_payers: [89CGD862…]`, `allowed_programs` = [AgentVouch `AGNtBj…`,
   System, SPL Token, ATA, ComputeBudget], `allowed_tokens`/`allowed_spl_paid_tokens` =
@@ -23,9 +25,9 @@ This is an evaluation artifact, not production wiring.
 - `getSupportedTokens` → `[4zMMC9…]` (USDC only).
 - `getPayerSigner` → `89CGD862…` (signer == payment address).
 - `getBlockhash` → live devnet blockhash.
-- `estimateTransactionFee` (minimal ComputeBudget tx) →
-  `fee_in_lamports: 5775` (5250 base × 1.10 margin), `fee_in_token: 57750` micro-USDC
-  (0.0578 USDC at the Mock 0.0001 SOL/USDC rate). Signer funded via devnet tx
+- After restarting Kora with the fixed devnet pricing config, `estimateTransactionFee`
+  (minimal ComputeBudget tx) should return `fee_in_token: 200000` micro-USDC (`0.20 USDC`).
+  Signer funded via devnet tx
   `26hWPGuJPobpekgL7SSnkKRQ4FUzWaK551JSYRCgp8v5v1yQNxTaNDGtsLKXWQNWyX3c8YdMKJY3zLW1DzZAhRGo`.
 - **Rent gate, proven both directions** (`sign-create-account-test.cjs`, a sponsor-funded
   `System::CreateAccount` partial-signed so only the fee-payer signature is missing):
@@ -41,24 +43,23 @@ This is an evaluation artifact, not production wiring.
   rent payer = sponsor (a new account's 890,880-lamport rent), plus a `transfer_checked`
   reimbursing the sponsor in USDC. `estimateTransactionFee` → `signTransaction` → submitted:
   - tx [`32qjUv…KFQvK`](https://explorer.solana.com/tx/32qjUv38fmfFtcjDKf1rx959jHDHwD1q1NwwnePaW3jHBv1hQw5zM6p22TSAQJsvJoHakSginQpamtLhYc6KFQvK?cluster=devnet)
-    landed. Buyer **SOL delta = 0** (paid no gas, no rent); **USDC delta = −10.16** (the
-    reimbursement); the new account's rent was paid by the sponsor.
-  - The 10.16 USDC fee is a **Mock-pricing artifact** (devnet Mock rate prices ~0.001 SOL of
-    rent at ~10 USDC). Live `price_source = "Jupiter"` on mainnet yields a realistic cent-scale
-    fee. Verify the *mechanism* here, not the magnitude.
+    landed. Buyer **SOL delta = 0** (paid no gas, no rent); the new account's rent was paid by
+    the sponsor. The historical run used margin pricing and overpaid because of the devnet Mock
+    oracle; the current fixed config reimburses exactly the Kora fixed fee.
 - **Gasless `register_agent` round trip, submitted to devnet** (`gasless-register-agent.cjs`,
   against the redeployed program): the same zero-SOL wallet — as the `authority` being
   registered — signs `register_agent` with `rent_payer = sponsor`, plus a USDC reimbursement.
   - tx [`ZP73fg…JMUteV`](https://explorer.solana.com/tx/ZP73fgdvGxxa3uweubNpk7uWQ4ATgeUmpCAac3D2XkbenDSkCfjaCzJ8nDc7JDFish5KcLfdBG7yZjbh6JMUteV?cluster=devnet)
     landed. Authority **SOL delta = 0**; the `agent_profile` PDA was created (owned by the
-    program, **3,605,280 lamports rent paid by the sponsor**); USDC delta = −40.56 (Mock-priced
-    reimbursement). Confirms the program redeploy made first-time registration gasless.
+    program, **3,605,280 lamports rent paid by the sponsor**). Confirms the program redeploy made
+    first-time registration gasless. The historical run used margin pricing; the current fixed
+    config reimburses exactly the Kora fixed fee.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `kora.toml` | Validation allowlist + Margin pricing |
+| `kora.toml` | Validation allowlist + fixed devnet pricing |
 | `signers.toml` | Single in-memory sponsor signer (`KORA_PRIVATE_KEY`) |
 | `estimate-fee.cjs` | Fee-quote probe (`@solana/web3.js`) |
 | `create-account-test.cjs` | `estimateTransactionFee` probe for a sponsor-funded CreateAccount (shows estimate does *not* enforce the policy) |
@@ -91,11 +92,16 @@ kora --config kora-poc/kora.toml --rpc-url https://api.devnet.solana.com \
 node kora-poc/estimate-fee.cjs   # -> USDC fee quote
 ```
 
+For local UI testing with the fixed `0.20 USDC` quote, run the web app with
+`AGENTVOUCH_KORA_REIMBURSEMENT_BUFFER_BPS=0`; otherwise the app's optional Kora buffer may show
+slightly above the fixed Kora quote.
+
 ## Findings for AgentVouch
 
-1. **Dynamic pricing is solved.** The Margin model returns `base_fee × (1 + margin)` and
-   converts to the fee token. Set `price_source = "Jupiter"` for live SOL/USDC on mainnet
-   (Jupiter prices mainnet mints, so this devnet spike uses `Mock`).
+1. **Kora pricing is configurable.** The current devnet UI spike uses fixed pricing
+   (`0.20 USDC`) to avoid the Mock oracle's inflated conversion rate. For dynamic production
+   pricing, switch back to the Margin model with `price_source = "Jupiter"` and the mainnet USDC
+   mint.
 2. **Kora simulates during estimate**, so the sponsor must hold SOL even to *quote*, not
    only to broadcast.
 3. **Anti-drain by default.** With `fee_payer_policy` omitted, the sponsor can never be the
@@ -125,6 +131,14 @@ node kora-poc/estimate-fee.cjs   # -> USDC fee quote
    `payer = rent_payer` (mirrors `purchase_skill`); `authority` still signs as identity but pays
    no rent. Redeployed to devnet (program ID unchanged; see `docs/DEPLOY.md` change log) and
    **proven gasless end to end** — see the register_agent round trip in Evidence.
+7. **Phantom warning noise is a UI-spike artifact, not proof the buyer is paying SOL.** In the
+   current Kora path, the browser asks Phantom to sign before Kora has attached the sponsor
+   signature. Phantom can warn about unsafe simulation, failed simulation, or insufficient SOL
+   while inspecting that partially signed message. The server still validates the transaction,
+   has Kora sign as fee/rent payer, simulates, and broadcasts. Leave this alone for local spike
+   testing if transactions land; before an external demo or RC Kora path, move Kora signing into
+   prepare so Phantom receives a sponsor-pre-signed transaction, and add wallet-signing blockhash
+   refresh handling.
 
 ## Status & next steps
 
@@ -142,9 +156,8 @@ Remaining work, in priority order:
 2. **Wire the UI** to route `register_agent` / `purchase_skill` through Kora's estimate→sign
    flow (`web/lib/sponsoredPurchase.ts` is the template; pass the sponsor as `rent_payer`). Deferred.
 3. **Mainnet hardening (BLOCKERS before mainnet, documented in `kora.toml`):** flip
-   `price_source = "Jupiter"` with the mainnet USDC mint (the Mock rate over-prices ~100×, which
-   is why the devnet fees above read ~10–40 USDC instead of cents), and move the sponsor key off
-   the local file to a managed signer (Turnkey / Vault / Privy).
+   `price_source = "Jupiter"` with the mainnet USDC mint and dynamic margin pricing, then move
+   the sponsor key off the local file to a managed signer (Turnkey / Vault / Privy).
 
 Per the ship-minimal bias this is documented hardening, **not a launch blocker**: the bespoke
 sponsor ships launch. But the gasless direction is now de-risked end to end.

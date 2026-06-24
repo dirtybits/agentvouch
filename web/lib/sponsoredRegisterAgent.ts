@@ -20,6 +20,11 @@ import {
   parseSponsoredCheckoutMicroUsdcPerSol,
   quoteSponsoredCheckoutSetupFee,
 } from "@/lib/sponsoredCheckout";
+import {
+  estimateKoraSetupFeeUsdcMicros,
+  getKoraFeeToken,
+  signTransactionWithKora,
+} from "@/lib/koraSponsor";
 // Reuse the security-critical sponsor primitives from the purchase flow so there
 // is a single source of truth for sponsor-key loading, the reimbursement transfer,
 // and the fee cap. This file only adds the register_agent-specific shape.
@@ -28,18 +33,22 @@ import {
   USDC_DECIMALS,
   assertBuyerIsNotSponsor,
   assertKey,
+  assertSponsorFeeDestinationReady,
+  assertSponsoredTransactionSignatures,
   createTransferCheckedInstruction,
   deriveAta,
   fetchTokenAccountState,
+  formatUsdcMicros,
   getMaxSetupFeeCap,
+  getSponsoredCoreInstructions,
   getSponsorFeeDestination,
   getTransactionFeeLamports,
-  loadSponsorKeypair,
   parseNonNegativeBigInt,
   pda,
   readTransferCheckedAmount,
   requireEnabled,
   requirePubkey,
+  resolveSponsorSigningContext,
 } from "@/lib/sponsoredPurchase";
 
 const SYSTEM_PROGRAM_ID = SystemProgram.programId;
@@ -86,7 +95,9 @@ export type SponsoredRegisterAgentSubmitResult = {
   setupFeeUsdcMicros: string;
 };
 
-function normalizeMetadataUri(value: string | null | undefined) {
+export function normalizeSponsoredRegisterAgentMetadataUri(
+  value: string | null | undefined
+) {
   const uri = typeof value === "string" ? value : "";
   if (Buffer.byteLength(uri, "utf8") > MAX_URI_LENGTH) {
     throw new Error(`metadataUri must be at most ${MAX_URI_LENGTH} bytes`);
@@ -233,8 +244,10 @@ export async function prepareSponsoredRegisterAgent(
   input: SponsoredRegisterAgentPrepareInput
 ): Promise<SponsoredRegisterAgentPrepareResult> {
   requireEnabled();
-  const sponsor = loadSponsorKeypair();
-  const metadataUri = normalizeMetadataUri(input.metadataUri);
+  const sponsor = resolveSponsorSigningContext();
+  const metadataUri = normalizeSponsoredRegisterAgentMetadataUri(
+    input.metadataUri
+  );
   const context = await resolveRegisterAgentContext({
     authorityPubkey: input.authorityPubkey,
     metadataUri,
@@ -243,24 +256,61 @@ export async function prepareSponsoredRegisterAgent(
   const latestBlockhash = await context.connection.getLatestBlockhash(
     "confirmed"
   );
-  const prelim = buildTransaction({
-    context,
-    blockhash: latestBlockhash.blockhash,
-    setupFeeUsdcMicros: 0n,
-    sponsorFeeDestination: null,
-  });
-  const transactionFeeLamports = await getTransactionFeeLamports(
-    context.connection,
-    prelim
-  );
-  const quote = quoteSponsoredCheckoutSetupFee({
-    rentLamports: context.rentLamports,
-    transactionFeeLamports,
-    microUsdcPerSol: parseSponsoredCheckoutMicroUsdcPerSol(
-      process.env.AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE
-    ),
-    capUsdcMicros: getMaxSetupFeeCap(),
-  });
+  let sponsorFeeDestination: PublicKey | null = null;
+  let transactionFeeLamports: bigint;
+  let quote: { setupFeeUsdcMicros: bigint; capped: boolean };
+  if (sponsor.mode === "kora") {
+    sponsorFeeDestination = getSponsorFeeDestination(1n);
+    await assertSponsorFeeDestinationReady(
+      context.connection,
+      sponsorFeeDestination,
+      context.usdcMint
+    );
+    const prelim = buildTransaction({
+      context,
+      blockhash: latestBlockhash.blockhash,
+      setupFeeUsdcMicros: 1n,
+      sponsorFeeDestination,
+    });
+    const koraQuote = await estimateKoraSetupFeeUsdcMicros({
+      transaction: prelim,
+      feeToken: getKoraFeeToken(context.usdcMint),
+      capUsdcMicros: getMaxSetupFeeCap(),
+    });
+    transactionFeeLamports =
+      koraQuote.feeInLamports > context.rentLamports
+        ? koraQuote.feeInLamports - context.rentLamports
+        : koraQuote.feeInLamports;
+    quote = {
+      setupFeeUsdcMicros: koraQuote.setupFeeUsdcMicros,
+      capped: koraQuote.capped,
+    };
+  } else {
+    const prelim = buildTransaction({
+      context,
+      blockhash: latestBlockhash.blockhash,
+      setupFeeUsdcMicros: 0n,
+      sponsorFeeDestination: null,
+    });
+    transactionFeeLamports = await getTransactionFeeLamports(
+      context.connection,
+      prelim
+    );
+    quote = quoteSponsoredCheckoutSetupFee({
+      rentLamports: context.rentLamports,
+      transactionFeeLamports,
+      microUsdcPerSol: parseSponsoredCheckoutMicroUsdcPerSol(
+        process.env.AGENTVOUCH_SPONSOR_SOL_USDC_MICRO_PRICE
+      ),
+      capUsdcMicros: getMaxSetupFeeCap(),
+    });
+    sponsorFeeDestination = getSponsorFeeDestination(quote.setupFeeUsdcMicros);
+    await assertSponsorFeeDestinationReady(
+      context.connection,
+      sponsorFeeDestination,
+      context.usdcMint
+    );
+  }
   const callerMaxSetupFee = parseNonNegativeBigInt(
     input.maxSetupFeeUsdcMicros,
     "maxSetupFeeUsdcMicros"
@@ -272,23 +322,15 @@ export async function prepareSponsoredRegisterAgent(
     throw new Error("Quoted setup fee exceeds caller max setup fee");
   }
   if (context.authorityUsdcBalance < quote.setupFeeUsdcMicros) {
-    throw new Error("Authority USDC balance is below the setup fee");
-  }
-
-  const sponsorFeeDestination = getSponsorFeeDestination(
-    quote.setupFeeUsdcMicros
-  );
-  if (sponsorFeeDestination) {
-    const destinationState = await fetchTokenAccountState(
-      context.connection,
-      sponsorFeeDestination
+    const hint =
+      sponsor.mode === "kora"
+        ? " Kora devnet Mock pricing can make setup fees much higher than direct Solana fees."
+        : "";
+    throw new Error(
+      `Authority USDC balance is below the setup fee (balance ${formatUsdcMicros(
+        context.authorityUsdcBalance
+      )}, setup fee ${formatUsdcMicros(quote.setupFeeUsdcMicros)}).${hint}`
     );
-    if (
-      !destinationState.exists ||
-      !destinationState.mint?.equals(context.usdcMint)
-    ) {
-      throw new Error("Sponsor USDC fee destination is missing or wrong mint");
-    }
   }
 
   const transaction = buildTransaction({
@@ -297,7 +339,9 @@ export async function prepareSponsoredRegisterAgent(
     setupFeeUsdcMicros: quote.setupFeeUsdcMicros,
     sponsorFeeDestination,
   });
-  transaction.partialSign(sponsor);
+  if (sponsor.mode === "bespoke") {
+    transaction.partialSign(sponsor.keypair);
+  }
 
   return {
     transaction: transaction
@@ -324,33 +368,31 @@ export async function prepareSponsoredRegisterAgent(
 }
 
 async function validateSubmittedTransaction(transaction: Transaction) {
-  const sponsor = loadSponsorKeypair();
+  const sponsor = resolveSponsorSigningContext();
   if (!transaction.feePayer) {
     throw new Error(
       "Sponsored registration transaction is missing a fee payer"
     );
   }
   assertKey(transaction.feePayer, sponsor.publicKey, "fee payer");
-  if (
-    transaction.instructions.length < 1 ||
-    transaction.instructions.length > 2
-  ) {
+  const instructions = getSponsoredCoreInstructions({
+    transaction,
+    sponsorMode: sponsor.mode,
+    label: "Sponsored registration transaction",
+  });
+  if (instructions.length < 1 || instructions.length > 2) {
     throw new Error(
-      "Sponsored registration transaction has unexpected instruction count"
+      `Sponsored registration transaction has unexpected instruction count (${instructions.length} core, ${transaction.instructions.length} total)`
     );
   }
-  if (
-    transaction.signatures.some((signature) => signature.signature === null)
-  ) {
-    throw new Error("Sponsored registration transaction is missing signatures");
-  }
-  if (!transaction.verifySignatures()) {
-    throw new Error(
-      "Sponsored registration transaction signatures are invalid"
-    );
-  }
+  assertSponsoredTransactionSignatures({
+    transaction,
+    sponsor: sponsor.publicKey,
+    sponsorMode: sponsor.mode,
+    label: "Sponsored registration transaction",
+  });
 
-  const registerInstruction = transaction.instructions[0];
+  const registerInstruction = instructions[0];
   if (!registerInstruction.programId.equals(PROGRAM_ID)) {
     throw new Error("First instruction must be AgentVouch register_agent");
   }
@@ -368,7 +410,7 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   } catch {
     throw new Error("register_agent instruction data is malformed");
   }
-  metadataUri = normalizeMetadataUri(metadataUri);
+  metadataUri = normalizeSponsoredRegisterAgentMetadataUri(metadataUri);
   if (
     !instructionDataEquals(
       registerInstruction.data,
@@ -416,12 +458,12 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   });
 
   let setupFeeUsdcMicros = 0n;
-  if (transaction.instructions.length === 2) {
+  if (instructions.length === 2) {
     const sponsorFeeDestination = getSponsorFeeDestination(1n);
     if (!sponsorFeeDestination) {
       throw new Error("Sponsor reimbursement destination is required");
     }
-    const reimbursement = transaction.instructions[1];
+    const reimbursement = instructions[1];
     setupFeeUsdcMicros = readTransferCheckedAmount(reimbursement);
     const keys = reimbursement.keys;
     if (keys.length !== 4) {
@@ -447,6 +489,20 @@ async function validateSubmittedTransaction(transaction: Transaction) {
   if (maxCap !== null && setupFeeUsdcMicros > maxCap) {
     throw new Error("Sponsor reimbursement exceeds configured cap");
   }
+  if (sponsor.mode === "kora") {
+    const koraQuote = await estimateKoraSetupFeeUsdcMicros({
+      transaction,
+      feeToken: getKoraFeeToken(context.usdcMint),
+      capUsdcMicros: maxCap,
+    });
+    if (setupFeeUsdcMicros < koraQuote.setupFeeUsdcMicros) {
+      throw new Error(
+        `Sponsor reimbursement is below Kora fee quote (submitted ${formatUsdcMicros(
+          setupFeeUsdcMicros
+        )}, required ${formatUsdcMicros(koraQuote.setupFeeUsdcMicros)})`
+      );
+    }
+  }
   if (context.authorityUsdcBalance < setupFeeUsdcMicros) {
     throw new Error(
       "Authority USDC balance is below submitted transaction amount"
@@ -455,6 +511,7 @@ async function validateSubmittedTransaction(transaction: Transaction) {
 
   return {
     connection: context.connection,
+    sponsorMode: sponsor.mode,
     setupFeeUsdcMicros,
     authorityPubkey: context.authority.toBase58(),
     agentProfile: context.agentProfile.toBase58(),
@@ -468,10 +525,18 @@ export async function submitSponsoredRegisterAgent(
   if (!serializedTransaction || typeof serializedTransaction !== "string") {
     throw new Error("serializedTransaction is required");
   }
-  const transaction = Transaction.from(
+  let transaction = Transaction.from(
     Buffer.from(serializedTransaction, "base64")
   );
   const validation = await validateSubmittedTransaction(transaction);
+  if (validation.sponsorMode === "kora") {
+    transaction = await signTransactionWithKora(transaction);
+    if (!transaction.verifySignatures()) {
+      throw new Error(
+        "Kora-signed sponsored registration signatures are invalid"
+      );
+    }
+  }
   const simulation = await validation.connection.simulateTransaction(
     transaction
   );

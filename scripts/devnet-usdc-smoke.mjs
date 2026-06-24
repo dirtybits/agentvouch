@@ -706,6 +706,7 @@ async function main() {
       .accountsStrict({
         agentProfile: actorProfile,
         authority: actor.publicKey,
+        rentPayer: actor.publicKey,
         systemProgram: SystemProgram.programId,
       })
       .transaction();
@@ -718,6 +719,7 @@ async function main() {
       .accountsStrict({
         agentProfile: authorProfile,
         authority: author.publicKey,
+        rentPayer: author.publicKey,
         systemProgram: SystemProgram.programId,
       })
       .transaction();

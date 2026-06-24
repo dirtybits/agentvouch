@@ -1,5 +1,5 @@
 // Spike probe: build a minimal allowed tx (sponsor as fee payer) and ask the
-// local Kora node to quote the fee in USDC via Margin pricing.
+// local Kora node to quote the configured USDC fee.
 const web3 = require("@solana/web3.js");
 
 const KORA_URL = process.env.KORA_URL || "http://localhost:8080";

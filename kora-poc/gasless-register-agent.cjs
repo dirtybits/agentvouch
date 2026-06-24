@@ -120,7 +120,7 @@ const b64 = (tx) =>
   });
   if (!est.result)
     throw new Error("estimate failed: " + JSON.stringify(est.error));
-  const reimburse = Math.ceil(Number(est.result.fee_in_token) * 1.02);
+  const reimburse = Number(est.result.fee_in_token);
   console.log(
     `estimate: fee_in_lamports=${est.result.fee_in_lamports} fee_in_token=${est.result.fee_in_token}`
   );

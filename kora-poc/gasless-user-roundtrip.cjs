@@ -104,7 +104,7 @@ const b64 = (tx) =>
   if (!est.result)
     throw new Error("estimate failed: " + JSON.stringify(est.error));
   const feeInToken = Number(est.result.fee_in_token);
-  const reimburse = Math.ceil(feeInToken * 1.02); // 2% headroom over the quote
+  const reimburse = feeInToken;
   console.log(
     `estimate: fee_in_lamports=${est.result.fee_in_lamports} fee_in_token=${feeInToken} micro-USDC`
   );
