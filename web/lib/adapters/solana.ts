@@ -50,9 +50,11 @@ export class SolanaAdapter implements ChainAdapter {
   }
 
   shortenAddress(value: string): string {
-    return value.length <= 12
-      ? value
-      : `${value.slice(0, 4)}…${value.slice(-4)}`;
+    // Dominant UI format: 6-char prefix + literal "..." + 4-char suffix (author page,
+    // SkillDetailClient). NOT the "…" ellipsis char — no call site uses it. Bespoke
+    // lengths elsewhere (4/4 wallet button, 12/6 identity panel) are reconciled in Phase 2c.
+    if (value.length <= 13) return value;
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
 
   explorerTxUrl(ref: string): string {

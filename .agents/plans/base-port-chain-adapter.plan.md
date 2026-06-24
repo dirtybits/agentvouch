@@ -6,10 +6,10 @@ todos:
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: completed
   - id: extract-solana-adapter
-    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a adapter reads DONE; 2b wallet/writes (needs signer-injection design), 2c repoint callers, 2d x402 remain — full Done-when needs running-app devnet verification."
+    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED to an app+wallet session — do Phase 3 FIRST (see NEXT STEP OVERRIDE). Full Done-when needs running-app devnet verification."
     status: in_progress
   - id: base-adapter-readslice
-    content: "Phase 3. Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing/getProfile vs AgentVouchEvm). Render one Base listing in the real UI selected by chain_context. Vertical slice proving the seam."
+    content: "Phase 3. RECOMMENDED NEXT (wallet-free reads; do before 2c — see NEXT STEP OVERRIDE). Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing vs AgentVouchEvm; lift full ABI via `forge build` — harness abi.ts is write-only). listSkillListings has NO getProgramAccounts equivalent — enumerate DB-driven (skills table) or via SkillListingCreated events. Contract 0x6Fd9…D854 likely has no listing yet (zero activity ~53d, verified 2026-06-24) — seed first. Render one Base listing in the real UI selected by chain_context."
     status: pending
   - id: base-adapter-wallet
     content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts, + wagmi/MetaMask) behind the adapter + a 'use client' provider. LONG POLE. Resolve the wallet-provider open question first."
@@ -78,6 +78,16 @@ branch). To take over:
 5. **One phase = one commit/PR** off `feat/base-port-chain-adapter`, so each step is reviewable
    and the handoff boundary is clean. Suggested branch per phase:
    `feat/base-port-p<N>-<slug>`.
+
+> **NEXT STEP OVERRIDE (2026-06-24 review).** The strict "first non-`completed` todo = next phase"
+> rule (step 2) is **overridden once**: do **Phase 3 (`base-adapter-readslice`) NEXT**, before the
+> remaining Phase 2 work (2b-impl, 2c, 2d). Why: Phase 3 reads are **wallet-free** and test whether
+> the seam generalizes to Base (the actual architectural bet); 2b-impl/2c need a running app + wallet
+> and only prove the Solana refactor didn't regress (no new capability). Phase 3 does **not** depend
+> on 2c — it adds `base.ts` + one `chain_context` read branch while Solana keeps working via its
+> current path (satisfying Phase 3's "Solana still renders" gate); 2c later unifies the transitional
+> dual read path (trivial churn on one call site). Batch **2b-impl + 2c + Phases 4/5** into a single
+> app+wallet session. See the Phase 3 block for the verified read-path recon.
 
 ## What already exists to build on
 
@@ -243,6 +253,14 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
     orchestration (`useMarketplaceOracle`, the `useAgentVouchWallet` consumers) to `getAdapter(ctx)`.
     Behavior-touching: routes read `OnChainSkillListingRecord` fields — confirm `SkillListingView`
     carries everything they use, or map at the boundary. **Needs a running app + wallet to verify.**
+    NOTE (2026-06-24 review): UI address-shortening is NOT uniform today. `shortenAddress` in
+    `solana.ts` now matches the dominant content format — `6 + "..." + 4` (author page,
+    `SkillDetailClient`) — and the bogus `…` (U+2026) char it shipped with (used by NO call site)
+    was fixed. But other sites use bespoke lengths: `ClientWalletButton.tsx` (4/4),
+    `AgentIdentityPanel.tsx` (12/6), and a tx-sig truncation (8/8) in `SkillDetailClient`. When
+    repointing these to `adapter.shortenAddress`, decide per-site: accept the unified `6/4`, keep
+    the inline logic, or add an optional length param to the `ChainAdapter` interface. Do NOT
+    silently change rendered output — that breaks the "behavior-preserving" contract of this phase.
   - **2d — x402 [pending]:** `browserX402` / `x402ProtocolBridge` + `/api/x402/*` behind the adapter.
 - **Files:** `web/lib/adapters/solana.ts` (2a ✓); then `web/lib/onchain.ts`,
   `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`, `web/lib/browserX402.ts`,
@@ -252,13 +270,53 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
   session**; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
   files; `npm run typecheck && npm test` green.
 
-### Phase 3 — `base-adapter-readslice` [pending]
-- **Goal:** prove the seam end-to-end with a real Base read in the live UI.
-- **Files:** new `web/lib/adapters/base.ts` (reads only): viem `createPublicClient(baseSepolia)`
-  + `getListing`/profile reads against `AgentVouchEvm`; lift the ABI from
-  `contracts/base-poc/harness/src/abi.ts`.
-- **Steps:** implement `listSkillListings`/`fetchSkillListing`; seed one Base listing (run the
-  base-poc harness or list via the POC UI); render it on `/skills` when `chain_context = eip155:84532`.
+### Phase 3 — `base-adapter-readslice` [pending — RECOMMENDED NEXT, see NEXT STEP OVERRIDE]
+- **Goal:** prove the seam end-to-end with a real Base read in the live UI — the first test that
+  `ChainAdapter` actually generalizes to a second chain. (2c does NOT test this; it only re-routes
+  Solana through a Solana-shaped abstraction.)
+- **Files:** new `web/lib/adapters/base.ts` (reads only): viem `createPublicClient` on Base Sepolia.
+
+#### Read-path recon (verified 2026-06-24 against `contracts/base-poc`)
+- **View functions on `AgentVouchEvm`** (`src/AgentVouchEvm.sol`):
+  `getListing(bytes32 id) → SkillListing memory` (L551), `getProfile(address) → AgentProfile` (L543),
+  `getConfig() → Config` (L539). So `fetchSkillListing(id)` == `getListing(id)` — trivial.
+- **ABI gap:** the minimal `contracts/base-poc/harness/src/abi.ts` is **WRITE-ONLY** (no `getListing`,
+  no events) — do NOT lift it for reads. Run `forge build` in `contracts/base-poc` (the `out/` dir is
+  not built in fresh worktrees) and lift the full ABI from `out/AgentVouchEvm.sol/AgentVouchEvm.json`,
+  or hand-add the read fragments + struct tuples.
+- **Enumeration — NO `getProgramAccounts` equivalent.** Solana's `listOnChainSkillListings()` enumerates
+  all listings on-chain; EVM cannot. Two options for `listSkillListings()`:
+  1. **DB-driven (recommended):** the `skills` table is already the discovery index — take its
+     `chain_context = eip155:*` rows, derive each `listingId`, then `multicall` `getListing` for current
+     state. Fits the architecture (DB = discovery, chain = economic truth). Legitimately different from
+     the Solana adapter's chain-enumeration — that asymmetry is exactly why the seam exists.
+  2. **Event-driven (fallback/reconciliation):** query `SkillListingCreated(bytes32 indexed listingId,
+     address indexed author, uint256 price, bool free)` logs minus `SkillListingRemoved(bytes32 indexed
+     listingId)`, then `getListing` each. Use only to discover listings not in the DB.
+- **`listingId` derivation (must match the contract exactly — `ui/src/flow.ts`):**
+  `skillIdHash = keccak256(stringToHex(skillId))`;
+  `listingId = keccak256(abiEncode(["address","bytes32"], [author, skillIdHash]))`.
+  On-chain pure check: `listingId(address,bytes32)` (L529).
+- **`SkillListing` → `SkillListingView` mapping** (`src/libraries/AgentVouchTypes.sol`):
+  `listingId` ← the bytes32 you queried with (`getListing` does NOT return the id — caller supplies it);
+  `author` ← `author` (EVM checksum addr, not base58 — Phase 7 sweep); `name`/`description`/`uri` direct;
+  `priceUsdcMicros` ← `priceUsdcMicros` (same 6-dec USDC micros as Solana — parity); `revision` ←
+  `Number(currentRevision)`; `active` ← `status === ListingStatus.Active` (enum: `Active=0, Suspended=1,
+  Removed=2` — match the Solana adapter, which keys `active` on status alone).
+- **Seeded state (verified 2026-06-24):** contract code IS deployed at `0x6Fd9…D854`, but **zero
+  `SkillListingCreated` and zero `AgentRegistered`** over blocks 41,000,000→43,283,619 (~53 days) via
+  `https://base-sepolia-rpc.publicnode.com`. This is the F-1-fixed contract (PR #56), newer than the
+  earlier POC test contracts — so it almost certainly has **no listing to read**. Phase 3 step 0 is to
+  **seed one** (base-poc harness register→list, or the POC UI). To confirm zero definitively, scan
+  `SkillListingCreated` from the deploy block (broadcast file is not committed — find the block via the
+  deploy tx or just attempt a seed).
+- **Headless-verifiable:** reads need **NO wallet** (viem `readContract`/`getContractEvents`). A non-app
+  session can write `base.ts` and prove `getListing` + the mapping against a seeded id via `cast`/a
+  script; only the final "renders in `/skills`" gate needs the dev server. (Contrast 2c, which needs a
+  wallet click-through — that is why Phase 3 goes first.)
+
+- **Steps:** `forge build` + lift ABI; seed one listing; implement `fetchSkillListing` (=`getListing`)
+  and `listSkillListings` (DB-driven); render on `/skills` when `chain_context = eip155:84532`.
 - **Done when:** the Base listing renders in the real UI, fetched live from the contract (server-side
   read); the Solana listings still render. Use `https://base-sepolia-rpc.publicnode.com` (read lag).
 
