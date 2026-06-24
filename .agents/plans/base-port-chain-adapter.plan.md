@@ -4,7 +4,7 @@ overview: "Port agentvouch.xyz (web/) from Solana to Base/EVM by introducing a C
 todos:
   - id: define-chainadapter
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
-    status: pending
+    status: completed
   - id: extract-solana-adapter
     content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana."
     status: pending
@@ -193,7 +193,11 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
 
 > Order matters; each phase depends on the previous. One commit/PR per phase.
 
-### Phase 1 — `define-chainadapter` [pending]
+### Phase 1 — `define-chainadapter` [completed 2026-06-23]
+- **Status:** done — `web/lib/adapters/types.ts` (interface + view types) and
+  `web/lib/adapters/index.ts` (`getAdapter` registry, not-implemented stubs per family) added;
+  `cd web && npm run typecheck` green; no UI callers yet. Family routing reuses
+  `normalizeInputChainContext` from `web/lib/chains.ts`.
 - **Goal:** materialize the seam with no behavior change.
 - **Files:** create `web/lib/adapters/types.ts` (interface + view types above) and
   `web/lib/adapters/index.ts` (`getAdapter(ctx)` mapping `eip155:*`→Base stub, `solana:*`→Solana
