@@ -108,7 +108,14 @@ branch). To take over:
 **Chain-agnostic — unchanged:** all routes/pages, the 27 components, styling, copy, the Postgres
 schema (extend, not replace), GitHub OAuth, search/indexing, markdown.
 
-## The seam: `ChainAdapter` interface
+## The seam: `ChainAdapter` (reads) + `ChainWallet` (writes)
+
+> **Source of truth for the interfaces is `web/lib/adapters/types.ts`.** Per the Phase 2b
+> signer-injection decision (2026-06-23) the seam is **split**: `ChainAdapter` = server-safe reads
+> + pure helpers (from `getAdapter(ctx)`); `ChainWallet` = client-only, wallet-bound writes (from a
+> chain-aware `useChainWallet()` hook — connection stays in each chain's React provider). The
+> illustrative block below predates the split (it showed `connect`/writes on one interface); see
+> types.ts for the current shape.
 
 New directory **`web/lib/adapters/`** (NOT `web/lib/chains/` — `web/lib/chains.ts` already
 exists and a sibling dir of the same name causes import ambiguity):
@@ -221,11 +228,17 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
     it (Buffer/RPC) into a client bundle. Wallet/write methods throw (Phase 2b). **No callers
     repointed — live app untouched.** typecheck + prettier green; `git grep getAdapter web/app
     web/components web/hooks` empty.
-  - **2b — wallet + writes [pending]:** implement `connect/disconnect/registerAgent/
-    createSkillListing/purchaseSkill/buildX402Payment`. **DESIGN DECISION first:** the adapter is a
-    plain object, but Solana signing lives in the React context (`useAgentVouchWallet`) and
-    sponsored purchase in `/api/transactions/sponsored/*`. Decide signer injection (adapter takes a
-    signer/wallet handle, or write methods accept one) before implementing.
+  - **2b — wallet + writes [design settled 2026-06-23; impl pending]:** SIGNER-INJECTION DECISION:
+    wallet connection is irreducibly chain-specific + React-bound (Solana ConnectorKit/Phantom;
+    Base wagmi/passkey), so the adapter does NOT own connection. The seam is SPLIT: `ChainAdapter`
+    (server-safe reads/format — done) + a separate client-only `ChainWallet` (writes), produced by
+    a chain-aware hook `useChainWallet()` (evolve `useAgentVouchWallet`) that captures the active
+    chain's connected signer and returns writes already bound to it — the UI calls
+    `wallet.purchaseSkill(id)` uniformly (no signer threading, no per-chain branching). Interfaces
+    materialized in `web/lib/adapters/types.ts`; `SolanaAdapter` + the registry stub trimmed to
+    reads/format (typecheck green). IMPL remaining (needs a running app to verify): `SolanaWallet`
+    (wrap `useMarketplaceOracle`'s prepare→sign→submit bound to the context signer), `BaseWallet`
+    (lift `flow.ts`), and the `useChainWallet()` hook.
   - **2c — repoint callers [pending]:** flip server read routes (`app/api/skills/*`) and client
     orchestration (`useMarketplaceOracle`, the `useAgentVouchWallet` consumers) to `getAdapter(ctx)`.
     Behavior-touching: routes read `OnChainSkillListingRecord` fields — confirm `SkillListingView`

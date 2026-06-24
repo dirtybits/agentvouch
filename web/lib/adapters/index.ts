@@ -1,9 +1,9 @@
 // getAdapter(chainContext) -> the ChainAdapter for that chain.
 //
-// Phase 2a: solana:* resolves to SolanaAdapter (reads + formatting live; wallet/writes are
-// Phase 2b). eip155:* is still a not-implemented stub until BaseAdapter (Phases 3/5). There are
-// still no UI callers — repointing them is later in Phase 2.
-// See .agents/plans/base-port-chain-adapter.plan.md.
+// getAdapter returns a ChainAdapter (server-safe reads + formatting). Wallet-bound WRITES are a
+// separate client-only ChainWallet from the chain-aware wallet hook (Phase 2b) — not here.
+// Phase 2a: solana:* -> SolanaAdapter (reads live); eip155:* is a not-implemented stub until
+// BaseAdapter (Phases 3/5). No UI callers yet. See .agents/plans/base-port-chain-adapter.plan.md.
 
 import { normalizeInputChainContext } from "@/lib/chains";
 import { SolanaAdapter } from "./solana";
@@ -12,7 +12,7 @@ import type { ChainAdapter, ChainContext } from "./types";
 export type {
   ChainAdapter,
   ChainContext,
-  ConnectedWallet,
+  ChainWallet,
   CreateSkillListingInput,
   SkillListingView,
   TxResult,
@@ -47,12 +47,6 @@ function notImplementedAdapter(
     explorerAddressUrl: () => todo(),
     listSkillListings: () => todo(),
     fetchSkillListing: () => todo(),
-    connect: () => todo(),
-    disconnect: () => todo(),
-    registerAgent: () => todo(),
-    createSkillListing: () => todo(),
-    purchaseSkill: () => todo(),
-    buildX402Payment: () => todo(),
   };
 }
 
