@@ -12,10 +12,10 @@ todos:
     content: "Phase 3. RECOMMENDED NEXT (wallet-free reads; do before 2c — see NEXT STEP OVERRIDE). Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing vs AgentVouchEvm; lift full ABI via `forge build` — harness abi.ts is write-only). listSkillListings has NO getProgramAccounts equivalent — enumerate DB-driven (skills table) or via SkillListingCreated events. Contract 0x6Fd9…D854 likely has no listing yet (zero activity ~53d, verified 2026-06-24) — seed first. Render one Base listing in the real UI selected by chain_context. 3a (BaseAdapter reads) DONE + verified against the live contract; 3b (seed a listing + /skills render) pending — needs an app + seed creds. listSkillListings event scan needs an archive RPC (publicnode free tier rejects getLogs) — reinforces DB-driven enumeration."
     status: in_progress
   - id: base-adapter-wallet
-    content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts, + wagmi/MetaMask) behind the adapter + a 'use client' provider. LONG POLE. Resolve the wallet-provider open question first."
+    content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts, + wagmi/MetaMask) behind the adapter + a 'use client' provider. LONG POLE. DECIDED 2026-06-25: Coinbase Smart Wallet passkey for MVP; wagmi/MetaMask injected deferred to a roadmapped follow-on (reconsider if too much lifting)."
     status: pending
   - id: base-adapter-write
-    content: "Phase 5. BaseAdapter writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337). Wire EVM x402 receiveWithAuthorization into the route handlers /api/transactions/sponsored/* and /api/x402/*. Resolve the agent-identity open question first."
+    content: "Phase 5. BaseAdapter writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337). Wire EVM x402 receiveWithAuthorization into the route handlers /api/transactions/sponsored/* and /api/x402/*. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile."
     status: pending
   - id: db-multichain
     content: "Phase 6. Extend Postgres for EVM alongside Solana: contract address + tx hash keyed by chain_context (generalize on_chain_address/tx_signature or add evm_* columns). Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
@@ -346,7 +346,10 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
 
 ### Phase 4 — `base-adapter-wallet` [pending]  ⚠ long pole
 - **Goal:** connect an EVM wallet through the chain-aware wallet layer.
-- **Prereq:** resolve the **wallet-provider** open question.
+- **DECIDED (2026-06-25):** Coinbase Smart Wallet **passkey** for the MVP (POC-proven, gas-free via
+  the CDP paymaster) — lift `accounts/passkey.ts`. wagmi/MetaMask injected support is a **roadmapped
+  follow-on** (MetaMask's distribution warrants it), but reconsider if it balloons the wallet work;
+  do NOT build both stacks for the MVP.
 - **Files:** EVM connect in `web/lib/adapters/base.ts` (lift `contracts/base-poc/ui/src/accounts/passkey.ts`
   + `localKey.ts`); make `WalletContextProvider`/`useAgentVouchWallet` chain-aware (a `'use client'`
   EVM provider, e.g. wagmi, mounted alongside the Solana one and selected by `chain_context`).
@@ -357,7 +360,9 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
 
 ### Phase 5 — `base-adapter-write` [pending]
 - **Goal:** register/list/buy on Base from the UI + agent x402 settlement.
-- **Prereq:** resolve the **agent-identity** open question.
+- **DECIDED (2026-06-25):** on-chain identity via `AgentVouchEvm.registerAgent` / `getProfile`
+  (already deployed; mirrors the Solana identity program). The `/api/agents/[pubkey]` EVM branch
+  reads `getProfile` — no DB-only divergence, keeps reputation on-chain.
 - **Files:** `web/lib/adapters/base.ts` writes (lift `contracts/base-poc/ui/src/flow.ts`); EVM
   branch in route handlers `web/app/api/transactions/sponsored/*` and `web/app/api/x402/*`
   (lift the `receiveWithAuthorization` signing recipe from `agent-x402-demo.ts`).
@@ -418,9 +423,10 @@ retained, just dormant. Per-phase: revert that phase's single PR.
 
 ## Open questions / blockers
 
-- **Agent identity (gates Phase 5):** `/api/agents/[pubkey]` reads a Solana identity program.
-  Decide the EVM story — an on-Base identity contract vs DB-only.
-- **Wallet provider choice (gates Phase 4):** Coinbase Smart Wallet passkey (proven in the POC,
-  best gas-free UX) vs wagmi/RainbowKit (broader wallets) vs both.
+- **Agent identity (gates Phase 5) — RESOLVED 2026-06-25:** on-chain via `AgentVouchEvm`
+  `registerAgent`/`getProfile` (already deployed; mirrors the Solana identity program). Not DB-only.
+- **Wallet provider (gates Phase 4) — RESOLVED 2026-06-25:** Coinbase Smart Wallet passkey for the
+  MVP (POC-proven, gas-free). wagmi/MetaMask injected = roadmapped follow-on, reconsidered if it
+  proves too much lifting; not in the MVP.
 - **Mainnet vs Sepolia (later gate):** the POC contract is Base **Sepolia**. Production needs a
   Base **mainnet** deploy + mainnet USDC + CDP mainnet paymaster.
