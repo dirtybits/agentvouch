@@ -15,7 +15,9 @@ import {
   type CachedTrustRow,
 } from "@/lib/authorTrustView";
 
-const trust = { reputationScore: 10 };
+const trust = {
+  reputationScore: 10,
+} as unknown as CachedTrustRow["cached_author_trust"];
 const fresh = () => new Date().toISOString();
 const old = () => new Date(Date.now() - 60 * 60_000).toISOString();
 
