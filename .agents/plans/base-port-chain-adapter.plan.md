@@ -36,9 +36,11 @@ isProject: false
 
 ## Decision (2026-06-23)
 
-Base becomes the **canonical** chain; Solana is **demoted, not deleted** — `SolanaAdapter`
-stays registered but dormant behind the seam. **NOT** a from-scratch rebuild and **NOT**
-permanent multi-chain.
+Base is the **frontrunner to become the canonical** chain — chosen as the x402/Coinbase
+distribution bet (confirmed 2026-06-25), but **not yet written in stone**; the reversible commit
+point is the Phase 8 default-chain flip. Solana is **demoted to fallback, not deleted** —
+`SolanaAdapter` stays registered but dormant behind the seam. **NOT** a from-scratch rebuild and
+**NOT** permanent multi-chain.
 
 Rationale (architecture map, verified 2026-06-23): chain coupling in `web/` is concentrated
 — ~50 of ~375 files, real logic in ~6 modules — so a seam-swap keeps the entire UI, routing,
