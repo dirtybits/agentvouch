@@ -533,16 +533,23 @@ export async function expectFailure(
 export async function registerAgent(
   ctx: TestContext,
   actor: TestActor,
-  metadataUri = "https://example.com/agent.json"
+  metadataUri = "https://example.com/agent.json",
+  options: { rentPayer?: Keypair } = {}
 ) {
+  const rentPayer = options.rentPayer ?? actor.keypair;
   await ctx.program.methods
     .registerAgent(metadataUri)
     .accountsStrict({
       agentProfile: actor.profile,
       authority: actor.keypair.publicKey,
+      rentPayer: rentPayer.publicKey,
       systemProgram: SystemProgram.programId,
     })
-    .signers([actor.keypair])
+    .signers(
+      rentPayer.publicKey.equals(actor.keypair.publicKey)
+        ? [actor.keypair]
+        : [actor.keypair, rentPayer]
+    )
     .rpc();
 }
 

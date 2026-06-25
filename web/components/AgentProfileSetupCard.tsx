@@ -14,6 +14,7 @@ interface AgentProfileSetupCardProps {
   secondaryStepLabel: string;
   className?: string;
   actionLabel?: string;
+  costHint?: string;
 }
 
 export function AgentProfileSetupCard({
@@ -27,6 +28,7 @@ export function AgentProfileSetupCard({
   secondaryStepLabel,
   className = "max-w-md mx-auto mt-8",
   actionLabel = "Create Profile",
+  costHint = "Sponsored checkout can cover Solana fees and rent; direct fallback may require SOL.",
 }: AgentProfileSetupCardProps) {
   return (
     <div className={className}>
@@ -84,7 +86,7 @@ export function AgentProfileSetupCard({
           )}
         </button>
         <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-3">
-          One-time on-chain transaction (~0.003 SOL rent)
+          {costHint}
         </p>
       </div>
     </div>

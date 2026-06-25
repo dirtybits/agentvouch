@@ -8,7 +8,7 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
-Last reviewed: 2026-06-22.
+Last reviewed: 2026-06-24.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
@@ -86,6 +86,22 @@ Strategic read:
 - Keep x402 as the agent-facing payment envelope where it fits; use Kora to make direct Solana protocol instructions less wallet-hostile.
 - Treat Kora as a launch accelerator, not a launch blocker, unless it is enabled in the release candidate path. Once enabled, it inherits mainnet readiness gates for signer custody, spend caps, monitoring, and rollback.
 
+Current Kora spike boundary, as of 2026-06-24:
+
+- Covered by the sponsored/Kora UI path: `register_agent` and `purchase_skill`. Both have a separate `rent_payer: Signer`, so the user signs for identity or USDC movement while the sponsor can pay SOL fees and account rent.
+- Not yet covered: publishing/listing management paths such as `create_skill_listing` and `initialize_listing_settlement` still use the author as the Anchor payer for listing, settlement, and proceeds-vault rent. Paid publish/link-listing can still require author SOL.
+- Not yet covered: backing/trust paths such as `deposit_author_bond`, `vouch`, and `link_vouch_to_listing` still use the author/voucher as the Anchor payer for bond, vouch, vault, and listing-position rent.
+- Not yet covered: dispute/refund paths such as `open_author_dispute` and `claim_purchase_refund` still use the challenger/buyer as the Anchor payer for dispute bond vaults and refund-claim accounts.
+- Admin/operator paths (`initialize_config`, migrations, `settle_x402_purchase`, refund-pool creation, cranks) may remain operator-paid unless the product explicitly needs those to be user gas-free.
+- Before claiming broad "no SOL needed" UX, add `rent_payer: Signer` to the relevant user-facing instructions, update Anchor tests, regenerate IDL/client, sync web callers, and add matching sponsored transaction prepare/submit endpoints. Until then, copy should say Kora covers targeted register and purchase flows only.
+- Known spike UX artifact: Phantom can show noisy "unsafe", "failed simulation", or "not enough SOL" warnings on the Kora path because the browser asks the wallet to sign before the Kora sponsor signature is attached. The prepared transaction is still shaped correctly with the Kora sponsor as fee/rent payer, and server submit re-validates then has Kora sign before broadcast. Accept this for local spike testing, but before an external demo or release-candidate Kora path, move Kora signing into `prepare` so Phantom receives a sponsor-pre-signed transaction, and add a wallet-signing blockhash refresh path.
+
+Current x402 bridge follow-up for the RC path:
+
+- Enable the protocol-listed x402 bridge on devnet (`AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`) and run an end-to-end UI/API smoke against a real paid listing.
+- Prove the full bridge path: buyer auth message, x402 requirement generation, facilitator verify/settle, settlement vault credit, backend `settle_x402_purchase`, purchase PDA creation, entitlement recording, and raw download.
+- Record the required env, settlement authority custody, facilitator config, monitoring, rollback, and any failure/reconciliation steps in the production runbook before treating x402 bridge as release-candidate-ready.
+
 ### Base full-logic POC
 
 Base remains the strongest expansion candidate for a USDC/x402-native AgentVouch lane, but it should be tested as a **port by spec**, not a migration by transpilation. The plan lives in `.agents/plans/base-full-logic-poc.plan.md`.
@@ -133,7 +149,7 @@ V1 should be split deliberately:
 Sequencing:
 
 1. Stabilize public OpenAPI/agent-facing API contracts and keep `web/public/skill.md` current.
-2. Land Kora-sponsored purchase or x402 bridge readiness for paid protocol-listed skills.
+2. Land Kora-sponsored purchase and/or x402 bridge readiness for paid protocol-listed skills, including a live devnet bridge smoke if the x402 path is enabled.
 3. Build local read-only/free-install MCP wrapper over existing modules.
 4. Add paid-install orchestration with explicit spend caps and no remote key custody.
 5. Only after the above, consider a hosted read-only AgentVouch MCP endpoint for discovery/trust.

@@ -89,6 +89,7 @@ import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
   confirmDirectPurchaseAfterSponsoredUnavailable,
   runSponsoredCheckout,
+  runSponsoredRegisterAgent,
   sponsoredCheckoutPubliclyEnabled,
 } from "@/lib/sponsoredPurchaseClient";
 import {
@@ -111,7 +112,7 @@ const rpc = createSolanaRpc(ENDPOINT);
 const SIGNATURE_CONFIRMATION_TIMEOUT_MS = 45_000;
 const SIGNATURE_CONFIRMATION_POLL_MS = 1_000;
 const MIN_REPUTATION_CONFIG_SIZE = 457;
-const AGENT_PROFILE_ACCOUNT_SPACE = 301;
+const AGENT_PROFILE_ACCOUNT_SPACE = 390;
 const REGISTRATION_FEE_BUFFER_LAMPORTS = 10_000n;
 
 const textEncoder = getUtf8Encoder();
@@ -1159,16 +1160,37 @@ export function useReputationOracle() {
     async (metadataUri: string) => {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
       const authorAddress = getConnectedAuthorAddress(walletAddress, signer);
+      // Gasless onboarding: route through the sponsor so a USDC-only wallet (no
+      // SOL) can register. The sponsor pays gas + the AgentProfile rent; the user
+      // reimburses in USDC. Falls back to direct self-pay when unavailable.
+      const sponsoredCheckoutEnabled = sponsoredCheckoutPubliclyEnabled();
+      if (sponsoredCheckoutEnabled && connectorSigner && capabilities.canSign) {
+        const sponsored = await runSponsoredRegisterAgent({
+          connectorSigner,
+          metadataUri,
+        });
+        if (sponsored) {
+          const agentProfile = await getAgentPDA(authorAddress);
+          return { tx: sponsored.signature, agentProfile };
+        }
+      } else if (sponsoredCheckoutEnabled) {
+        confirmDirectPurchaseAfterSponsoredUnavailable(
+          "This wallet connection cannot sign the prepared sponsored transaction."
+        );
+      }
+
+      // Direct (self-pay) path: the connected wallet pays its own gas + rent in SOL.
       await assertRegisterAgentClusterReady(walletAddress);
       const ix = await getRegisterAgentInstructionAsync({
         authority: signer,
+        rentPayer: signer,
         metadataUri,
       });
       const tx = await sendIx(ix);
       const agentProfile = await getAgentPDA(authorAddress);
       return { tx, agentProfile };
     },
-    [signer, walletAddress, sendIx]
+    [signer, walletAddress, sendIx, connectorSigner, capabilities.canSign]
   );
 
   /**

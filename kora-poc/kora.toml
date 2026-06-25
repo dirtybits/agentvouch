@@ -1,0 +1,68 @@
+# AgentVouch <> Kora spike (devnet)
+# Goal: prove Kora can act as fee payer for AgentVouch purchase_skill txs,
+# quote the setup fee in USDC without the devnet Mock oracle overpricing the UI,
+# and reject anything outside the AgentVouch allowlist.
+
+[validation]
+max_allowed_lamports = 10000000       # ~0.01 SOL drain cap/tx (tune to just above real purchase rent+fee)
+max_signatures = 10
+# DEVNET stays "Mock": Jupiter prices only MAINNET mints, so it cannot quote the devnet USDC
+# mint below. The Mock rate is intentionally unrealistic, so devnet UI testing uses fixed
+# pricing under [validation.price] instead of margin pricing against Mock.
+# See the MAINNET block under [validation.price] for the production/dynamic-pricing flip.
+price_source = "Mock"
+
+# Only AgentVouch + the programs its instructions touch may appear in a sponsored tx.
+allowed_programs = [
+  "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",   # AgentVouch v0.2.0 (devnet)
+  "11111111111111111111111111111111",              # System
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",    # SPL Token
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",   # Associated Token
+  "ComputeBudget111111111111111111111111111111",    # Compute Budget
+]
+
+# Buyer reimburses the sponsor in devnet USDC.
+allowed_tokens = ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+allowed_spl_paid_tokens = ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+disallowed_accounts = []
+
+# Fixed devnet pricing: charge a predictable 0.20 USDC setup fee so the UI can exercise the
+# Kora path without the Mock oracle's inflated SOL/USDC conversion. `strict = false` means this
+# is an intentional devnet subsidy: Kora still validates/sponsors the transaction, but the fixed
+# token fee may be lower than the sponsor's actual SOL rent/fee outflow.
+[validation.price]
+type = "fixed"
+amount = 200000
+token = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+strict = false
+
+# ---------------------------------------------------------------------------
+# MAINNET FLIP (do NOT enable on devnet — see price_source note above):
+#   price_source = "Jupiter"        # live SOL/USDC, replaces the Mock ~100x rate
+#   allowed_tokens          = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]  # mainnet USDC
+#   allowed_spl_paid_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+#   [validation.price]
+#   type = "margin"
+#   margin = 0.1
+#   allowed_programs[0]     = <mainnet AgentVouch program id>
+# SIGNER CUSTODY (BLOCKER before mainnet): the sponsor key is a local file read via the
+# KORA_PRIVATE_KEY env (see signers.toml / .agent-keys/kora/signer.json). That is fine for a
+# devnet spike but MUST move to a managed signer (Turnkey / HashiCorp Vault / Privy) before
+# mainnet — a hot key in a file that can sign as fee payer is an unacceptable production risk.
+# ---------------------------------------------------------------------------
+
+# CLOSED (2026-06-23): Kora validates RESOLVED instructions (outer + CPI inner, resolved via
+# simulation) at signTransaction time. purchase_skill creates the Purchase PDA + ATAs via CPI'd
+# CreateAccount with the sponsor as rent payer, so WITHOUT the line below signTransaction rejects
+# with: "Fee payer cannot be used for 'System Create Account'". Proven by sign-create-account-test.cjs.
+# Everything else stays false (anti-drain): the sponsor still can't be a transfer/burn/close/assign source.
+# All four system fields must be listed: SystemInstructionPolicy's bools lack per-field #[serde(default)],
+# so once the [system] table is present serde requires every one (only `nonce` defaults).
+[validation.fee_payer_policy.system]
+allow_transfer = false
+allow_assign = false
+allow_create_account = true
+allow_allocate = false
+
+[kora]
+rate_limit = 100
