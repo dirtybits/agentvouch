@@ -125,20 +125,23 @@ export class BaseAdapter implements ChainAdapter {
       fromBlock: BASE_AGENTVOUCH_FROM_BLOCK,
       toBlock: "latest" as const,
     };
+    const fetchEvents = (
+      eventName: "SkillListingCreated" | "SkillListingRemoved"
+    ) =>
+      client.getContractEvents({ address: CONTRACT, abi, eventName, ...range });
+    // Historical eth_getLogs needs an archive-capable RPC; public base-sepolia free tiers
+    // (publicnode, sepolia.base.org) reject it. The marketplace's production enumeration is
+    // DB-driven (Phase 3b), which avoids getLogs entirely; this event scan is the fallback.
     const [created, removed] = await Promise.all([
-      client.getContractEvents({
-        address: CONTRACT,
-        abi,
-        eventName: "SkillListingCreated",
-        ...range,
-      }),
-      client.getContractEvents({
-        address: CONTRACT,
-        abi,
-        eventName: "SkillListingRemoved",
-        ...range,
-      }),
-    ]);
+      fetchEvents("SkillListingCreated"),
+      fetchEvents("SkillListingRemoved"),
+    ]).catch((error: unknown) => {
+      throw new Error(
+        "BaseAdapter.listSkillListings event scan failed — set BASE_SEPOLIA_RPC_URL to an " +
+          "archive-capable RPC, or use DB-driven enumeration (Phase 3b). Cause: " +
+          (error instanceof Error ? error.message : String(error))
+      );
+    });
 
     const idOf = (e: { args: unknown }) =>
       (e.args as { listingId?: `0x${string}` }).listingId;

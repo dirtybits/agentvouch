@@ -9,7 +9,7 @@ todos:
     content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED to an app+wallet session — do Phase 3 FIRST (see NEXT STEP OVERRIDE). Full Done-when needs running-app devnet verification."
     status: in_progress
   - id: base-adapter-readslice
-    content: "Phase 3. RECOMMENDED NEXT (wallet-free reads; do before 2c — see NEXT STEP OVERRIDE). Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing vs AgentVouchEvm; lift full ABI via `forge build` — harness abi.ts is write-only). listSkillListings has NO getProgramAccounts equivalent — enumerate DB-driven (skills table) or via SkillListingCreated events. Contract 0x6Fd9…D854 likely has no listing yet (zero activity ~53d, verified 2026-06-24) — seed first. Render one Base listing in the real UI selected by chain_context."
+    content: "Phase 3. RECOMMENDED NEXT (wallet-free reads; do before 2c — see NEXT STEP OVERRIDE). Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing vs AgentVouchEvm; lift full ABI via `forge build` — harness abi.ts is write-only). listSkillListings has NO getProgramAccounts equivalent — enumerate DB-driven (skills table) or via SkillListingCreated events. Contract 0x6Fd9…D854 likely has no listing yet (zero activity ~53d, verified 2026-06-24) — seed first. Render one Base listing in the real UI selected by chain_context. 3a (BaseAdapter reads) DONE + verified against the live contract; 3b (seed a listing + /skills render) pending — needs an app + seed creds. listSkillListings event scan needs an archive RPC (publicnode free tier rejects getLogs) — reinforces DB-driven enumeration."
     status: in_progress
   - id: base-adapter-wallet
     content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts, + wagmi/MetaMask) behind the adapter + a 'use client' provider. LONG POLE. Resolve the wallet-provider open question first."
@@ -270,11 +270,35 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
   session**; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
   files; `npm run typecheck && npm test` green.
 
-### Phase 3 — `base-adapter-readslice` [pending — RECOMMENDED NEXT, see NEXT STEP OVERRIDE]
+### Phase 3 — `base-adapter-readslice` [in_progress — 3a DONE + verified, 3b pending]
 - **Goal:** prove the seam end-to-end with a real Base read in the live UI — the first test that
   `ChainAdapter` actually generalizes to a second chain. (2c does NOT test this; it only re-routes
   Solana through a Solana-shaped abstraction.)
 - **Files:** new `web/lib/adapters/base.ts` (reads only): viem `createPublicClient` on Base Sepolia.
+
+#### Sub-status (2026-06-24)
+- **3a — adapter reads [DONE, verified]:** `web/lib/adapters/base.ts` (`BaseAdapter`) implements
+  `fetchSkillListing` (= `getListing`; maps the SkillListing tuple → `SkillListingView`; returns null on
+  `exists=false`), `listSkillListings` (event scan — see RPC caveat), and pure identity/format helpers
+  (EVM `isValidAddress`, `6+"..."+4` shorten, basescan explorer URLs). Read ABI is hand-written in
+  `web/lib/adapters/agentVouchEvmAbi.ts` (human-readable strings, no viem at module top); config in
+  `web/lib/adapters/baseConfig.ts`; `getAdapter("eip155:*")` returns it; `viem ^2.21.40` added to `web`;
+  `eip155:84532` registered in `web/lib/chains.ts`. viem is dynamically imported inside the async reads so
+  the registry never bundles it client-side (mirrors SolanaAdapter). **Verified:** typecheck + lint +
+  424/424 vitest (incl. `web/__tests__/lib/base-adapter.test.ts` — routing + helpers) green; a LIVE read
+  against the deployed `0x6Fd9…D854` returned `null` for an absent id, proving the tuple ABI decodes
+  correctly (a wrong ABI throws, not returns null). **No UI callers repoint — live app untouched.**
+- **RPC caveat (finding 2026-06-24):** `listSkillListings`' event scan needs an **archive-capable RPC** —
+  `publicnode` / `sepolia.base.org` free tiers reject historical `eth_getLogs` ("Archive requests require a
+  personal token"). The method now throws with that guidance. This *reinforces* the DB-driven enumeration
+  choice for 3b (per-row `getListing` is a normal `eth_call`, no `getLogs`).
+- **3b — seed + render [pending; needs app + seed creds]:** (1) seed a Base listing on `0x6Fd9…D854`
+  (funded EOA + the base-poc harness register→list, or the POC UI — NOT available headless); (2) wire
+  DB-driven Base hydration into `web/app/api/skills/route.ts` alongside `fetchOnChainListings()`: for
+  `skills` rows with `chain_context = eip155:*`, call `getAdapter(ctx).fetchSkillListing(on_chain_address)`
+  and merge — Solana rows keep their current `getProgramAccounts` path (transitional dual read, unified by
+  2c); (3) dev-server render proof on `/skills`. Blocked headless by: no EVM key / CDP creds + no
+  `web/.env.local` (DB) in this worktree.
 
 #### Read-path recon (verified 2026-06-24 against `contracts/base-poc`)
 - **View functions on `AgentVouchEvm`** (`src/AgentVouchEvm.sol`):
@@ -333,20 +357,6 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
 
 ### Phase 5 — `base-adapter-write` [pending]
 - **Goal:** register/list/buy on Base from the UI + agent x402 settlement.
-
-> **Note (2026-06-24 review). Rev-split is already contract-proven — Phase 5 is wiring, not
-> mechanism.** The 60/40 author/voucher split is shared settlement math (`_recordPurchase`) and
-> passes green on both x402 lanes (`test_laneB_backedSplit6040`, `test_laneC_backedSplitAndClaim`;
-> run locally 2026-06-24 — CI runs no forge, so re-run before trusting). **vs Solana, Base is more
-> seamless:** Lane B (`purchaseWithAuthorization`) fuses the USDC pull + the 60/40 split into ONE
-> atomic tx via USDC's EIP-3009 `receiveWithAuthorization` (buyer signs one EIP-712 msg, relayer
-> submits; **no backend key, no custodial vault**). The Solana x402-bridge (`web/lib/x402ProtocolBridge.ts`,
-> not yet enabled) has no EIP-3009 analog, so it is two-step + custodial: the x402 payment lands in an
-> intermediate `x402_settlement_vault`, then a trusted backend `settlementAuthority` runs a separate
-> `settle_x402_purchase` to do the split. **Wire Base Lane B for the agent path** — it drops the hot
-> settlement key and the custodial-float failure mode the Solana bridge carries. (Base Lane C /
-> `settleX402Purchase` under `SETTLEMENT_ROLE` also exists if a facilitator-settled model is ever needed.)
-
 - **Prereq:** resolve the **agent-identity** open question.
 - **Files:** `web/lib/adapters/base.ts` writes (lift `contracts/base-poc/ui/src/flow.ts`); EVM
   branch in route handlers `web/app/api/transactions/sponsored/*` and `web/app/api/x402/*`
