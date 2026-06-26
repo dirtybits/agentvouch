@@ -1,8 +1,8 @@
 // AgentVouchEvm (Base) connection constants for the read path. Pure values — no viem, no
 // "use client" — safe to import anywhere. Mirrors contracts/base-poc/ui/src/config.ts.
 //
-// Target is Base Sepolia today (the POC contract is Sepolia; mainnet is an open question — see
-// .agents/plans/base-port-chain-adapter.plan.md). Values are env-overridable for mainnet later.
+// Target is Base Sepolia today (the POC contract is Sepolia; mainnet config is intentionally not
+// exposed yet — see .agents/plans/base-port-chain-adapter.plan.md).
 
 // F-1-fixed AgentVouchEvm (Lane B uses receiveWithAuthorization). See docs/BASE_POC_GASFREE_REPORT.md.
 export const BASE_AGENTVOUCH_CONTRACT_ADDRESS =
@@ -27,5 +27,13 @@ export const BASE_SEPOLIA_RPC_URL =
 // the contract's deploy block in production so the eth_getLogs range stays within public-RPC
 // limits. (The marketplace's preferred enumeration is DB-driven — see Phase 3b in the plan.)
 export const BASE_AGENTVOUCH_FROM_BLOCK = BigInt(
-  process.env.NEXT_PUBLIC_BASE_AGENTVOUCH_FROM_BLOCK || "0"
+  process.env.BASE_AGENTVOUCH_FROM_BLOCK ||
+    process.env.NEXT_PUBLIC_BASE_AGENTVOUCH_FROM_BLOCK ||
+    "0"
 );
+
+// Event-log enumeration is intentionally opt-in because public Base Sepolia RPCs often reject
+// historical eth_getLogs without an archive token. Phase 3b should use DB-driven enumeration.
+export const BASE_AGENTVOUCH_EVENT_SCAN_ENABLED =
+  process.env.BASE_AGENTVOUCH_EVENT_SCAN_ENABLED === "1" ||
+  process.env.NEXT_PUBLIC_BASE_AGENTVOUCH_EVENT_SCAN_ENABLED === "1";

@@ -15,6 +15,7 @@
 import { isAddress } from "@solana/kit";
 
 import {
+  getConfiguredSolanaChainContext,
   getConfiguredSolanaExplorerAddressUrl,
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
@@ -41,6 +42,13 @@ export class SolanaAdapter implements ChainAdapter {
   readonly chainContext: ChainContext;
 
   constructor(chainContext: ChainContext) {
+    const configuredContext = getConfiguredSolanaChainContext();
+    if (chainContext !== configuredContext) {
+      throw new Error(
+        `SolanaAdapter reads use the configured Solana environment (${configuredContext}); ` +
+          `requested ${chainContext}. Add context-aware Solana RPC/explorer helpers before wiring this chain.`
+      );
+    }
     this.chainContext = chainContext;
   }
 

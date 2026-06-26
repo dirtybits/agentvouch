@@ -14,7 +14,7 @@ Two findings:
 
 1. **The 60/40 split is contract-proven on the Base x402 path.** It is shared settlement math
    (`_recordPurchase`), and the x402 lanes assert the exact split in unit tests that **pass green**
-   (run locally 2026-06-24). For the port, Phase 5 is *wiring*, not mechanism.
+   (run locally 2026-06-24). For the port, Phase 5 is _wiring_, not mechanism.
 2. **Base x402 is fundamentally different from — and materially more seamless than — the Solana
    x402-bridge**, and the entire difference is **USDC's EIP-3009**. On Base, payment authorization
    and the 60/40 split are fused into **one atomic transaction** with **no backend key and no
@@ -52,19 +52,20 @@ Tests (`contracts/base-poc/test/AgentVouchEvm.X402.t.sol`), run locally 2026-06-
 4 passed; 0 failed
 ```
 
-Note: **CI runs no forge**, so these are not gated anywhere — re-run before trusting them green.
-(The worktree also ships without the Forge `lib/` deps; this run used a checkout that had them.)
+Note: CI now includes a `contracts` job that vendors Foundry dependencies and runs `forge test -vv`.
+Local worktrees may still lack `contracts/base-poc/lib`; run the setup/vendor step locally or rely
+on the CI contracts job when those dependencies are absent.
 
 ## The mechanism difference
 
-| | **Base (Lane B)** | **Solana (x402-bridge)** |
-|---|---|---|
-| Payment primitive | USDC **EIP-3009** `receiveWithAuthorization` | SPL transfer to a single `payTo` (no EIP-3009 analog) |
-| Buyer action | Signs **one** EIP-712 authorization off-chain | Pays via x402 into a custodial vault |
-| Settlement | Contract pulls USDC **and** splits 60/40 in **one atomic tx** | Backend authority runs a **separate** `settle_*` tx to split |
-| Intermediate custody | **None** | `x402_settlement_vault` (PDA ATA) holds funds between steps |
-| Trusted hot key | **None** (Lane B) | **Required** — `settlementAuthority` signs + fee-pays settlement |
-| Transactions | 1 | 2 |
+|                      | **Base (Lane B)**                                             | **Solana (x402-bridge)**                                         |
+| -------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Payment primitive    | USDC **EIP-3009** `receiveWithAuthorization`                  | SPL transfer to a single `payTo` (no EIP-3009 analog)            |
+| Buyer action         | Signs **one** EIP-712 authorization off-chain                 | Pays via x402 into a custodial vault                             |
+| Settlement           | Contract pulls USDC **and** splits 60/40 in **one atomic tx** | Backend authority runs a **separate** `settle_*` tx to split     |
+| Intermediate custody | **None**                                                      | `x402_settlement_vault` (PDA ATA) holds funds between steps      |
+| Trusted hot key      | **None** (Lane B)                                             | **Required** — `settlementAuthority` signs + fee-pays settlement |
+| Transactions         | 1                                                             | 2                                                                |
 
 ### Base — payment + split fused (atomic)
 
@@ -98,18 +99,18 @@ and more validation surface.
 
 - **Unit-tested, not live-demonstrated.** The split tests pass against MockUSDC, but the live Base
   Sepolia x402 demo (`contracts/base-poc/harness/src/agent-x402-demo.ts`) does **not** set up a
-  voucher, so the on-chain demo only exercised the *unbacked* (100%-author) path. The actual 60/40
-  has not been observed on a live network — only in Foundry. For live proof, run a *backed* x402
+  voucher, so the on-chain demo only exercised the _unbacked_ (100%-author) path. The actual 60/40
+  has not been observed on a live network — only in Foundry. For live proof, run a _backed_ x402
   purchase on Sepolia and watch for 6/4.
-- **Atomic split is not impossible on Solana.** The *regular* (non-x402) purchase already does it —
+- **Atomic split is not impossible on Solana.** The _regular_ (non-x402) purchase already does it —
   the buyer signs the full `purchase_skill` tx and the program splits via CPI in one tx. The
   two-step is the cost of conforming to x402's EVM-shaped "transfer-to-payTo" protocol on SPL, not a
   Solana limitation per se.
 - **The Solana bridge is well-built, not janky** — idempotency guards, receipt PDAs,
-  simulate-before-send, and author/price/mint/pause validation. It is *more machinery*, not bad
+  simulate-before-send, and author/price/mint/pause validation. It is _more machinery_, not bad
   machinery.
 - **Both chains have a backend-settled lane.** Base also has Lane C (`settleX402Purchase` under
-  `SETTLEMENT_ROLE`). The asymmetry is that Base *additionally* offers Lane B (atomic, keyless),
+  `SETTLEMENT_ROLE`). The asymmetry is that Base _additionally_ offers Lane B (atomic, keyless),
   which Solana x402 has no analog for.
 - **`protocolFeeBps` is hardwired 0** ("reserved"); strictly author + voucher = 100% today, same as
   Solana. A protocol cut would need that path enabled.
@@ -132,6 +133,6 @@ plan.
 The x402 rev-split is fundamentally different across the two chains, and Base is the more seamless of
 the two — not by a little, and not merely at parity. The difference is entirely USDC's EIP-3009,
 which collapses authorization + payment + split into one trust-minimized atomic transaction. This is
-one of the stronger arguments *for* the Base port: on agent x402 it is not just a re-platforming, it
+one of the stronger arguments _for_ the Base port: on agent x402 it is not just a re-platforming, it
 is a real reduction in trust and operational surface. The Solana x402-bridge remains correct and
 retained (dormant), exactly as the port decision intends.

@@ -2,7 +2,7 @@
 //
 // Phase 3a (this commit): reads (getListing) + identity/formatting, verified against the live Base
 // Sepolia contract. Writes are NOT here — they are the client-only ChainWallet (Phase 4/5). NO UI
-// callers are repointed yet: getAdapter("eip155:*") now returns this, but nothing renders Base
+// callers are repointed yet: getAdapter("eip155:84532") now returns this, but nothing renders Base
 // listings until the /skills hydration is wired (Phase 3b). See
 // .agents/plans/base-port-chain-adapter.plan.md.
 //
@@ -15,9 +15,10 @@ import {
   LISTING_STATUS_ACTIVE,
 } from "./agentVouchEvmAbi";
 import {
+  BASE_AGENTVOUCH_EVENT_SCAN_ENABLED,
   BASE_AGENTVOUCH_CONTRACT_ADDRESS,
   BASE_AGENTVOUCH_FROM_BLOCK,
-  BASE_MAINNET_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
   BASE_SEPOLIA_RPC_URL,
 } from "./baseConfig";
 import type { ChainAdapter, ChainContext, SkillListingView } from "./types";
@@ -47,6 +48,15 @@ function chainIdFromContext(chainContext: ChainContext): number {
   return Number(chainContext.split(":")[1]);
 }
 
+function assertBaseSepoliaContext(chainContext: ChainContext): void {
+  if (chainIdFromContext(chainContext) !== BASE_SEPOLIA_CHAIN_ID) {
+    throw new Error(
+      `BaseAdapter reads only support eip155:${BASE_SEPOLIA_CHAIN_ID} until Base mainnet RPC/contract config exists. ` +
+        `Received ${chainContext}.`
+    );
+  }
+}
+
 function listingToView(listingId: string, l: RawListing): SkillListingView {
   return {
     listingId,
@@ -64,6 +74,7 @@ export class BaseAdapter implements ChainAdapter {
   readonly chainContext: ChainContext;
 
   constructor(chainContext: ChainContext) {
+    assertBaseSepoliaContext(chainContext);
     this.chainContext = chainContext;
   }
 
@@ -87,10 +98,7 @@ export class BaseAdapter implements ChainAdapter {
   }
 
   private explorerBase(): string {
-    // Only Base Sepolia is deployed today; Base mainnet (8453) is an open question.
-    return chainIdFromContext(this.chainContext) === BASE_MAINNET_CHAIN_ID
-      ? "https://basescan.org"
-      : "https://sepolia.basescan.org";
+    return "https://sepolia.basescan.org";
   }
 
   private async publicClient() {
@@ -115,9 +123,21 @@ export class BaseAdapter implements ChainAdapter {
   }
 
   // Chain-native enumeration via events (Solana's getProgramAccounts has no EVM equivalent). The
-  // marketplace's preferred path is DB-driven (Phase 3b); this is the fallback. Bound the scan with
-  // BASE_AGENTVOUCH_FROM_BLOCK on public RPCs.
+  // marketplace's preferred path is DB-driven (Phase 3b). Event-log fallback is opt-in because it
+  // needs a deploy block and archive-capable RPC.
   async listSkillListings(): Promise<SkillListingView[]> {
+    if (
+      !BASE_AGENTVOUCH_EVENT_SCAN_ENABLED ||
+      BASE_AGENTVOUCH_FROM_BLOCK <= 0n
+    ) {
+      throw new Error(
+        "BaseAdapter.listSkillListings event scan is disabled by default. " +
+          "Use DB-driven enumeration for marketplace reads, or set " +
+          "BASE_AGENTVOUCH_EVENT_SCAN_ENABLED=1 and BASE_AGENTVOUCH_FROM_BLOCK to the deploy block " +
+          "with an archive-capable BASE_SEPOLIA_RPC_URL."
+      );
+    }
+
     const { parseAbi } = await import("viem");
     const abi = parseAbi([...AGENTVOUCH_EVM_READ_ABI]);
     const client = await this.publicClient();
