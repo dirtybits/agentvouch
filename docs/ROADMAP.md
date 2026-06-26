@@ -77,6 +77,8 @@ Generic how-to content depreciates with every model release. Durable skill value
 
 Kora is the preferred next Solana-native path for removing user-held SOL from normal AgentVouch flows. The plan lives in `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
 
+> **Update 2026-06-25:** the x402/Coinbase distribution bet has since been chosen (see "Base full-logic POC" below). Base is now the **frontrunner to become the canonical chain** (not yet written in stone), so Kora is the Solana-native fallback for fee friction rather than the primary pre-migration path. The "do not migrate to Base" reads below are the pre-decision analysis (2026-06-22) that the decision overrode; the technical cautions in them still hold.
+
 Strategic read:
 
 - Do not migrate to Base just to get gasless USDC UX. Solana already supports fee payer separation and batched token reimbursement; Kora packages this into a configurable paymaster/relayer.
@@ -108,18 +110,20 @@ Base remains the strongest expansion candidate for a USDC/x402-native AgentVouch
 
 Status 2026-06-22: PR #44 reached the Phase 4.5 interim gate. Phases 0-4 are implemented in isolated Foundry code under `contracts/base-poc` with 65/65 tests, including direct purchases, author proceeds, voucher rewards, and two x402 lanes. The interim memo is `docs/BASE_POC_INTERIM.md`.
 
+**Decision update 2026-06-25: the x402/Coinbase distribution bet has been chosen.** Base is now the **frontrunner to become the canonical chain — not yet written in stone** (the reversible commit point is the Phase 8 default-chain flip in the port plan). Execution is a `ChainAdapter` seam-swap port under the existing `web/` app, not a rewrite: `.agents/plans/base-port-chain-adapter.plan.md`. Progress: Phase 1 (seam), Phase 2a + 2b-design (SolanaAdapter behind the seam; reads/writes split into `ChainAdapter`/`ChainWallet`), and Phase 3a (BaseAdapter reads, live-verified against the deployed Sepolia contract) are done; Phase 3b (first Base render in `/skills`), Phase 4 (wallet), and Phase 5 (writes + agent x402) remain. Decided 2026-06-25: **Phase 4** uses Coinbase Smart Wallet **passkey** for the MVP, with **wagmi/MetaMask injected as a roadmapped follow-on** (MetaMask's distribution warrants it; reconsider if it balloons the wallet work); **Phase 5** uses **on-chain identity** via `AgentVouchEvm.registerAgent`/`getProfile`. Solana stays implemented and dormant behind the seam, not deleted. The x402 rev-split comparison that informed the bet is `docs/X402_REVSPLIT_BASE_VS_SOLANA.md`.
+
 Gate read:
 
 - Base can preserve the purchase/accounting model and make the buyer experience gas-free-for-user.
 - That UX is not a Base-only win; Solana + Kora can target the same "USDC only, no SOL setup" product outcome with less migration surface.
 - Lane B (`purchaseWithAuthorization`) is the better trust-minimized x402 lane, but EIP-3009 authorizations can be submitted directly to USDC, stranding funds in the contract with no receipt unless production adds recovery/reconciliation.
 - Lane C (`settleX402Purchase`) is bridge-equivalent: it trusts a settlement authority that funds arrived.
-- Do not fund Phases 5-7, Base UI smoke, or a full Base migration report unless AgentVouch explicitly chooses the x402/Coinbase distribution bet. Otherwise, keep Solana canonical and move the RC friction work to Kora.
+- ~~Do not fund Phases 5-7, Base UI smoke, or a full Base migration report unless AgentVouch explicitly chooses the x402/Coinbase distribution bet. Otherwise, keep Solana canonical and move the RC friction work to Kora.~~ **Superseded 2026-06-25:** this gate is now met — the bet is chosen and the Base lane proceeds via the `ChainAdapter` port (see the decision update above). Kora stays the Solana-native fallback for RC friction if the Base bet is later unwound.
 
 Strategic read:
 
-- Treat PR #44 as decision evidence, not a migration branch. The purchase/x402 evidence is enough to say "Base is viable, but not necessary for the RC friction problem."
-- Keep the POC isolated under an EVM workspace and package so Solana remains the canonical implementation while the decision is tested.
+- PR #44's purchase/x402 evidence was the basis for choosing the bet (2026-06-25); the work now proceeds beyond a POC branch into the `web/` app behind the `ChainAdapter` seam.
+- Solana stays the implemented fallback, dormant behind the seam (not deleted); the reversible commit point is the Phase 8 default-chain flip, so **frontrunner — not yet written in stone** is the accurate status until then.
 - Make the gasless claim precise: users should not need ETH, but a relayer/paymaster/facilitator/keeper still pays native Base gas and is reimbursed in USDC under bounded protocol rules.
 - Preserve the current accounting invariants if the Base track resumes: protocol-visible purchase receipts, 60/40 author/voucher economics when backed, no-vouch purchases routing fully to authors, dispute locks, slashed-fund ring-fencing, and one-claim/one-settlement idempotency.
 - Compare concrete evidence, not vibes: smart-account/paymaster UX, x402 settlement trust assumptions, gas costs, implementation size, test coverage, and operator custody burden.
