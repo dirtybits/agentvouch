@@ -12,10 +12,10 @@ todos:
     content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
     status: completed
   - id: base-adapter-wallet
-    content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts) in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. LONG POLE. DECIDED 2026-06-25: Coinbase Smart Wallet passkey for MVP; wagmi/MetaMask injected deferred to a roadmapped follow-on (reconsider if too much lifting)."
+    content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts) in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. LONG POLE. DECIDED 2026-06-25: Coinbase Smart Wallet passkey for MVP; wagmi/MetaMask injected deferred. See sub-plan .agents/plans/base-port-chain-adapter-phase-4.plan.md."
     status: pending
   - id: base-adapter-write
-    content: "Phase 5. Base ChainWallet writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337), kept out of server-safe BaseAdapter. Wire EVM x402 receiveWithAuthorization into the route handlers /api/transactions/sponsored/* and /api/x402/*. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile."
+    content: "Phase 5. Base ChainWallet writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337), kept out of server-safe BaseAdapter. Wire EVM x402 receiveWithAuthorization into the route handlers /api/transactions/sponsored/* and /api/x402/*. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
     status: pending
   - id: db-multichain
     content: "Phase 6. Extend Postgres for EVM alongside Solana: explicit evm_listing_id (bytes32), evm_contract_address, and evm_tx_hash keyed by chain_context. Do not overload Solana-sized on_chain_address for Base listing ids. Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
@@ -370,36 +370,34 @@ Removed=2` — match the Solana adapter, which keys `active` on status alone).
 
 ### Phase 4 — `base-adapter-wallet` [pending] ⚠ long pole
 
-- **Goal:** connect an EVM wallet through the chain-aware wallet layer.
+Dedicated sub-plan: [`base-port-chain-adapter-phase-4.plan.md`](./base-port-chain-adapter-phase-4.plan.md).
+
+- **Goal:** connect a Base Sepolia EVM wallet through the chain-aware wallet layer.
 - **DECIDED (2026-06-25):** Coinbase Smart Wallet **passkey** for the MVP (POC-proven, gas-free via
-  the CDP paymaster) — lift `accounts/passkey.ts`. wagmi/MetaMask injected support is a **roadmapped
-  follow-on** (MetaMask's distribution warrants it), but reconsider if it balloons the wallet work;
-  do NOT build both stacks for the MVP.
-- **Files:** client-only `useChainWallet()` / `baseWallet.ts` (lift
-  `contracts/base-poc/ui/src/accounts/passkey.ts` + `localKey.ts` as needed); make
-  `WalletContextProvider`/`useAgentVouchWallet` chain-aware (a `'use client'` EVM provider mounted
-  alongside the Solana one and selected by `chain_context`). Keep `web/lib/adapters/base.ts`
-  read-only/server-safe.
-- **Steps:** add the EVM provider; implement `connect`/`disconnect`/`ChainWallet` for Base in the
-  client-only wallet layer; keep wallet SDK imports out of server-safe adapter modules.
-- **Done when:** a user connects a Base wallet (passkey) in the live UI and the address renders;
-  switching `chain_context` back to Solana still connects a Solana wallet (no regression).
+  the CDP paymaster). wagmi/MetaMask injected support is deferred.
+- **Key boundary:** wallet SDKs, WebAuthn, `localStorage`, and viem account-abstraction imports stay
+  in client-only wallet modules/hooks. `web/lib/adapters/base.ts` remains read-only/server-safe.
+- **Done when:** a user connects a Base Sepolia passkey wallet in the live UI, the EVM smart-account
+  address renders with chain-aware formatting, disconnect/reload behaves correctly, and switching
+  back to Solana still connects the existing Solana wallet.
+- **Verification:** browser connect proof plus web typecheck, lint, vitest, and
+  `npm run build --workspace @agentvouch/web`.
 
 ### Phase 5 — `base-adapter-write` [pending]
 
-- **Goal:** register/list/buy on Base from the UI + agent x402 settlement.
+Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chain-adapter-phase-5.plan.md).
+
+- **Goal:** register/list/buy on Base Sepolia from the UI plus agent x402 settlement.
 - **DECIDED (2026-06-25):** on-chain identity via `AgentVouchEvm.registerAgent` / `getProfile`
-  (already deployed; mirrors the Solana identity program). The `/api/agents/[pubkey]` EVM branch
-  reads `getProfile` — no DB-only divergence, keeps reputation on-chain.
-- **Files:** `web/lib/adapters/baseWallet.ts` or the client-only `useChainWallet()` implementation
-  for writes (lift `contracts/base-poc/ui/src/flow.ts`); EVM branch in route handlers
-  `web/app/api/transactions/sponsored/*` and `web/app/api/x402/*` (lift the
-  `receiveWithAuthorization` signing recipe from `agent-x402-demo.ts`). Keep `BaseAdapter` as
-  server-safe reads only.
-- **Steps:** implement `registerAgent`/`createSkillListing`/`purchaseSkill` as sponsored 4337
-  UserOps; add the EVM x402 lane to the settlement route handlers; branch by `chain_context`.
-- **Done when:** human passkey flow register→list→buy on Base Sepolia with **user ETH delta 0**;
-  an agent x402 purchase settles via `receiveWithAuthorization`; Solana writes still work.
+  (already deployed; mirrors the Solana identity program). The EVM author/profile branch must read
+  `getProfile` before routing EVM authors through an author page.
+- **Key boundary:** Base writes live on the client-only `ChainWallet` from Phase 4; `BaseAdapter`
+  remains server-safe reads. Base listing ids stay in `evm_listing_id`, never Solana
+  `on_chain_address`.
+- **Done when:** human passkey flow register -> list -> buy on Base Sepolia with **user ETH delta
+  0**; an agent x402 purchase settles via `receiveWithAuthorization`; Solana writes still work.
+- **Verification:** Base browser write proof, EVM x402 settlement proof, Solana write regression,
+  and web typecheck, lint, vitest, and `npm run build --workspace @agentvouch/web`.
 
 ### Phase 6 — `db-multichain` [pending]
 
