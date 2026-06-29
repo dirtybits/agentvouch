@@ -206,7 +206,7 @@ The project started during the [Colosseum Agent Hackathon](https://arena.colosse
 
 ## License
 
-MIT
+ISC
 
 ## Links
 
