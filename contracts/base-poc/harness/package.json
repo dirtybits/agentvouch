@@ -8,6 +8,7 @@
     "demo": "tsx src/gasless-demo.ts",
     "fund-agent": "tsx src/fund-agent.ts",
     "agent-x402": "tsx src/agent-x402-demo.ts",
+    "seed-listing": "tsx src/seed-listing.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
