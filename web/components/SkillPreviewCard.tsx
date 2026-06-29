@@ -16,6 +16,7 @@ import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
+import { getChainDisplayLabel } from "@/lib/chains";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
@@ -52,6 +53,8 @@ interface SkillPreviewCardSkill {
   has_executable?: boolean | null;
   security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
   payment_flow?:
     | "free"
     | "legacy-sol"
@@ -100,6 +103,11 @@ function truncateAtWord(value: string, maxChars: number): string {
       : candidate.slice(0, maxChars);
 
   return `${trimmed.trimEnd()}...`;
+}
+
+function shortChainAddress(value: string): string {
+  if (value.length <= 13) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 // Mirrors the server-side getRecommendedAction, with one intentional softening:
@@ -221,6 +229,7 @@ interface ActionPill {
 function getActionPill(params: {
   isOwn: boolean;
   hasPurchased: boolean;
+  isReadOnlyChainListing: boolean;
   isListingRequired: boolean;
   hasUsdcPrimary: boolean;
   hasAccessPath: boolean;
@@ -230,6 +239,15 @@ function getActionPill(params: {
   if (params.isOwn) return { label: "Yours", variant: "muted" };
   if (params.hasPurchased) {
     return { label: "Installed", Icon: FiCheckCircle, variant: "installed" };
+  }
+  if (params.isReadOnlyChainListing) {
+    return {
+      label: params.primaryUsdcPrice
+        ? `${params.primaryUsdcPrice} USDC`
+        : "Read-only",
+      Icon: params.primaryUsdcPrice ? UsdcIcon : FiInfo,
+      variant: "muted",
+    };
   }
   if (params.isListingRequired) {
     return { label: "Setup", Icon: FiInfo, variant: "muted" };
@@ -288,12 +306,21 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
+  const isReadOnlyEvmListing = Boolean(
+    skill.evm_listing_id && skill.chain_context?.startsWith("eip155:")
+  );
+  const chainLabel = isReadOnlyEvmListing
+    ? getChainDisplayLabel(skill.chain_context)
+    : null;
   const walletAuthorLabel = skill.author_pubkey
-    ? formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
+    ? isReadOnlyEvmListing
+      ? shortChainAddress(skill.author_pubkey)
+      : formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
     : null;
-  const linkedGithubProfile = skill.author_pubkey
-    ? skill.author_identity?.githubProfile
-    : null;
+  const linkedGithubProfile =
+    skill.author_pubkey && !isReadOnlyEvmListing
+      ? skill.author_identity?.githubProfile
+      : null;
   const isMirror = Boolean(skill.mirror_source_key);
   const authorLabel = walletAuthorLabel
     ? walletAuthorLabel
@@ -302,12 +329,17 @@ export default function SkillPreviewCard({
     : skill.author_handle
     ? `@${skill.author_handle}`
     : "Unverified publisher";
-  const authorHref = skill.author_pubkey
-    ? `/author/${skill.author_pubkey}`
-    : skill.author_kind === "github" && skill.author_handle
-    ? `https://github.com/${skill.author_handle}`
-    : null;
-  const authorTitle = skill.author_pubkey
+  const authorHref =
+    skill.author_pubkey && !isReadOnlyEvmListing
+      ? `/author/${skill.author_pubkey}`
+      : skill.author_kind === "github" && skill.author_handle
+      ? `https://github.com/${skill.author_handle}`
+      : null;
+  const authorTitle = isReadOnlyEvmListing
+    ? `${
+        chainLabel ?? "EVM"
+      } author address for this read-only marketplace listing.`
+    : skill.author_pubkey
     ? linkedGithubProfile
       ? `Author wallet linked to GitHub @${linkedGithubProfile.login}`
       : "Author wallet that published this skill"
@@ -337,6 +369,7 @@ export default function SkillPreviewCard({
   const pill = getActionPill({
     isOwn,
     hasPurchased,
+    isReadOnlyChainListing: isReadOnlyEvmListing,
     isListingRequired,
     hasUsdcPrimary,
     hasAccessPath,
@@ -477,6 +510,14 @@ export default function SkillPreviewCard({
               Unscanned executable code
             </span>
           )}
+          {isReadOnlyEvmListing && chainLabel && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)]"
+              title={`${chainLabel} listing fetched through the chain adapter.`}
+            >
+              {chainLabel}
+            </span>
+          )}
           {hasDisputeFlag && authorReports && (
             <span
               className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${authorReports.color}`}
@@ -517,7 +558,11 @@ export default function SkillPreviewCard({
               PILL_VARIANT[pill.variant]
             }`}
             title={
-              isListingRequired ? "Paid skill setup is incomplete" : pill.label
+              isReadOnlyEvmListing
+                ? `${chainLabel ?? "EVM"} listing is read-only in this phase.`
+                : isListingRequired
+                ? "Paid skill setup is incomplete"
+                : pill.label
             }
           >
             {PillIcon && <PillIcon className="h-3.5 w-3.5" />}

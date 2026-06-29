@@ -65,6 +65,7 @@ import {
 import {
   buildEnrichedSkillRows,
   createRouteTiming,
+  hydrateEvmRepoSkillRows,
   loadRepoSkillRows,
   mergeSkills,
   type MergedSkillRow,
@@ -478,7 +479,12 @@ export async function GET(request: NextRequest) {
       tags,
       timing,
     }).catch(() => []);
-    const normalizedPgSkills = normalizeRepoSkillRows(pgSkills);
+    const normalizedRepoSkills = normalizeRepoSkillRows(pgSkills);
+    const normalizedPgSkills = fastMode
+      ? normalizedRepoSkills
+      : await timing.measure("base-chain", () =>
+          hydrateEvmRepoSkillRows(normalizedRepoSkills)
+        );
     const chainSkills =
       tags || fastMode
         ? []

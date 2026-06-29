@@ -77,13 +77,17 @@ interface SkillRow {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   payment_flow?:
     | "free"
     | "legacy-sol"
     | "listing-required"
     | "x402-usdc"
     | "direct-purchase-skill";
-  on_chain_address?: string;
+  on_chain_address?: string | null;
   skill_uri?: string | null;
   source?: "repo" | "chain";
   created_at: string;
@@ -124,6 +128,7 @@ type ActivityRepoListing = {
   name: string;
   author_pubkey: string | null;
   on_chain_address: string | null;
+  chain_context: string | null;
   price_usdc_micros: string | null;
   currency_mint: string | null;
   payment_flow:
@@ -147,6 +152,7 @@ type ActivityUsdcPurchase = {
   skill_name: string;
   author_pubkey: string | null;
   on_chain_address: string | null;
+  chain_context: string | null;
   price_usdc_micros: string | null;
   price_lamports: number | null;
 };
@@ -158,6 +164,7 @@ type FeedItem = {
   id: string;
   type: "purchase" | "listing";
   actor: string | null;
+  actorChainContext: string | null;
   skillListing: string | null;
   skillName: string;
   skillRepoId: string | null;
@@ -185,15 +192,28 @@ function formatUsdc(
 
 function ActorLink({
   pubkey,
+  chainContext,
   fallback = "Unverified publisher",
 }: {
   pubkey: string | null;
+  chainContext?: string | null;
   fallback?: string;
 }) {
   if (!pubkey) {
     return (
       <span className="font-mono font-medium text-gray-500 dark:text-gray-400">
         {fallback}
+      </span>
+    );
+  }
+
+  if (chainContext?.startsWith("eip155:")) {
+    return (
+      <span
+        className="font-mono font-medium text-gray-500 dark:text-gray-400"
+        title={`${chainContext} actor ${pubkey}`}
+      >
+        {shortWalletAddress(pubkey)}
       </span>
     );
   }
@@ -407,6 +427,7 @@ export default function MarketplaceClient({
         id: listing.on_chain_address ?? listing.id,
         type: "listing",
         actor: listing.author_pubkey,
+        actorChainContext: listing.chain_context,
         skillListing: listing.on_chain_address,
         skillName: listing.name,
         skillRepoId: listing.id,
@@ -422,6 +443,7 @@ export default function MarketplaceClient({
           id: `usdc-${purchase.payment_tx_signature}`,
           type: "purchase",
           actor: purchase.buyer_pubkey,
+          actorChainContext: purchase.chain_context,
           skillListing: purchase.on_chain_address,
           skillName: purchase.skill_name,
           skillRepoId: purchase.skill_db_id,
@@ -663,7 +685,10 @@ export default function MarketplaceClient({
                       >
                         ●
                       </span>
-                      <ActorLink pubkey={item.actor} />
+                      <ActorLink
+                        pubkey={item.actor}
+                        chainContext={item.actorChainContext}
+                      />
                       {item.type === "purchase" ? "bought" : "listed"}
                       {item.skillRepoId ? (
                         <Link

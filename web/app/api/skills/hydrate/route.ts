@@ -19,6 +19,7 @@ import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
 } from "@/lib/listingContract";
+import { hydrateEvmRepoSkillRows } from "@/lib/marketplaceBrowse";
 import {
   assessPurchasePreflight,
   createPurchasePreflightContext,
@@ -96,6 +97,9 @@ type RepoSkillRow = SkillScanFieldRow & {
   currency_mint?: string | null;
   on_chain_protocol_version?: string | null;
   on_chain_program_id?: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   summary?: string | null;
   files?: unknown;
   tree_hash?: string | null;
@@ -356,7 +360,9 @@ export async function POST(request: NextRequest) {
         ? body.buyer
         : null;
     const includeBuyerStatus = body.includeBuyerStatus === true;
-    const repoSkills = await loadRepoSkillsById(skillIds);
+    const repoSkills = await hydrateEvmRepoSkillRows(
+      await loadRepoSkillsById(skillIds)
+    );
     // Snapshot-first trust: serve cached snapshots, resolve only first-seen
     // authors synchronously, and revalidate stale authors in the background.
     const { missing, stale } = partitionAuthorsByTrustFreshness(repoSkills);
