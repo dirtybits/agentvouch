@@ -24,7 +24,7 @@ todos:
     content: "Phase 7. Replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
     status: pending
   - id: make-base-canonical
-    content: "Phase 8. Flip the default chain_context to Base (web/lib/chains.ts getConfiguredChainContext). Keep SolanaAdapter registered but dormant behind a flag."
+    content: "Phase 8, TWO gates (PR #58 review 2026-06-29). 8a: default chain_context -> Base SEPOLIA (eip155:84532) behind a flag, Solana still selectable. 8b (LATER, blocked): mainnet cutover once mainnet RPC/contract/USDC/paymaster exist and getAdapter accepts eip155:8453. Do NOT flip the default to generic Base/eip155:8453 before 8b."
     status: pending
   - id: verify-e2e
     content: "Phase 9. E2E on Base (passkey register->list->buy gas-free; agent x402) + Solana regression. forge contracts job + web format/lint/typecheck/vitest green; Vercel build green."
@@ -420,11 +420,17 @@ Removed=2` — match the Solana adapter, which keys `active` on status alone).
 
 ### Phase 8 — `make-base-canonical` [pending]
 
-- **Goal:** Base by default, Solana dormant.
-- **Files:** `web/lib/chains.ts` `getConfiguredChainContext()` default → Base; a flag to keep
-  Solana selectable.
-- **Done when:** a fresh visit defaults to Base listings/wallet; setting the flag restores Solana
-  (this is the rollback switch).
+Two explicit gates (PR #58 review 2026-06-29): the adapter/config today support Base **Sepolia**
+only, and `getAdapter()` deliberately **rejects mainnet** (`eip155:8453`) until mainnet
+RPC/contract/USDC/paymaster config exists — so do NOT flip the default to generic `Base`/`eip155:8453`.
+
+- **8a — Base Sepolia default for port smoke [pending]:** `web/lib/chains.ts`
+  `getConfiguredChainContext()` defaults to **`eip155:84532`** (Sepolia), behind a flag that keeps
+  Solana selectable. Done when a fresh visit defaults to Base **Sepolia**; the flag restores Solana
+  (the rollback switch).
+- **8b — Base mainnet cutover [LATER gate — blocked]:** only after a mainnet `AgentVouchEvm` deploy
+  + mainnet RPC + mainnet USDC + a CDP mainnet paymaster exist and `getAdapter()` accepts
+  `eip155:8453`. Flip the default to mainnet then. Do NOT ask a follow-on agent to do this until those exist.
 
 ### Phase 9 — `verify-e2e` [pending]
 
