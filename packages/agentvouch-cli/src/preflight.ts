@@ -52,7 +52,9 @@ export function checkNodeVersion(
 
   const min = minimum.join(".");
   return [
-    `agentvouch requires Node.js >=${min}, but you are running v${running.join(".")}.`,
+    `agentvouch requires Node.js >=${min}, but you are running v${running.join(
+      "."
+    )}.`,
     `Upgrade Node (e.g. \`nvm install ${minimum[0]}\` or https://nodejs.org) and try again.`,
   ].join("\n");
 }
