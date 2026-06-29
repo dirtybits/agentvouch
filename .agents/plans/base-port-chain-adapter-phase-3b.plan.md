@@ -3,26 +3,26 @@ name: base-port-chain-adapter-phase-3b
 overview: "Phase 3b of the Base port: render one real Base Sepolia listing in the live /skills marketplace, fetched server-side through getAdapter(ctx).fetchSkillListing, with Solana listings still rendering. Reads only — NO wallet, NO writes (Phases 4/5), and do NOT repoint Solana callers (Phase 2c). Sub-plan of .agents/plans/base-port-chain-adapter.plan.md (Phase 3, base-adapter-readslice). Decision-locked before touching the live 849-line web/app/api/skills/route.ts."
 todos:
   - id: lock-db-identifier
-    content: "DECISION (needs user sign-off — live Neon migration): how Base's bytes32 listing-id is stored in the skills table. RECOMMEND adding explicit evm_listing_id/evm_contract_address/evm_tx_hash columns (minimal Phase 6 slice pulled forward); do NOT overload Solana-sized on_chain_address. Alternative: derive listingId(author, skillIdHash) on the fly (rejected — fragile, still needs the author EVM address stored). Record the chosen approach here, dated, before any code."
-    status: pending
+    content: "DONE 2026-06-29: store Base bytes32 listing ids in explicit nullable skills.evm_listing_id / evm_contract_address / evm_tx_hash columns; do NOT overload Solana on_chain_address. Live Neon accepted the additive columns via initializeDatabase()."
+    status: completed
   - id: seed-base-listing
-    content: "Seed ONE listing on AgentVouchEvm 0x6Fd9…D854 (Base Sepolia) via the base-poc harness (registerAgent author -> createSkillListing) with a funded EOA (+ CDP paymaster for gas-free). Capture the returned bytes32 listingId + tx hash. NEEDS EVM key / CDP creds — not available headless."
-    status: pending
+    content: "DONE 2026-06-29: seeded one Base Sepolia listing on AgentVouchEvm 0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854. listingId=0x658b604e9f71b05d580d1fe24891b2686c46ba4fc1961f3027d908a8ad2bcb11, tx=0x31e858a4916c50f6e50f11d704ed19604c2139152358a0d03b9d6b0f1bfdc548, author=0xF75dc589B5df4bf4F2995Fc0e5E3639ECD721f03."
+    status: completed
   - id: add-evm-columns
-    content: "COLUMNS + TYPES DONE (2026-06-29, web typecheck green): added ALTER TABLE skills ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66) / evm_contract_address VARCHAR(42) / evm_tx_hash VARCHAR(66) in web/lib/db.ts (inline-migration pattern) + the optional fields on RepoSkillRow (marketplaceBrowse.ts). REMAINING (needs DB + web/.env.local): insert the seeded skill row — chain_context=eip155:84532, evm_listing_id=0x658b604e9f71b05d580d1fe24891b2686c46ba4fc1961f3027d908a8ad2bcb11, evm_contract_address=0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854, evm_tx_hash=0x31e858a4916c50f6e50f11d704ed19604c2139152358a0d03b9d6b0f1bfdc548, author_pubkey=0xF75dc589B5df4bf4F2995Fc0e5E3639ECD721f03 (display-only — per D4 NOT routed through /author/[pubkey]), name 'Phase 3b Demo Skill (Base)', price_usdc_micros 1000000, uri ipfs://skill/phase-3b-demo-skill."
-    status: pending
+    content: "DONE 2026-06-29: added nullable evm_* columns and RepoSkillRow fields; upserted the seeded live Neon row at /skills/base-phase-3b/phase-3b-demo-skill with chain_context=eip155:84532, on_chain_address=NULL, price_usdc_micros=1000000, and the seeded EVM metadata."
+    status: completed
   - id: fetch-base-listings
-    content: "Add fetchBaseChainListings(): ChainSkillRow[] in web/app/api/skills/route.ts (mirror fetchOnChainListings): select skills rows WHERE chain_context LIKE 'eip155:%', and for each call getAdapter(row.chain_context).fetchSkillListing(row.evm_listing_id) -> map to a CHAIN-AWARE ChainSkillRow (see D4): leave on_chain_address NULL, carry evm_listing_id + chain_context, mark the card non-purchasable, author as plain text (no /author/[pubkey] for EVM). Server-side read (publicnode RPC). Skip rows missing evm_listing_id."
-    status: pending
+    content: "DONE 2026-06-29: implemented hydrateEvmRepoSkillRows() in marketplaceBrowse.ts and wired it into the /skills server snapshot, /api/skills full path, and /api/skills/hydrate. It calls getAdapter(ctx).fetchSkillListing(evm_listing_id), overlays live fields in place, keeps on_chain_address=NULL, and fails soft on Base RPC errors."
+    status: completed
   - id: wire-merge
-    content: "Merge baseChainSkills into the existing mergeSkills call (route.ts ~L485-487): mergeSkills(normalizedPgSkills, [...chainSkills, ...baseChainSkills]). Confirm mergeSkills dedup key (skill_id / on_chain_address) so a Base DB row + its hydrated chain row reconcile (one card, not two). Solana fetchOnChainListings path untouched."
-    status: pending
+    content: "DONE 2026-06-29: intentionally avoided a separate Base ChainSkillRow merge because mergeSkills dedupes Solana rows by on_chain_address. Base hydration is in-place on the repo row, yielding one marketplace card while leaving Solana fetchOnChainListings untouched."
+    status: completed
   - id: verify-render
-    content: "Dev server (preview tools): /skills renders the seeded Base listing (price/name/author from the live contract) alongside the Solana listings; no Solana regression. Server-side fetch (no client RPC waterfall). Use https://base-sepolia-rpc.publicnode.com."
-    status: pending
+    content: "DONE 2026-06-29: local dev server on http://localhost:3001 rendered /skills?q=Phase%203b with the Base card, live activity row, Base Sepolia chip, plain-text EVM author, 1 USDC price, and on_chain_address=NULL. A local Playwright screenshot was captured during verification."
+    status: completed
   - id: verify-gates
-    content: "web typecheck + lint + vitest AND `npm run build --workspace @agentvouch/web` green (repo-required build gate — 3b changes web/lib/db.ts + web/app/api/skills/route.ts; Next may need network for Google Fonts). Confirm viem stays out of the client bundle (dynamically imported, BaseAdapter reads server-side only). One commit/PR off feat/base-port-chain-adapter."
-    status: pending
+    content: "DONE 2026-06-29: web typecheck, lint, vitest, and `npm run build --workspace @agentvouch/web` are green after the final activity-strip plain-text EVM actor patch + plan status updates."
+    status: completed
 isProject: false
 ---
 
@@ -47,7 +47,7 @@ rendering unchanged. This proves the `ChainAdapter` seam generalizes to a second
 ## Scope
 
 - **In scope:** the minimal `skills`-table columns to carry a Base listing id; seeding one listing;
-  a `fetchBaseChainListings()` hydration path in `web/app/api/skills/route.ts`; the render proof.
+  in-place Base row hydration through `hydrateEvmRepoSkillRows()`; the render proof.
 - **Out of scope (do NOT do here):** wallet connect / writes (Phases 4/5); repointing the Solana
   callers to `getAdapter` (Phase 2c); `listSkillListings` event enumeration (stays disabled —
   per-row `fetchSkillListing` is the marketplace path); the full Phase 6 DB generalization (only the
@@ -76,9 +76,9 @@ must be created. Use the base-poc harness (`registerAgent` author → `createSki
 
 ### D3 — Route merge (behavior-preserving)
 Mirror the existing Solana pattern, don't replace it. `fetchOnChainListings()` (Solana
-`getProgramAccounts`) stays; add `fetchBaseChainListings()` (DB-driven hydration) and merge both into
-`mergeSkills`. The Base path is legitimately different (DB = discovery, chain = current state) — that
-asymmetry is why the seam exists.
+`getProgramAccounts`) stays. Base uses DB-driven discovery and in-place row hydration instead of
+on-chain enumeration. The Base path is legitimately different (DB = discovery, chain = current state)
+— that asymmetry is why the seam exists.
 
 **Divergence — hydrate-in-place (2026-06-29):** do NOT emit a separate Base `ChainSkillRow` + merge.
 `ChainSkillRow.on_chain_address` is required-non-null and `getSkillPaymentFlow` keys purchasability off
@@ -108,8 +108,10 @@ stays untouched. The `fetch-base-listings`/`wire-merge` todos below fold into th
 - `web/lib/db.ts` — add the `ALTER TABLE skills ADD COLUMN IF NOT EXISTS evm_*` statements next to
   the existing inline migrations (~L165-200); extend the skills insert/select helpers + `ChainSkillRow`
   / `MergedSkillRow` types if they need the new fields.
-- `web/app/api/skills/route.ts` — add `fetchBaseChainListings()` (mirrors `fetchOnChainListings()` at
-  L134); call it and merge at the `mergeSkills(normalizedPgSkills, chainSkills)` site (~L485-487).
+- `web/lib/marketplaceBrowse.ts` — `hydrateEvmRepoSkillRows()` hydrates `eip155:*` repo rows by
+  calling `getAdapter(ctx).fetchSkillListing(evm_listing_id)` and overlaying live fields in place.
+- `web/app/api/skills/route.ts`, `web/app/api/skills/hydrate/route.ts`, `web/app/skills/page.tsx` —
+  call the shared hydration helper from the full API, client hydrate API, and server snapshot paths.
 - (seed) `contracts/base-poc/harness/*` — run, don't necessarily edit; capture the listing id.
 - No change to `web/lib/adapters/*` (3a is complete) and no Solana-caller repointing.
 
@@ -120,13 +122,13 @@ stays untouched. The `fetch-base-listings`/`wire-merge` todos below fold into th
    author EVM address, skill metadata.
 3. **Migrate + row** (`add-evm-columns`): add the columns; insert/Update the seeded skill row with
    `chain_context = eip155:84532` and the EVM fields.
-4. **Hydrate** (`fetch-base-listings`): implement `fetchBaseChainListings()` — select `eip155:%` rows,
-   `getAdapter(ctx).fetchSkillListing(evm_listing_id)` each, map to a **chain-aware** `ChainSkillRow`
-   (D4): carry `name`, `description`, `price_usdc_micros`, `chain_context`, `evm_listing_id`; **leave
-   `on_chain_address` NULL**, mark the card **non-purchasable**, and keep the author as a plain-text
-   display value (no `/author/[pubkey]` link for EVM). Skip rows without `evm_listing_id`.
-5. **Merge** (`wire-merge`): `mergeSkills(normalizedPgSkills, [...chainSkills, ...baseChainSkills])`;
-   verify the dedup key reconciles the Base DB row with its hydrated chain row into one card.
+4. **Hydrate** (`fetch-base-listings`): done via `hydrateEvmRepoSkillRows()` — for each `eip155:%`
+   repo row with `evm_listing_id`, call `getAdapter(ctx).fetchSkillListing(evm_listing_id)` and
+   overlay `name`, `description`, `skill_uri`, `price_usdc_micros`, and `current_version` in place.
+   **Leave `on_chain_address` NULL**, render the card **non-purchasable**, and keep the author as
+   plain-text display (no `/author/[pubkey]` link for EVM).
+5. **Merge** (`wire-merge`): resolved by not merging a separate Base chain row. `mergeSkills()` stays
+   Solana-only; Base remains one DB row hydrated in place.
 
 ## Verification
 
@@ -148,15 +150,11 @@ Solana rows even if the route change is reverted. No destructive DB changes.
 
 ## Blockers (gating — none resolvable in a headless worktree)
 
-- **No app / DB env:** `web/.env.local` is missing → the dev server can't run `/skills` (DB queries
-  fail). Get it via `vercel env pull web/.env.local` (pulls secrets — user's call) or have it provided.
-- **No seed creds:** no EVM key / CDP paymaster creds to create the listing.
-- **D1 sign-off:** the live Neon migration needs an explicit go before running.
+- **Resolved 2026-06-29:** `web/.env.local` was pulled from Vercel for this worktree; the seeded Base
+  listing row was upserted into live Neon; the read-only `/skills` render proof passed locally.
 
 ## Open question for the executor
 
-`mergeSkills` dedup/key semantics for Base: confirm against the running app that a Base **DB row**
-(in `normalizedPgSkills`) and its **hydrated chain row** (from `fetchBaseChainListings`) collapse to a
-single marketplace card. If `mergeSkills` keys on `on_chain_address`/`skill_id` and the Base chain row
-carries `evm_listing_id` in a different field, adjust the mapping so they reconcile (or hydrate the DB
-row in place instead of emitting a separate chain row).
+Resolved 2026-06-29: use in-place hydration, not a separate Base chain row. `mergeSkills` remains
+Solana-only and keyed by `on_chain_address`; Base rows keep `on_chain_address` NULL and hydrate live
+contract fields directly onto their repo row.

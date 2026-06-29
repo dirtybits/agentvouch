@@ -9,8 +9,8 @@ todos:
     content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED to an app+wallet session — do Phase 3 FIRST (see NEXT STEP OVERRIDE). Full Done-when needs running-app devnet verification."
     status: in_progress
   - id: base-adapter-readslice
-    content: "Phase 3. RECOMMENDED NEXT (wallet-free reads; do before 2c — see NEXT STEP OVERRIDE). Implement BaseAdapter reads only (web/lib/adapters/base.ts: viem publicClient + getListing vs AgentVouchEvm; lift full ABI via `forge build` — harness abi.ts is write-only). listSkillListings has NO getProgramAccounts equivalent — use DB-driven enumeration (skills table) and keep event scans as an explicitly configured fallback. Contract 0x6Fd9…D854 likely has no listing yet (zero activity ~53d, verified 2026-06-24) — seed first. Render one Base listing in the real UI selected by chain_context. 3a (BaseAdapter reads) DONE + verified against the live contract; 3b (seed a listing + /skills render) pending — needs an app + seed creds and a Base listing-id storage/derivation decision before touching /api/skills."
-    status: in_progress
+    content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
+    status: completed
   - id: base-adapter-wallet
     content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts) in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. LONG POLE. DECIDED 2026-06-25: Coinbase Smart Wallet passkey for MVP; wagmi/MetaMask injected deferred to a roadmapped follow-on (reconsider if too much lifting)."
     status: pending
@@ -282,7 +282,7 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
   session**; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
   files; `npm run typecheck && npm test` green.
 
-### Phase 3 — `base-adapter-readslice` [in_progress — 3a DONE + verified, 3b pending]
+### Phase 3 — `base-adapter-readslice` [completed 2026-06-29]
 
 - **Goal:** prove the seam end-to-end with a real Base read in the live UI — the first test that
   `ChainAdapter` actually generalizes to a second chain. (2c does NOT test this; it only re-routes
@@ -310,17 +310,17 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
   `BASE_AGENTVOUCH_EVENT_SCAN_ENABLED=1`, a nonzero `BASE_AGENTVOUCH_FROM_BLOCK`, and an archive-capable
   `BASE_SEPOLIA_RPC_URL`. This reinforces the DB-driven enumeration choice for 3b (per-row `getListing`
   is a normal `eth_call`, no `getLogs`).
-- **3b — seed + render [pending; needs app + seed creds + DB identifier decision]:** (1) seed a Base
-  listing on `0x6Fd9…D854` (funded EOA + the base-poc harness register→list, or the POC UI — NOT
-  available headless); (2) add or derive a 66-char EVM `listingId` before touching
-  `web/app/api/skills/route.ts`. Preferred DB shape: `evm_listing_id VARCHAR(66)` plus
-  `evm_contract_address VARCHAR(42)` (and `evm_tx_hash VARCHAR(66)` for provenance) keyed by
-  `chain_context`; do **not** pass Solana-sized `on_chain_address` to `fetchSkillListing()`. A
-  transitional option is deriving `listingId(author, skill_id)` with the contract helper, but the
-  value passed to `fetchSkillListing()` must be the bytes32 listing id; (3) wire DB-driven Base
-  hydration alongside `fetchOnChainListings()` and render proof on `/skills`. Solana rows keep their
-  current `getProgramAccounts` path until 2c. Blocked headless by: no EVM key / CDP creds + no
-  `web/.env.local` (DB) in this worktree.
+- **3b — seed + render [DONE 2026-06-29]:** seeded one Base Sepolia listing on
+  `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`
+  (`listingId=0x658b604e9f71b05d580d1fe24891b2686c46ba4fc1961f3027d908a8ad2bcb11`,
+  `tx=0x31e858a4916c50f6e50f11d704ed19604c2139152358a0d03b9d6b0f1bfdc548`) and
+  upserted the live Neon row at `/skills/base-phase-3b/phase-3b-demo-skill`. The DB stores
+  `evm_listing_id`, `evm_contract_address`, and `evm_tx_hash`; `on_chain_address` stays NULL.
+  `hydrateEvmRepoSkillRows()` calls `getAdapter(ctx).fetchSkillListing(evm_listing_id)` server-side
+  and overlays live contract fields onto the repo row in place. The marketplace card renders as
+  read-only with a Base Sepolia chip, 1 USDC price, and plain-text EVM author. The activity strip was
+  also made chain-aware so it does not link EVM actors through `/author/[pubkey]`. A local Playwright
+  screenshot was captured during verification.
 
 #### Read-path recon (verified 2026-06-24 against `contracts/base-poc`)
 
@@ -363,11 +363,10 @@ Removed=2` — match the Solana adapter, which keys `active` on status alone).
   script; only the final "renders in `/skills`" gate needs the dev server. (Contrast 2c, which needs a
   wallet click-through — that is why Phase 3 goes first.)
 
-- **Steps:** `forge build` + lift ABI; seed one listing; add or derive the Base bytes32 listing id;
-  implement DB-driven per-row `fetchSkillListing(listingId)` hydration; render on `/skills` when
-  `chain_context = eip155:84532`.
-- **Done when:** the Base listing renders in the real UI, fetched live from the contract (server-side
-  read); the Solana listings still render. Use `https://base-sepolia-rpc.publicnode.com` (read lag).
+- **Steps:** done — ABI/read adapter, seeded listing, explicit EVM DB fields, DB-driven per-row
+  `fetchSkillListing(listingId)` hydration, and `/skills` render proof.
+- **Done when:** done — the Base listing renders in the real UI, fetched live from the contract
+  server-side; Solana listings still render on the unfiltered marketplace.
 
 ### Phase 4 — `base-adapter-wallet` [pending] ⚠ long pole
 
