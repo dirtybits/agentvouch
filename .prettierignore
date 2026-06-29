@@ -19,3 +19,6 @@ packages/agentvouch-cli/src/idl/agentvouch.ts
 .cursor
 agent-skills
 contracts/base-poc/ui
+contracts/base-poc/broadcast
+contracts/base-poc/cache
+contracts/base-poc/lib
