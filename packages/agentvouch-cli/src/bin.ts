@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 // Must run before ./cli.js so the Node-version check happens before the heavy
-// dependency graph (Solana / rpc-websockets) is evaluated. ESM evaluates
-// imports in source order, so this side-effect import gates everything below.
+// dependency graph (Solana / rpc-websockets) is evaluated. Keep ./cli.js behind
+// a dynamic import so bundlers cannot hoist those dependencies ahead of this
+// side-effect import in the published bin.
 import "./preflight.js";
-import { buildProgram } from "./cli.js";
 
+const { buildProgram } = await import("./cli.js");
 await buildProgram().parseAsync(process.argv);
