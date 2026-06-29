@@ -1,6 +1,6 @@
 {
   "name": "@agentvouch/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Headless CLI for AgentVouch — install, publish, update, and vouch for AI agent skills on Solana.",
   "keywords": [
     "agentvouch",
