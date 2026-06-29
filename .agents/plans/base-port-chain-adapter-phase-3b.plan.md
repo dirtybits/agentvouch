@@ -9,7 +9,7 @@ todos:
     content: "Seed ONE listing on AgentVouchEvm 0x6Fd9…D854 (Base Sepolia) via the base-poc harness (registerAgent author -> createSkillListing) with a funded EOA (+ CDP paymaster for gas-free). Capture the returned bytes32 listingId + tx hash. NEEDS EVM key / CDP creds — not available headless."
     status: pending
   - id: add-evm-columns
-    content: "Add idempotent ALTER TABLE skills ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66), evm_contract_address VARCHAR(42), evm_tx_hash VARCHAR(66) in web/lib/db.ts (the repo's inline-migration pattern, alongside the existing ALTER TABLE skills statements). Insert/Update the seeded skill row: chain_context=eip155:84532, evm_listing_id=<bytes32>, evm_contract_address=0x6Fd9…D854, author_pubkey=<EVM addr> (display-only — per D4 the EVM author is NOT routed through /author/[pubkey] / Solana helpers), name/price/uri."
+    content: "COLUMNS + TYPES DONE (2026-06-29, web typecheck green): added ALTER TABLE skills ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66) / evm_contract_address VARCHAR(42) / evm_tx_hash VARCHAR(66) in web/lib/db.ts (inline-migration pattern) + the optional fields on RepoSkillRow (marketplaceBrowse.ts). REMAINING (needs DB + web/.env.local): insert the seeded skill row — chain_context=eip155:84532, evm_listing_id=0x658b604e9f71b05d580d1fe24891b2686c46ba4fc1961f3027d908a8ad2bcb11, evm_contract_address=0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854, evm_tx_hash=0x31e858a4916c50f6e50f11d704ed19604c2139152358a0d03b9d6b0f1bfdc548, author_pubkey=0xF75dc589B5df4bf4F2995Fc0e5E3639ECD721f03 (display-only — per D4 NOT routed through /author/[pubkey]), name 'Phase 3b Demo Skill (Base)', price_usdc_micros 1000000, uri ipfs://skill/phase-3b-demo-skill."
     status: pending
   - id: fetch-base-listings
     content: "Add fetchBaseChainListings(): ChainSkillRow[] in web/app/api/skills/route.ts (mirror fetchOnChainListings): select skills rows WHERE chain_context LIKE 'eip155:%', and for each call getAdapter(row.chain_context).fetchSkillListing(row.evm_listing_id) -> map to a CHAIN-AWARE ChainSkillRow (see D4): leave on_chain_address NULL, carry evm_listing_id + chain_context, mark the card non-purchasable, author as plain text (no /author/[pubkey] for EVM). Server-side read (publicnode RPC). Skip rows missing evm_listing_id."
@@ -79,6 +79,15 @@ Mirror the existing Solana pattern, don't replace it. `fetchOnChainListings()` (
 `getProgramAccounts`) stays; add `fetchBaseChainListings()` (DB-driven hydration) and merge both into
 `mergeSkills`. The Base path is legitimately different (DB = discovery, chain = current state) — that
 asymmetry is why the seam exists.
+
+**Divergence — hydrate-in-place (2026-06-29):** do NOT emit a separate Base `ChainSkillRow` + merge.
+`ChainSkillRow.on_chain_address` is required-non-null and `getSkillPaymentFlow` keys purchasability off
+it, while D4 mandates NULL for Base — so merging a Base chain row on `on_chain_address` can't work
+(the plan's "Open question" anticipated this). Instead, in the route, for each loaded PG skill row with
+`chain_context` `eip155:%` + `evm_listing_id`, call `getAdapter(ctx).fetchSkillListing(evm_listing_id)`
+and overlay the live name/description/price onto that one row, marked non-purchasable (D4). One row =
+one card; the adapter is still exercised in the route (the seam proof). `fetchOnChainListings` (Solana)
+stays untouched. The `fetch-base-listings`/`wire-merge` todos below fold into this.
 
 ### D4 — Base card rendering: read-only + chain-aware  (PR #58 review, 2026-06-29)
 `evm_listing_id` has its own column (D1), but it must NOT be mapped into the

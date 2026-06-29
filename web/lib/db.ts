@@ -216,6 +216,25 @@ async function runCoreSchemaDdl() {
     ADD COLUMN IF NOT EXISTS public_author_slug VARCHAR(96)
   `;
 
+  // Base/EVM listing identity (Phase 3b). Additive + nullable — existing Solana rows keep
+  // these NULL. The Base bytes32 listing id is carried HERE, not in on_chain_address (which is
+  // a Solana PDA the purchase path interprets via @solana/kit). See
+  // .agents/plans/base-port-chain-adapter-phase-3b.plan.md (D1/D4).
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS evm_contract_address VARCHAR(42)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS evm_tx_hash VARCHAR(66)
+  `;
+
   await db`DROP INDEX IF EXISTS idx_skills_public_slug`;
 
   await db`

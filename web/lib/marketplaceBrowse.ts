@@ -71,6 +71,11 @@ export type RepoSkillRow = SkillScanFieldRow & {
   currency_mint?: string | null;
   on_chain_protocol_version?: string | null;
   on_chain_program_id?: string | null;
+  // Base/EVM listing identity (Phase 3b) — Solana rows leave these null. The bytes32 listing id
+  // lives here (NOT on_chain_address); the live state is hydrated in place via the ChainAdapter.
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   contact?: string | null;
   summary?: string | null;
   summary_model?: string | null;
