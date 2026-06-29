@@ -16,6 +16,7 @@ import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
 } from "@/lib/listingContract";
+import { getAdapter } from "@/lib/adapters";
 import {
   buildSecurityScanFromFields,
   type SkillScanFieldRow,
@@ -136,6 +137,69 @@ export type RouteTiming = {
   measure<T>(name: string, fn: () => Promise<T>): Promise<T>;
   header(): string;
 };
+
+type EvmHydratableSkillRow = {
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
+  author_pubkey?: string | null;
+  name: string;
+  description: string | null;
+  skill_uri?: string | null;
+  price_usdc_micros?: string | null;
+  current_version: number;
+  on_chain_address?: string | null;
+};
+
+export function isEvmMarketplaceSkill(
+  skill: Pick<EvmHydratableSkillRow, "chain_context" | "evm_listing_id">
+): boolean {
+  return Boolean(
+    skill.evm_listing_id && skill.chain_context?.trim().startsWith("eip155:")
+  );
+}
+
+export async function hydrateEvmRepoSkillRows<
+  T extends EvmHydratableSkillRow
+>(skills: T[]): Promise<T[]> {
+  return Promise.all(
+    skills.map(async (skill) => {
+      if (!isEvmMarketplaceSkill(skill) || !skill.evm_listing_id) {
+        return skill;
+      }
+
+      const chainContext = skill.chain_context;
+      if (!chainContext) return skill;
+
+      try {
+        const listing = await getAdapter(chainContext).fetchSkillListing(
+          skill.evm_listing_id
+        );
+        if (!listing || !listing.active) return skill;
+
+        return {
+          ...skill,
+          author_pubkey: listing.author || skill.author_pubkey,
+          name: listing.name || skill.name,
+          description: listing.description || skill.description,
+          skill_uri: listing.uri || skill.skill_uri || null,
+          price_usdc_micros:
+            listing.priceUsdcMicros > 0n
+              ? String(listing.priceUsdcMicros)
+              : null,
+          current_version:
+            listing.revision > 0 ? listing.revision : skill.current_version,
+          on_chain_address: null,
+        };
+      } catch (error) {
+        console.error(
+          `Failed to hydrate EVM listing ${skill.evm_listing_id} (${chainContext}):`,
+          getErrorMessage(error)
+        );
+        return skill;
+      }
+    })
+  );
+}
 
 export function createRouteTiming(): RouteTiming {
   const entries: { name: string; durationMs: number }[] = [];
@@ -604,8 +668,9 @@ export async function loadMarketplaceBrowseSnapshot(input: {
   try {
     await initializeDatabase();
     const rows = await loadRepoSkillRows({});
+    const skills = await hydrateEvmRepoSkillRows(normalizeRepoSkillRows(rows));
     const enriched = buildEnrichedSkillRows({
-      skills: normalizeRepoSkillRows(rows),
+      skills,
       useCachedTrust: true,
     });
     sortEnrichedSkills(enriched, "trusted");

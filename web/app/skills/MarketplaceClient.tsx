@@ -77,13 +77,17 @@ interface SkillRow {
   price_lamports?: number;
   price_usdc_micros?: string | null;
   currency_mint?: string | null;
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   payment_flow?:
     | "free"
     | "legacy-sol"
     | "listing-required"
     | "x402-usdc"
     | "direct-purchase-skill";
-  on_chain_address?: string;
+  on_chain_address?: string | null;
   skill_uri?: string | null;
   source?: "repo" | "chain";
   created_at: string;
