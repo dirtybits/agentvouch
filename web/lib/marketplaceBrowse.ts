@@ -158,9 +158,9 @@ export function isEvmMarketplaceSkill(
   );
 }
 
-export async function hydrateEvmRepoSkillRows<
-  T extends EvmHydratableSkillRow
->(skills: T[]): Promise<T[]> {
+export async function hydrateEvmRepoSkillRows<T extends EvmHydratableSkillRow>(
+  skills: T[]
+): Promise<T[]> {
   return Promise.all(
     skills.map(async (skill) => {
       if (!isEvmMarketplaceSkill(skill) || !skill.evm_listing_id) {

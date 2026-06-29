@@ -317,9 +317,10 @@ export default function SkillPreviewCard({
       ? shortChainAddress(skill.author_pubkey)
       : formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
     : null;
-  const linkedGithubProfile = skill.author_pubkey && !isReadOnlyEvmListing
-    ? skill.author_identity?.githubProfile
-    : null;
+  const linkedGithubProfile =
+    skill.author_pubkey && !isReadOnlyEvmListing
+      ? skill.author_identity?.githubProfile
+      : null;
   const isMirror = Boolean(skill.mirror_source_key);
   const authorLabel = walletAuthorLabel
     ? walletAuthorLabel
@@ -330,12 +331,14 @@ export default function SkillPreviewCard({
     : "Unverified publisher";
   const authorHref =
     skill.author_pubkey && !isReadOnlyEvmListing
-    ? `/author/${skill.author_pubkey}`
-    : skill.author_kind === "github" && skill.author_handle
-    ? `https://github.com/${skill.author_handle}`
-    : null;
+      ? `/author/${skill.author_pubkey}`
+      : skill.author_kind === "github" && skill.author_handle
+      ? `https://github.com/${skill.author_handle}`
+      : null;
   const authorTitle = isReadOnlyEvmListing
-    ? `${chainLabel ?? "EVM"} author address for this read-only marketplace listing.`
+    ? `${
+        chainLabel ?? "EVM"
+      } author address for this read-only marketplace listing.`
     : skill.author_pubkey
     ? linkedGithubProfile
       ? `Author wallet linked to GitHub @${linkedGithubProfile.login}`
