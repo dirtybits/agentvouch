@@ -48,6 +48,7 @@ import {
 } from "@/lib/pricing";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDate } from "@/lib/formatDate";
 import {
   fetchSkillWithBrowserX402,
   walletSupportsBrowserX402,
@@ -161,14 +162,6 @@ interface SkillDetail {
 
 function shortAddr(addr: string): string {
   return addr.slice(0, 6) + "..." + addr.slice(-4);
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function isBlockingPurchaseStatus(
@@ -2093,12 +2086,7 @@ export default function SkillDetailPage({
                 )}
                 {skill.author_trust?.registeredAt ? (
                   <span className="text-xs text-gray-400 dark:text-gray-500">
-                    Registered{" "}
-                    {formatDate(
-                      new Date(
-                        skill.author_trust.registeredAt * 1000
-                      ).toISOString()
-                    )}
+                    Registered {formatDate(skill.author_trust.registeredAt)}
                   </span>
                 ) : null}
               </div>
