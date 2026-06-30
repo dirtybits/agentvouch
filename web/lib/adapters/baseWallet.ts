@@ -9,11 +9,10 @@ import {
 import { createPublicClient, http, type Hex } from "viem";
 import { baseSepolia } from "viem/chains";
 import {
-  BASE_PASSKEY_WALLET_NAME,
   BASE_SEPOLIA_RPC_URL,
+  BASE_WALLET_UNCONFIGURED_MESSAGE,
   getBaseWalletConfig,
 } from "./baseWalletConfig";
-import type { ChainWallet, TxResult, X402Payment } from "./types";
 
 const PASSKEY_STORAGE_KEY = "agentvouch:base-sepolia:passkey";
 const PASSKEY_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:passkey:active";
@@ -76,6 +75,7 @@ async function accountForCredential(
 }
 
 export async function restoreBasePasskeyAccount(): Promise<BasePasskeySmartAccount | null> {
+  if (!getBaseWalletConfig().configured) return null;
   if (!isPasskeyActive()) return null;
   const credential = readStoredCredential();
   if (!credential) return null;
@@ -83,6 +83,10 @@ export async function restoreBasePasskeyAccount(): Promise<BasePasskeySmartAccou
 }
 
 export async function createBasePasskeyAccount(): Promise<BasePasskeySmartAccount> {
+  if (!getBaseWalletConfig().configured) {
+    throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
+  }
+
   const stored = readStoredCredential();
   if (stored) {
     setPasskeyActive(true);
@@ -104,33 +108,4 @@ export async function createBasePasskeyAccount(): Promise<BasePasskeySmartAccoun
 
 export function disconnectBasePasskeyAccount(): void {
   setPasskeyActive(false);
-}
-
-function unsupportedPhase5(method: string): Promise<TxResult> {
-  return Promise.reject(
-    new Error(
-      `${method} is part of AgentVouch Base Phase 5. Phase 4 only connects the ${BASE_PASSKEY_WALLET_NAME} passkey wallet.`
-    )
-  );
-}
-
-export function createBasePasskeyChainWallet(
-  account: BasePasskeySmartAccount,
-  disconnect: () => Promise<void>
-): ChainWallet {
-  const config = getBaseWalletConfig();
-  return {
-    chainContext: config.chainContext,
-    address: account.address,
-    disconnect,
-    registerAgent: () => unsupportedPhase5("registerAgent"),
-    createSkillListing: () => unsupportedPhase5("createSkillListing"),
-    purchaseSkill: () => unsupportedPhase5("purchaseSkill"),
-    buildX402Payment: (): Promise<X402Payment> =>
-      Promise.reject(
-        new Error(
-          "buildX402Payment is part of AgentVouch Base Phase 5. Phase 4 only connects the passkey wallet."
-        )
-      ),
-  };
 }

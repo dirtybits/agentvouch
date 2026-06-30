@@ -49,6 +49,7 @@ import {
   BASE_PASSKEY_WALLET_NAME,
   BASE_PASSKEY_WALLET_SOURCE,
   BASE_SEPOLIA_CHAIN_LABEL,
+  BASE_WALLET_UNCONFIGURED_MESSAGE,
   getBaseWalletConfig,
 } from "@/lib/adapters/baseWalletConfig";
 import type { BasePasskeySmartAccount } from "@/lib/adapters/baseWallet";
@@ -162,7 +163,11 @@ const AgentVouchWalletSignerContext =
   });
 
 const baseWalletConfig = getBaseWalletConfig();
+const baseWalletConfigured = baseWalletConfig.configured;
 const solanaChainContext = getConfiguredSolanaChainContext();
+const baseWalletConfigError = baseWalletConfigured
+  ? null
+  : BASE_WALLET_UNCONFIGURED_MESSAGE;
 const BasePasskeyWalletContext = createContext<BasePasskeyWalletContextValue>({
   status: "disconnected",
   account: null,
@@ -170,9 +175,9 @@ const BasePasskeyWalletContext = createContext<BasePasskeyWalletContextValue>({
   source: null,
   chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
   chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
-  configured: Boolean(baseWalletConfig.rpcUrl),
+  configured: baseWalletConfigured,
   config: baseWalletConfig,
-  error: null,
+  error: baseWalletConfigError,
   chainWallet: null,
   connect: async () => {
     throw new Error("Base wallet provider is not mounted");
@@ -206,9 +211,9 @@ const AgentVouchChainWalletContext =
       source: null,
       chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
       chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
-      configured: Boolean(baseWalletConfig.rpcUrl),
+      configured: baseWalletConfigured,
       config: baseWalletConfig,
-      error: null,
+      error: baseWalletConfigError,
       chainWallet: null,
       connect: async () => {
         throw new Error("Base wallet provider is not mounted");
@@ -622,6 +627,8 @@ function AgentVouchWalletBridge({
   }, [connectPhantomExtension, phantomLegacy]);
 
   useEffect(() => {
+    if (!baseWalletConfigured) return;
+
     let cancelled = false;
     void import("@/lib/adapters/baseWallet")
       .then(({ restoreBasePasskeyAccount }) => restoreBasePasskeyAccount())
@@ -736,6 +743,12 @@ function AgentVouchWalletBridge({
   }, []);
 
   const connectBasePasskey = useCallback(async () => {
+    if (!baseWalletConfigured) {
+      setBaseStatus("error");
+      setBaseError(BASE_WALLET_UNCONFIGURED_MESSAGE);
+      throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
+    }
+
     setBaseStatus("connecting");
     setBaseError(null);
     try {
@@ -825,9 +838,9 @@ function AgentVouchWalletBridge({
       source: baseSmartAccount ? BASE_PASSKEY_WALLET_SOURCE : null,
       chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
       chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
-      configured: Boolean(baseWalletConfig.rpcUrl),
+      configured: baseWalletConfigured,
       config: baseWalletConfig,
-      error: baseError,
+      error: baseWalletConfigError ?? baseError,
       chainWallet: baseChainWallet,
       connect: connectBasePasskey,
       disconnect: disconnectBasePasskey,
