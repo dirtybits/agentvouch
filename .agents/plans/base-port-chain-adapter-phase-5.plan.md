@@ -5,8 +5,11 @@ todos:
   - id: preflight-phase4
     content: "Confirm Phase 4 is complete: Base Sepolia passkey wallet connect/disconnect works in the UI, exposes a smart-account signer/account to the client-only wallet layer, and Solana wallet regression passed."
     status: pending
+  - id: lock-usdc-circle-invariants
+    content: "Lock the Circle USDC invariants before writing payment code: Base Sepolia chain id 84532/eip155:84532, native Circle USDC 0x036CbD53842c5426634e7929541eC2318f3dCF7e, 6-decimal parsing/formatting, exact-amount approvals, confirmed receipts, and no USDbC/USDC.e."
+    status: pending
   - id: lift-sponsored-writes
-    content: "Lift contracts/base-poc/ui/src/flow.ts into the client-only Base ChainWallet: registerAgent, createSkillListing, purchaseSkill, skillIdHashFrom, computeListingId, USDC approve+purchase batching, and TxResult mapping."
+    content: "Lift contracts/base-poc/ui/src/flow.ts into the client-only Base ChainWallet: registerAgent, createSkillListing, purchaseSkill, skillIdHashFrom, computeListingId, native USDC exact approve+purchase batching, and TxResult mapping."
     status: pending
   - id: wire-publish-and-purchase-ui
     content: "Branch publish/listing/purchase UI by chain_context. Base rows use evm_listing_id/evm_contract_address/evm_tx_hash, stay away from Solana on_chain_address, and become purchasable only through the Base ChainWallet path."
@@ -18,10 +21,10 @@ todos:
     content: "Add the EVM author/profile branch: resolve eip155:* authors via AgentVouchEvm.getProfile and only then enable chain-aware author display/pages. Do not route raw 0x authors through Solana /author/[pubkey] helpers."
     status: pending
   - id: add-evm-x402-lane
-    content: "Add the EVM x402 lane in /api/x402/* using the Base POC receiveWithAuthorization/EIP-3009 recipe. Keep Solana x402/sponsored route behavior unchanged and branch by chain_context/payment_flow."
+    content: "Add the EVM x402 lane in /api/x402/* using native USDC receiveWithAuthorization/EIP-3009 from the Base POC. Keep Solana x402/sponsored route behavior unchanged and branch by chain_context/payment_flow."
     status: pending
   - id: verify-phase5
-    content: "Verify human Base Sepolia passkey register->list->buy with user ETH delta 0, agent x402 settlement via receiveWithAuthorization, Solana write regression, and web typecheck/lint/vitest/build."
+    content: "Verify human Base Sepolia passkey register->list->buy with chain id/native USDC/6-decimal/receipt checks and user ETH delta 0, agent x402 settlement via receiveWithAuthorization, Solana write regression, and web typecheck/lint/vitest/build."
     status: pending
 isProject: false
 ---
@@ -101,6 +104,30 @@ Lift the signing and settlement recipe from
 `contracts/base-poc/harness/src/agent-x402-demo.ts`. The agent lane is expected to be a plain EOA
 because the current recipe is ECDSA-based, not EIP-1271 smart-account signing.
 
+### D6 - Circle native USDC invariants are payment blockers
+
+Use the `use-usdc` skill as the Phase 5 payment checklist (reviewed 2026-06-30). These constraints
+are blockers for any Base write or x402 implementation:
+
+- Base Sepolia writes must verify chain id `84532` / CAIP-2 `eip155:84532` before submitting a
+  transaction or UserOp. Do not silently map Base mainnet `8453` into the Sepolia path.
+- Use native Circle-issued Base Sepolia USDC only:
+  `0x036CbD53842c5426634e7929541eC2318f3dCF7e`. Do not accept USDbC, USDC.e, bridged variants, or
+  caller-supplied token addresses for AgentVouch purchase settlement.
+- Treat `price_usdc_micros` as the raw 6-decimal USDC amount. EVM code should use
+  `parseUnits(value, 6)` / `formatUnits(value, 6)` and never `18` decimals for USDC.
+- Human Base purchases that use `approve` should approve the exact purchase amount unless a later
+  audited UX explicitly chooses a different allowance policy. Check current allowance first and avoid
+  unnecessary approval UserOps.
+- EVM token balances live on the wallet/account address directly; do not apply Solana ATA logic to
+  Base. Conversely, keep Solana ATA creation/checks in Solana-specific branches.
+- Never report payment success, unlock paid raw content, or persist an entitlement until the Base
+  transaction receipt is confirmed and validated against chain, contract, listing id, buyer/agent,
+  amount, and event/proof data.
+- Gateway, CCTP/Bridge Kit, Unified Balance, Circle Wallets, and Circle Modular Wallets are not part
+  of Phase 5 unless a later plan explicitly designs cross-chain funding or a Circle-managed wallet
+  architecture. Phase 5 stays on the Phase 4 Coinbase Smart Wallet + Base Sepolia lane.
+
 ## Files to inspect first
 
 - `contracts/base-poc/ui/src/flow.ts` - sponsored 4337 write flow.
@@ -118,19 +145,39 @@ because the current recipe is ECDSA-based, not EIP-1271 smart-account signing.
 ## Implementation steps
 
 1. **Preflight (`preflight-phase4`)**
+
    - Read the Phase 4 subplan and confirm all Phase 4 todos are complete.
    - Re-run a quick browser connect smoke if the worktree or env changed.
    - Confirm Base Sepolia RPC, CDP paymaster/bundler, contract, and USDC envs are present.
 
-2. **Sponsored write methods (`lift-sponsored-writes`)**
+2. **USDC/Circle invariants (`lock-usdc-circle-invariants`)**
+
+   - Centralize the Base Sepolia native USDC address and 6-decimal amount helpers used by the human
+     purchase path and EVM x402 lane.
+   - Add chain-id guards before every Base write: the wallet/client must be on `84532` and persisted
+     rows must use `chain_context = eip155:84532`.
+   - Reject unknown token addresses and bridged USDC variants; Phase 5 does not support token
+     selection.
+   - Split the payment mechanics clearly:
+     - human UI purchases use ERC-20 allowance/approve plus `purchaseSkill`;
+     - agent x402 purchases use EIP-3009 `receiveWithAuthorization` and should not require an
+       ERC-20 allowance.
+   - Require receipt/event validation before granting access or writing entitlements.
+
+3. **Sponsored write methods (`lift-sponsored-writes`)**
+
    - Move the POC flow into the Base wallet client module.
    - Keep the smart-account object private to the wallet layer.
    - Implement `registerAgent`, `createSkillListing`, and `purchaseSkill` on the Base
      `ChainWallet`.
+   - For purchase, parse/format USDC with 6 decimals, check native USDC balance/allowance, approve
+     only the exact missing allowance, and submit the purchase against the configured native USDC
+     contract.
    - Return `TxResult` with transaction hash/userOp reference, explorer URL, and `paidGas=false`.
    - Fail closed on unsupported `chainContext` or missing paymaster config.
 
-3. **Publish/list/purchase UI (`wire-publish-and-purchase-ui`)**
+4. **Publish/list/purchase UI (`wire-publish-and-purchase-ui`)**
+
    - Branch by `chain_context`.
    - Base create/list flow should compute the EVM `listingId`, call `createSkillListing`, then
      persist the EVM metadata.
@@ -138,34 +185,46 @@ because the current recipe is ECDSA-based, not EIP-1271 smart-account signing.
    - Keep Phase 3b behavior for read-only Base rows until this purchase branch is complete.
    - Keep Solana purchase and publish branches unchanged except for explicit chain guards.
 
-4. **Persistence (`persist-base-writes`)**
+5. **Persistence (`persist-base-writes`)**
+
    - On successful Base listing creation, save `evm_listing_id`, `evm_contract_address`,
      `evm_tx_hash`, `chain_context`, price, URI, and author EVM address.
    - On successful Base purchase, store receipts/entitlements with enough chain fields to avoid
      collisions with Solana records.
    - Make dashboards and APIs read these fields without treating Base rows as Solana PDAs.
 
-5. **EVM author identity (`add-evm-agent-identity`)**
+6. **EVM author identity (`add-evm-agent-identity`)**
+
    - Add an EVM branch for author/profile lookup using `AgentVouchEvm.getProfile`.
    - Enable Base author links only after the page/API can handle `eip155:*` profiles.
    - Keep disabled/plain author display for unresolved EVM profiles.
 
-6. **EVM x402 lane (`add-evm-x402-lane`)**
+7. **EVM x402 lane (`add-evm-x402-lane`)**
+
    - Add a chain-aware route branch in `/api/x402/*`.
    - Use the Base POC's `receiveWithAuthorization` recipe for USDC settlement.
+   - Use native Base Sepolia USDC and 6-decimal amounts; validate the signed authorization amount
+     equals the listing price in `price_usdc_micros`.
    - Make the payment proof include the chain, contract, listing id, buyer/agent address, amount,
      nonce, validity window, and settlement tx.
+   - Wait for the settlement receipt and validate the expected contract/event/proof before granting
+     access. Do not grant access on signature presence alone.
    - Preserve current Solana x402 and sponsored transaction invariants.
 
-7. **Verification (`verify-phase5`)**
+8. **Verification (`verify-phase5`)**
    - Human browser proof on Base Sepolia:
      - connect passkey wallet;
+     - prove the wallet/client reports chain id `84532`;
      - register agent;
      - create/list a skill;
+     - verify the listing price maps to the expected 6-decimal native USDC amount;
      - buy the listed skill;
+     - verify the approval, if needed, was exact amount and against native USDC;
+     - wait for and inspect the receipt;
      - prove user ETH delta is 0 and the paymaster covered gas.
    - Agent proof:
      - perform an x402 purchase through the EVM lane;
+     - verify the signed amount uses 6-decimal USDC and native Base Sepolia USDC;
      - verify `receiveWithAuthorization` settlement tx;
      - verify entitlement/raw access if applicable.
    - Regression:
