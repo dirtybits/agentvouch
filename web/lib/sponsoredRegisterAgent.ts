@@ -40,6 +40,7 @@ import {
   fetchTokenAccountState,
   formatUsdcMicros,
   getMaxSetupFeeCap,
+  getSponsoredTransactionDebug,
   getSponsoredCoreInstructions,
   getSponsorFeeDestination,
   getTransactionFeeLamports,
@@ -85,6 +86,7 @@ export type SponsoredRegisterAgentPrepareResult = {
     authorityUsdcAccount: string;
     sponsorUsdcFeeDestination: string | null;
   };
+  debug: ReturnType<typeof getSponsoredTransactionDebug>;
   expiresAt: string;
 };
 
@@ -333,7 +335,7 @@ export async function prepareSponsoredRegisterAgent(
     );
   }
 
-  const transaction = buildTransaction({
+  let transaction = buildTransaction({
     context,
     blockhash: latestBlockhash.blockhash,
     setupFeeUsdcMicros: quote.setupFeeUsdcMicros,
@@ -341,6 +343,13 @@ export async function prepareSponsoredRegisterAgent(
   });
   if (sponsor.mode === "bespoke") {
     transaction.partialSign(sponsor.keypair);
+  } else {
+    transaction = await signTransactionWithKora(transaction);
+    if (!transaction.verifySignatures(false)) {
+      throw new Error(
+        "Kora-prepared sponsored registration signature is invalid"
+      );
+    }
   }
 
   return {
@@ -363,6 +372,7 @@ export async function prepareSponsoredRegisterAgent(
       authorityUsdcAccount: context.authorityUsdcAccount.toBase58(),
       sponsorUsdcFeeDestination: sponsorFeeDestination?.toBase58() ?? null,
     },
+    debug: getSponsoredTransactionDebug(transaction, sponsor.publicKey),
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   };
 }
@@ -525,18 +535,10 @@ export async function submitSponsoredRegisterAgent(
   if (!serializedTransaction || typeof serializedTransaction !== "string") {
     throw new Error("serializedTransaction is required");
   }
-  let transaction = Transaction.from(
+  const transaction = Transaction.from(
     Buffer.from(serializedTransaction, "base64")
   );
   const validation = await validateSubmittedTransaction(transaction);
-  if (validation.sponsorMode === "kora") {
-    transaction = await signTransactionWithKora(transaction);
-    if (!transaction.verifySignatures()) {
-      throw new Error(
-        "Kora-signed sponsored registration signatures are invalid"
-      );
-    }
-  }
   const simulation = await validation.connection.simulateTransaction(
     transaction
   );
