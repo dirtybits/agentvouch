@@ -661,6 +661,10 @@ export type MarketplaceBrowseSnapshot = {
  * Server-render seed for the default /skills browse view (page 1, trusted
  * sort, no filters) — the same fast path the API serves with mode=fast.
  * Returns null on any failure so the page falls back to client fetching.
+ *
+ * EVM chain reads are intentionally skipped here (matching mode=fast) so that
+ * Base Sepolia RPC latency doesn't block the server render. MarketplaceClient
+ * fetches fresh data from /api/skills after hydration.
  */
 export async function loadMarketplaceBrowseSnapshot(input: {
   pageSize: number;
@@ -668,7 +672,7 @@ export async function loadMarketplaceBrowseSnapshot(input: {
   try {
     await initializeDatabase();
     const rows = await loadRepoSkillRows({});
-    const skills = await hydrateEvmRepoSkillRows(normalizeRepoSkillRows(rows));
+    const skills = normalizeRepoSkillRows(rows);
     const enriched = buildEnrichedSkillRows({
       skills,
       useCachedTrust: true,

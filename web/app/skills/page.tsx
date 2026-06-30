@@ -5,7 +5,7 @@ import {
 } from "@/lib/marketplaceBrowse";
 import MarketplaceClient from "./MarketplaceClient";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 type InitialSkills = ComponentProps<typeof MarketplaceClient>["initialSkills"];
 
