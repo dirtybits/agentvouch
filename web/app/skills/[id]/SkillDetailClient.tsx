@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { type TrustData } from "@/components/TrustBadge";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
@@ -298,7 +297,6 @@ export default function SkillDetailPage({
   id: string;
   initialSkill?: SkillDetail | null;
 }) {
-  const searchParams = useSearchParams();
   const { status, account, walletName } = useAgentVouchWallet();
   const {
     signer: protocolTransactionSigner,
@@ -393,7 +391,18 @@ export default function SkillDetailPage({
   const displaySummaryLine = aiSummaryLine ?? capabilitySummary;
   const displayCapabilities =
     aiCapabilities.length > 0 ? aiCapabilities : capabilityBullets;
-  const requestedAuthorAction = searchParams.get("authorAction");
+  // Author deep-link actions (e.g. ?authorAction=edit-listing) are read on the
+  // client only. useSearchParams() would bail this page out of static/ISR
+  // rendering (the CSR-bailout build error), so read window.location.search
+  // after mount instead — the consuming effect below already runs post-hydration.
+  const [requestedAuthorAction, setRequestedAuthorAction] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    setRequestedAuthorAction(
+      new URLSearchParams(window.location.search).get("authorAction")
+    );
+  }, []);
 
   useEffect(() => {
     currentWalletAddressRef.current = walletAddress;
