@@ -1,0 +1,13 @@
+# Single in-memory sponsor signer for the spike.
+# The private key is read from the KORA_PRIVATE_KEY env var (base58 of the 64-byte
+# keypair), which is sourced from macOS-local file .agent-keys/kora/signer.json at launch.
+# Production would swap type = "memory" for "turnkey" / "vault" / "privy" (HSM-backed).
+
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "agentvouch-sponsor"
+type = "memory"
+private_key_env = "KORA_PRIVATE_KEY"
+weight = 1

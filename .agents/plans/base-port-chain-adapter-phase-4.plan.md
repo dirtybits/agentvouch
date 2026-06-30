@@ -103,12 +103,14 @@ handler. Do not move account creation into render, `useEffect`, route handlers, 
 ## Implementation steps
 
 1. **Boundary audit (`lock-wallet-boundary`)**
+
    - Grep for current `useAgentVouchWallet` consumers and categorize them as display-only,
      Solana signer use, purchase, publish, or author actions.
    - Decide whether Phase 4 introduces a new `useChainWallet()` hook or extends the existing
      provider. Record the decision in this file before coding.
 
 2. **Client-safe config (`add-base-wallet-config`)**
+
    - Expose Base Sepolia client config without requiring server secrets in browser bundles.
    - Keep CDP paymaster/bundler URL handling explicit. If it must be public for the client flow,
      use a clearly named `NEXT_PUBLIC_*` env and document that this is a paymaster endpoint, not a
@@ -116,18 +118,21 @@ handler. Do not move account creation into render, `useEffect`, route handlers, 
    - Fail closed with a clear UI state if the required Base wallet config is missing.
 
 3. **Passkey account helper (`lift-passkey-account`)**
+
    - Lift the POC passkey logic into a client-only module.
    - Use a production-localStorage namespace such as `agentvouch:base-sepolia:passkey`.
    - Return the smart-account address and signer/account object needed by Phase 5, but keep write
      methods as unsupported stubs until Phase 5.
 
 4. **Chain-aware wallet state (`introduce-chain-wallet-hook`)**
+
    - Represent the active wallet as a `ChainWallet` or a narrow connected-wallet state that includes
      `chainContext`, `address`, `walletName`, `source`, `connect`, and `disconnect`.
    - Keep Solana signer APIs available to existing Solana-only flows.
    - Make effect dependencies stable/memoized to avoid repeated connect attempts or RPC spam.
 
 5. **UI wiring (`wire-wallet-ui`)**
+
    - Add Base Sepolia as an explicit wallet/network option wherever the user chooses a chain.
    - Render EVM addresses through chain-aware formatting (`0x1234...abcd`), not Solana helpers.
    - Keep Phase 3b Base cards non-purchasable. The connected Base wallet should not unlock Base

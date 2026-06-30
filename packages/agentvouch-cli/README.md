@@ -78,6 +78,7 @@ agentvouch agent trust <pubkey>
 
 ```bash
 agentvouch vouch create --author <pubkey> --amount-usdc 1 --keypair ~/.config/solana/id.json
+agentvouch vouch claim --author <pubkey> --keypair ~/.config/solana/id.json
 ```
 
 ## License

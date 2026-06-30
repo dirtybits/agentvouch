@@ -101,7 +101,9 @@ describe("skill detail source", () => {
     );
     expect(clientSource).toContain("useState(!initialSkill)");
     expect(clientSource).toContain("refreshSkill({ includeBuyer: false })");
-    expect(clientSource).toContain("refreshSkill({ includeBuyer: true })");
+    expect(clientSource).toContain(
+      "refreshSkill({ includeBuyer: true, buyerAddress: walletAddress })"
+    );
     expect(clientSource).toContain('params.set("trust", "live")');
     expect(clientSource).toContain('cache: "no-store"');
     expect(clientSource).not.toContain("if (skill) return");

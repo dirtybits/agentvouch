@@ -374,6 +374,9 @@ export default function SkillDetailPage({
     message: string;
   } | null>(null);
   const handledAuthorActionRef = useRef<string | null>(null);
+  const currentWalletAddressRef = useRef<string | null>(walletAddress);
+  const lastWalletAddressRef = useRef<string | null>(walletAddress);
+  const skillRefreshSeqRef = useRef(0);
   const capabilitySummary = extractCapabilitySummary(
     content,
     skill?.description ?? null
@@ -392,14 +395,25 @@ export default function SkillDetailPage({
     aiCapabilities.length > 0 ? aiCapabilities : capabilityBullets;
   const requestedAuthorAction = searchParams.get("authorAction");
 
+  useEffect(() => {
+    currentWalletAddressRef.current = walletAddress;
+  }, [walletAddress]);
+
   const refreshSkill = useCallback(
-    async (options?: { includeBuyer?: boolean }) => {
+    async (options?: {
+      includeBuyer?: boolean;
+      buyerAddress?: string | null;
+    }) => {
+      const requestSeq = ++skillRefreshSeqRef.current;
+      const buyerForRequest =
+        options?.buyerAddress ??
+        (options?.includeBuyer ? currentWalletAddressRef.current : null);
       try {
         const params = new URLSearchParams();
         params.set("trust", "live");
-        const includeBuyer = options?.includeBuyer ?? Boolean(walletAddress);
-        if (includeBuyer && walletAddress)
-          params.set("buyer", String(walletAddress));
+        const includeBuyer = options?.includeBuyer ?? Boolean(buyerForRequest);
+        if (includeBuyer && buyerForRequest)
+          params.set("buyer", String(buyerForRequest));
         const query = params.toString();
         const detailRes = await fetch(
           `/api/skills/${id}${query ? `?${query}` : ""}`,
@@ -409,6 +423,7 @@ export default function SkillDetailPage({
         );
         if (!detailRes.ok) throw new Error("Skill not found");
         const data = await detailRes.json();
+        if (requestSeq !== skillRefreshSeqRef.current) return;
         setSkill(data);
         if (data.content) {
           setContent(data.content);
@@ -419,7 +434,7 @@ export default function SkillDetailPage({
         setLoading(false);
       }
     },
-    [id, walletAddress]
+    [id]
   );
 
   useEffect(() => {
@@ -429,8 +444,26 @@ export default function SkillDetailPage({
   const loadedSkillId = skill?.id ?? null;
 
   useEffect(() => {
+    if (lastWalletAddressRef.current === walletAddress) return;
+    lastWalletAddressRef.current = walletAddress;
+    skillRefreshSeqRef.current += 1;
+    setSkill((current) =>
+      current
+        ? {
+            ...current,
+            buyerHasPurchased: false,
+            buyerPurchaseSummary: null,
+          }
+        : current
+    );
+    setDownloadResult(null);
+    setInstallResult(null);
+    setUsdcPurchaseTx(null);
+  }, [walletAddress]);
+
+  useEffect(() => {
     if (!walletAddress || !loadedSkillId) return;
-    void refreshSkill({ includeBuyer: true });
+    void refreshSkill({ includeBuyer: true, buyerAddress: walletAddress });
   }, [refreshSkill, loadedSkillId, walletAddress]);
 
   const copyToClipboard = (text: string, label: string) => {

@@ -1,0 +1,70 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getErrorMessage } from "@/lib/errors";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/rateLimit";
+import { submitSponsoredRegisterAgent } from "@/lib/sponsoredRegisterAgent";
+
+export const dynamic = "force-dynamic";
+
+type SubmitBody = {
+  signedTransaction?: unknown;
+  transaction?: unknown;
+  serializedTransaction?: unknown;
+};
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function POST(request: NextRequest) {
+  const rate = checkRateLimit(
+    `sponsored-register-submit:${clientIpFromRequest(request)}`,
+    { limit: 15, windowMs: 60_000 }
+  );
+  if (!rate.ok) {
+    return NextResponse.json(
+      { error: "Too many sponsored registration requests" },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      }
+    );
+  }
+
+  let body: SubmitBody;
+  try {
+    body = (await request.json()) as SubmitBody;
+  } catch {
+    return NextResponse.json(
+      { error: "Request body must be valid JSON" },
+      { status: 400 }
+    );
+  }
+
+  const serializedTransaction =
+    stringOrNull(body.signedTransaction) ??
+    stringOrNull(body.serializedTransaction) ??
+    stringOrNull(body.transaction);
+  if (!serializedTransaction) {
+    return NextResponse.json(
+      { error: "signedTransaction is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const result = await submitSponsoredRegisterAgent(serializedTransaction);
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, "Failed to submit registration");
+    const status =
+      /signature|instruction|mismatch|missing|required|invalid|malformed/i.test(
+        message
+      )
+        ? 400
+        : /balance|paused|already has a registered/i.test(message)
+        ? 409
+        : 500;
+    console.warn("[sponsored-register-agent:submit]", message);
+    return NextResponse.json({ error: message }, { status });
+  }
+}

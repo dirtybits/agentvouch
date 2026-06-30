@@ -25,6 +25,10 @@ Set preview and production deliberately. Do not assume local `.env.local`, Verce
 | `SOLANA_CHAIN_CONTEXT`             | yes         | Server-side CAIP-2 chain label                               |
 | `NEXT_PUBLIC_SOLANA_CHAIN_CONTEXT` | yes         | Browser-visible CAIP-2 chain label                           |
 | `NEXT_PUBLIC_APP_URL`              | recommended | Canonical public URL for generated links                     |
+| `USDC_MINT_ADDRESS`                | recommended | Explicit USDC mint override; defaults by configured chain     |
+| `FACILITATOR_URL`                  | bridge-only | x402 facilitator base URL; defaults to `https://x402.org/facilitator` |
+| `FACILITATOR_AUTH_HEADER`          | bridge-only | Optional `Authorization` header value for facilitators that require it |
+| `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED` | bridge-only | Enables protocol-listed x402 bridge purchases when set to `true`; keep unset/false unless the full bridge smoke is approved |
 
 Keep `SOLANA_RPC_URL` and `NEXT_PUBLIC_SOLANA_RPC_URL` on the same cluster. A mismatch can make wallet flows look like protocol bugs.
 
@@ -100,7 +104,7 @@ Record the authority pubkeys for each environment before production changes:
 
 ## Emergency Pause
 
-A3 adds `set_paused(paused: bool)`, gated by `config.pause_authority`. Treat it as a narrow emergency brake: it stops new protocol exposure while leaving buyer and voucher claim paths open where funds are already allocated.
+The deployed devnet program includes `set_paused(paused: bool)`, gated by `config.pause_authority`. Treat it as a narrow emergency brake: it stops new protocol exposure while leaving buyer and voucher claim paths open where funds are already allocated.
 
 Use pause for suspected protocol bugs, compromised authorities, bad IDL/client deploys, x402 settlement issues, accounting incidents, or any live flow where continued purchases/vouches/listings could widen the blast radius.
 
@@ -134,7 +138,21 @@ Pause procedure:
 5. Record the transaction signature, reason, owner, and user-communication threshold.
 6. Unpause only after root cause is understood, client/IDL surfaces match the deployed program, and a normal flow smoke passes.
 
-Do not update `docs/DEVNET_STATE.md` or `web/public/skill.md` for pause behavior until the program containing `set_paused` is actually deployed and smoked.
+When pause behavior changes, update `docs/DEVNET_STATE.md`, `web/public/skill.md`, and public docs only after the active program, synced IDL/client, and smoke results all agree.
+
+## x402 Bridge Operations
+
+The protocol-listed x402 bridge path is feature-flagged by `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`. Keep it disabled unless the release owner explicitly approves a bridge smoke that covers wallet auth, x402 requirement generation, facilitator verify/settle, vault credit verification, `settle_x402_purchase`, entitlement recording, and raw download.
+
+Before enabling the bridge in preview or production:
+
+1. Confirm `FACILITATOR_URL`, optional `FACILITATOR_AUTH_HEADER`, `USDC_MINT_ADDRESS`, Solana RPC, chain context, and the active `ReputationConfig.x402_settlement_vault` all point at the same environment.
+2. Confirm the facilitator advertises the configured Solana exact network and fee payer through `/supported`.
+3. Confirm the settlement destination is the stock-compatible x402 settlement vault ATA recorded in `docs/DEVNET_STATE.md`.
+4. Run the bridge POC/smoke in preview, then repeat against the promoted deployment before announcing support.
+5. Reconcile x402 facilitator signatures, `X402SettlementReceipt` PDAs, `Purchase` PDAs, and `usdc_purchase_entitlements` rows for the smoke purchase.
+
+Rollback: unset `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED` or set it to `false`, redeploy/promote, and confirm protocol-listed paid skills fall back to `payment_flow: direct-purchase-skill`.
 
 ## Settlement And Refund Incidents
 

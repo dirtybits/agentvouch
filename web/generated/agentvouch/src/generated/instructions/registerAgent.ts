@@ -33,6 +33,7 @@ import {
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
+  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
@@ -60,6 +61,7 @@ export type RegisterAgentInstruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
   TAccountAgentProfile extends string | AccountMeta<string> = string,
   TAccountAuthority extends string | AccountMeta<string> = string,
+  TAccountRentPayer extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -71,9 +73,13 @@ export type RegisterAgentInstruction<
         ? WritableAccount<TAccountAgentProfile>
         : TAccountAgentProfile,
       TAccountAuthority extends string
-        ? WritableSignerAccount<TAccountAuthority> &
+        ? ReadonlySignerAccount<TAccountAuthority> &
             AccountSignerMeta<TAccountAuthority>
         : TAccountAuthority,
+      TAccountRentPayer extends string
+        ? WritableSignerAccount<TAccountRentPayer> &
+            AccountSignerMeta<TAccountRentPayer>
+        : TAccountRentPayer,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -118,10 +124,20 @@ export function getRegisterAgentInstructionDataCodec(): Codec<
 export type RegisterAgentAsyncInput<
   TAccountAgentProfile extends string = string,
   TAccountAuthority extends string = string,
+  TAccountRentPayer extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   agentProfile?: Address<TAccountAgentProfile>;
+  /**
+   * The agent identity being registered. Signs to authorize, but does NOT pay rent —
+   * so a gas/rent sponsor (e.g. Kora) can register a user holding zero SOL.
+   */
   authority: TransactionSigner<TAccountAuthority>;
+  /**
+   * Funds the AgentProfile PDA rent on first registration. Set equal to `authority` for
+   * the self-funded path, or to a sponsor for gasless onboarding. Mirrors purchase_skill.
+   */
+  rentPayer: TransactionSigner<TAccountRentPayer>;
   systemProgram?: Address<TAccountSystemProgram>;
   metadataUri: RegisterAgentInstructionDataArgs["metadataUri"];
 };
@@ -129,12 +145,14 @@ export type RegisterAgentAsyncInput<
 export async function getRegisterAgentInstructionAsync<
   TAccountAgentProfile extends string,
   TAccountAuthority extends string,
+  TAccountRentPayer extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
   input: RegisterAgentAsyncInput<
     TAccountAgentProfile,
     TAccountAuthority,
+    TAccountRentPayer,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -143,6 +161,7 @@ export async function getRegisterAgentInstructionAsync<
     TProgramAddress,
     TAccountAgentProfile,
     TAccountAuthority,
+    TAccountRentPayer,
     TAccountSystemProgram
   >
 > {
@@ -152,7 +171,8 @@ export async function getRegisterAgentInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     agentProfile: { value: input.agentProfile ?? null, isWritable: true },
-    authority: { value: input.authority ?? null, isWritable: true },
+    authority: { value: input.authority ?? null, isWritable: false },
+    rentPayer: { value: input.rentPayer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -182,6 +202,7 @@ export async function getRegisterAgentInstructionAsync<
     accounts: [
       getAccountMeta("agentProfile", accounts.agentProfile),
       getAccountMeta("authority", accounts.authority),
+      getAccountMeta("rentPayer", accounts.rentPayer),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getRegisterAgentInstructionDataEncoder().encode(
@@ -192,6 +213,7 @@ export async function getRegisterAgentInstructionAsync<
     TProgramAddress,
     TAccountAgentProfile,
     TAccountAuthority,
+    TAccountRentPayer,
     TAccountSystemProgram
   >);
 }
@@ -199,10 +221,20 @@ export async function getRegisterAgentInstructionAsync<
 export type RegisterAgentInput<
   TAccountAgentProfile extends string = string,
   TAccountAuthority extends string = string,
+  TAccountRentPayer extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   agentProfile: Address<TAccountAgentProfile>;
+  /**
+   * The agent identity being registered. Signs to authorize, but does NOT pay rent —
+   * so a gas/rent sponsor (e.g. Kora) can register a user holding zero SOL.
+   */
   authority: TransactionSigner<TAccountAuthority>;
+  /**
+   * Funds the AgentProfile PDA rent on first registration. Set equal to `authority` for
+   * the self-funded path, or to a sponsor for gasless onboarding. Mirrors purchase_skill.
+   */
+  rentPayer: TransactionSigner<TAccountRentPayer>;
   systemProgram?: Address<TAccountSystemProgram>;
   metadataUri: RegisterAgentInstructionDataArgs["metadataUri"];
 };
@@ -210,12 +242,14 @@ export type RegisterAgentInput<
 export function getRegisterAgentInstruction<
   TAccountAgentProfile extends string,
   TAccountAuthority extends string,
+  TAccountRentPayer extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AGENTVOUCH_PROGRAM_ADDRESS,
 >(
   input: RegisterAgentInput<
     TAccountAgentProfile,
     TAccountAuthority,
+    TAccountRentPayer,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -223,6 +257,7 @@ export function getRegisterAgentInstruction<
   TProgramAddress,
   TAccountAgentProfile,
   TAccountAuthority,
+  TAccountRentPayer,
   TAccountSystemProgram
 > {
   // Program address.
@@ -231,7 +266,8 @@ export function getRegisterAgentInstruction<
   // Original accounts.
   const originalAccounts = {
     agentProfile: { value: input.agentProfile ?? null, isWritable: true },
-    authority: { value: input.authority ?? null, isWritable: true },
+    authority: { value: input.authority ?? null, isWritable: false },
+    rentPayer: { value: input.rentPayer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -253,6 +289,7 @@ export function getRegisterAgentInstruction<
     accounts: [
       getAccountMeta("agentProfile", accounts.agentProfile),
       getAccountMeta("authority", accounts.authority),
+      getAccountMeta("rentPayer", accounts.rentPayer),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getRegisterAgentInstructionDataEncoder().encode(
@@ -263,6 +300,7 @@ export function getRegisterAgentInstruction<
     TProgramAddress,
     TAccountAgentProfile,
     TAccountAuthority,
+    TAccountRentPayer,
     TAccountSystemProgram
   >);
 }
@@ -274,8 +312,17 @@ export type ParsedRegisterAgentInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     agentProfile: TAccountMetas[0];
+    /**
+     * The agent identity being registered. Signs to authorize, but does NOT pay rent —
+     * so a gas/rent sponsor (e.g. Kora) can register a user holding zero SOL.
+     */
     authority: TAccountMetas[1];
-    systemProgram: TAccountMetas[2];
+    /**
+     * Funds the AgentProfile PDA rent on first registration. Set equal to `authority` for
+     * the self-funded path, or to a sponsor for gasless onboarding. Mirrors purchase_skill.
+     */
+    rentPayer: TAccountMetas[2];
+    systemProgram: TAccountMetas[3];
   };
   data: RegisterAgentInstructionData;
 };
@@ -288,12 +335,12 @@ export function parseRegisterAgentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRegisterAgentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 4) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 3,
+        expectedAccountMetas: 4,
       },
     );
   }
@@ -308,6 +355,7 @@ export function parseRegisterAgentInstruction<
     accounts: {
       agentProfile: getNextAccount(),
       authority: getNextAccount(),
+      rentPayer: getNextAccount(),
       systemProgram: getNextAccount(),
     },
     data: getRegisterAgentInstructionDataDecoder().decode(instruction.data),
