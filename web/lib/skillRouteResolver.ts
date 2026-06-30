@@ -108,7 +108,10 @@ export async function listStaticSkillRouteParams(
       ORDER BY created_at DESC
       LIMIT ${limit}
     `;
-    return rows.map((r) => ({ id: r.public_author_slug, skill: r.public_slug }));
+    return rows.map((r) => ({
+      id: r.public_author_slug,
+      skill: r.public_slug,
+    }));
   } catch {
     return [];
   }
