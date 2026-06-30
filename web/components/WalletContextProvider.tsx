@@ -168,22 +168,6 @@ const solanaChainContext = getConfiguredSolanaChainContext();
 const baseWalletConfigError = baseWalletConfigured
   ? null
   : BASE_WALLET_UNCONFIGURED_MESSAGE;
-const BasePasskeyWalletContext = createContext<BasePasskeyWalletContextValue>({
-  status: "disconnected",
-  account: null,
-  walletName: null,
-  source: null,
-  chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-  chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
-  configured: baseWalletConfigured,
-  config: baseWalletConfig,
-  error: baseWalletConfigError,
-  chainWallet: null,
-  connect: async () => {
-    throw new Error("Base wallet provider is not mounted");
-  },
-  disconnect: async () => {},
-});
 
 const AgentVouchChainWalletContext =
   createContext<AgentVouchChainWalletContextValue>({
@@ -226,7 +210,6 @@ const AgentVouchChainWalletContext =
 export const useAgentVouchWallet = () => useContext(AgentVouchWalletContext);
 export const useAgentVouchWalletSigner = () =>
   useContext(AgentVouchWalletSignerContext);
-export const useBasePasskeyWallet = () => useContext(BasePasskeyWalletContext);
 export const useChainWallet = () => useContext(AgentVouchChainWalletContext);
 
 const ENDPOINT =
@@ -641,6 +624,15 @@ function AgentVouchWalletBridge({
       .catch((error) => {
         if (cancelled) return;
         console.warn("Failed to restore Base passkey wallet:", error);
+        // Surface the failure instead of leaving the user silently
+        // disconnected; restoreBasePasskeyAccount has already cleared the
+        // active flag so this won't loop on reload.
+        setBaseStatus("error");
+        setBaseError(
+          error instanceof Error
+            ? error.message
+            : "Failed to restore Base passkey wallet"
+        );
       });
 
     return () => {
@@ -769,6 +761,17 @@ function AgentVouchWalletBridge({
       throw error;
     }
   }, []);
+
+  // Enforce a single active wallet. Solana takes priority everywhere else
+  // (chainWalletValue, the header pill), so drop any live Base passkey session
+  // once a Solana wallet connects. Without this, a reload that both
+  // auto-connects Solana and restores a Base passkey leaves the Base session
+  // live in state and localStorage with no rendered control to disconnect it.
+  useEffect(() => {
+    if (status === "connected" && account && baseSmartAccount) {
+      void disconnectBasePasskey();
+    }
+  }, [status, account, baseSmartAccount, disconnectBasePasskey]);
 
   const baseChainWallet = useMemo<ChainWallet | null>(() => {
     if (!baseSmartAccount) return null;
@@ -908,11 +911,9 @@ function AgentVouchWalletBridge({
   return (
     <AgentVouchWalletContext.Provider value={walletValue}>
       <AgentVouchWalletSignerContext.Provider value={signerValue}>
-        <BasePasskeyWalletContext.Provider value={baseWalletValue}>
-          <AgentVouchChainWalletContext.Provider value={chainWalletValue}>
-            {children}
-          </AgentVouchChainWalletContext.Provider>
-        </BasePasskeyWalletContext.Provider>
+        <AgentVouchChainWalletContext.Provider value={chainWalletValue}>
+          {children}
+        </AgentVouchChainWalletContext.Provider>
       </AgentVouchWalletSignerContext.Provider>
     </AgentVouchWalletContext.Provider>
   );

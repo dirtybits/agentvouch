@@ -78,8 +78,22 @@ export async function restoreBasePasskeyAccount(): Promise<BasePasskeySmartAccou
   if (!getBaseWalletConfig().configured) return null;
   if (!isPasskeyActive()) return null;
   const credential = readStoredCredential();
-  if (!credential) return null;
-  return accountForCredential(credential);
+  if (!credential) {
+    // Active flag set but no usable credential (cleared/corrupt storage). Clear
+    // the flag so we stop silently re-attempting an impossible restore.
+    setPasskeyActive(false);
+    return null;
+  }
+  try {
+    return await accountForCredential(credential);
+  } catch (error) {
+    // Couldn't reconstruct the smart account (e.g. RPC error or bad credential).
+    // Clear the active flag so the failure doesn't repeat silently on every
+    // reload; the stored credential is kept, so reconnect re-derives the same
+    // account without a fresh passkey prompt.
+    setPasskeyActive(false);
+    throw error;
+  }
 }
 
 export async function createBasePasskeyAccount(): Promise<BasePasskeySmartAccount> {
