@@ -15,8 +15,8 @@ todos:
     content: In SkillDetailClient.tsx skip the on-mount refreshSkill() when initialSkill is present, so anonymous views render from the SSR snapshot and stop triggering /api/skills/[id]?trust=live (the on-chain path) on every load.
     status: completed
   - id: verify-cache-and-paint
-    content: Local build/typecheck/lint DONE 2026-06-30 (route reclassified to ● ISR). PENDING post-deploy — confirm cache-control no longer no-store, 2nd hit x-vercel-cache HIT with sub-150ms TTFB, and an anonymous load fires no ?trust=live request.
-    status: in_progress
+    content: DONE 2026-06-30 on preview da6ac8c — cache-control public (was no-store), x-vercel-cache HIT, TTFB ~0.10-0.13s vs prod 0.48-0.71s, SSR content preserved (117KB), anonymous load fired 0 /api/skills/ + 0 ?trust=live (browser-verified). React #418 hydration warning is pre-existing (on prod too); tracked separately.
+    status: completed
 isProject: false
 ---
 
@@ -225,8 +225,32 @@ Local verification (Node 24, deps reflinked via `scripts/worktree-setup.sh --web
   `generateStaticParams` returned `[]` (no prod prerender, no trust-refresh writes); on deploy
   it prerenders the top ~200 and on-demand-caches the rest under the 300s policy.
 
-PENDING (needs a deploy; tracked by `verify-cache-and-paint`): confirm `cache-control` is no
-longer `no-store`, the 2nd hit is `x-vercel-cache: HIT` with sub-150ms TTFB, and an anonymous
-load fires no `?trust=live`. Not done locally because dev mode renders dynamically (ISR is not
-observable in dev) and a real-data render would require pointing local dev at the production DB,
-which would risk build/render-time `after()` trust-refresh writes to prod.
+### Follow-up fix (commit da6ac8c)
+The first preview build (1592e33) FAILED at static prerender: `SkillDetailClient` called
+`useSearchParams()`, which is fine for a dynamic page but triggers a CSR bailout once
+`generateStaticParams` makes Next prerender real paths ("useSearchParams() should be wrapped in a
+suspense boundary"). The local DB-less build missed it (`generateStaticParams` returned `[]`, so
+nothing prerendered). Fixed by reading `?authorAction` from `window.location.search` in a
+post-mount effect instead of `useSearchParams()` — preserves SSR content (no Suspense fallback
+shell) and is behavior-neutral (that param only drives a post-hydration effect). Confirmed no
+other `useSearchParams`/CSR-bailout hooks in the page tree (`usePathname()` in the navbar is fine).
+
+### Deploy verification (2026-06-30, preview da6ac8c = agentvouch-cmtber525…vercel.app)
+Build READY (commit status: success). Measured on `/skills/wallet-asuavudg/subagent-orchestration`:
+- **cache-control**: `public, max-age=0, must-revalidate` + `x-nextjs-prerender: 1`,
+  `x-nextjs-stale-time: 300` — the previous `private, no-cache, no-store` is gone.
+- **x-vercel-cache: HIT** on every hit (this page is in the prerendered top-200).
+- **TTFB ~0.097-0.13s** vs the production baseline 0.48-0.71s on the same skill (4-7x faster).
+- **SSR content preserved**: prerendered HTML is 117 KB with full skill content ("subagent" ×54,
+  "orchestration" ×59) — not a client-only Suspense shell.
+- **Anonymous load fired 0 `/api/skills/` and 0 `?trust=live` requests** (headless browser,
+  `performance.getEntriesByType('resource')`), confirming the #4 guard.
+
+Note (out of scope, pre-existing): the skill page logs `Minified React error #418` (text-content
+hydration mismatch) — present on production too, so NOT introduced by this change. Likely suspect
+`formatDate` (`toLocaleDateString`, SkillDetailClient.tsx:168) rendering timezone-dependent text.
+Flagged as a separate task.
+
+Long-tail (non-prerendered) skills follow the standard on-demand ISR path: first hit renders +
+caches (MISS), subsequent hits HIT — the prerendered headline case is verified; on-demand not
+separately demonstrated.
