@@ -438,8 +438,14 @@ export default function SkillDetailPage({
   );
 
   useEffect(() => {
+    // SSR already hydrated the snapshot (incl. cached author trust), so skip the
+    // on-mount refresh for anonymous views — it otherwise forces
+    // /api/skills/[id]?trust=live (the on-chain trust path) on every page load.
+    // Chain skills / SSR misses (initialSkill == null) still need this fetch; a
+    // connected wallet is covered by the buyer-refresh effect below.
+    if (initialSkill) return;
     void refreshSkill({ includeBuyer: false });
-  }, [refreshSkill]);
+  }, [refreshSkill, initialSkill]);
 
   const loadedSkillId = skill?.id ?? null;
 
