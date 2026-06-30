@@ -8,6 +8,7 @@ import {
 import {
   assertBuyerIsNotSponsor,
   assertSponsoredTransactionSignatures,
+  getSponsoredTransactionDebug,
   getSponsoredCoreInstructions,
 } from "@/lib/sponsoredPurchase";
 import { bufferKoraTokenFee, getSponsoredSponsorMode } from "@/lib/koraSponsor";
@@ -80,7 +81,7 @@ describe("sponsored transaction signatures", () => {
     return { buyer, sponsor, transaction };
   }
 
-  it("allows Kora submit transactions with only the user signature present", () => {
+  it("requires Kora submit transactions to include the prepared sponsor signature", () => {
     const { sponsor, transaction } = buildUserSignedTransaction();
     expect(() =>
       assertSponsoredTransactionSignatures({
@@ -89,7 +90,42 @@ describe("sponsored transaction signatures", () => {
         sponsorMode: "kora",
         label: "test transaction",
       })
+    ).toThrow(/missing the Kora sponsor signature/i);
+  });
+
+  it("allows Kora submit transactions with sponsor and user signatures present", () => {
+    const { sponsor, transaction } = buildUserSignedTransaction();
+    transaction.partialSign(sponsor);
+    expect(() =>
+      assertSponsoredTransactionSignatures({
+        transaction,
+        sponsor: sponsor.publicKey,
+        sponsorMode: "kora",
+        label: "test transaction",
+      })
     ).not.toThrow();
+  });
+
+  it("reports whether the prepared sponsor signature is attached", () => {
+    const { sponsor, transaction } = buildUserSignedTransaction();
+    expect(
+      getSponsoredTransactionDebug(transaction, sponsor.publicKey)
+    ).toMatchObject({
+      sponsorSignerPresent: true,
+      sponsorSignaturePresent: false,
+      requiredSignatures: 2,
+      presentSignatures: 1,
+    });
+
+    transaction.partialSign(sponsor);
+    expect(
+      getSponsoredTransactionDebug(transaction, sponsor.publicKey)
+    ).toMatchObject({
+      sponsorSignerPresent: true,
+      sponsorSignaturePresent: true,
+      requiredSignatures: 2,
+      presentSignatures: 2,
+    });
   });
 
   it("keeps bespoke submit transactions fully signed", () => {

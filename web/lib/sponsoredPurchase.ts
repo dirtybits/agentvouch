@@ -92,6 +92,7 @@ export type SponsoredPurchasePrepareResult = {
     buyerUsdcAccount: string;
     sponsorUsdcFeeDestination: string | null;
   };
+  debug: SponsoredTransactionDebug;
   expiresAt: string;
 };
 
@@ -239,6 +240,13 @@ export function loadSponsorKeypair() {
 export type SponsorSigningContext =
   | { mode: "bespoke"; publicKey: PublicKey; keypair: Keypair }
   | { mode: "kora"; publicKey: PublicKey; keypair: null };
+
+export type SponsoredTransactionDebug = {
+  sponsorSignerPresent: boolean;
+  sponsorSignaturePresent: boolean;
+  requiredSignatures: number;
+  presentSignatures: number;
+};
 
 export function resolveSponsorSigningContext(): SponsorSigningContext {
   const mode = getSponsoredSponsorMode();
@@ -717,7 +725,7 @@ export async function prepareSponsoredPurchase(
     );
   }
 
-  const transaction = buildTransaction({
+  let transaction = buildTransaction({
     context,
     blockhash: latestBlockhash.blockhash,
     setupFeeUsdcMicros: quote.setupFeeUsdcMicros,
@@ -725,6 +733,11 @@ export async function prepareSponsoredPurchase(
   });
   if (sponsor.mode === "bespoke") {
     transaction.partialSign(sponsor.keypair);
+  } else {
+    transaction = await signTransactionWithKora(transaction);
+    if (!transaction.verifySignatures(false)) {
+      throw new Error("Kora-prepared sponsored checkout signature is invalid");
+    }
   }
 
   return {
@@ -749,6 +762,7 @@ export async function prepareSponsoredPurchase(
       buyerUsdcAccount: context.buyerUsdcAccount.toBase58(),
       sponsorUsdcFeeDestination: sponsorFeeDestination?.toBase58() ?? null,
     },
+    debug: getSponsoredTransactionDebug(transaction, sponsor.publicKey),
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   };
 }
@@ -761,6 +775,23 @@ export function assertKey(
   if (!actual.equals(expected)) {
     throw new Error(`${label} mismatch`);
   }
+}
+
+export function getSponsoredTransactionDebug(
+  transaction: Transaction,
+  sponsor: PublicKey
+): SponsoredTransactionDebug {
+  const sponsorSignature = transaction.signatures.find((signature) =>
+    signature.publicKey.equals(sponsor)
+  );
+  return {
+    sponsorSignerPresent: !!sponsorSignature,
+    sponsorSignaturePresent: !!sponsorSignature?.signature,
+    requiredSignatures: transaction.signatures.length,
+    presentSignatures: transaction.signatures.filter(
+      (signature) => signature.signature !== null
+    ).length,
+  };
 }
 
 export function assertSponsoredTransactionSignatures(input: {
@@ -790,20 +821,20 @@ export function assertSponsoredTransactionSignatures(input: {
     return;
   }
 
-  if (sponsorSignature.signature !== null) {
+  if (sponsorSignature.signature === null) {
     throw new Error(
-      `${input.label} sponsor signature must be added by Kora on submit`
+      `${input.label} is missing the Kora sponsor signature; prepare a fresh sponsored transaction`
     );
   }
-  const missingUserSignature = input.transaction.signatures.find(
-    (signature) =>
-      !signature.publicKey.equals(input.sponsor) && signature.signature === null
-  );
-  if (missingUserSignature) {
-    throw new Error(`${input.label} is missing user signatures`);
+  if (
+    input.transaction.signatures.some(
+      (signature) => signature.signature === null
+    )
+  ) {
+    throw new Error(`${input.label} is missing signatures`);
   }
-  if (!input.transaction.verifySignatures(false)) {
-    throw new Error(`${input.label} user signatures are invalid`);
+  if (!input.transaction.verifySignatures()) {
+    throw new Error(`${input.label} signatures are invalid`);
   }
 }
 
@@ -995,16 +1026,10 @@ export async function submitSponsoredPurchase(
   if (!serializedTransaction || typeof serializedTransaction !== "string") {
     throw new Error("serializedTransaction is required");
   }
-  let transaction = Transaction.from(
+  const transaction = Transaction.from(
     Buffer.from(serializedTransaction, "base64")
   );
   const validation = await validateSubmittedTransaction(transaction);
-  if (validation.sponsorMode === "kora") {
-    transaction = await signTransactionWithKora(transaction);
-    if (!transaction.verifySignatures()) {
-      throw new Error("Kora-signed sponsored checkout signatures are invalid");
-    }
-  }
   const simulation = await validation.connection.simulateTransaction(
     transaction
   );

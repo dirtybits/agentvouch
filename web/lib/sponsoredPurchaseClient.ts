@@ -8,6 +8,13 @@ type ConnectorTransactionSigner = {
   signTransaction(transaction: unknown): Promise<unknown>;
 };
 
+type SponsoredTransactionDebug = {
+  sponsorSignerPresent: boolean;
+  sponsorSignaturePresent: boolean;
+  requiredSignatures: number;
+  presentSignatures: number;
+};
+
 type SponsoredPrepareResponse =
   | {
       transaction: string;
@@ -22,6 +29,7 @@ type SponsoredPrepareResponse =
         skillListing: string;
         purchase: string;
       };
+      debug: SponsoredTransactionDebug;
     }
   | { error: string };
 
@@ -321,6 +329,7 @@ type SponsoredRegisterPrepareResponse =
       encoding: "base64";
       quote: { setupFeeUsdcMicros: string };
       accounts: { authority: string; sponsor: string; agentProfile: string };
+      debug: SponsoredTransactionDebug;
     }
   | { error: string };
 
