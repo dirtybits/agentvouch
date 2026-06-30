@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { after } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import {
@@ -300,7 +301,11 @@ function scheduleSnapshotTrustRefresh(row: SkillDetailSnapshotRow) {
   }
 }
 
-export async function loadSkillDetailSnapshot(
+// Wrapped in React cache() so a single request (generateMetadata + the page
+// body) shares one result instead of running this ~7-table LATERAL JOIN twice.
+export const loadSkillDetailSnapshot = cache(loadSkillDetailSnapshotUncached);
+
+async function loadSkillDetailSnapshotUncached(
   skillDbId: string
 ): Promise<SkillDetailSnapshot | null> {
   await initializeDatabase();

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { initializeDatabase, sql, type SqlQuery } from "@/lib/db";
 import {
   CHAIN_SKILL_PREFIX,
@@ -65,21 +66,55 @@ export async function buildUniquePublicSkillRoute(
   };
 }
 
-export async function resolveSkillRoutePath(
-  rawAuthorSlug: string,
-  rawSkillSlug: string
-): Promise<SkillRouteRecord | null> {
-  await initializeDatabase();
-  const authorSlug = decodeURIComponent(rawAuthorSlug);
-  const skillSlug = decodeURIComponent(rawSkillSlug);
-  const rows = await sql()<SkillRouteRecord>`
-    SELECT id, skill_id, public_slug, public_author_slug
-    FROM skills
-    WHERE public_author_slug = ${authorSlug}
-      AND public_slug = ${skillSlug}
-    LIMIT 1
-  `;
-  return rows[0] ?? null;
+// Wrapped in React cache() so generateMetadata and the page body dedupe this
+// resolve within a single request instead of each issuing the same DB query.
+export const resolveSkillRoutePath = cache(
+  async (
+    rawAuthorSlug: string,
+    rawSkillSlug: string
+  ): Promise<SkillRouteRecord | null> => {
+    await initializeDatabase();
+    const authorSlug = decodeURIComponent(rawAuthorSlug);
+    const skillSlug = decodeURIComponent(rawSkillSlug);
+    const rows = await sql()<SkillRouteRecord>`
+      SELECT id, skill_id, public_slug, public_author_slug
+      FROM skills
+      WHERE public_author_slug = ${authorSlug}
+        AND public_slug = ${skillSlug}
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
+  }
+);
+
+// Route params for the most recent skills, consumed by the skill page's
+// generateStaticParams to prerender popular pages at build. Returns [] on any
+// failure so a build/DB hiccup degrades to all-on-demand ISR rather than
+// failing the build. Note: the [id] route segment is the AUTHOR slug and
+// [skill] is the skill slug (mirrors resolveSkillRoutePath's argument order).
+export async function listStaticSkillRouteParams(
+  limit = 200
+): Promise<{ id: string; skill: string }[]> {
+  try {
+    await initializeDatabase();
+    const rows = await sql()<{
+      public_author_slug: string;
+      public_slug: string;
+    }>`
+      SELECT public_author_slug, public_slug
+      FROM skills
+      WHERE public_author_slug IS NOT NULL
+        AND public_slug IS NOT NULL
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+    return rows.map((r) => ({
+      id: r.public_author_slug,
+      skill: r.public_slug,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function resolveSkillRouteParam(
