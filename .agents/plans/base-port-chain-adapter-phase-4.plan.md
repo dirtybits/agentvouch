@@ -3,23 +3,23 @@ name: base-port-chain-adapter-phase-4
 overview: "Phase 4 of the Base port: add a client-only Base Sepolia ChainWallet connection using the Coinbase Smart Wallet passkey flow from contracts/base-poc, while keeping BaseAdapter server-safe/read-only and preserving the existing Solana wallet path. This is the wallet/connect phase only; Base writes and x402 settlement stay in Phase 5."
 todos:
   - id: lock-wallet-boundary
-    content: "Confirm the file/module boundary before coding: BaseAdapter remains server-safe reads only; all viem account-abstraction, WebAuthn, Coinbase Smart Wallet, localStorage, and wallet SDK imports live only in client modules."
-    status: pending
+    content: "DONE 2026-06-30: boundary locked. BaseAdapter remains server-safe reads only; Base wallet code lives in client-only baseWallet/baseWalletConfig modules plus an additive provider context. useAgentVouchWallet stays Solana-compatible; useChainWallet exposes the new chain-aware surface."
+    status: completed
   - id: add-base-wallet-config
-    content: "Expose the minimal Base Sepolia wallet config needed by the client-only wallet layer: CAIP-2 chain_context=eip155:84532, AgentVouchEvm contract, USDC, RPC, CDP paymaster/bundler URL, and explorer helpers. Do not enable eip155:8453 mainnet."
-    status: pending
+    content: "DONE 2026-06-30: added client-only Base Sepolia wallet config for eip155:84532, AgentVouchEvm, USDC, RPC, optional public CDP paymaster/bundler URL, explorer helpers, and EVM address shortening. eip155:8453 mainnet remains disabled."
+    status: completed
   - id: lift-passkey-account
-    content: "Lift/adapt contracts/base-poc/ui/src/accounts/passkey.ts into the web app as a client-only helper. Preserve user-gesture WebAuthn creation, localStorage credential persistence, and Coinbase Smart Account address stability across reloads."
-    status: pending
+    content: "DONE 2026-06-30: added client-only Base passkey helper that creates Coinbase Smart Wallet accounts from a user-gesture WebAuthn prompt, persists the credential under agentvouch:base-sepolia:passkey, and restores the same smart-account address across reloads."
+    status: completed
   - id: introduce-chain-wallet-hook
-    content: "Introduce or evolve useChainWallet()/useAgentVouchWallet so the UI can connect/disconnect a ChainWallet for Base Sepolia while existing Solana consumers continue to receive the same wallet shape they expect."
-    status: pending
+    content: "DONE 2026-06-30: added useChainWallet()/useBasePasskeyWallet contexts. The Base ChainWallet exposes address/chainContext plus Phase-5-guarded write stubs; existing Solana consumers continue to use the unchanged useAgentVouchWallet shape."
+    status: completed
   - id: wire-wallet-ui
-    content: "Wire the marketplace/header wallet controls to support selecting or connecting the Base Sepolia passkey wallet. Render the EVM smart-account address with chain-aware formatting and keep Solana connect/disconnect working."
-    status: pending
+    content: "DONE 2026-06-30: wired the header wallet menu with an explicit Base Sepolia Coinbase Smart Wallet passkey option, EVM address formatting, Base disconnect, and unchanged Solana wallet options."
+    status: completed
   - id: verify-phase4
-    content: "Verify in browser: Base passkey connect shows an EVM smart-account address, disconnect works, reload restores the same account, Solana wallet connect still works when selected. Run web typecheck, lint, tests, and npm run build --workspace @agentvouch/web."
-    status: pending
+    content: "DONE 2026-06-30: browser proof with Chrome virtual WebAuthn connected Base passkey address 0x8C01...4906, reload restored the same address, disconnect cleared it, and the Solana/Base connect menu remained available. Typecheck, lint, vitest, and web build passed."
+    status: completed
 isProject: false
 ---
 
@@ -73,6 +73,16 @@ mainnet contract, RPC, USDC, and paymaster configuration exist. Do not accept or
 additive shape or an internal adapter that keeps existing Solana call sites compiling. If the hook
 return type changes, update every consumer in the same phase and keep the behavior identical for
 Solana.
+
+**Implementation decision (2026-06-30):** Phase 4 keeps `useAgentVouchWallet()` Solana-compatible and
+adds parallel `useBasePasskeyWallet()` / `useChainWallet()` contexts from the same provider. The Base
+session is client-only, exposes a `ChainWallet` with Phase-5-guarded write stubs, and does not change
+Solana signer behavior.
+
+**Restore note (2026-06-30):** The Base passkey restore effect intentionally has no one-shot ref
+guard. React Strict Mode in local dev runs mount effects twice; a guard can cancel the first async
+restore during cleanup and then skip the second run, leaving a valid active passkey disconnected
+after reload.
 
 ### D4 - Passkeys require a user gesture
 

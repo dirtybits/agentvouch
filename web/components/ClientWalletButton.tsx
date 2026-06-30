@@ -6,8 +6,13 @@ import { useConnectWallet, useWalletConnectors } from "@solana/connector/react";
 import { ConnectButton } from "@phantom/react-sdk";
 import {
   useAgentVouchWallet,
+  useChainWallet,
   usePhantomConfigured,
 } from "./WalletContextProvider";
+import {
+  BASE_PASSKEY_WALLET_NAME,
+  shortenEvmAddress,
+} from "@/lib/adapters/baseWalletConfig";
 import { useMounted } from "@/hooks/useMounted";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import { PHANTOM_LEGACY_WALLET_NAME } from "@/lib/phantomLegacyWalletStandard";
@@ -81,6 +86,8 @@ export function ClientWalletButton() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const wallet = useAgentVouchWallet();
+  const chainWallet = useChainWallet();
+  const baseWallet = chainWallet.base;
   const { connect } = useConnectWallet();
   const allConnectors = useWalletConnectors();
   // Phantom embedded appears in this list via additionalWallets; it gets its
@@ -108,6 +115,36 @@ export function ClientWalletButton() {
         className={`${navButtonPrimaryInlineClass} opacity-60 pointer-events-none`}
       >
         Loading...
+      </div>
+    );
+  }
+
+  if (wallet.status !== "connected" && baseWallet.account) {
+    const handleDisconnect = async () => {
+      await baseWallet.disconnect().catch(() => {});
+      setShowMenu(false);
+    };
+    return (
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          className={`${walletTriggerClass} font-mono`}
+        >
+          {shortenEvmAddress(baseWallet.account)}
+        </button>
+        {showMenu && (
+          <div className="absolute right-0 mt-2 w-56 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
+            <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
+              {baseWallet.chainLabel}
+            </div>
+            <button
+              onClick={handleDisconnect}
+              className={walletMenuButtonClass}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -172,10 +209,42 @@ export function ClientWalletButton() {
           {!socialSection && (
             <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Connect a wallet extension or install one below.
+                Connect a wallet or install one below.
               </p>
             </div>
           )}
+
+          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1.5">
+              Base Sepolia
+            </p>
+            <button
+              onClick={() => {
+                void baseWallet
+                  .connect()
+                  .then(() => setShowMenu(false))
+                  .catch((error) => {
+                    console.error("Failed to connect Base passkey:", error);
+                  });
+              }}
+              disabled={
+                baseWallet.status === "connecting" || !baseWallet.configured
+              }
+              className={`${walletMenuButtonClass} flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              <span className="flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[11px] font-normal text-[var(--sea-accent-strong)]">
+                B
+              </span>
+              {baseWallet.status === "connecting"
+                ? "Opening passkey..."
+                : BASE_PASSKEY_WALLET_NAME}
+            </button>
+            {baseWallet.error ? (
+              <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">
+                {baseWallet.error}
+              </p>
+            ) : null}
+          </div>
 
           {(wallet.phantomInstalled || extensionConnectors.length > 0) && (
             <div className="px-4 py-2.5">
