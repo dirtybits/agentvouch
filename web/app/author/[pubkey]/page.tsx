@@ -20,6 +20,7 @@ import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
+import { formatDate } from "@/lib/formatDate";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
@@ -78,18 +79,6 @@ function formatUsdc(
 function toBigInt(value: number | bigint | string | null | undefined): bigint {
   if (value === null || value === undefined || value === "") return 0n;
   return BigInt(value);
-}
-
-function formatDate(isoOrTimestamp: string | number): string {
-  const d =
-    typeof isoOrTimestamp === "number"
-      ? new Date(isoOrTimestamp * 1000)
-      : new Date(isoOrTimestamp);
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function sleep(ms: number) {
