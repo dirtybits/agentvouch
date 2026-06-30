@@ -2521,6 +2521,11 @@ export type Agentvouch = {
           "signer": true
         },
         {
+          "name": "rentPayer",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
