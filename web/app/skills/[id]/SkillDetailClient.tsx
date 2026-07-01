@@ -31,7 +31,10 @@ import {
   navButtonSecondaryInlineClass,
   navButtonSizeClass,
 } from "@/lib/buttonStyles";
-import { useAgentVouchWallet } from "@/components/WalletContextProvider";
+import {
+  useAgentVouchWallet,
+  useChainWallet,
+} from "@/components/WalletContextProvider";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
@@ -54,9 +57,12 @@ import {
   walletSupportsBrowserX402,
 } from "@/lib/browserX402";
 import {
+  BASE_SEPOLIA_CHAIN_CONTEXT,
+  getChainDisplayLabel,
   getConfiguredSolanaExplorerAddressUrl,
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
+import { BASE_SEPOLIA_EXPLORER_URL } from "@/lib/adapters/baseWalletConfig";
 import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
 import {
   FiAlertTriangle,
@@ -115,6 +121,10 @@ interface SkillDetail {
   summary_capabilities?: string[] | null;
   ipfs_cid: string | null;
   on_chain_address: string | null;
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   total_installs: number;
   total_downloads?: number;
   price_lamports?: number;
@@ -302,6 +312,10 @@ export default function SkillDetailPage({
   const isPhantomEmbeddedWallet =
     connected && walletName === PHANTOM_EMBEDDED_WALLET_NAME;
   const oracle = useReputationOracle();
+  const chainWalletSession = useChainWallet();
+  const activeChainWallet = chainWalletSession.chainWallet;
+  const activeChainContext = chainWalletSession.chainContext;
+  const activeWalletAddress = chainWalletSession.account ?? walletAddress;
 
   const [skill, setSkill] = useState<SkillDetail | null>(initialSkill);
   const [content, setContent] = useState<string | null>(
@@ -324,6 +338,9 @@ export default function SkillDetailPage({
   const [installing, setInstalling] = useState(false);
   const [purchasingUsdc, setPurchasingUsdc] = useState(false);
   const [usdcPurchaseTx, setUsdcPurchaseTx] = useState<string | null>(null);
+  const [usdcPurchaseExplorerUrl, setUsdcPurchaseExplorerUrl] = useState<
+    string | null
+  >(null);
   const [installResult, setInstallResult] = useState<{
     success: boolean;
     message: string;
@@ -365,8 +382,10 @@ export default function SkillDetailPage({
     message: string;
   } | null>(null);
   const handledAuthorActionRef = useRef<string | null>(null);
-  const currentWalletAddressRef = useRef<string | null>(walletAddress);
-  const lastWalletAddressRef = useRef<string | null>(walletAddress);
+  const currentWalletAddressRef = useRef<string | null>(activeWalletAddress);
+  const currentBuyerChainContextRef = useRef<string | null>(activeChainContext);
+  const lastWalletAddressRef = useRef<string | null>(activeWalletAddress);
+  const lastBuyerChainContextRef = useRef<string | null>(activeChainContext);
   const skillRefreshSeqRef = useRef(0);
   const capabilitySummary = extractCapabilitySummary(
     content,
@@ -398,24 +417,33 @@ export default function SkillDetailPage({
   }, []);
 
   useEffect(() => {
-    currentWalletAddressRef.current = walletAddress;
-  }, [walletAddress]);
+    currentWalletAddressRef.current = activeWalletAddress;
+    currentBuyerChainContextRef.current = activeChainContext;
+  }, [activeChainContext, activeWalletAddress]);
 
   const refreshSkill = useCallback(
     async (options?: {
       includeBuyer?: boolean;
       buyerAddress?: string | null;
+      buyerChainContext?: string | null;
     }) => {
       const requestSeq = ++skillRefreshSeqRef.current;
       const buyerForRequest =
         options?.buyerAddress ??
         (options?.includeBuyer ? currentWalletAddressRef.current : null);
+      const buyerChainContextForRequest =
+        options?.buyerChainContext ??
+        (options?.includeBuyer ? currentBuyerChainContextRef.current : null);
       try {
         const params = new URLSearchParams();
         params.set("trust", "live");
         const includeBuyer = options?.includeBuyer ?? Boolean(buyerForRequest);
-        if (includeBuyer && buyerForRequest)
+        if (includeBuyer && buyerForRequest) {
           params.set("buyer", String(buyerForRequest));
+          if (buyerChainContextForRequest) {
+            params.set("buyerChainContext", buyerChainContextForRequest);
+          }
+        }
         const query = params.toString();
         const detailRes = await fetch(
           `/api/skills/${id}${query ? `?${query}` : ""}`,
@@ -452,8 +480,13 @@ export default function SkillDetailPage({
   const loadedSkillId = skill?.id ?? null;
 
   useEffect(() => {
-    if (lastWalletAddressRef.current === walletAddress) return;
-    lastWalletAddressRef.current = walletAddress;
+    if (
+      lastWalletAddressRef.current === activeWalletAddress &&
+      lastBuyerChainContextRef.current === activeChainContext
+    )
+      return;
+    lastWalletAddressRef.current = activeWalletAddress;
+    lastBuyerChainContextRef.current = activeChainContext;
     skillRefreshSeqRef.current += 1;
     setSkill((current) =>
       current
@@ -467,12 +500,17 @@ export default function SkillDetailPage({
     setDownloadResult(null);
     setInstallResult(null);
     setUsdcPurchaseTx(null);
-  }, [walletAddress]);
+    setUsdcPurchaseExplorerUrl(null);
+  }, [activeChainContext, activeWalletAddress]);
 
   useEffect(() => {
-    if (!walletAddress || !loadedSkillId) return;
-    void refreshSkill({ includeBuyer: true, buyerAddress: walletAddress });
-  }, [refreshSkill, loadedSkillId, walletAddress]);
+    if (!activeWalletAddress || !loadedSkillId) return;
+    void refreshSkill({
+      includeBuyer: true,
+      buyerAddress: activeWalletAddress,
+      buyerChainContext: activeChainContext,
+    });
+  }, [activeChainContext, activeWalletAddress, refreshSkill, loadedSkillId]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -535,7 +573,7 @@ export default function SkillDetailPage({
   ]);
 
   const handleListOnMarketplace = async () => {
-    if (!connected || !walletAddress || !signMessage || !skill) return;
+    if (!skill) return;
     setListing(true);
     setListResult(null);
     try {
@@ -549,6 +587,68 @@ export default function SkillDetailPage({
         return;
       }
       const skillUri = `${window.location.origin}/api/skills/${id}/raw`;
+      const isBaseListingAuthor =
+        skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+        activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+        Boolean(activeChainWallet && activeWalletAddress) &&
+        Boolean(skill.author_pubkey) &&
+        activeWalletAddress?.toLowerCase() ===
+          skill.author_pubkey?.toLowerCase();
+
+      if (isBaseListingAuthor) {
+        if (!activeChainWallet || !activeWalletAddress) {
+          setListResult({
+            success: false,
+            message: "Connect the Base wallet to list this skill.",
+          });
+          return;
+        }
+
+        const listingResult = await activeChainWallet.createSkillListing({
+          skillId: skill.skill_id,
+          uri: skillUri,
+          name: skill.name,
+          description: skill.description ?? "",
+          priceUsdcMicros: BigInt(priceUsdcMicros),
+        });
+
+        const patchRes = await fetch(`/api/skills/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            baseListing: {
+              txHash: listingResult.ref,
+              authorAddress: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              expectedPriceUsdcMicros: String(priceUsdcMicros),
+            },
+          }),
+        });
+        if (!patchRes.ok) {
+          const patchBody = (await patchRes.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            patchBody?.error || "Base listing was created but not linked"
+          );
+        }
+        const updated = (await patchRes.json()) as SkillDetail;
+        setSkill(updated);
+        setListResult({
+          success: true,
+          message: "Listed on Base marketplace successfully!",
+        });
+        await refreshSkill();
+        return;
+      }
+
+      if (!connected || !walletAddress || !signMessage) {
+        setListResult({
+          success: false,
+          message: "Connect the author wallet to list this skill.",
+        });
+        return;
+      }
       await oracle.createSkillListing(
         skill.skill_id,
         skillUri,
@@ -672,6 +772,90 @@ export default function SkillDetailPage({
     if (!skill) {
       return;
     }
+    const isBasePurchaseSkill =
+      skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+      Boolean(skill.evm_listing_id);
+    if (isBasePurchaseSkill) {
+      if (
+        activeChainContext !== BASE_SEPOLIA_CHAIN_CONTEXT ||
+        !activeChainWallet ||
+        !activeWalletAddress
+      ) {
+        setInstallResult({
+          success: false,
+          message: "Connect the Base wallet to pay with Base Sepolia USDC.",
+        });
+        return;
+      }
+      if (!skill.price_usdc_micros || BigInt(skill.price_usdc_micros) <= 0n) {
+        setInstallResult({
+          success: false,
+          message: "This Base listing is missing its USDC price.",
+        });
+        return;
+      }
+
+      setPurchasingUsdc(true);
+      setInstallResult(null);
+      setDownloadResult(null);
+      setUsdcPurchaseTx(null);
+      setUsdcPurchaseExplorerUrl(null);
+
+      try {
+        const purchaseResult = await activeChainWallet.purchaseSkill({
+          listingId: skill.evm_listing_id as string,
+          expectedPriceUsdcMicros: BigInt(skill.price_usdc_micros),
+        });
+
+        const verifyRes = await fetch(`/api/skills/${id}/purchase/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            txHash: purchaseResult.ref,
+            buyer: activeWalletAddress,
+            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+            listingId: skill.evm_listing_id,
+            expectedPriceUsdcMicros: skill.price_usdc_micros,
+          }),
+        });
+        if (!verifyRes.ok) {
+          const verifyBody = (await verifyRes.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            verifyBody?.error ||
+              "Purchase confirmed, but Base entitlement verification failed"
+          );
+        }
+
+        setUsdcPurchaseTx(purchaseResult.ref);
+        setUsdcPurchaseExplorerUrl(purchaseResult.explorerUrl);
+        await refreshSkill({
+          includeBuyer: true,
+          buyerAddress: activeWalletAddress,
+          buyerChainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+        });
+        setSkill((current) =>
+          current ? { ...current, buyerHasPurchased: true } : current
+        );
+        setInstallResult({
+          success: true,
+          message:
+            "Base USDC purchase confirmed and entitlement verified. Base signed downloads are still pending.",
+        });
+      } catch (error: unknown) {
+        setInstallResult({
+          success: false,
+          message: getErrorMessage(error, "Base USDC purchase failed"),
+        });
+        setUsdcPurchaseTx(null);
+        setUsdcPurchaseExplorerUrl(null);
+      } finally {
+        setPurchasingUsdc(false);
+      }
+      return;
+    }
+
     if (!connected || !walletAddress) {
       setInstallResult({
         success: false,
@@ -699,6 +883,7 @@ export default function SkillDetailPage({
     setInstallResult(null);
     setDownloadResult(null);
     setUsdcPurchaseTx(null);
+    setUsdcPurchaseExplorerUrl(null);
 
     try {
       if (skill.on_chain_address) {
@@ -743,6 +928,9 @@ export default function SkillDetailPage({
             );
           }
           setUsdcPurchaseTx(purchaseResult.tx);
+          setUsdcPurchaseExplorerUrl(
+            getConfiguredSolanaExplorerTxUrl(purchaseResult.tx)
+          );
         }
 
         const fullTree = await downloadEntitledSkill();
@@ -798,12 +986,20 @@ export default function SkillDetailPage({
           : `USDC entitlement already active. Downloaded ${downloaded}.`,
       });
       setUsdcPurchaseTx(purchaseResult.paymentResponse?.transaction ?? null);
+      setUsdcPurchaseExplorerUrl(
+        purchaseResult.paymentResponse?.transaction
+          ? getConfiguredSolanaExplorerTxUrl(
+              purchaseResult.paymentResponse.transaction
+            )
+          : null
+      );
     } catch (error: unknown) {
       setInstallResult({
         success: false,
         message: getErrorMessage(error, "USDC purchase failed"),
       });
       setUsdcPurchaseTx(null);
+      setUsdcPurchaseExplorerUrl(null);
     } finally {
       setPurchasingUsdc(false);
     }
@@ -971,8 +1167,59 @@ export default function SkillDetailPage({
     }
   };
 
+  const isChainOnly = skill?.source === "chain";
+  const isMirror = Boolean(skill?.mirror_source_key);
+  const isSynced = !isMirror && Boolean(skill?.synced_repo_url);
+  const visibleTags =
+    skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
+  const isEvmAuthor = Boolean(
+    skill?.author_pubkey && skill.chain_context?.startsWith("eip155:")
+  );
+  const evmAuthorChainLabel = isEvmAuthor
+    ? getChainDisplayLabel(skill?.chain_context)
+    : null;
+  const isSolanaAuthor =
+    !!skill &&
+    !isEvmAuthor &&
+    !!walletAddress &&
+    walletAddress === skill.author_pubkey;
+  const isBaseAuthor =
+    !!skill &&
+    isEvmAuthor &&
+    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    !!activeWalletAddress &&
+    !!skill.author_pubkey &&
+    activeWalletAddress.toLowerCase() === skill.author_pubkey.toLowerCase();
+  const isAuthor = isSolanaAuthor || isBaseAuthor;
+  const authorLabel =
+    isMirror && skill?.author_handle
+      ? `Mirrored from @${skill.author_handle}`
+      : skill?.author_handle
+      ? `@${skill.author_handle}`
+      : skill?.author_pubkey
+      ? shortAddr(skill.author_pubkey)
+      : "Unverified publisher";
+  const authorHref =
+    skill?.author_pubkey && !isEvmAuthor
+      ? `/author/${skill.author_pubkey}`
+      : skill?.author_kind === "github" && skill.author_handle
+      ? `https://github.com/${skill.author_handle}`
+      : null;
+  const authorTitle = isEvmAuthor
+    ? `${
+        evmAuthorChainLabel ?? "EVM"
+      } author address. Chain-aware author pages are not enabled for this address yet.`
+    : skill?.author_pubkey
+    ? "Author wallet that published this skill"
+    : isMirror
+    ? "Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
+    : skill?.author_kind === "github"
+    ? "GitHub identity that published this unverified skill"
+    : "Unverified publisher identity";
+
   useEffect(() => {
-    if (!skill || !walletAddress || walletAddress !== skill.author_pubkey) {
+    if (!skill || !isSolanaAuthor) {
       handledAuthorActionRef.current = null;
       return;
     }
@@ -1003,42 +1250,15 @@ export default function SkillDetailPage({
     requestedAuthorAction,
     skill,
     startEditing,
-    walletAddress,
+    isSolanaAuthor,
   ]);
 
-  const isChainOnly = skill?.source === "chain";
-  const isMirror = Boolean(skill?.mirror_source_key);
-  const isSynced = !isMirror && Boolean(skill?.synced_repo_url);
-  const visibleTags =
-    skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
-  const isAuthor =
-    !!skill && !!walletAddress && walletAddress === skill.author_pubkey;
-  const authorLabel =
-    isMirror && skill?.author_handle
-      ? `Mirrored from @${skill.author_handle}`
-      : skill?.author_handle
-      ? `@${skill.author_handle}`
-      : skill?.author_pubkey
-      ? shortAddr(skill.author_pubkey)
-      : "Unverified publisher";
-  const authorHref = skill?.author_pubkey
-    ? `/author/${skill.author_pubkey}`
-    : skill?.author_kind === "github" && skill.author_handle
-    ? `https://github.com/${skill.author_handle}`
-    : null;
-  const authorTitle = skill?.author_pubkey
-    ? "Author wallet that published this skill"
-    : isMirror
-    ? "Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
-    : skill?.author_kind === "github"
-    ? "GitHub identity that published this unverified skill"
-    : "Unverified publisher identity";
   const CANONICAL_ORIGIN =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://agentvouch.xyz";
   const paidSkillDocsHref = "/docs#paid-skill-download";
 
   const refreshSettlementSummary = useCallback(async () => {
-    if (!skill?.on_chain_address || !isAuthor) {
+    if (!skill?.on_chain_address || !isSolanaAuthor) {
       setSettlementSummary(null);
       return;
     }
@@ -1057,7 +1277,7 @@ export default function SkillDetailPage({
       refundedUsdcMicros: settlement.account.refundedAuthorProceedsUsdcMicros,
       locked: !!settlement.account.lockedByDispute,
     });
-  }, [isAuthor, oracle, skill?.on_chain_address]);
+  }, [isSolanaAuthor, oracle, skill?.on_chain_address]);
 
   useEffect(() => {
     void refreshSettlementSummary();
@@ -1117,10 +1337,17 @@ export default function SkillDetailPage({
   const primaryUsdcPrice = formatUsdcMicros(skill.price_usdc_micros);
   const estimatedPurchaseRentLamports =
     skill.estimatedPurchaseRentLamports ?? 0;
+  const hasBaseListing =
+    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    Boolean(skill.evm_listing_id);
+  const isBaseProtocolSkill = hasBaseListing;
+  const activeBaseWalletReady =
+    activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    Boolean(activeChainWallet && activeWalletAddress);
   const paymentFlow =
     skill.payment_flow ??
     (skill.price_usdc_micros
-      ? skill.on_chain_address
+      ? skill.on_chain_address || skill.evm_listing_id
         ? "direct-purchase-skill"
         : "listing-required"
       : "free");
@@ -1135,6 +1362,7 @@ export default function SkillDetailPage({
     skill.purchasePreflightStatus ??
     (hasUsdcPrimary ? "estimateUnavailable" : "ok");
   const purchaseBlocked =
+    !isBaseProtocolSkill &&
     !isListingRequired &&
     hasUsdcPrimary &&
     isBlockingPurchaseStatus(purchasePreflightStatus);
@@ -1150,15 +1378,22 @@ export default function SkillDetailPage({
       walletSupportsBrowserX402(capabilities)
   );
   const embeddedWalletCheckoutBlocked =
-    isPaidSkill && isPhantomEmbeddedWallet && !buyerHasPurchased;
+    isPaidSkill &&
+    !isBaseProtocolSkill &&
+    isPhantomEmbeddedWallet &&
+    !buyerHasPurchased;
+  const walletCanAuthorizeBaseUsdc =
+    isBaseProtocolSkill && activeBaseWalletReady;
   const browserCanUseUsdc =
     !isListingRequired &&
     hasUsdcPrimary &&
-    (paymentFlow === "direct-purchase-skill"
+    (isBaseProtocolSkill
+      ? walletCanAuthorizeBaseUsdc
+      : paymentFlow === "direct-purchase-skill"
       ? walletCanAuthorizeDirectUsdc
       : walletCanAuthorizeBrowserX402);
   const signedRedownloadAvailable =
-    hasUsdcPrimary || Boolean(skill.on_chain_address);
+    !isBaseProtocolSkill && (hasUsdcPrimary || Boolean(skill.on_chain_address));
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
     isChainOnly && skill?.skill_uri
@@ -1180,7 +1415,9 @@ export default function SkillDetailPage({
     ? isListingRequired
       ? `# Primary price: ${usdcPriceLabel}\n# This paid repo skill is not purchasable until the author links an on-chain SkillListing.\ncurl -sL ${installUrl}`
       : paymentFlow === "direct-purchase-skill"
-      ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
+      ? isBaseProtocolSkill
+        ? `# Primary price: ${usdcPriceLabel} via Base AgentVouch\n# Call purchaseSkill on Base, then POST the confirmed tx hash to /api/skills/${skill.id}/purchase/verify.\ncurl -sL ${installUrl}`
+        : `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
       : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
   const purchaseTitle = primaryUsdcPrice
@@ -1203,12 +1440,16 @@ export default function SkillDetailPage({
     : buyerHasPurchased
     ? signedRedownloadAvailable
       ? "This skill is already purchased for your connected wallet. Sign to download the file."
+      : isBaseProtocolSkill
+      ? "This Base purchase is verified for your connected wallet. Base signed re-download authorization is not enabled yet."
       : "This skill is already purchased for your connected wallet. The file is delivered at checkout."
     : embeddedWalletCheckoutBlocked
     ? "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase."
     : primaryUsdcPrice
     ? browserCanUseUsdc
-      ? `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
+      ? isBaseProtocolSkill
+        ? `Pay ${usdcPriceLabel} from this page with Base Sepolia USDC.`
+        : `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
       : `This listing is priced in ${usdcPriceLabel}. This wallet cannot use browser x402; use direct purchase or the agent/API fallback below.`
     : hasLegacySolPrice
     ? "This historical SOL-priced listing is not available for new USDC checkout."
@@ -1216,6 +1457,8 @@ export default function SkillDetailPage({
   const connectWalletLabel = primaryUsdcPrice
     ? isListingRequired
       ? "Listing setup required before purchase"
+      : isBaseProtocolSkill
+      ? "Connect Base wallet to pay with USDC"
       : "Connect wallet to pay with USDC"
     : isPaidSkill
     ? "Connect wallet to buy and unlock"
@@ -1599,7 +1842,8 @@ export default function SkillDetailPage({
               </div>
             </details>
             {/* Version History */}
-            {(skill.versions?.length > 0 || (isAuthor && !isChainOnly)) && (
+            {(skill.versions?.length > 0 ||
+              (isSolanaAuthor && !isChainOnly)) && (
               <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-6">
                 <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-2">
@@ -1608,7 +1852,7 @@ export default function SkillDetailPage({
                       Version History
                     </span>
                   </div>
-                  {isAuthor && !isChainOnly && !versionComposerOpen && (
+                  {isSolanaAuthor && !isChainOnly && !versionComposerOpen && (
                     <button
                       onClick={openVersionComposer}
                       className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium`}
@@ -1618,7 +1862,7 @@ export default function SkillDetailPage({
                     </button>
                   )}
                 </div>
-                {isAuthor && !isChainOnly && versionComposerOpen && (
+                {isSolanaAuthor && !isChainOnly && versionComposerOpen && (
                   <div className="mb-4 p-4 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)]">
                     <div className="flex items-center justify-between gap-4 mb-3">
                       <div>
@@ -1733,7 +1977,7 @@ export default function SkillDetailPage({
                     ))}
                   </div>
                 ) : (
-                  isAuthor &&
+                  isSolanaAuthor &&
                   !isChainOnly && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Publish the first repo-backed version update for this
@@ -1823,7 +2067,7 @@ export default function SkillDetailPage({
                         </>
                       )}
                     </button>
-                  ) : connected ? (
+                  ) : connected || activeBaseWalletReady ? (
                     isAuthor ? (
                       <Link
                         href="#author-actions"
@@ -1866,6 +2110,11 @@ export default function SkillDetailPage({
                         <FiAlertTriangle className="w-3.5 h-3.5" />
                         Listing setup required
                       </p>
+                    ) : isBaseProtocolSkill && !activeBaseWalletReady ? (
+                      <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <FiAlertTriangle className="w-3.5 h-3.5" />
+                        Connect Base wallet
+                      </p>
                     ) : primaryUsdcPrice && browserCanUseUsdc ? (
                       <button
                         onClick={handleUsdcPurchase}
@@ -1905,7 +2154,9 @@ export default function SkillDetailPage({
                 </div>
                 {isPaidSkill && !buyerHasPurchased && !isAuthor && (
                   <p className="mt-2.5 text-center text-[11px] text-gray-400 dark:text-gray-500">
-                    on-chain purchase · per-buyer receipt · refund-eligible ·{" "}
+                    {isBaseProtocolSkill
+                      ? "Base purchase · per-buyer receipt · native USDC · "
+                      : "on-chain purchase · per-buyer receipt · refund-eligible · "}
                     <Link
                       href={paidSkillDocsHref}
                       className="text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
@@ -1995,7 +2246,10 @@ export default function SkillDetailPage({
                   <p className="text-xs mt-2 text-green-600 dark:text-green-400">
                     Settlement tx:{" "}
                     <a
-                      href={getConfiguredSolanaExplorerTxUrl(usdcPurchaseTx)}
+                      href={
+                        usdcPurchaseExplorerUrl ??
+                        getConfiguredSolanaExplorerTxUrl(usdcPurchaseTx)
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline font-mono"
@@ -2015,8 +2269,7 @@ export default function SkillDetailPage({
                     {downloadResult.message}
                   </p>
                 )}
-                {connected &&
-                  walletAddress === skill.author_pubkey &&
+                {isSolanaAuthor &&
                   !hasUsdcPrimary &&
                   skill.on_chain_address && (
                     <p className="text-xs mt-2 text-amber-600 dark:text-amber-400">
@@ -2128,17 +2381,17 @@ export default function SkillDetailPage({
                   </div>
                 </div>
               ) : null}
-              {skill.author_pubkey ? (
+              {authorHref && !authorHref.startsWith("http") ? (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <Link
-                    href={`/author/${skill.author_pubkey}`}
+                    href={authorHref}
                     className="inline-flex items-center gap-1 text-sm font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                   >
                     View full author trust history{" "}
                     <FiExternalLink className="w-3.5 h-3.5" />
                   </Link>
                   <Link
-                    href={`/author/${skill.author_pubkey}?report=1${
+                    href={`${authorHref}?report=1${
                       skill.on_chain_address
                         ? `&skill=${encodeURIComponent(
                             `skill:${skill.on_chain_address}`
@@ -2150,6 +2403,12 @@ export default function SkillDetailPage({
                     Report Author
                   </Link>
                 </div>
+              ) : isEvmAuthor ? (
+                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                  This author is identified by a {evmAuthorChainLabel ?? "Base"}
+                  address. Chain-aware reports and vouching are not enabled for
+                  EVM authors yet.
+                </p>
               ) : (
                 <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
                   This free listing is attributed to an unverified publisher. It
@@ -2305,7 +2564,7 @@ export default function SkillDetailPage({
                   <FiExternalLink className="w-3 h-3" />
                 </a>
               </div>
-              {isAuthor && !editing && (
+              {isSolanaAuthor && !editing && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={startEditing}
@@ -2356,7 +2615,7 @@ export default function SkillDetailPage({
                 {removeResult.message}
               </p>
             )}
-            {isAuthor && settlementSummary && (
+            {isSolanaAuthor && settlementSummary && (
               <div className="mt-4 rounded-sm border border-green-200 dark:border-green-800/50 bg-white/70 dark:bg-gray-950/40 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -2525,9 +2784,49 @@ export default function SkillDetailPage({
               </div>
             )}
           </div>
+        ) : hasBaseListing ? (
+          <div
+            id="author-actions"
+            className="mt-6 rounded-sm border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-4 mb-6"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                <FiCheckCircle className="w-4 h-4" />
+                Listed on Base
+                {skill.evm_tx_hash && (
+                  <a
+                    href={`${BASE_SEPOLIA_EXPLORER_URL}/tx/${skill.evm_tx_hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                    title={`View Base tx ${skill.evm_tx_hash}`}
+                  >
+                    View tx
+                    <FiExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+              {isBaseAuthor && (
+                <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                  {skill.evm_listing_id?.slice(0, 10)}...
+                  {skill.evm_listing_id?.slice(-8)}
+                </span>
+              )}
+            </div>
+            {updateResult && (
+              <p
+                className={`text-xs mt-2 ${
+                  updateResult.success
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}
+              >
+                {updateResult.message}
+              </p>
+            )}
+          </div>
         ) : (
-          connected &&
-          walletAddress === skill.author_pubkey && (
+          isAuthor && (
             <div className="mt-6 rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <UsdcIcon className="w-4 h-4 text-gray-400" />
@@ -2585,14 +2884,16 @@ export default function SkillDetailPage({
                 </button>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                Set 0 for a free listing. Otherwise the minimum paid USDC price
-                is {formatMinPrice()}.
+                {isBaseAuthor
+                  ? "Base listings use native Base Sepolia USDC."
+                  : "Set 0 for a free listing."}{" "}
+                Otherwise the minimum paid USDC price is {formatMinPrice()}.
               </p>
             </div>
           )
         )}
 
-        {isAuthor && !isChainOnly && !skill.on_chain_address && (
+        {isSolanaAuthor && !isChainOnly && !skill.on_chain_address && (
           <div
             id="author-actions"
             className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-5 mb-6"

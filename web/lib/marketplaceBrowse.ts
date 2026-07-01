@@ -597,6 +597,7 @@ export function buildEnrichedSkillRows(input: {
       payment_flow: getSkillPaymentFlow({
         priceUsdcMicros,
         onChainAddress: skill.on_chain_address,
+        evmListingId: skill.evm_listing_id,
         legacySolLamports: skill.price_lamports,
         allowLegacySol: true,
       }),

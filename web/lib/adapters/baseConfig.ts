@@ -4,24 +4,33 @@
 // Target is Base Sepolia today (the POC contract is Sepolia; mainnet config is intentionally not
 // exposed yet — see .agents/plans/base-port-chain-adapter.plan.md).
 
+import {
+  DEFAULT_BASE_AGENTVOUCH_ADDRESS,
+  DEFAULT_BASE_SEPOLIA_RPC_URL,
+  DEFAULT_BASE_SEPOLIA_USDC_ADDRESS,
+} from "./baseConstants";
+
 // F-1-fixed AgentVouchEvm (Lane B uses receiveWithAuthorization). See docs/BASE_POC_GASFREE_REPORT.md.
 export const BASE_AGENTVOUCH_CONTRACT_ADDRESS =
   process.env.NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS ||
-  "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854";
+  DEFAULT_BASE_AGENTVOUCH_ADDRESS;
 
 export const BASE_USDC_ADDRESS =
   process.env.NEXT_PUBLIC_BASE_USDC_ADDRESS ||
-  "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  DEFAULT_BASE_SEPOLIA_USDC_ADDRESS;
 
-export const BASE_SEPOLIA_CHAIN_ID = 84532;
-export const BASE_MAINNET_CHAIN_ID = 8453;
+export {
+  BASE_MAINNET_CHAIN_ID,
+  BASE_NATIVE_USDC_ADDRESS,
+  BASE_SEPOLIA_CHAIN_ID,
+} from "./baseConstants";
 
 // Reads RPC. Public sepolia.base.org is load-balanced and lags on read-after-write (plan gotcha),
 // so default to publicnode for reads; override per environment.
 export const BASE_SEPOLIA_RPC_URL =
   process.env.BASE_SEPOLIA_RPC_URL ||
   process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL ||
-  "https://base-sepolia-rpc.publicnode.com";
+  DEFAULT_BASE_SEPOLIA_RPC_URL;
 
 // Block to scan SkillListingCreated from for event-driven enumeration. Defaults to 0; set this to
 // the contract's deploy block in production so the eth_getLogs range stays within public-RPC

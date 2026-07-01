@@ -52,7 +52,10 @@ import {
   BASE_WALLET_UNCONFIGURED_MESSAGE,
   getBaseWalletConfig,
 } from "@/lib/adapters/baseWalletConfig";
-import type { BasePasskeySmartAccount } from "@/lib/adapters/baseWallet";
+import {
+  createBasePasskeyChainWallet,
+  type BasePasskeySmartAccount,
+} from "@/lib/adapters/baseWallet";
 import type { ChainWallet } from "@/lib/adapters/types";
 import {
   BASE_SEPOLIA_CHAIN_CONTEXT,
@@ -168,6 +171,22 @@ const solanaChainContext = getConfiguredSolanaChainContext();
 const baseWalletConfigError = baseWalletConfigured
   ? null
   : BASE_WALLET_UNCONFIGURED_MESSAGE;
+const BasePasskeyWalletContext = createContext<BasePasskeyWalletContextValue>({
+  status: "disconnected",
+  account: null,
+  walletName: null,
+  source: null,
+  chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+  chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
+  configured: baseWalletConfigured,
+  config: baseWalletConfig,
+  error: baseWalletConfigError,
+  chainWallet: null,
+  connect: async () => {
+    throw new Error("Base wallet provider is not mounted");
+  },
+  disconnect: async () => {},
+});
 
 const AgentVouchChainWalletContext =
   createContext<AgentVouchChainWalletContextValue>({
@@ -210,6 +229,7 @@ const AgentVouchChainWalletContext =
 export const useAgentVouchWallet = () => useContext(AgentVouchWalletContext);
 export const useAgentVouchWalletSigner = () =>
   useContext(AgentVouchWalletSignerContext);
+export const useBasePasskeyWallet = () => useContext(BasePasskeyWalletContext);
 export const useChainWallet = () => useContext(AgentVouchChainWalletContext);
 
 const ENDPOINT =
@@ -776,27 +796,10 @@ function AgentVouchWalletBridge({
   const baseChainWallet = useMemo<ChainWallet | null>(() => {
     if (!baseSmartAccount) return null;
 
-    const unsupportedPhase5 = (method: string) =>
-      Promise.reject(
-        new Error(
-          `${method} is part of AgentVouch Base Phase 5. Phase 4 only connects the ${BASE_PASSKEY_WALLET_NAME} passkey wallet.`
-        )
-      );
-
-    return {
-      chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-      address: baseSmartAccount.address,
-      disconnect: disconnectBasePasskey,
-      registerAgent: () => unsupportedPhase5("registerAgent"),
-      createSkillListing: () => unsupportedPhase5("createSkillListing"),
-      purchaseSkill: () => unsupportedPhase5("purchaseSkill"),
-      buildX402Payment: () =>
-        Promise.reject(
-          new Error(
-            "buildX402Payment is part of AgentVouch Base Phase 5. Phase 4 only connects the passkey wallet."
-          )
-        ),
-    };
+    return createBasePasskeyChainWallet(
+      baseSmartAccount,
+      disconnectBasePasskey
+    );
   }, [baseSmartAccount, disconnectBasePasskey]);
 
   const walletValue = useMemo<AgentVouchWalletContextValue>(
@@ -911,9 +914,11 @@ function AgentVouchWalletBridge({
   return (
     <AgentVouchWalletContext.Provider value={walletValue}>
       <AgentVouchWalletSignerContext.Provider value={signerValue}>
-        <AgentVouchChainWalletContext.Provider value={chainWalletValue}>
-          {children}
-        </AgentVouchChainWalletContext.Provider>
+        <BasePasskeyWalletContext.Provider value={baseWalletValue}>
+          <AgentVouchChainWalletContext.Provider value={chainWalletValue}>
+            {children}
+          </AgentVouchChainWalletContext.Provider>
+        </BasePasskeyWalletContext.Provider>
       </AgentVouchWalletSignerContext.Provider>
     </AgentVouchWalletContext.Provider>
   );

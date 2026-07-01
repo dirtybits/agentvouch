@@ -4,9 +4,14 @@ import {
   linkSolanaRegistryIdentity,
   resolveAgentIdentityByWallet,
 } from "@/lib/agentIdentity";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { discoverSolanaRegistryCandidatesByWallet } from "@/lib/solanaAgentRegistry";
 import { listAuthorDisputesByAuthor } from "@/lib/authorDisputes";
+import {
+  BASE_SEPOLIA_CHAIN_CONTEXT,
+  normalizeInputChainContext,
+} from "@/lib/chains";
 import {
   buildPublicCacheControl,
   PUBLIC_ROUTE_CACHE_SECONDS,
@@ -14,13 +19,72 @@ import {
 } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
+import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ pubkey: string }> }
 ) {
   try {
     const { pubkey } = await params;
+    const requestedChainContext =
+      normalizeInputChainContext(
+        request.nextUrl.searchParams.get("chainContext") ??
+          request.nextUrl.searchParams.get("chain_context")
+      ) ?? (isEvmAddress(pubkey) ? BASE_SEPOLIA_CHAIN_CONTEXT : null);
+
+    if (requestedChainContext?.startsWith("eip155:")) {
+      if (!isEvmAddress(pubkey)) {
+        return NextResponse.json(
+          { error: "EVM author routes require a valid EVM address" },
+          { status: 400 }
+        );
+      }
+
+      const authorAddress = getEvmAddress(pubkey);
+      const authorTrust = await resolveBaseAuthorTrust(
+        authorAddress,
+        requestedChainContext
+      );
+      let authorIdentity = null;
+      try {
+        authorIdentity = await resolveAgentIdentityByWallet(authorAddress, {
+          chainContext: requestedChainContext,
+          hasAgentProfile: authorTrust.isRegistered,
+        });
+      } catch (error) {
+        console.error(
+          "Failed to resolve EVM author identity for /api/author/[pubkey]:",
+          error
+        );
+      }
+
+      const authorTrustSummary = buildAgentTrustSummary({
+        walletPubkey: authorAddress,
+        trust: authorTrust,
+        identity: authorIdentity,
+      });
+
+      return NextResponse.json(
+        {
+          pubkey: authorAddress,
+          chain_context: requestedChainContext,
+          author_trust: authorTrust,
+          author_trust_summary: authorTrustSummary,
+          author_identity: authorIdentity,
+          author_disputes: [],
+        },
+        {
+          headers: {
+            "Cache-Control": buildPublicCacheControl(
+              PUBLIC_ROUTE_CACHE_SECONDS.authorTrust,
+              PUBLIC_ROUTE_STALE_SECONDS.authorTrust
+            ),
+          },
+        }
+      );
+    }
+
     const authorTrust = await resolveAuthorTrust(pubkey);
     const authorDisputes = await listAuthorDisputesByAuthor(pubkey);
     let authorIdentity = null;

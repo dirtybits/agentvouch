@@ -30,9 +30,19 @@ import {
 } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
 import {
+  hasChainUsdcPurchaseEntitlement,
   hasUsdcPurchaseEntitlement,
   recordUsdcPurchaseReceipt,
 } from "@/lib/usdcPurchases";
+import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
+import { BASE_NATIVE_USDC_ADDRESS } from "@/lib/adapters/baseConfig";
+import {
+  BASE_X402_PURCHASE_PAYMENT_FLOW,
+  buildBaseX402PaymentRequirement,
+  relayAndRecordBaseX402Purchase,
+  verifyBaseX402PaymentPayload,
+  type BaseX402Skill,
+} from "@/lib/baseX402";
 import { isProtocolX402BridgeEnabled } from "@/lib/x402BridgePoc";
 import {
   buildProtocolX402BridgeRequirement,
@@ -76,6 +86,9 @@ export type RawSkillContentRow = {
   chain_context: string | null;
   on_chain_protocol_version: string | null;
   on_chain_program_id: string | null;
+  evm_listing_id: string | null;
+  evm_contract_address: string | null;
+  evm_tx_hash: string | null;
   download_bytes?: Buffer;
   download_path?: string;
   download_content_type?: string;
@@ -267,6 +280,17 @@ function isProtocolListedUsdcSkill(
   );
 }
 
+function isBaseProtocolListedUsdcSkill(
+  skill: RawSkillContentRow,
+  priceMicros: bigint
+) {
+  return Boolean(
+    priceMicros > 0n &&
+      skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+      skill.evm_listing_id
+  );
+}
+
 function buildPaymentResponseHeaders(value: X402SettleResponse) {
   const encoded = encodeX402PaymentResponseHeader(value);
   return {
@@ -348,6 +372,32 @@ function buildBridgePaymentRequiredBody(opts: {
   });
 }
 
+async function buildBasePaymentRequiredBody(opts: {
+  request: NextRequest;
+  skillDbId: string;
+  skill: RawSkillContentRow;
+  priceMicros: bigint;
+  error?: string;
+}) {
+  const requirement = await buildBaseX402PaymentRequirement({
+    skillDbId: opts.skillDbId,
+    skill: opts.skill,
+    priceUsdcMicros: opts.priceMicros,
+  });
+  return buildX402PaymentRequiredBody({
+    error: opts.error ?? "Payment required",
+    resource: getResourceInfo(opts.request, opts.skill.name),
+    requirement,
+    extensions: {
+      payment_flow: BASE_X402_PURCHASE_PAYMENT_FLOW,
+      chain_context: BASE_SEPOLIA_CHAIN_CONTEXT,
+      evm_listing_id: opts.skill.evm_listing_id,
+      evm_contract_address: opts.skill.evm_contract_address,
+      protocol_version: opts.skill.on_chain_protocol_version,
+    },
+  });
+}
+
 export function validateDownloadAuth(
   authHeader: string,
   skillDbId: string,
@@ -394,6 +444,96 @@ export function validateDownloadAuth(
   }
 
   return { buyerPubkey: verification.pubkey };
+}
+
+async function handleBaseX402Purchase(input: {
+  request: NextRequest;
+  skillDbId: string;
+  skill: RawSkillContentRow & BaseX402Skill;
+  priceMicros: bigint;
+}): Promise<SkillAccessResult> {
+  let paymentRequired = await buildBasePaymentRequiredBody({
+    request: input.request,
+    skillDbId: input.skillDbId,
+    skill: input.skill,
+    priceMicros: input.priceMicros,
+  });
+
+  const paymentHeader = input.request.headers.get("payment-signature");
+  if (!paymentHeader) {
+    return accessDenied(paymentRequired402(paymentRequired));
+  }
+
+  const payload = decodeX402PaymentSignatureHeader(paymentHeader);
+  if (!payload) {
+    return accessDenied(
+      paymentRequired402({
+        ...paymentRequired,
+        error: "Malformed PAYMENT-SIGNATURE header",
+      })
+    );
+  }
+
+  let verified;
+  try {
+    verified = await verifyBaseX402PaymentPayload({
+      skillDbId: input.skillDbId,
+      skill: input.skill,
+      priceUsdcMicros: input.priceMicros,
+      payload,
+    });
+  } catch (error: unknown) {
+    return accessDenied(
+      paymentRequired402({
+        ...paymentRequired,
+        error: getErrorMessage(error, "Base x402 payment verification failed"),
+      })
+    );
+  }
+
+  const entitled = await hasChainUsdcPurchaseEntitlement(input.skillDbId, {
+    buyerChainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+    buyerAddress: verified.buyerAddress,
+  }).catch(() => false);
+  if (entitled) {
+    return accessGranted(input.skill);
+  }
+
+  try {
+    const settlement = await relayAndRecordBaseX402Purchase({
+      skillDbId: input.skillDbId,
+      skill: input.skill,
+      verified,
+    });
+    const settleResponse: X402SettleResponse = {
+      success: true,
+      transaction: settlement.transaction,
+      network: BASE_SEPOLIA_CHAIN_CONTEXT,
+      payer: settlement.payer,
+      amount: input.priceMicros.toString(),
+      extensions: {
+        payment_flow: BASE_X402_PURCHASE_PAYMENT_FLOW,
+        evm_listing_id: settlement.listingId,
+        evm_purchase_id: settlement.purchaseId,
+        listing_revision: settlement.listingRevision,
+        x402_payment_ref_hash: settlement.paymentRefHashHex,
+      },
+    };
+
+    return accessGranted(
+      input.skill,
+      buildPaymentResponseHeaders(settleResponse)
+    );
+  } catch (error: unknown) {
+    paymentRequired = await buildBasePaymentRequiredBody({
+      request: input.request,
+      skillDbId: input.skillDbId,
+      skill: input.skill,
+      priceMicros: input.priceMicros,
+      error: `Base x402 settlement failed: ${getErrorMessage(error)}`,
+    });
+    return accessDenied(paymentRequired402(paymentRequired));
+  }
 }
 
 async function handleProtocolX402Bridge(input: {
@@ -692,6 +832,15 @@ async function handleUsdcDirect(
     currency_mint: skill.currency_mint,
   };
 
+  if (isBaseProtocolListedUsdcSkill(skill, priceMicros)) {
+    return handleBaseX402Purchase({
+      request,
+      skillDbId,
+      skill,
+      priceMicros,
+    });
+  }
+
   if (skill.on_chain_address) {
     const liveListing = await getOnChainUsdcPrice(skill.on_chain_address, {
       useCache: false,
@@ -986,6 +1135,9 @@ export async function resolveSkillAccess(
       s.chain_context,
       s.on_chain_protocol_version,
       s.on_chain_program_id,
+      s.evm_listing_id,
+      s.evm_contract_address,
+      s.evm_tx_hash,
       sv.id AS version_id,
       sv.version,
       sv.content,
@@ -1018,7 +1170,10 @@ export async function resolveSkillAccess(
   }
 
   if (normalizeUsdcMicros(skill.price_usdc_micros)) {
-    skill.currency_mint ??= getConfiguredUsdcMint();
+    skill.currency_mint ??=
+      skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT && skill.evm_listing_id
+        ? BASE_NATIVE_USDC_ADDRESS
+        : getConfiguredUsdcMint();
     return handleUsdcDirect(request, id, skill);
   }
 

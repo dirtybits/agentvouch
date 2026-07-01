@@ -38,6 +38,11 @@ export interface CreateSkillListingInput {
   priceUsdcMicros: bigint;
 }
 
+export interface PurchaseSkillInput {
+  listingId: string;
+  expectedPriceUsdcMicros: bigint;
+}
+
 export interface X402Payment {
   header: string;
   payload: unknown;
@@ -69,7 +74,7 @@ export interface ChainWallet {
 
   registerAgent(metadataUri: string): Promise<TxResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
-  purchaseSkill(listingId: string): Promise<TxResult>;
+  purchaseSkill(input: PurchaseSkillInput): Promise<TxResult>;
 
   // agent x402 (server-verifiable payment authorization)
   buildX402Payment(listingId: string): Promise<X402Payment>;
