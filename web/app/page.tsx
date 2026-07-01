@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import TypewriterText from "@/components/TypewriterText";
 import { HomeInstallCard } from "@/components/HomeInstallCard";
@@ -24,6 +23,13 @@ import {
 } from "react-icons/fi";
 import { SITE_URL } from "@/lib/site";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+
+// Static so `/` is CDN-cached and revalidated in the background, like
+// `/skills` (see perf/fix-marketplace-evm-hydration). Origin resolution must
+// avoid `headers()`/`cookies()` here — either would force this page back to
+// full per-request dynamic rendering. The effective window is the min of this
+// and the per-fetch `revalidate: 30` below.
+export const revalidate = 30;
 
 type FeaturedSkill = {
   id: string;
@@ -110,23 +116,18 @@ function formatUsdcMetric(micros: number | bigint | string | null | undefined) {
   return formatUsdcMicros(micros) ?? "0";
 }
 
-async function getRequestOrigin() {
-  const requestHeaders = await headers();
-  const forwardedHost = requestHeaders.get("x-forwarded-host");
-  const host = forwardedHost ?? requestHeaders.get("host");
-
-  if (!host) {
-    return SITE_URL;
+// Env-only origin resolution (no `headers()`/`cookies()`) so this stays
+// static-renderable. `NEXT_PUBLIC_APP_URL` covers production, `VERCEL_URL` is
+// set per-deployment by Vercel so preview builds still self-fetch from their
+// own preview deployment rather than production.
+function getSelfOrigin(): string {
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
   }
-
-  const forwardedProto = requestHeaders.get("x-forwarded-proto");
-  const proto =
-    forwardedProto ??
-    (host.startsWith("localhost") || host.startsWith("127.")
-      ? "http"
-      : "https");
-
-  return `${proto}://${host}`;
+  if (process.env.NODE_ENV !== "production") {
+    return `http://localhost:${process.env.PORT ?? "3000"}`;
+  }
+  return SITE_URL;
 }
 
 async function fetchHomepageJson<T>(
@@ -145,7 +146,7 @@ async function fetchHomepageJson<T>(
 }
 
 export default async function Home() {
-  const origin = await getRequestOrigin();
+  const origin = getSelfOrigin();
   const [landingRes, skillsRes] = await Promise.all([
     fetchHomepageJson<LandingResponse>(origin, "/api/landing"),
     fetchHomepageJson<SkillsListResponse>(
