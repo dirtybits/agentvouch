@@ -3,8 +3,8 @@ name: base-port-chain-adapter-phase-6
 overview: "Phase 6 of the Base port: harden Postgres persistence for Base/EVM and Solana by making listing, receipt, entitlement, and activity reads explicitly chain-qualified before the Base default flip."
 todos:
   - id: preflight-current-schema
-    content: Inspect the merged Phase 5 schema helpers and, when DATABASE_URL is available, snapshot live Neon constraints/indexes for skills, usdc_purchase_receipts, usdc_purchase_entitlements, and usdc_x402_settlement_attempts before changing DDL.
-    status: pending
+    content: "DONE 2026-07-01: inspected merged Phase 5 schema helpers and call sites; live Neon constraint/index snapshot skipped because this worktree has no DATABASE_URL or Base envs loaded."
+    status: completed
   - id: harden-skill-evm-identity
     content: Add/verify EVM listing identity constraints and helpers so Base rows use chain_context + evm_contract_address + evm_listing_id, never Solana on_chain_address, and Solana rows keep their current PDA/program semantics.
     status: pending
@@ -64,6 +64,27 @@ UI/API activity reads can render either chain without treating EVM addresses as 
   `hasChainUsdcPurchaseEntitlement(skillDbId, buyer)`.
 - `usdc_purchase_entitlements` still has transitional `PRIMARY KEY (skill_db_id, buyer_pubkey)` and
   `ON CONFLICT (skill_db_id, buyer_pubkey)` paths. This is the main correctness target for Phase 6.
+
+## Progress Notes
+
+- 2026-07-01: Preflight source inspection completed on `feat/base-port-phase-6` after Phase 5 merged
+  on `main` as `a61f65d`. The local worktree has no `.env*` files beyond
+  `contracts/base-poc/**/.env.example`, and the current shell has no `DATABASE_URL`, Base Sepolia
+  RPC, paymaster, x402 relayer, or Base chain-context envs set. Live Neon index/constraint snapshot
+  was therefore skipped.
+- 2026-07-01: Confirmed Phase 5's additive groundwork exists, but the hardening work remains real:
+  `web/lib/usdcPurchases.ts` still creates `usdc_purchase_entitlements` with
+  `PRIMARY KEY (skill_db_id, buyer_pubkey)` and has `ON CONFLICT (skill_db_id, buyer_pubkey)` paths
+  for entitlement backfill and write upsert. The chain-qualified entitlement index exists but is not
+  yet authoritative.
+- 2026-07-01: Confirmed `web/lib/db.ts` adds Base skill fields and receipt chain-buyer indexes, but
+  its top-level schema initializer only creates/backfills `usdc_purchase_receipts`; entitlement DDL
+  lives in `web/lib/usdcPurchases.ts`. Keep fresh-database and upgraded-database behavior aligned
+  when Phase 6 changes constraints.
+- 2026-07-01: Caller scan found the expected split: Base detail lookups already use
+  `hasChainUsdcPurchaseEntitlement` when a buyer chain context/EVM address is present, while Solana
+  and repo/x402 paths still use legacy `hasUsdcPurchaseEntitlement`. Activity responses still expose
+  `buyer_pubkey` as the actor field. These are Phase 6 call-site audit targets.
 
 ## Design Decisions
 
