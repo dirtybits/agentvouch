@@ -8,10 +8,14 @@
  *
  * Usage:
  *   DATABASE_URL=... npm run db:phase6-chain-identity --workspace @agentvouch/web -- preflight
- *   DATABASE_URL=... npm run db:phase6-chain-identity --workspace @agentvouch/web -- migrate
+ *   DATABASE_URL=... EXPECTED_DATABASE_HOST=ep-....neon.tech \
+ *     npm run db:phase6-chain-identity --workspace @agentvouch/web -- migrate
  *
- *   preflight  Read-only duplicate reports for the two identity keys. Exits non-zero on duplicates.
- *   migrate    Re-runs preflight, then lowercases stored EVM contract addresses and creates the
+ *   preflight  Read-only duplicate reports for the two identity keys (EVM buyer addresses are
+ *              grouped case-insensitively, matching what migrate normalizes to). Prints the
+ *              target host/database. Exits non-zero on duplicates.
+ *   migrate    Requires EXPECTED_DATABASE_HOST to match the DATABASE_URL host. Re-runs
+ *              preflight, lowercases stored EVM contract + buyer addresses, then creates the
  *              partial UNIQUE indexes. Aborts without DDL if preflight reports duplicates.
  *
  * This script intentionally does NOT touch the legacy (skill_db_id, buyer_pubkey) entitlement
@@ -37,14 +41,33 @@ type EntitlementDuplicateRow = {
   row_count: number;
 };
 
-function getDbFromEnv(): Db {
+function getDbFromEnv(): { db: Db; host: string } {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
       "DATABASE_URL is required. Point it at the intended Neon project (live agentvouch-postgres, not the legacy agent-reputation-oracle project) before running."
     );
   }
-  return neon(url);
+  return { db: neon(url), host: new URL(url).hostname };
+}
+
+/**
+ * `migrate` refuses to run unless EXPECTED_DATABASE_HOST matches the DATABASE_URL host, so a
+ * stale shell env can't create unique indexes on the wrong Neon project (the plan's "block if
+ * the env points at the wrong project" guard; see [[neon-db-two-projects]]).
+ */
+function assertExpectedDatabaseHost(host: string): void {
+  const expected = process.env.EXPECTED_DATABASE_HOST?.trim();
+  if (!expected) {
+    throw new Error(
+      `migrate requires EXPECTED_DATABASE_HOST to match the DATABASE_URL host (currently "${host}"). Set EXPECTED_DATABASE_HOST=${host} after confirming this is the intended Neon project.`
+    );
+  }
+  if (expected !== host) {
+    throw new Error(
+      `EXPECTED_DATABASE_HOST ("${expected}") does not match the DATABASE_URL host ("${host}"); refusing to run migrate against a possibly wrong Neon project.`
+    );
+  }
 }
 
 async function findEvmListingDuplicates(
@@ -65,6 +88,9 @@ async function findEvmListingDuplicates(
   `) as EvmListingDuplicateRow[];
 }
 
+// Groups by the value the unique index will see AFTER migrate() normalizes EVM buyer
+// addresses to lowercase — otherwise checksummed and lowercased forms of the same EVM buyer
+// would pass preflight and then collide (or silently coexist) under the unique index.
 async function findEntitlementDuplicates(
   db: Db
 ): Promise<EntitlementDuplicateRow[]> {
@@ -72,13 +98,22 @@ async function findEntitlementDuplicates(
     SELECT
       skill_db_id::text,
       buyer_chain_context,
-      buyer_address,
+      CASE
+        WHEN buyer_chain_context LIKE 'eip155:%' THEN LOWER(buyer_address)
+        ELSE buyer_address
+      END AS buyer_address,
       ARRAY_AGG(buyer_pubkey ORDER BY last_verified_at) AS buyer_pubkeys,
       COUNT(*)::int AS row_count
     FROM usdc_purchase_entitlements
     WHERE buyer_chain_context IS NOT NULL
       AND buyer_address IS NOT NULL
-    GROUP BY skill_db_id, buyer_chain_context, buyer_address
+    GROUP BY
+      skill_db_id,
+      buyer_chain_context,
+      CASE
+        WHEN buyer_chain_context LIKE 'eip155:%' THEN LOWER(buyer_address)
+        ELSE buyer_address
+      END
     HAVING COUNT(*) > 1
   `) as EntitlementDuplicateRow[];
 }
@@ -150,6 +185,37 @@ async function migrate(db: Db): Promise<void> {
     } skills row(s).`
   );
 
+  // Normalize existing EVM buyer addresses to what new writes store (lowercase) before the
+  // unique index is created. Receipts are included because the fresh-database entitlement
+  // backfill in ensureUsdcPurchaseSchema copies receipts.buyer_address into entitlements.
+  const loweredEntitlements = await db`
+    UPDATE usdc_purchase_entitlements
+    SET buyer_address = LOWER(buyer_address)
+    WHERE buyer_chain_context LIKE 'eip155:%'
+      AND buyer_address IS NOT NULL
+      AND buyer_address <> LOWER(buyer_address)
+    RETURNING skill_db_id
+  `;
+  console.log(
+    `Lowercased buyer_address on ${
+      (loweredEntitlements as unknown[]).length
+    } EVM entitlement row(s).`
+  );
+
+  const loweredReceipts = await db`
+    UPDATE usdc_purchase_receipts
+    SET buyer_address = LOWER(buyer_address)
+    WHERE buyer_chain_context LIKE 'eip155:%'
+      AND buyer_address IS NOT NULL
+      AND buyer_address <> LOWER(buyer_address)
+    RETURNING id
+  `;
+  console.log(
+    `Lowercased buyer_address on ${
+      (loweredReceipts as unknown[]).length
+    } EVM receipt row(s).`
+  );
+
   await db`
     CREATE UNIQUE INDEX IF NOT EXISTS uidx_skills_evm_listing_identity
     ON skills(chain_context, evm_contract_address, evm_listing_id)
@@ -175,7 +241,12 @@ async function migrate(db: Db): Promise<void> {
 
 async function main() {
   const command = process.argv[2];
-  const db = getDbFromEnv();
+  const { db, host } = getDbFromEnv();
+
+  const [identity] = (await db`
+    SELECT current_database() AS database
+  `) as { database: string }[];
+  console.log(`Target: host=${host} database=${identity?.database}`);
 
   if (command === "preflight") {
     const clean = await preflight(db);
@@ -183,6 +254,7 @@ async function main() {
   }
 
   if (command === "migrate") {
+    assertExpectedDatabaseHost(host);
     await migrate(db);
     return;
   }

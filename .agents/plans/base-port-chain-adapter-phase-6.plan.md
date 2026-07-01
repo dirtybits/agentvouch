@@ -91,14 +91,20 @@ swap is deferred until there is a real multi-EVM collision risk.
   and repo/x402 paths still use legacy `hasUsdcPurchaseEntitlement`. Activity responses still expose
   `buyer_pubkey` as the actor field. These are Phase 6 call-site audit targets.
 - 2026-07-01 implementation: Shipped on `feat/base-port-phase-6`. Runtime `db.ts` gained the
-  non-unique `idx_skills_evm_listing` plus an idempotent `LOWER(evm_contract_address)`
-  normalization; the partial UNIQUE variants (`uidx_skills_evm_listing_identity`,
-  `uidx_usdc_purchase_entitlements_chain_buyer`, both `WHERE ... IS NOT NULL`) live in
-  `web/scripts/phase6-chain-identity-migration.ts` (`preflight`/`migrate`, npm script
-  `db:phase6-chain-identity`), which aborts with a printed duplicate report and never touches the
-  legacy PK. Base listing persistence now lowercases `evm_contract_address` at write. D3: the
-  receipt upsert's defensive WHERE also compares `buyer_chain_context`/`buyer_address`
-  (NULL-tolerant for pre-backfill rows).
+  non-unique `idx_skills_evm_listing`; the partial UNIQUE variants
+  (`uidx_skills_evm_listing_identity`, `uidx_usdc_purchase_entitlements_chain_buyer`, both
+  `WHERE ... IS NOT NULL`) live in `web/scripts/phase6-chain-identity-migration.ts`
+  (`preflight`/`migrate`, npm script `db:phase6-chain-identity`), which aborts with a printed
+  duplicate report and never touches the legacy PK. Base listing persistence now lowercases
+  `evm_contract_address` at write. D3: the receipt upsert's defensive WHERE also compares
+  `buyer_chain_context`/`buyer_address` (NULL-tolerant for pre-backfill rows).
+- 2026-07-01 Codex review fixes: ALL data normalization of existing rows now lives in the
+  standalone migration only (the runtime `LOWER(evm_contract_address)` backfill was moved out of
+  `db.ts`); `migrate` also lowercases EVM `buyer_address` on entitlements and receipts before
+  index creation, and preflight groups EVM buyers case-insensitively so it reports what the
+  unique index will see; `migrate` refuses to run unless `EXPECTED_DATABASE_HOST` matches the
+  `DATABASE_URL` host (wrong-Neon-project guard, see [[neon-db-two-projects]]), and both
+  commands print the target host/database.
 - 2026-07-01 implementation discovery: the author-trust snapshot pipeline
   (`lib/trustSnapshots.ts`) persisted every skill author under the configured _Solana_ chain
   context — including `0x…` Base authors, which would have attached bogus Solana-context trust to

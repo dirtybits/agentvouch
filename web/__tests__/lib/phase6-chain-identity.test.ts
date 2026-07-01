@@ -17,8 +17,9 @@ describe("phase 6: skills EVM listing identity", () => {
 
   it("runtime schema keeps only additive, race-tolerant EVM identity DDL", () => {
     expect(dbSource).toContain("idx_skills_evm_listing");
-    // Lowercase normalization runs before the index is useful.
-    expect(dbSource).toContain(
+    // Data normalization of existing rows belongs to the standalone migration, not the
+    // request-time initializer.
+    expect(dbSource).not.toContain(
       "SET evm_contract_address = LOWER(evm_contract_address)"
     );
     // The UNIQUE variant is reserved for the standalone guarded migration.
@@ -53,6 +54,26 @@ describe("phase 6: standalone chain-identity migration", () => {
     expect(migrationSource).toContain("buyer_address IS NOT NULL");
     expect(migrationSource).not.toContain("DROP CONSTRAINT");
     expect(migrationSource).not.toContain("ADD PRIMARY KEY");
+  });
+
+  it("normalizes existing EVM addresses to what new writes store before creating unique indexes", () => {
+    expect(migrationSource).toContain(
+      "SET evm_contract_address = LOWER(evm_contract_address)"
+    );
+    expect(migrationSource).toContain(
+      "SET buyer_address = LOWER(buyer_address)"
+    );
+    expect(migrationSource).toContain("UPDATE usdc_purchase_entitlements");
+    expect(migrationSource).toContain("UPDATE usdc_purchase_receipts");
+    // Preflight groups EVM buyers case-insensitively so it sees what the index will see.
+    expect(migrationSource).toContain(
+      "WHEN buyer_chain_context LIKE 'eip155:%' THEN LOWER(buyer_address)"
+    );
+  });
+
+  it("migrate refuses to run against an unconfirmed database host", () => {
+    expect(migrationSource).toContain("EXPECTED_DATABASE_HOST");
+    expect(migrationSource).toContain("assertExpectedDatabaseHost(host)");
   });
 });
 
