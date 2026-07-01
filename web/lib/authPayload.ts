@@ -21,6 +21,13 @@ export function buildDownloadRawMessage(
   }\nTimestamp: ${timestamp}`;
 }
 
+export function buildStripeCheckoutMessage(
+  skillId: string,
+  timestamp: number
+): string {
+  return `AgentVouch Stripe Checkout\nAction: stripe-checkout\nSkill id: ${skillId}\nTimestamp: ${timestamp}`;
+}
+
 export async function createSignedDownloadAuthPayload(input: {
   walletAddress: string;
   signMessage: (message: Uint8Array) => Promise<Uint8Array>;

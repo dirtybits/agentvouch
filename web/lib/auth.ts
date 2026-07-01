@@ -6,6 +6,7 @@ import { getErrorMessage } from "@/lib/errors";
 export {
   buildDownloadRawMessage,
   buildSignMessage,
+  buildStripeCheckoutMessage,
   createSignedDownloadAuthPayload,
   normalizeProtocolNewlines,
   type AuthPayload,
