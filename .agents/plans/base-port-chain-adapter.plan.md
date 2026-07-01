@@ -18,7 +18,7 @@ todos:
     content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke remains env-dependent. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
     status: completed
   - id: db-multichain
-    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana after the Phase 5 groundwork: EVM listing identity constraints, chain-qualified receipt/entitlement uniqueness, Base/Solana raw-access separation, and activity/dashboard reads that prefer buyer_chain_context + buyer_address over bare buyer_pubkey. Do not overload Solana on_chain_address for Base. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
+    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana after the Phase 5 groundwork: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, and activity/dashboard reads that prefer buyer_chain_context + buyer_address over bare buyer_pubkey. Keep the legacy (skill_db_id, buyer_pubkey) entitlement PK until a later multi-EVM phase; do not overload Solana on_chain_address for Base. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
     status: pending
   - id: address-type-sweep
     content: "Phase 7. After Phase 6 and the Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
@@ -441,9 +441,11 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chai
   detail and marketplace/activity read surfaces, plus focused tests. Phase 5 already added many
   additive fields (`evm_listing_id`, `evm_contract_address`, `evm_tx_hash`, `buyer_chain_context`,
   `buyer_address`, recipient/asset chain fields, and EVM purchase ids). Phase 6 must make those
-  fields authoritative: add/verify EVM listing identity indexes, backfill and enforce chain-qualified
-  buyer fields, move entitlement uniqueness/upserts/lookups off bare `buyer_pubkey`, and guard all
-  relevant reads/writes by `chain_context`.
+  fields useful and consistently populated: add/verify EVM listing identity indexes, backfill
+  chain-qualified buyer fields, route eligible reads/writes through chain-qualified helpers, and guard
+  all relevant reads/writes by `chain_context`. Do **not** swap the legacy
+  `(skill_db_id, buyer_pubkey)` entitlement primary key in Phase 6; that destructive migration is
+  deferred until a later multi-EVM phase.
 - **Done when:** a Base purchase persists (contract addr + tx hash), raw-access entitlements are
   chain-qualified, and dashboards/activity render without treating EVM rows as Solana PDAs; existing
   Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project). After this phase,

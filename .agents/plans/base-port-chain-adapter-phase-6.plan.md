@@ -9,7 +9,7 @@ todos:
     content: Add/verify EVM listing identity constraints and helpers so Base rows use chain_context + evm_contract_address + evm_listing_id, never Solana on_chain_address, and Solana rows keep their current PDA/program semantics.
     status: pending
   - id: migrate-chain-qualified-entitlements
-    content: Backfill and enforce buyer_chain_context/buyer_address plus recipient_chain_context/recipient_address and asset_chain_context/asset_address, then move entitlement uniqueness/upserts/lookups from bare buyer_pubkey to the chain-qualified buyer key while preserving Solana compatibility.
+    content: Backfill buyer_chain_context/buyer_address plus recipient_chain_context/recipient_address and asset_chain_context/asset_address, add chain-qualified lookup/index coverage additively, and route new reads/writes through the chain-qualified helper while keeping the legacy (skill_db_id, buyer_pubkey) PK until the multi-EVM phase.
     status: pending
   - id: harden-chain-aware-callers
     content: Audit and update raw access, purchase verification, x402 settlement, skill detail, marketplace activity, and dashboard/read paths so Base rows never flow through Solana PDA/ATA/pubkey assumptions.
@@ -31,9 +31,11 @@ Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.m
 ## Goal
 
 Make the database and read/write helpers honest about chain identity before AgentVouch defaults to
-Base. After this phase, Base and Solana purchases for the same skill are keyed by
-`(skill_db_id, buyer_chain_context, buyer_address)`, Base listings are identified by EVM fields, and
-UI/API activity reads can render either chain without treating EVM addresses as Solana PDAs.
+Base. After this phase, Base and Solana purchases carry chain-qualified buyer, recipient, and asset
+identity; Base listing identity is explicit in EVM fields; and UI/API activity reads can render
+either chain without treating EVM addresses as Solana PDAs. The legacy
+`(skill_db_id, buyer_pubkey)` entitlement primary key stays in place for Phase 6; the destructive PK
+swap is deferred until there is a real multi-EVM collision risk.
 
 ## Dependencies
 
@@ -45,12 +47,14 @@ UI/API activity reads can render either chain without treating EVM addresses as 
 
 ## Scope
 
-- **In scope:** Postgres DDL in the existing idempotent schema helpers, EVM listing uniqueness,
+- **In scope:** additive/race-tolerant Postgres DDL in the existing idempotent schema helpers,
+  standalone duplicate-detection/migration guidance for any unique indexes, EVM listing identity,
   chain-qualified receipt and entitlement semantics, chain-aware read/write call sites, regression
   tests, and local build/test verification.
-- **Out of scope:** Base default-chain flip, Base mainnet schema policy, deleting Solana columns,
-  renaming every legacy `buyer_pubkey` field, disputes/slashing on Base, and the Phase 2 Solana
-  adapter caller repoint. Phase 2 circles back after this phase.
+- **Out of scope:** Base default-chain flip, Base mainnet schema policy, destructive entitlement
+  primary-key swaps, deleting Solana columns, renaming every legacy `buyer_pubkey` field,
+  disputes/slashing on Base, and the Phase 2 Solana adapter caller repoint. Phase 2 circles back
+  after this phase.
 
 ## Current State To Preserve
 
@@ -62,8 +66,9 @@ UI/API activity reads can render either chain without treating EVM addresses as 
 - `web/lib/usdcPurchases.ts` currently has both legacy helpers such as
   `hasUsdcPurchaseEntitlement(skillDbId, buyerPubkey)` and chain-aware helpers such as
   `hasChainUsdcPurchaseEntitlement(skillDbId, buyer)`.
-- `usdc_purchase_entitlements` still has transitional `PRIMARY KEY (skill_db_id, buyer_pubkey)` and
-  `ON CONFLICT (skill_db_id, buyer_pubkey)` paths. This is the main correctness target for Phase 6.
+- `usdc_purchase_entitlements` still has `PRIMARY KEY (skill_db_id, buyer_pubkey)` and
+  `ON CONFLICT (skill_db_id, buyer_pubkey)` paths. Keep that legacy key in Phase 6; the correctness
+  target is additive chain-qualified lookup/write coverage, not a destructive key swap.
 
 ## Progress Notes
 
@@ -85,6 +90,12 @@ UI/API activity reads can render either chain without treating EVM addresses as 
   `hasChainUsdcPurchaseEntitlement` when a buyer chain context/EVM address is present, while Solana
   and repo/x402 paths still use legacy `hasUsdcPurchaseEntitlement`. Activity responses still expose
   `buyer_pubkey` as the actor field. These are Phase 6 call-site audit targets.
+- 2026-07-01 review update: Defer the destructive entitlement PK swap. Today, Solana
+  `buyer_pubkey` values are base58 and Base values are lowercased `0x...` hex, so their namespaces
+  are disjoint. The real collision appears only when a second EVM chain is enabled, which is blocked
+  until Phase 8b/mainnet. Phase 6 should add chain-qualified indexes and read/write discipline
+  additively, keep the legacy `(skill_db_id, buyer_pubkey)` PK/upsert path, and leave the destructive
+  PK swap for a later multi-EVM migration.
 
 ## Design Decisions
 
@@ -97,16 +108,25 @@ base58 strings.
 Keep `buyer_pubkey` as a legacy compatibility alias for existing Solana-shaped code and API response
 fields during this phase, but do not use it as the canonical entitlement key for new writes.
 
-### D2 - Replace entitlement uniqueness only after backfill
+### D2 - Add chain-qualified uniqueness additively; defer the PK swap
 
 Implementation should be staged:
 
 1. Backfill missing chain-qualified fields from legacy fields.
-2. Check for duplicate `(skill_db_id, buyer_chain_context, buyer_address)` groups.
-3. If duplicates exist, stop and report them rather than guessing which entitlement wins.
-4. Once clean, enforce non-null buyer chain/address on `usdc_purchase_entitlements`.
-5. Replace the old `(skill_db_id, buyer_pubkey)` primary/upsert semantics with the chain-qualified
-   key. Keep a non-unique legacy index on `(skill_db_id, buyer_pubkey)` while callers finish moving.
+2. Check for duplicate `(skill_db_id, buyer_chain_context, buyer_address)` groups in a standalone
+   preflight/migration script, not inside `ensureUsdcPurchaseSchema()`.
+3. If duplicates exist, abort the standalone migration and print/report the duplicate groups; do not
+   throw from the request-time schema initializer.
+4. Add the chain-qualified unique index additively through the standalone migration after preflight
+   passes. If a non-unique covering index is useful before then, it may stay in the runtime helper.
+5. Keep the old `(skill_db_id, buyer_pubkey)` primary key and `ON CONFLICT (skill_db_id, buyer_pubkey)`
+   upsert semantics in Phase 6. Route new reads/writes through chain-qualified helpers where the
+   caller has chain context, but defer the destructive PK swap until a later multi-EVM phase.
+
+Runtime schema helpers may keep additive, race-tolerant `ADD COLUMN IF NOT EXISTS` and non-unique
+`CREATE INDEX IF NOT EXISTS` work. Any duplicate scan, unique-index migration that can fail on live
+data, `DROP CONSTRAINT`, primary-key swap, or other exclusive-lock migration belongs in a one-shot
+guarded migration/preflight script that a human runs and reads.
 
 ### D3 - Receipts stay append-only by payment proof
 
@@ -121,12 +141,22 @@ Add or verify a partial unique index for Base/EVM listings using those three fie
 are present. Do not add a uniqueness rule that conflates Base rows with Solana
 `on_chain_address`.
 
+Before adding the unique index, run the same standalone duplicate-check discipline used for
+entitlements. If multiple skill rows already point at the same `(chain_context, evm_contract_address,
+evm_listing_id)` tuple, stop and report the rows rather than creating an index from the request path.
+Also backfill `evm_contract_address = lower(evm_contract_address)` and any stored EVM addresses that
+feed indexes before creating the index. Display-layer checksumming can still happen at render time.
+
 ### D5 - Phase 6 is deploy-safe without live Base smoke
 
-The schema and helper changes must be source/test/build verified locally. Live Neon migration and
-Base purchase smoke are required only when the intended `DATABASE_URL`, Base Sepolia RPC, paymaster,
-relayer, and funded-wallet envs are present. If those envs are missing, record that as a skipped live
-verification, not as a failure.
+The schema and helper changes must be source/test/build verified locally. Because Phase 6 now avoids
+the destructive entitlement PK swap, live Neon migration and Base purchase smoke are required only
+when the intended `DATABASE_URL`, Base Sepolia RPC, paymaster, relayer, and funded-wallet envs are
+present. If those envs are missing, record that as skipped live verification, not as a failure.
+
+If a later implementation reintroduces a destructive PK swap, live verification is no longer
+optional: it needs a disposable Neon branch smoke that runs the one-shot migration, confirms
+constraints, and proves one Solana and one Base entitlement remain readable before merge.
 
 ## Files To Inspect First
 
@@ -158,21 +188,28 @@ verification, not as a failure.
   - `usdc_purchase_receipts`
   - `usdc_purchase_entitlements`
   - `usdc_x402_settlement_attempts`
-- Block live migration if the env points at the wrong Neon project or if duplicate chain-qualified
-  entitlement rows already exist.
+- Duplicate detection for chain-qualified entitlements and EVM listing identity must live in a
+  standalone preflight/migration script. Do not add duplicate scans or "stop and report" errors to
+  `ensureUsdcPurchaseSchema()`; a thrown initializer would fail every request that touches receipts
+  until data is manually repaired.
+- Block the standalone index migration if the env points at the wrong Neon project or if duplicate
+  chain-qualified entitlement or EVM listing identity rows already exist.
 
 ### 2. Harden `skills` EVM listing identity
 
 - Keep `evm_listing_id VARCHAR(66)`, `evm_contract_address VARCHAR(42)`, and `evm_tx_hash VARCHAR(66)`.
-- Normalize persisted EVM contract addresses consistently, preferably lowercase at storage
-  boundaries and formatted/checksummed only for display.
+- Add a one-time lower-case backfill for `evm_contract_address` before creating any EVM listing
+  identity index. Apply the same lower-case storage rule to any EVM address that feeds an index.
+  Formatted/checksummed addresses remain a display concern.
 - Add/verify partial indexes:
   - `(chain_context, evm_contract_address, evm_listing_id)` for EVM rows.
   - existing `(chain_context, on_chain_program_id, on_chain_address)` for Solana rows.
+- Run and review a duplicate report for `(chain_context, evm_contract_address, evm_listing_id)`
+  before creating the EVM unique index; duplicate rows must be resolved intentionally.
 - Add source/test coverage proving Base rows keep `on_chain_address = NULL` and Solana rows keep
   `evm_listing_id = NULL` unless a deliberate hybrid mapping is introduced later.
 
-### 3. Move entitlement identity to chain-qualified keys
+### 3. Add chain-qualified entitlement coverage without swapping the PK
 
 - Backfill `buyer_chain_context`, `buyer_address`, `recipient_chain_context`, `recipient_address`,
   `asset_chain_context`, and `asset_address` for existing rows.
@@ -185,14 +222,19 @@ verification, not as a failure.
   - `buyer_chain_context = eip155:84532`
   - `buyer_address = lower(buyer)`
   - `recipient_chain_context = eip155:84532`
-  - `recipient_address = lower(author/recipient as applicable)`
+  - `recipient_address = lower(AgentVouchEvm contract address)`, matching Phase 5's
+    `verifyAndRecordBaseDirectPurchase` behavior where `recipientAta`, `recipientAddress`, and
+    `authorProceedsVault` are all the AgentVouch contract/on-chain program id. Do not backfill this
+    as the author address unless the live write path changes first.
   - `asset_chain_context = eip155:84532`
   - `asset_address = lower(native Base Sepolia USDC)`
   - `evm_listing_id` and `evm_purchase_id`
-- Replace `ON CONFLICT (skill_db_id, buyer_pubkey)` in entitlement inserts/backfills with the
-  chain-qualified key.
-- Keep `hasUsdcPurchaseEntitlement` as a Solana-compatible wrapper, but make new or mixed-chain
-  call sites use `hasChainUsdcPurchaseEntitlement`.
+- Add the chain-qualified unique index only through the standalone migration after duplicate
+  preflight passes; keep any non-unique covering index in the runtime helper if useful.
+- Keep `ON CONFLICT (skill_db_id, buyer_pubkey)` in entitlement inserts/backfills for Phase 6 so a
+  normal code revert still works against the legacy primary key.
+- Keep `hasUsdcPurchaseEntitlement` as a Solana-compatible wrapper, but make new or mixed-chain call
+  sites use `hasChainUsdcPurchaseEntitlement`.
 
 ### 4. Guard call sites by chain context
 
@@ -217,8 +259,8 @@ verification, not as a failure.
 
 Minimum test cases:
 
-- A Solana entitlement and a Base entitlement for the same `skill_db_id` do not collide when buyer
-  strings differ only by chain semantics.
+- A Solana entitlement and a Base entitlement for the same `skill_db_id` continue to work with the
+  legacy PK in place and with chain-qualified fields populated.
 - Base entitlement lookup succeeds only with matching `buyer_chain_context` and normalized
   `buyer_address`.
 - Legacy Solana lookup still succeeds for existing callers.
@@ -243,7 +285,8 @@ npm exec --workspace @agentvouch/web -- next build --webpack
 
 Optional live checks when envs are present and confirmed to target the intended Neon branch:
 
-- Run the schema initializer against the target database and confirm the new indexes/constraints.
+- Run the schema initializer against the target database and confirm additive helper DDL still works.
+- If running the standalone index migration, first run its duplicate reports and capture the output.
 - Verify one existing Solana entitlement remains readable.
 - Verify one Base entitlement row can be inserted/read with `buyer_chain_context = eip155:84532`.
 - If Base RPC/paymaster/relayer/funded wallet envs are also present, run a Base purchase or x402
@@ -253,21 +296,25 @@ Optional live checks when envs are present and confirmed to target the intended 
 
 - Ship as one PR from `feat/base-port-phase-6`.
 - Do not flip the default chain in this PR.
-- If the live migration is run before merge, capture the Neon branch/project, timestamp, and schema
-  evidence in the PR or plan progress notes.
+- Do not run destructive PK migrations from runtime schema helpers. If additive unique indexes are
+  created through a standalone migration, capture the Neon branch/project, duplicate-report output,
+  timestamp, and schema evidence in the PR or plan progress notes.
 - After merge, circle back to Phase 2 caller/seam cleanup before Phase 7/8 default-chain work.
 
 ## Rollback
 
 - Code rollback: revert the Phase 6 PR. The Phase 5 additive columns can remain.
-- Database rollback should avoid dropping data-bearing columns. If a chain-qualified primary/unique
-  key change causes a production issue, restore the legacy `(skill_db_id, buyer_pubkey)` upsert path
-  in code first, then add a compatibility unique index only if needed.
+- Database rollback should avoid dropping data-bearing columns. Phase 6 keeps the legacy
+  `(skill_db_id, buyer_pubkey)` primary key, so a normal code revert should continue to have a
+  matching `ON CONFLICT` target. If an additive chain-qualified index causes an issue, drop or disable
+  that additive index through a controlled migration; do not delete payment evidence.
 - Do not delete Base receipt/entitlement rows during rollback; they are payment evidence.
 
 ## Blockers
 
-- Duplicate rows for `(skill_db_id, buyer_chain_context, buyer_address)` in live data.
+- Duplicate rows for `(skill_db_id, buyer_chain_context, buyer_address)` or
+  `(chain_context, evm_contract_address, evm_listing_id)` in live data block unique-index migration,
+  but should not block request-time schema initialization.
 - Missing or ambiguous `DATABASE_URL` for live migration verification.
 - Any caller that still needs to grant Base access through a Solana-only `buyer_pubkey` path.
 - Discovery that dashboard/activity consumers depend on `buyer_pubkey` being Solana-shaped without a
