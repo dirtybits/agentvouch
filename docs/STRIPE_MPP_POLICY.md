@@ -15,6 +15,19 @@ The current implementation is wallet-bound: the buyer signs a checkout message
 before Stripe session creation, and the webhook records the entitlement against
 that wallet pubkey.
 
+## Rail Positioning
+
+Stripe MPP is not the canonical AgentVouch settlement rail. Protocol-visible
+paid purchases should prefer direct USDC `purchase_skill` or the
+protocol-listed x402 bridge, because those paths can create purchase PDA state,
+route author proceeds, fund voucher rewards, and preserve dispute/refund
+semantics.
+
+Base/USDC work may become the stronger agent-native path for smart-account or
+paymaster-style UX, but it does not make Stripe a protocol ledger. Stripe
+remains a human/card on-ramp and early-sales bridge unless and until a
+fiat -> USDC -> on-chain settlement design is approved.
+
 ## Activation Gates
 
 Do not enable Stripe checkout unless all of the following are true:
@@ -78,6 +91,21 @@ Stripe MPP receipts should remain visibly distinct from protocol purchases:
 
 Metrics and activity feeds should avoid mixing Stripe MPP sales into on-chain
 voucher yield, author proceeds escrow, or dispute recovery statistics.
+
+## Graduation Decision
+
+Before broad production rollout, choose exactly one Stripe model:
+
+1. **Card on-ramp to protocol settlement.** Stripe collects payment, the
+   operator converts net funds to USDC, and the backend settles into the
+   protocol path before the sale affects author proceeds, voucher rewards, or
+   protocol refund state.
+2. **Parallel MPP marketplace.** Stripe Connect or an explicit operator payout
+   process handles author payment off-chain. Sales remain separate from
+   protocol economics, and voucher rewards stay at `0`.
+3. **Limited early-sales rail.** Stripe stays available only for
+   wallet-bound access experiments while protocol USDC/x402 remains the
+   preferred commerce path.
 
 ## Production Blockers
 

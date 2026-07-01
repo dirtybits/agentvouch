@@ -17,6 +17,41 @@ The question splits into two very different problems:
    fiat rail** — _hard_ (weeks), and partly a business/compliance decision
    rather than an engineering one. **Not** prototyped — only specified.
 
+## Payment Rail Decision — 2026-07-01
+
+Base/USDC/x402 changes the Stripe scope, not the Stripe value. AgentVouch
+should keep Stripe MPP as a card-funded acquisition path for buyers and
+authors who want to transact now, while treating USDC-native `purchase_skill`
+and the protocol x402 bridge as the preferred protocol-visible settlement
+paths.
+
+Current positioning:
+
+- **Preferred protocol path:** direct USDC `purchase_skill` and the
+  protocol-listed x402 bridge. These paths can create `Purchase` PDA state,
+  fund author proceeds, fund voucher rewards, and preserve dispute/refund
+  semantics.
+- **Future Base path:** Base remains a POC/port direction for smart-account
+  and paymaster-style UX. It may reduce wallet friction for agent-native USDC
+  payments, but it is not a reason to make Stripe the canonical ledger.
+- **Stripe MPP path:** Stripe is the human/card on-ramp and "sell now" bridge.
+  It may unlock content by writing a wallet-bound off-chain entitlement, but
+  it must not be counted as protocol settlement unless a later fiat -> USDC ->
+  on-chain settlement design is approved and implemented.
+
+Before Tier 2, choose one graduation model:
+
+1. **Card on-ramp to protocol settlement:** Stripe collects card payment,
+   operator converts net proceeds to USDC, then settles through the protocol
+   path before the sale counts toward author proceeds, voucher rewards, or
+   protocol refund state.
+2. **Parallel MPP marketplace:** Stripe Connect or operator payouts handle
+   author payment off-chain. Sales remain visibly separate from protocol
+   purchases and do not create voucher yield or protocol refund claims.
+3. **Limited early-sales rail:** Stripe stays test/limited-scope for
+   wallet-bound access while Base/USDC/x402 carries the agent-native commerce
+   path.
+
 ## Why Tier 1 is easy
 
 Access to a paid skill ultimately reduces to one DB check:

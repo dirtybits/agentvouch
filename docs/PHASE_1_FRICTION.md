@@ -1,6 +1,9 @@
 # Phase 1 — Friction Removal for Buyers and Sellers
 
-Living scope doc for the "remove the wallet-exists wall" effort. Phase 2 (Stripe + custodial fiat) is out of scope here; this phase stays on Solana / USDC rails and is fully testable on devnet.
+Living scope doc for the "remove the wallet-exists wall" effort. Phase 1
+stays on Solana / USDC rails and is fully testable on devnet. Stripe MPP is a
+parallel WIP card rail for wallet-bound early sales, not the Phase 1 protocol
+settlement path.
 
 ## Goal
 
@@ -14,18 +17,22 @@ Devnet first; anything that needs to flip to mainnet later (faucet vs. real fund
 - `ClientWalletButton` uses ConnectorKit to expose extension wallets and Phantom embedded social sign-in through one wallet surface.
 - The repo-only x402 USDC infrastructure exists for off-chain entitlement experiments and historical compatibility, already documented in `web/public/skill.md` and `/docs#paid-skill-download`; it is not the desired paid marketplace settlement path because it bypasses protocol purchase economics.
 - Protocol-listed paid skills fail closed to direct `purchase_skill` plus signed `X-AgentVouch-Auth` download until an x402 settlement bridge preserves voucher rewards.
+- The Stripe MPP prototype can record a wallet-bound off-chain entitlement for
+  card buyers, including when on-chain listing setup is still pending. It must
+  stay visibly separate from protocol settlement, voucher yield, and refund
+  state.
 
 ## Gap inventory (verify before scoping each)
 
-| # | Gap | Verification step | Likely effort |
-|---|-----|-------------------|---------------|
-| 1 | Is `NEXT_PUBLIC_PHANTOM_APP_ID` provisioned in local / Vercel preview / Vercel production? | `vercel env ls`, `.env.local` check | 0.5 day if missing |
-| 2 | Does Phantom embedded actually sign and submit `purchase_skill` on devnet end-to-end? | Manual smoke: Google sign-in → buy a 1 USDC skill | unknown; spike first |
-| 3 | Does the existing browser x402 split-signature path route correctly when the connected wallet is a Phantom embedded (send-only) wallet? | Trace `web/lib/x402*.ts` / wallet adapter for capability detection | 1–2 days if it auto-falls-through, 3–5 if branching is needed |
-| 4 | Is there a faucet UI for devnet SOL + devnet USDC for first-time signed-in users? | Search `web/app` / `web/components` | none today; net new ~1–2 days |
-| 5 | Author registration cost (SOL rent for `AgentProfile` PDA): can the platform sponsor it on devnet for Web2 sign-ups? | Read `register_agent` rent + check for any existing sponsor wrapper | 1–2 days |
-| 6 | First-purchase USDC ATA creation: pre-create or sponsor? | Read `purchase_skill` + ATA setup | 1 day |
-| 7 | What does the "wallet has insufficient SOL/USDC" preflight currently surface for a Web2-signed-in user? | Review `web/lib/purchasePreflight.ts` UX paths | 0.5 day |
+| #   | Gap                                                                                                                                     | Verification step                                                   | Likely effort                                                 |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
+| 1   | Is `NEXT_PUBLIC_PHANTOM_APP_ID` provisioned in local / Vercel preview / Vercel production?                                              | `vercel env ls`, `.env.local` check                                 | 0.5 day if missing                                            |
+| 2   | Does Phantom embedded actually sign and submit `purchase_skill` on devnet end-to-end?                                                   | Manual smoke: Google sign-in → buy a 1 USDC skill                   | unknown; spike first                                          |
+| 3   | Does the existing browser x402 split-signature path route correctly when the connected wallet is a Phantom embedded (send-only) wallet? | Trace `web/lib/x402*.ts` / wallet adapter for capability detection  | 1–2 days if it auto-falls-through, 3–5 if branching is needed |
+| 4   | Is there a faucet UI for devnet SOL + devnet USDC for first-time signed-in users?                                                       | Search `web/app` / `web/components`                                 | none today; net new ~1–2 days                                 |
+| 5   | Author registration cost (SOL rent for `AgentProfile` PDA): can the platform sponsor it on devnet for Web2 sign-ups?                    | Read `register_agent` rent + check for any existing sponsor wrapper | 1–2 days                                                      |
+| 6   | First-purchase USDC ATA creation: pre-create or sponsor?                                                                                | Read `purchase_skill` + ATA setup                                   | 1 day                                                         |
+| 7   | What does the "wallet has insufficient SOL/USDC" preflight currently surface for a Web2-signed-in user?                                 | Review `web/lib/purchasePreflight.ts` UX paths                      | 0.5 day                                                       |
 
 ## Phase 1 scope (proposed)
 
@@ -33,7 +40,7 @@ Listed in order of leverage. Items below the line are "nice to have, doesn't blo
 
 ### Must-haves
 
-1. **Verify the embedded wallet end-to-end on devnet.** Spike: deploy a preview with `NEXT_PUBLIC_PHANTOM_APP_ID` set, sign in with Google, attempt a `purchase_skill` on a free-floor listing. Report observed flow + failures. *No code change until this lands.*
+1. **Verify the embedded wallet end-to-end on devnet.** Spike: deploy a preview with `NEXT_PUBLIC_PHANTOM_APP_ID` set, sign in with Google, attempt a `purchase_skill` on a free-floor listing. Report observed flow + failures. _No code change until this lands._
 2. **Devnet onboarding faucet (server-side).** New server route `/api/dev/onboard` that, given a Solana address and a session-bound rate limit, transfers a small amount of devnet SOL (rent budget, e.g. 0.05 SOL) + devnet USDC (e.g. 5 USDC) from a platform sponsor keypair. UI: a one-click "Fund my devnet wallet" affordance shown only on first sign-in until balance > threshold. Gated to `NODE_ENV !== "production"` until mainnet onboarding policy exists.
 3. **Embedded-wallet aware purchase preflight.** Detect Phantom embedded / send-only capability and route to `signAndSendTransaction` instead of the split-signature x402 path. Surface clear "what your wallet supports" copy if there's a fork.
 4. **Author registration sponsor for devnet sign-ups.** If a Web2 user with `< minimum SOL` clicks "Publish," the platform fronts the rent for `register_agent` via a single sponsored transaction on devnet. Behind the same `NODE_ENV` gate.
@@ -46,11 +53,25 @@ Listed in order of leverage. Items below the line are "nice to have, doesn't blo
 
 ## Out of scope (explicitly Phase 2 or later)
 
-- Stripe + Stripe Link credit-card buyers.
-- Stripe Connect / MPP marketplace operator integration.
+- Email-only Stripe / Stripe Link buyers without wallet-bound AgentVouch auth.
+- Production Stripe Connect / MPP marketplace operator integration.
 - Custodial wallet option ("don't think about crypto at all").
 - KYC / KYB / 1099-K / sanctions screening.
 - Mainnet sponsor liability + faucet replacement.
+
+## Payment rail sequencing update — 2026-07-01
+
+Use three lanes:
+
+1. **Protocol-visible commerce:** direct USDC `purchase_skill` and the
+   protocol-listed x402 bridge. This is the preferred path for agent-native
+   payments, voucher rewards, author proceeds, and dispute/refund state.
+2. **Card-funded early sales:** Stripe MPP can let users buy/sell now by
+   writing a wallet-bound off-chain entitlement. Do not mix these receipts into
+   on-chain purchase, voucher-yield, author-proceeds, or refund metrics.
+3. **Future smart-account UX:** Base remains a POC/port direction for
+   agent-native USDC payments and paymaster-style wallet abstraction. It does
+   not make Stripe the canonical settlement ledger.
 
 ## Testability
 
@@ -87,11 +108,11 @@ This branch (`feat/phase-1-friction-removal`) is the scope-and-plan vehicle. Eac
 
 ### Evidence
 
-1. **The Phantom SDK does expose full signing.** `node_modules/@phantom/chain-interfaces/dist/interfaces/ISolanaChain.d.ts` defines `signMessage`, `signTransaction`, `signAndSendTransaction`, `signAllTransactions`, `signAndSendAllTransactions`, and `switchNetwork`. The embedded wallet is *not* send-only.
+1. **The Phantom SDK does expose full signing.** `node_modules/@phantom/chain-interfaces/dist/interfaces/ISolanaChain.d.ts` defines `signMessage`, `signTransaction`, `signAndSendTransaction`, `signAllTransactions`, `signAndSendAllTransactions`, and `switchNetwork`. The embedded wallet is _not_ send-only.
 2. **Two parallel, unconnected wallet states.** `web/components/ClientWalletButton.tsx` branches on:
    - Extension wallet: `const { wallet, status } = useWalletConnection()` from `@solana/react-hooks` (Wallet Standard).
    - Phantom embedded: `const phantom = usePhantom()`, `useAccounts()`, `useDisconnect()` from `@phantom/react-sdk`.
-   These two states never merge. The connect/disconnect UX handles both, but downstream consumers don't.
+     These two states never merge. The connect/disconnect UX handles both, but downstream consumers don't.
 3. **All downstream consumers read only the Wallet Standard state.** `web/app/skills/[id]/page.tsx:264` does `const { wallet, status } = useWalletConnection()` and feeds `wallet` to `walletSupportsBrowserX402(wallet)` and `createWalletTransactionSigner(wallet)` from `@solana/client`. A user signed in via Phantom embedded leaves `useWalletConnection().wallet === null`, so the purchase button thinks no wallet is connected.
 4. **`createWalletTransactionSigner` requires a Wallet Standard wallet.** The signer factory in `web/lib/browserX402.ts:69` expects the Wallet Standard shape. The Phantom embedded `ISolanaChain` is a different (richer) shape.
 
@@ -108,7 +129,7 @@ This finding reshapes the must-have list materially:
 - **New item 0 (gates everything else): unify the wallet abstraction.** Either (a) wrap Phantom embedded `ISolanaChain` in a Wallet Standard adapter so existing flows pick it up unchanged, or (b) introduce a project-wide signer abstraction (a `UnifiedWalletSigner` interface) and route both extension and embedded wallets through it. (a) is one well-bounded library to write or borrow; (b) is invasive but cleaner long-term. Recommend (a) for Phase 1 — minimum diff, no downstream churn.
 - **Item 3 (x402 routing for embedded wallets) collapses into item 0.** Once the embedded wallet is visible to `useWalletConnection()`, the existing x402 split-signature path Just Works because `ISolanaChain.signTransaction` returns a partially signed tx, exactly what the sponsored x402 scheme needs.
 - **Item 2 (devnet faucet) is unblocked** but cosmetically gated on item 0 — a faucet that funds a wallet the rest of the app can't see is not useful.
-- **Items 4 and 5 (registration sponsor, USDC ATA pre-creation) are independent** of item 0 but practically meaningless until embedded users can submit *any* transaction.
+- **Items 4 and 5 (registration sponsor, USDC ATA pre-creation) are independent** of item 0 but practically meaningless until embedded users can submit _any_ transaction.
 
 ### Recommended order, revised
 
@@ -130,7 +151,7 @@ I can't actually sign in with Google myself. Once item 0a (env fix) lands, you s
 3. Verify the embedded wallet UI returns a Solana address.
 4. Open browser devtools console and confirm no Phantom SDK errors.
 
-If that surfaces a problem (e.g., the app id is invalid, redirect URI is misconfigured, or the Phantom dashboard isn't set up for this origin), it's a config issue that doesn't require code changes — just a Phantom dashboard tweak. Worth doing this verification *before* item 0b so we don't bake on top of broken connect UX.
+If that surfaces a problem (e.g., the app id is invalid, redirect URI is misconfigured, or the Phantom dashboard isn't set up for this origin), it's a config issue that doesn't require code changes — just a Phantom dashboard tweak. Worth doing this verification _before_ item 0b so we don't bake on top of broken connect UX.
 
 ## Smoke findings & decision — 2026-05-12
 

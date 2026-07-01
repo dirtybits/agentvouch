@@ -1143,14 +1143,14 @@ export default function SkillDetailPage({
 }`;
   const installCommand = hasUsdcPrimary
     ? isListingRequired
-      ? `# Primary price: ${usdcPriceLabel} via wallet-bound card checkout\n# Use the browser card checkout on this page. Agents can retry the raw endpoint with X-AgentVouch-Auth after entitlement.\ncurl -sL ${installUrl}`
+      ? `# Primary price: ${usdcPriceLabel} via wallet-bound card checkout\n# This creates an off-chain entitlement for the signed wallet. Agents can retry the raw endpoint with X-AgentVouch-Auth after entitlement.\ncurl -sL ${installUrl}`
       : paymentFlow === "direct-purchase-skill"
       ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
       : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
   const purchaseTitle = primaryUsdcPrice
     ? isListingRequired
-      ? "Card checkout available"
+      ? "Card checkout (off-chain)"
       : "USDC primary pricing"
     : isPaidSkill
     ? "Paid Skill"
@@ -1160,7 +1160,7 @@ export default function SkillDetailPage({
     : isListingRequired
     ? isAuthor
       ? `This paid skill is priced at ${usdcPriceLabel}, but it is not purchasable until you create and link its on-chain SkillListing.`
-      : `This paid skill is priced at ${usdcPriceLabel}. Card checkout can unlock this wallet while on-chain listing setup is pending.`
+      : `This paid skill is priced at ${usdcPriceLabel}. Card checkout can unlock this wallet now while on-chain listing setup is pending.`
     : isAuthor
     ? primaryUsdcPrice
       ? `This listing is priced at ${usdcPriceLabel}.`
@@ -1173,8 +1173,8 @@ export default function SkillDetailPage({
     ? "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase."
     : primaryUsdcPrice
     ? browserCanUseUsdc
-      ? `Pay ${usdcPriceLabel} with USDC or use card checkout. Future re-downloads use Sign & Download.`
-      : `This listing is priced in ${usdcPriceLabel}. Card checkout can unlock this wallet without waiting for protocol settlement.`
+      ? `Pay ${usdcPriceLabel} through protocol USDC settlement or use card checkout for an off-chain wallet entitlement.`
+      : `This listing is priced in ${usdcPriceLabel}. Card checkout can unlock this wallet and is recorded separately from protocol USDC settlement.`
     : hasLegacySolPrice
     ? "This historical SOL-priced listing is not available for new USDC checkout."
     : "Install with a wallet signature.";
@@ -1673,7 +1673,7 @@ export default function SkillDetailPage({
               <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
                 {isListingRequired
                   ? "Card checkout records an off-chain entitlement for this wallet while on-chain listing setup is pending."
-                  : "Protocol USDC purchases settle through purchase_skill; card checkout records an off-chain entitlement for this wallet."}
+                  : "Protocol USDC purchases settle through purchase_skill or x402; card checkout records an off-chain entitlement for this wallet."}
               </p>
             )}
             {skill.purchaseRiskWarning &&

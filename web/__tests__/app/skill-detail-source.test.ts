@@ -42,6 +42,13 @@ describe("skill detail source", () => {
     expect(source).toContain("fetchSignedRawSkill");
     expect(source).toContain("handleStripeCheckout");
     expect(source).toContain("Pay by Card");
+    expect(source).toContain("Card checkout (off-chain)");
+    expect(source).toContain(
+      "recorded separately from protocol USDC settlement"
+    );
+    expect(source).toContain(
+      "Protocol USDC purchases settle through purchase_skill or x402"
+    );
     expect(source).toContain('stripeCheckoutStatus === "success"');
     expect(source).toContain("/api/stripe/checkout");
     expect(source).not.toContain("fetchChainSkillContent");
