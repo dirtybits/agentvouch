@@ -31,9 +31,9 @@ Current positioning:
   protocol-listed x402 bridge. These paths can create `Purchase` PDA state,
   fund author proceeds, fund voucher rewards, and preserve dispute/refund
   semantics.
-- **Future Base path:** Base remains a POC/port direction for smart-account
-  and paymaster-style UX. It may reduce wallet friction for agent-native USDC
-  payments, but it is not a reason to make Stripe the canonical ledger.
+- **Base path:** Base is the active smart-account/x402 workstream. It can make
+  agent-native USDC payments feel closer to web2 checkout, especially through
+  EIP-3009 x402, but it is not a reason to make Stripe the canonical ledger.
 - **Stripe MPP path:** Stripe is the human/card on-ramp and "sell now" bridge.
   It may unlock content by writing a wallet-bound off-chain entitlement, but
   it must not be counted as protocol settlement unless a later fiat -> USDC ->
@@ -51,6 +51,9 @@ Before Tier 2, choose one graduation model:
 3. **Limited early-sales rail:** Stripe stays test/limited-scope for
    wallet-bound access while Base/USDC/x402 carries the agent-native commerce
    path.
+
+Related docs: `docs/BASE_X402_PAYMENT_RAIL_SPEC.md` and
+`docs/STRIPE_TEST_MODE_ROLLOUT.md`.
 
 ## Why Tier 1 is easy
 

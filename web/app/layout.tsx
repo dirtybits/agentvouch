@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Crimson_Text, Inconsolata } from "next/font/google";
+import { Crimson_Pro, Crimson_Text, Inconsolata } from "next/font/google";
 import "./globals.css";
 import { AppFooter } from "@/components/AppFooter";
 import { AppNavbar } from "@/components/AppNavbar";
@@ -18,6 +18,13 @@ const crimsonText = Crimson_Text({
   subsets: ["latin"],
   weight: ["400", "600", "700"],
   variable: "--font-crimson-text",
+});
+
+// Reading serif for long-form articles (variable weight). Scoped to the blog
+// via the .font-article class in globals.css.
+const crimsonPro = Crimson_Pro({
+  subsets: ["latin"],
+  variable: "--font-crimson-pro",
 });
 
 export const metadata: Metadata = buildDefaultMetadata();
@@ -44,11 +51,11 @@ export default function RootLayout({
         </Script>
       </head>
       <body
-        className={`${inconsolata.variable} ${crimsonText.variable} font-mono`}
+        className={`${inconsolata.variable} ${crimsonText.variable} ${crimsonPro.variable} font-mono`}
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="light"
           enableSystem={false}
         >
           <WalletContextProvider>

@@ -1,8 +1,8 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
 import {
-  type AgentIdentitySummary,
   resolveManyAgentIdentitiesByWallet,
+  type AgentIdentitySummary,
 } from "@/lib/agentIdentity";
 import {
   buildAgentTrustSummary,
@@ -19,16 +19,14 @@ import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
 } from "@/lib/listingContract";
+import { hydrateEvmRepoSkillRows } from "@/lib/marketplaceBrowse";
 import {
   assessPurchasePreflight,
   createPurchasePreflightContext,
   serializePurchasePreflight,
 } from "@/lib/purchasePreflight";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
-import {
-  resolveMultipleAuthorTrust,
-  type AuthorTrust,
-} from "@/lib/trust";
+import { type AuthorTrust } from "@/lib/trust";
 import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
 import { SCAN_MODEL } from "@/lib/ai/gateway";
 import {
@@ -36,6 +34,17 @@ import {
   type SkillScanFieldRow,
   type SkillSecurityScan,
 } from "@/lib/securityScan";
+import { buildTrustSignals, type TrustSignal } from "@/lib/trustSignals";
+import {
+  resolveTrustAndIdentity,
+  upsertAuthorTrustSnapshots,
+} from "@/lib/trustSnapshots";
+import {
+  getCachedTrust,
+  getCachedTrustSummary,
+  partitionAuthorsByTrustFreshness,
+  scheduleBackgroundTrustRefresh,
+} from "@/lib/authorTrustView";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 
@@ -48,6 +57,7 @@ const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 type HydrateRequestBody = {
   skillIds?: unknown;
   buyer?: unknown;
+  includeBuyerStatus?: unknown;
 };
 
 type SkillPaymentFlow =
@@ -60,6 +70,8 @@ type SkillPaymentFlow =
 type RepoSkillRow = SkillScanFieldRow & {
   id: string;
   skill_id: string;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_external_id?: string | null;
@@ -67,6 +79,8 @@ type RepoSkillRow = SkillScanFieldRow & {
   author_display_name?: string | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -83,11 +97,18 @@ type RepoSkillRow = SkillScanFieldRow & {
   currency_mint?: string | null;
   on_chain_protocol_version?: string | null;
   on_chain_program_id?: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   summary?: string | null;
   files?: unknown;
   tree_hash?: string | null;
   has_executable?: boolean | null;
   security_scan?: SkillSecurityScan | null;
+  cached_author_trust?: AuthorTrust | string | null;
+  cached_author_trust_summary?: AgentTrustSummary | string | null;
+  cached_reputation_score?: number | string | null;
+  cached_trust_refreshed_at?: string | null;
   created_at: string;
   updated_at: string;
   source: "repo";
@@ -99,6 +120,7 @@ type HydratedSkillRow = RepoSkillRow & {
   author_trust: AuthorTrust | null;
   author_trust_summary: AgentTrustSummary | null;
   author_identity: AgentIdentitySummary | null;
+  signals: TrustSignal[];
 };
 
 async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
@@ -107,7 +129,6 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
   >`
     SELECT
       s.*,
-      latest.files,
       latest.tree_hash,
       latest.has_executable,
       scan.verdict AS scan_verdict,
@@ -118,10 +139,14 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
       scan.model AS scan_model,
       scan.rubric_version AS scan_rubric_version,
       scan.scan_source AS scan_source,
-      scan.generated_by_model AS scan_generated_by_model
+      scan.generated_by_model AS scan_generated_by_model,
+      ats.author_trust AS cached_author_trust,
+      ats.author_trust_summary AS cached_author_trust_summary,
+      ats.reputation_score AS cached_reputation_score,
+      ats.refreshed_at AS cached_trust_refreshed_at
     FROM skills s
     LEFT JOIN LATERAL (
-      SELECT files, tree_hash, has_executable
+      SELECT tree_hash, has_executable
       FROM skill_versions
       WHERE skill_id = s.id
       ORDER BY version DESC
@@ -131,6 +156,9 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
       ON scan.tree_hash = latest.tree_hash
       AND scan.rubric_version = ${SCAN_RUBRIC_VERSION}
       AND scan.model = ${SCAN_MODEL}
+    LEFT JOIN author_trust_snapshots ats
+      ON ats.wallet_pubkey = s.author_pubkey
+      AND ats.chain_context = ${configuredSolanaChainContext}
     WHERE s.id = ANY(${skillIds}::uuid[])
   `;
   return rows.map((skill) => {
@@ -154,117 +182,95 @@ async function loadRepoSkillsById(skillIds: string[]): Promise<RepoSkillRow[]> {
   });
 }
 
-function getAuthorPubkeys(skills: RepoSkillRow[]): string[] {
-  return [
-    ...new Set(
-      skills
-        .map((skill) => skill.author_pubkey)
-        .filter((value): value is string => Boolean(value && isAddress(value)))
-    ),
-  ];
-}
-
-async function resolveHydrationTrust(skills: RepoSkillRow[]) {
-  const authorPubkeys = getAuthorPubkeys(skills);
-  const trustMap =
-    authorPubkeys.length > 0
-      ? await resolveMultipleAuthorTrust(authorPubkeys)
-      : new Map<string, AuthorTrust>();
-  let identityMap = new Map<string, AgentIdentitySummary>();
-  if (authorPubkeys.length > 0) {
-    try {
-      identityMap = await resolveManyAgentIdentitiesByWallet(authorPubkeys, {
-        hasAgentProfileByWallet: new Map(
-          authorPubkeys.map((authorPubkey) => [
-            authorPubkey,
-            trustMap.get(authorPubkey)?.isRegistered ?? false,
-          ])
-        ),
-      });
-    } catch (error) {
-      console.error(
-        "Failed to resolve author identities for /api/skills/hydrate:",
-        error
-      );
-    }
-  }
-  return { trustMap, identityMap };
-}
-
 function buildHydratedBaseRows(input: {
   skills: RepoSkillRow[];
   trustMap: Map<string, AuthorTrust>;
   identityMap: Map<string, AgentIdentitySummary>;
 }): HydratedSkillRow[] {
   return input.skills.map((skill) => {
-    const authorTrust = skill.author_pubkey
-      ? input.trustMap.get(skill.author_pubkey) || null
-      : null;
+    // Prefer freshly-resolved trust (first-seen authors); fall back to the
+    // cached snapshot for everyone else.
+    const authorTrust =
+      (skill.author_pubkey
+        ? input.trustMap.get(skill.author_pubkey) || null
+        : null) ?? getCachedTrust(skill);
     const authorIdentity = skill.author_pubkey
       ? input.identityMap.get(skill.author_pubkey) || null
       : null;
+    const authorTrustSummary =
+      skill.author_pubkey &&
+      input.trustMap.has(skill.author_pubkey) &&
+      authorTrust
+        ? buildAgentTrustSummary({
+            walletPubkey: skill.author_pubkey,
+            trust: authorTrust,
+            identity: authorIdentity,
+          })
+        : getCachedTrustSummary(skill);
     const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
 
+    const publicSkill = { ...skill };
+    delete publicSkill.cached_author_trust;
+    delete publicSkill.cached_author_trust_summary;
+    delete publicSkill.cached_reputation_score;
+    delete publicSkill.cached_trust_refreshed_at;
+
     return {
-      ...skill,
+      ...publicSkill,
       price_usdc_micros: priceUsdcMicros,
       payment_flow: getSkillPaymentFlow({
         priceUsdcMicros,
         onChainAddress: skill.on_chain_address,
+        evmListingId: skill.evm_listing_id,
         legacySolLamports: skill.price_lamports,
         allowLegacySol: true,
       }),
       author_trust: authorTrust,
-      author_trust_summary:
-        skill.author_pubkey && authorTrust
-          ? buildAgentTrustSummary({
-              walletPubkey: skill.author_pubkey,
-              trust: authorTrust,
-              identity: authorIdentity,
-            })
-          : null,
+      author_trust_summary: authorTrustSummary,
       author_identity: authorIdentity,
+      signals: buildTrustSignals({
+        trust: authorTrust,
+        scan: skill.security_scan ?? null,
+      }),
     };
   });
 }
 
-async function upsertAuthorTrustSnapshots(input: {
+async function resolveHydratedAuthorIdentities(input: {
+  skills: RepoSkillRow[];
   trustMap: Map<string, AuthorTrust>;
-  identityMap: Map<string, AgentIdentitySummary>;
-}) {
-  await Promise.all(
-    [...input.trustMap.entries()].map(([walletPubkey, trust]) => {
-      const summary = buildAgentTrustSummary({
-        walletPubkey,
-        trust,
-        identity: input.identityMap.get(walletPubkey) ?? null,
-      });
-      return sql()`
-        INSERT INTO author_trust_snapshots (
-          wallet_pubkey,
-          chain_context,
-          reputation_score,
-          author_trust,
-          author_trust_summary,
-          refreshed_at
-        )
-        VALUES (
-          ${walletPubkey},
-          ${configuredSolanaChainContext},
-          ${trust.reputationScore},
-          ${JSON.stringify(trust)}::jsonb,
-          ${JSON.stringify(summary)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (wallet_pubkey, chain_context)
-        DO UPDATE SET
-          reputation_score = EXCLUDED.reputation_score,
-          author_trust = EXCLUDED.author_trust,
-          author_trust_summary = EXCLUDED.author_trust_summary,
-          refreshed_at = NOW()
-      `;
-    })
-  );
+}): Promise<Map<string, AgentIdentitySummary>> {
+  const authorRows = new Map<string, RepoSkillRow>();
+  for (const skill of input.skills) {
+    if (skill.author_pubkey && isAddress(skill.author_pubkey)) {
+      authorRows.set(skill.author_pubkey, skill);
+    }
+  }
+
+  const authorPubkeys = [...authorRows.keys()];
+  if (authorPubkeys.length === 0) {
+    return new Map<string, AgentIdentitySummary>();
+  }
+
+  try {
+    return await resolveManyAgentIdentitiesByWallet(authorPubkeys, {
+      hasAgentProfileByWallet: new Map(
+        authorPubkeys.map((authorPubkey) => [
+          authorPubkey,
+          input.trustMap.get(authorPubkey)?.isRegistered ??
+            getCachedTrust(authorRows.get(authorPubkey) ?? {})?.isRegistered ??
+            false,
+        ])
+      ),
+      persistDerived: false,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to resolve author identities for /api/skills/hydrate:",
+      error
+    );
+    return new Map<string, AgentIdentitySummary>();
+  }
 }
 
 async function addPurchasePreflightAndBuyerStatus(input: {
@@ -354,8 +360,20 @@ export async function POST(request: NextRequest) {
       typeof body.buyer === "string" && isAddress(body.buyer)
         ? body.buyer
         : null;
-    const repoSkills = await loadRepoSkillsById(skillIds);
-    const live = await resolveHydrationTrust(repoSkills);
+    const includeBuyerStatus = body.includeBuyerStatus === true;
+    const repoSkills = await hydrateEvmRepoSkillRows(
+      await loadRepoSkillsById(skillIds)
+    );
+    // Snapshot-first trust: serve cached snapshots, resolve only first-seen
+    // authors synchronously, and revalidate stale authors in the background.
+    const { missing, stale } = partitionAuthorsByTrustFreshness(repoSkills);
+    const live =
+      missing.length > 0
+        ? await resolveTrustAndIdentity(missing)
+        : {
+            trustMap: new Map<string, AuthorTrust>(),
+            identityMap: new Map<string, AgentIdentitySummary>(),
+          };
     if (live.trustMap.size > 0) {
       const persist = () =>
         upsertAuthorTrustSnapshots(live).catch((error) => {
@@ -367,20 +385,28 @@ export async function POST(request: NextRequest) {
         void persist();
       }
     }
-    const hydrated = await addPurchasePreflightAndBuyerStatus({
-      skills: buildHydratedBaseRows({
-        skills: repoSkills,
-        trustMap: live.trustMap,
-        identityMap: live.identityMap,
-      }),
-      buyerAddress: buyer ? address(buyer) : null,
+    scheduleBackgroundTrustRefresh(stale);
+    const identityMap = await resolveHydratedAuthorIdentities({
+      skills: repoSkills,
+      trustMap: live.trustMap,
     });
+
+    const baseHydrated = buildHydratedBaseRows({
+      skills: repoSkills,
+      trustMap: live.trustMap,
+      identityMap,
+    });
+    const hydrated =
+      includeBuyerStatus && buyer
+        ? await addPurchasePreflightAndBuyerStatus({
+            skills: baseHydrated,
+            buyerAddress: address(buyer),
+          })
+        : baseHydrated;
 
     return NextResponse.json(
       {
-        skills: Object.fromEntries(
-          hydrated.map((skill) => [skill.id, skill])
-        ),
+        skills: Object.fromEntries(hydrated.map((skill) => [skill.id, skill])),
       },
       {
         headers: {

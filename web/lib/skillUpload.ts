@@ -143,9 +143,10 @@ async function parseJson(request: Request): Promise<ParsedSkillUpload> {
 
   if (typeof body.files_base64_json === "string") {
     assertWholePayloadBase64Size(body.files_base64_json);
-    files = decodeJsonFiles(
-      JSON.parse(decodeBase64(body.files_base64_json).toString("utf8"))
-    ) ?? files;
+    files =
+      decodeJsonFiles(
+        JSON.parse(decodeBase64(body.files_base64_json).toString("utf8"))
+      ) ?? files;
   }
 
   if (typeof body.tar_base64 === "string") {

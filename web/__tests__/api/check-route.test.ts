@@ -22,6 +22,10 @@ vi.mock("@/lib/ai/scan", () => ({
   recordHeuristicReviewScan: vi.fn(),
 }));
 
+vi.mock("@/lib/trustSnapshots", () => ({
+  upsertResolvedAuthorTrustSnapshot: vi.fn(),
+}));
+
 import { POST } from "@/app/api/check/route";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
@@ -32,6 +36,7 @@ import {
   recordHeuristicReviewScan,
 } from "@/lib/ai/scan";
 import { resolveAuthorTrust } from "@/lib/trust";
+import { upsertResolvedAuthorTrustSnapshot } from "@/lib/trustSnapshots";
 import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
 
 const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
@@ -53,6 +58,8 @@ const mockResolveAuthorTrust = resolveAuthorTrust as unknown as ReturnType<
 >;
 const mockResolveAgentIdentityByWallet =
   resolveAgentIdentityByWallet as unknown as ReturnType<typeof vi.fn>;
+const mockUpsertResolvedAuthorTrustSnapshot =
+  upsertResolvedAuthorTrustSnapshot as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/api/check", {
@@ -118,6 +125,7 @@ describe("POST /api/check", () => {
       })
     );
     mockResolveAgentIdentityByWallet.mockResolvedValue(null);
+    mockUpsertResolvedAuthorTrustSnapshot.mockResolvedValue(undefined);
     mockResolveAuthorTrust.mockResolvedValue({
       reputationScore: 0,
       totalVouchesReceived: 0,
@@ -178,8 +186,8 @@ describe("POST /api/check", () => {
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
   });
 
-  it("keeps staked trust separate from advisory scan output", async () => {
-    mockResolveAuthorTrust.mockResolvedValueOnce({
+  it("lets staked allow stand over an advisory review scan", async () => {
+    const authorTrust = {
       reputationScore: 100,
       totalVouchesReceived: 2,
       totalStakedFor: 1000000,
@@ -190,7 +198,8 @@ describe("POST /api/check", () => {
       activeDisputesAgainstAuthor: 0,
       registeredAt: 1,
       isRegistered: true,
-    });
+    };
+    mockResolveAuthorTrust.mockResolvedValueOnce(authorTrust);
 
     const res = await POST(
       makeRequest({
@@ -202,8 +211,22 @@ describe("POST /api/check", () => {
 
     expect(body.staked.status).toBe("present");
     expect(body.staked.summary.recommended_action).toBe("allow");
+    // The advisory scan is surfaced but does not cap staked trust; only a
+    // concrete `avoid` can veto a staked allow.
     expect(body.scan.verdict).toBe("review");
-    expect(body.recommended_action).toBe("review");
+    expect(body.recommended_action).toBe("allow");
+    // The transparent checklist accompanies the derived verdict.
+    const signalStatus = (id: string) =>
+      body.signals.find((s: { id: string }) => s.id === id)?.status;
+    expect(signalStatus("ai_scan")).toBe("pass");
+    expect(signalStatus("vouched")).toBe("pass");
+    expect(signalStatus("registered")).toBe("pass");
+    expect(mockUpsertResolvedAuthorTrustSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletPubkey: "AuthorWallet1111111111111111111111111111111",
+        trust: authorTrust,
+      })
+    );
   });
 
   it("uses the heuristic prefilter for low-signal arbitrary content", async () => {
@@ -237,7 +260,7 @@ describe("POST /api/check", () => {
     const res = await POST(
       makeRequest({
         content:
-          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
       })
     );
 
@@ -265,7 +288,7 @@ describe("POST /api/check", () => {
     const res = await POST(
       makeRequest({
         content:
-          "# Install Helper\n\nRun `node -e \"console.log(process.env.SECRET)\"`.",
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
       })
     );
     const body = await res.json();
@@ -273,8 +296,84 @@ describe("POST /api/check", () => {
     expect(res.status).toBe(200);
     expect(mockEnsureSkillScan).not.toHaveBeenCalled();
     expect(body.scan.verdict).toBe("unknown");
-    expect(body.scan.unavailable_reason).toBe(
-      "daily_scan_budget_exhausted"
+    expect(body.scan.unavailable_reason).toBe("daily_scan_budget_exhausted");
+  });
+
+  it("refunds the reserved budget when model generation fails", async () => {
+    const dbQuery = vi.fn().mockResolvedValue([
+      {
+        ok: true,
+        reason: null,
+        daily_reserved: true,
+        monthly_reserved: true,
+        daily_used: 1,
+        monthly_used: 1,
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+    mockEnsureSkillScan.mockRejectedValueOnce(new Error("model unavailable"));
+
+    const res = await POST(
+      makeRequest({
+        content:
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
+      })
     );
+
+    expect(res.status).toBe(500);
+    expect(mockEnsureSkillScan).toHaveBeenCalled();
+    // One call to reserve the budget, a second to release it after the failure.
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects malformed files entries with 400 and never scans", async () => {
+    const res = await POST(makeRequest({ files: [{ path: "SKILL.md" }] }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toMatch(/path and content/i);
+    expect(mockEnsureSkillScan).not.toHaveBeenCalled();
+  });
+
+  it("keeps a staked allow when the scan is unavailable (budget exhausted)", async () => {
+    mockResolveAuthorTrust.mockResolvedValueOnce({
+      reputationScore: 100,
+      totalVouchesReceived: 2,
+      totalStakedFor: 1000000,
+      authorBondUsdcMicros: 0,
+      totalStakeAtRisk: 1000000,
+      disputesAgainstAuthor: 0,
+      disputesUpheldAgainstAuthor: 0,
+      activeDisputesAgainstAuthor: 0,
+      registeredAt: 1,
+      isRegistered: true,
+    });
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          ok: false,
+          reason: "daily_scan_budget_exhausted",
+          daily_reserved: false,
+          monthly_reserved: true,
+          daily_used: 200,
+          monthly_used: 50,
+        },
+      ])
+    );
+
+    const res = await POST(
+      makeRequest({
+        author: "AuthorWallet1111111111111111111111111111111",
+        content:
+          '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.',
+      })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockEnsureSkillScan).not.toHaveBeenCalled();
+    expect(body.scan.verdict).toBe("unknown");
+    expect(body.staked.summary.recommended_action).toBe("allow");
+    expect(body.recommended_action).toBe("allow");
   });
 });

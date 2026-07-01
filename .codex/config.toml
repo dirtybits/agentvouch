@@ -1,0 +1,5 @@
+[mcp_servers.phantom-docs]
+url = "https://docs.phantom.com/mcp"
+
+[mcp_servers.solana-mcp-server]
+url = "https://mcp.solana.com/mcp"

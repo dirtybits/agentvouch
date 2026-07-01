@@ -10,7 +10,10 @@ import { getErrorMessage } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
   const config = getGithubOAuthConfig(request);
-  const fallback = new URL("/skills/publish?github=error", request.nextUrl.origin);
+  const fallback = new URL(
+    "/skills/publish?github=error",
+    request.nextUrl.origin
+  );
 
   if (!config.configured) {
     return NextResponse.redirect(fallback);
@@ -19,7 +22,12 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const incomingState = request.nextUrl.searchParams.get("state");
   const storedState = readGithubOAuthState(request, config.sessionSecret);
-  if (!code || !incomingState || !storedState || storedState.state !== incomingState) {
+  if (
+    !code ||
+    !incomingState ||
+    !storedState ||
+    storedState.state !== incomingState
+  ) {
     return NextResponse.redirect(fallback);
   }
 
@@ -41,4 +49,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(fallback);
   }
 }
-

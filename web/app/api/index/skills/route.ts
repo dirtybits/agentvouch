@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchAllIndexedSkills } from "@/lib/indexFeeds";
 import { AGENT_DISCOVERY_SCHEMA_VERSION } from "@/lib/agentDiscovery";
 import { getErrorMessage } from "@/lib/errors";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
       skills: skills.map((skill) => ({
         id: skill.id,
         skill_id: skill.skill_id,
+        public_url: `${baseUrl}${getPublicSkillPath(skill)}`,
         name: skill.name,
         description: skill.description,
         tags: skill.tags,
@@ -37,6 +39,17 @@ export async function GET(request: NextRequest) {
         author_display_name: skill.author_display_name ?? null,
         publisher_identity_key: skill.publisher_identity_key ?? null,
         publisher_tier: skill.publisher_tier ?? null,
+        mirror_source_key: skill.mirror_source_key ?? null,
+        synced_repo_url: skill.synced_repo_url ?? null,
+        mirrored_from: skill.mirror_source_key
+          ? {
+              source_key: skill.mirror_source_key,
+              github_handle: skill.author_handle ?? null,
+              github_url: skill.author_handle
+                ? `https://github.com/${skill.author_handle}`
+                : null,
+            }
+          : null,
         author_trust_summary: skill.author_trust_summary ?? null,
         author_identity: skill.author_identity ?? null,
       })),

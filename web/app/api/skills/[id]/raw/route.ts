@@ -9,7 +9,8 @@ import {
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
 import {
-  incrementInstalls,
+  getOptionalDownloadAuthPubkey,
+  recordInstallAndDownloadEvent,
   resolveSkillAccess,
   validateDownloadAuth,
   type RawSkillContentRow,
@@ -27,10 +28,9 @@ function serveContent(
   return new NextResponse(body, {
     headers: {
       "Content-Type": options.contentType ?? "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filePath
-        .split("/")
-        .at(-1)
-        ?.replace(/"/g, "") ?? "SKILL.md"}"`,
+      "Content-Disposition": `attachment; filename="${
+        filePath.split("/").at(-1)?.replace(/"/g, "") ?? "SKILL.md"
+      }"`,
       ...(extraHeaders ?? {}),
     },
   });
@@ -121,7 +121,8 @@ export async function GET(
     }
 
     const skill = access.skill;
-    const requestedPath = request.nextUrl.searchParams.get("path") ?? "SKILL.md";
+    const requestedPath =
+      request.nextUrl.searchParams.get("path") ?? "SKILL.md";
     try {
       if (requestedPath === "SKILL.md") {
         skill.download_bytes = Buffer.from(skill.content, "utf8");
@@ -140,7 +141,19 @@ export async function GET(
       );
     }
 
-    await incrementInstalls(skill.id);
+    await recordInstallAndDownloadEvent(skill.id, {
+      kind: "raw",
+      request,
+      requestedPath,
+      walletPubkey: getOptionalDownloadAuthPubkey(
+        request,
+        id,
+        skill.on_chain_address
+      ),
+      authPresent: Boolean(request.headers.get("x-agentvouch-auth")),
+      skillVersionId: skill.version_id,
+      skillVersion: skill.version,
+    });
     return serveSkillContent(skill, access.headers);
   } catch (error: unknown) {
     console.error("GET /api/skills/[id]/raw error:", error);

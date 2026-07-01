@@ -3,6 +3,8 @@ import { PUBLIC_ROUTE_CACHE_SECONDS } from "@/lib/cachePolicy";
 type SkillIndexRow = {
   id: string;
   skill_id: string;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_external_id?: string | null;
@@ -10,6 +12,8 @@ type SkillIndexRow = {
   author_display_name?: string | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -48,6 +52,10 @@ type SkillIndexRow = {
   author_trust_summary?: {
     wallet_pubkey: string;
     canonical_agent_id: string;
+    username?: string | null;
+    display_name?: string | null;
+    github_login?: string | null;
+    github_url?: string | null;
     chain_context: string;
     schema_version: string;
     trust_updated_at: string;
@@ -64,6 +72,11 @@ type SkillIndexRow = {
   author_identity?: {
     canonicalAgentId?: string | null;
     displayName?: string | null;
+    username?: string | null;
+    githubProfile?: {
+      login: string;
+      url: string;
+    } | null;
   } | null;
 };
 

@@ -18,6 +18,17 @@ describe("dashboard profile source", () => {
     expect(source).toContain("USDC");
   });
 
+  it("loads purchased skill data through the server dashboard API", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/dashboard/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("/api/dashboard/purchases?buyer=");
+    expect(source).not.toContain("oracle.getPurchasesByBuyer(publicKey)");
+    expect(source).not.toContain("oracle.getAllSkillListings()");
+  });
+
   it("links marketplace listings into author edit and version publish actions", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/dashboard/page.tsx"),
@@ -29,6 +40,18 @@ describe("dashboard profile source", () => {
     expect(source).toContain('"publish-version"');
     expect(source).toContain("Edit Listing");
     expect(source).toContain("Publish New Version");
+  });
+
+  it("surfaces settings as a dashboard tab after disputes", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/dashboard/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain('href="/settings"');
+    expect(source).toContain("FiSettings");
+    expect(source).toContain('id: "disputes"');
+    expect(source).toContain("<FiSettings className=");
   });
 
   it("links vouch dashboard rows through author wallets instead of AgentProfile PDAs", () => {

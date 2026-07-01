@@ -8,6 +8,7 @@ export type SkillPaymentFlow =
 type PaymentFlowInput = {
   priceUsdcMicros?: string | number | bigint | null;
   onChainAddress?: string | null;
+  evmListingId?: string | null;
   legacySolLamports?: number | null;
   allowLegacySol?: boolean;
 };
@@ -24,11 +25,14 @@ export function normalizeUsdcMicros(
 export function getSkillPaymentFlow({
   priceUsdcMicros,
   onChainAddress,
+  evmListingId,
   legacySolLamports,
   allowLegacySol = false,
 }: PaymentFlowInput): SkillPaymentFlow {
   if (normalizeUsdcMicros(priceUsdcMicros)) {
-    return onChainAddress ? "direct-purchase-skill" : "listing-required";
+    return onChainAddress || evmListingId
+      ? "direct-purchase-skill"
+      : "listing-required";
   }
 
   if (allowLegacySol && (legacySolLamports ?? 0) > 0) {
@@ -42,6 +46,8 @@ export function requiresPurchase(paymentFlow: SkillPaymentFlow): boolean {
   return paymentFlow !== "free";
 }
 
-export function hasUsdcPrice(value: unknown): value is string | number | bigint {
+export function hasUsdcPrice(
+  value: unknown
+): value is string | number | bigint {
   return normalizeUsdcMicros(value as string | number | bigint | null) !== null;
 }

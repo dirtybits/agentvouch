@@ -96,7 +96,7 @@ export type OpenAuthorDisputeInstruction<
         ? ReadonlyAccount<TAccountConfig>
         : TAccountConfig,
       TAccountSkillListing extends string
-        ? ReadonlyAccount<TAccountSkillListing>
+        ? WritableAccount<TAccountSkillListing>
         : TAccountSkillListing,
       TAccountPurchase extends string
         ? ReadonlyAccount<TAccountPurchase>
@@ -265,7 +265,7 @@ export async function getOpenAuthorDisputeInstructionAsync<
     authorDispute: { value: input.authorDispute ?? null, isWritable: true },
     authorProfile: { value: input.authorProfile ?? null, isWritable: true },
     config: { value: input.config ?? null, isWritable: false },
-    skillListing: { value: input.skillListing ?? null, isWritable: false },
+    skillListing: { value: input.skillListing ?? null, isWritable: true },
     purchase: { value: input.purchase ?? null, isWritable: false },
     listingSettlement: {
       value: input.listingSettlement ?? null,
@@ -440,7 +440,7 @@ export function getOpenAuthorDisputeInstruction<
     authorDispute: { value: input.authorDispute ?? null, isWritable: true },
     authorProfile: { value: input.authorProfile ?? null, isWritable: true },
     config: { value: input.config ?? null, isWritable: false },
-    skillListing: { value: input.skillListing ?? null, isWritable: false },
+    skillListing: { value: input.skillListing ?? null, isWritable: true },
     purchase: { value: input.purchase ?? null, isWritable: false },
     listingSettlement: {
       value: input.listingSettlement ?? null,

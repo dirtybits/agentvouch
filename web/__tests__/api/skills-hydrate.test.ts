@@ -146,7 +146,9 @@ describe("POST /api/skills/hydrate", () => {
     );
     mockHasUsdcPurchaseEntitlement.mockResolvedValue(true);
 
-    const res = await POST(makeRequest({ skillIds: [skillId], buyer }));
+    const res = await POST(
+      makeRequest({ skillIds: [skillId], buyer, includeBuyerStatus: true })
+    );
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -156,6 +158,13 @@ describe("POST /api/skills/hydrate", () => {
     expect(body.skills[skillId].author_trust.reputationScore).toBe(88);
     expect(body.skills[skillId].purchasePreflightStatus).toBe("ok");
     expect(body.skills[skillId].buyerHasPurchased).toBe(true);
+    expect(mockResolveManyAgentIdentitiesByWallet).toHaveBeenCalledWith(
+      [author],
+      {
+        hasAgentProfileByWallet: new Map([[author, true]]),
+        persistDerived: false,
+      }
+    );
     expect(mockCreatePurchasePreflightContext).toHaveBeenCalledOnce();
     expect(mockHasUsdcPurchaseEntitlement).toHaveBeenCalledWith(skillId, buyer);
   });

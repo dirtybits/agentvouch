@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
 vi.mock("@/lib/skillRawAccess", () => ({
-  incrementInstalls: vi.fn().mockResolvedValue(undefined),
+  getOptionalDownloadAuthPubkey: vi.fn().mockReturnValue(null),
+  recordInstallAndDownloadEvent: vi.fn().mockResolvedValue(undefined),
   resolveSkillAccess: vi.fn(),
 }));
 
@@ -12,7 +13,7 @@ vi.mock("@/lib/skillStorage", () => ({
 
 import { GET } from "@/app/api/skills/[id]/archive/route";
 import {
-  incrementInstalls,
+  recordInstallAndDownloadEvent,
   resolveSkillAccess,
 } from "@/lib/skillRawAccess";
 import { buildArchiveForVersion } from "@/lib/skillStorage";
@@ -20,9 +21,8 @@ import { buildArchiveForVersion } from "@/lib/skillStorage";
 const mockResolveSkillAccess = resolveSkillAccess as unknown as ReturnType<
   typeof vi.fn
 >;
-const mockIncrementInstalls = incrementInstalls as unknown as ReturnType<
-  typeof vi.fn
->;
+const mockRecordInstallAndDownloadEvent =
+  recordInstallAndDownloadEvent as unknown as ReturnType<typeof vi.fn>;
 const mockBuildArchive = buildArchiveForVersion as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -50,7 +50,10 @@ describe("GET /api/skills/[id]/archive", () => {
   it("returns raw entitlement failures without serving archive bytes", async () => {
     mockResolveSkillAccess.mockResolvedValue({
       ok: false,
-      response: NextResponse.json({ error: "Payment required" }, { status: 402 }),
+      response: NextResponse.json(
+        { error: "Payment required" },
+        { status: 402 }
+      ),
     });
 
     const res = await GET(makeRequest(), {
@@ -59,7 +62,7 @@ describe("GET /api/skills/[id]/archive", () => {
 
     expect(res.status).toBe(402);
     expect(mockBuildArchive).not.toHaveBeenCalled();
-    expect(mockIncrementInstalls).not.toHaveBeenCalled();
+    expect(mockRecordInstallAndDownloadEvent).not.toHaveBeenCalled();
   });
 
   it("serves archive after entitlement succeeds and increments installs once", async () => {
@@ -77,7 +80,10 @@ describe("GET /api/skills/[id]/archive", () => {
     expect(res.headers.get("x-agentvouch-tree-hash")).toBe("abc123");
     expect(await res.text()).toBe("tar-bytes");
     expect(mockBuildArchive).toHaveBeenCalledWith(ENTITLED_SKILL);
-    expect(mockIncrementInstalls).toHaveBeenCalledTimes(1);
-    expect(mockIncrementInstalls).toHaveBeenCalledWith("skill-1");
+    expect(mockRecordInstallAndDownloadEvent).toHaveBeenCalledTimes(1);
+    expect(mockRecordInstallAndDownloadEvent).toHaveBeenCalledWith(
+      "skill-1",
+      expect.objectContaining({ kind: "archive" })
+    );
   });
 });

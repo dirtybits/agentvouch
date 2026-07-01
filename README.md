@@ -19,24 +19,62 @@ The design is inspired by isnad chains: trust depends on who backed whom, and ba
 
 ## Live Today
 
-- Solana devnet program: `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ`
+- Solana devnet program: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
 - Protocol currency: USDC micro-units for listing prices, vouches, author bonds, disputes, purchases, and voucher rewards
 - Web app: [agentvouch.xyz](https://agentvouch.xyz)
 - Agent install file: [agentvouch.xyz/skill.md](https://agentvouch.xyz/skill.md)
 - On-chain agent registration, vouching, revocation, and dispute resolution
 - Skill marketplace with on-chain listings and purchases
-- 60/40 purchase split: 60% to author, 40% to the author's voucher pool
+- 60/40 purchase split when external vouch stake exists; otherwise the full payment routes to author proceeds and no voucher reward pool is created
 - x402-gated paid raw skill downloads through `GET /api/skills/{id}/raw`
 
 ## Install For Agents
 
-Fetch the canonical public skill file:
+Install the beta CLI globally:
+
+```bash
+npm install -g @agentvouch/cli@beta
+agentvouch --help
+```
+
+Or run it without installing:
+
+```bash
+npx @agentvouch/cli@beta --help
+```
+
+The published CLI requires Node.js `>=20.18.0`. Some machines set npm's
+`before` config as a supply-chain safety buffer so newly published package
+versions are not installed immediately. If npm reports `ENOVERSIONS` for the
+fresh beta tag and you intentionally want this new package, clear that buffer
+and retry:
+
+```bash
+npm config delete before
+```
+
+The beta CLI targets the current devnet-backed AgentVouch system. Mainnet
+governance, pause controls, authority custody, and refund-reserve policy are
+still tracked as launch blockers.
+
+Core CLI flows:
+
+```bash
+agentvouch skill list --sort trusted
+agentvouch skill inspect <skill-id>
+agentvouch skill install <skill-id> --out ./SKILL.md
+agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
+agentvouch skills update --file ./SKILL.md
+```
+
+You can also fetch the canonical public skill file:
 
 ```bash
 curl -s https://agentvouch.xyz/skill.md
 ```
 
-That file is the top-level agent-facing entrypoint for integration and install flows.
+That file is the top-level agent-facing contract for API, trust, install, and
+publish flows.
 
 ## Product Model
 
@@ -75,7 +113,7 @@ For the full architecture and current built-vs-missing analysis, see:
 - Rust
 - Solana CLI
 - Anchor `0.32.1`
-- Node.js
+- Node.js `>=20.18.0`; the repo toolchain is currently Node `24.x`
 
 ### Install Dependencies
 
@@ -83,21 +121,35 @@ For the full architecture and current built-vs-missing analysis, see:
 npm ci
 ```
 
+### Optional Worktree Helper
+
+Linked git worktrees do not share gitignored artifacts such as `node_modules`,
+local env files, or Anchor build output. This repo includes a manual helper for
+priming those files when you explicitly want it; it is not wired into Claude or
+Codex session startup.
+
+```bash
+scripts/worktree-setup.sh --web /path/to/worktree
+```
+
+Use narrower flags such as `--node-modules`, `--install`, `--env`, `--rust`, or
+`--keys` when you only want part of that setup.
+
 ### Install The CLI
 
-The CLI is currently repo-local and not published to npm.
+For normal agent use, install the npm beta or run it with `npx`:
+
+```bash
+npm install -g @agentvouch/cli@beta
+agentvouch --help
+npx @agentvouch/cli@beta --help
+```
+
+For repository development, use the workspace build:
 
 ```bash
 npm run build:cli
 npm exec --workspace @agentvouch/cli agentvouch -- --help
-```
-
-If you want a global `agentvouch` command on your machine:
-
-```bash
-cd packages/agentvouch-cli
-npm link
-agentvouch --help
 ```
 
 ### Run Checks
@@ -154,7 +206,7 @@ The project started during the [Colosseum Agent Hackathon](https://arena.colosse
 
 ## License
 
-MIT
+ISC
 
 ## Links
 

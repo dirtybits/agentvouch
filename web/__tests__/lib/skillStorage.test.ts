@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTarArchive,
+  buildZipArchive,
   computeTreeHash,
   ingestTarArchive,
   normalizeSkillTreeFiles,
@@ -24,6 +25,35 @@ function maliciousTarHeader(name: string, typeflag = "0", size = 0): Buffer {
   header[154] = 0;
   header[155] = 0x20;
   return Buffer.concat([header, Buffer.alloc(1024)]);
+}
+
+function readZipLocalEntries(archive: Buffer) {
+  const entries: Array<{ path: string; content: Buffer; method: number }> = [];
+  let offset = 0;
+
+  while (offset + 30 <= archive.byteLength) {
+    const signature = archive.readUInt32LE(offset);
+    if (signature !== 0x04034b50) break;
+
+    const method = archive.readUInt16LE(offset + 8);
+    const compressedSize = archive.readUInt32LE(offset + 18);
+    const nameLength = archive.readUInt16LE(offset + 26);
+    const extraLength = archive.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    const contentStart = nameStart + nameLength + extraLength;
+    const contentEnd = contentStart + compressedSize;
+
+    entries.push({
+      path: archive
+        .subarray(nameStart, nameStart + nameLength)
+        .toString("utf8"),
+      content: archive.subarray(contentStart, contentEnd),
+      method,
+    });
+    offset = contentEnd;
+  }
+
+  return entries;
 }
 
 describe("skillStorage", () => {
@@ -63,6 +93,28 @@ describe("skillStorage", () => {
     ]);
   });
 
+  it("builds deterministic uncompressed zip downloads from the same tree", () => {
+    const files = normalizeSkillTreeFiles([
+      { path: "SKILL.md", content: "# Skill\n" },
+      { path: "scripts/run.sh", content: "#!/bin/sh\necho ok\n" },
+    ]);
+    const a = buildZipArchive(files);
+    const b = buildZipArchive([...files].reverse());
+    const entries = readZipLocalEntries(a);
+    const contentByPath = new Map(
+      entries.map((entry) => [entry.path, entry.content.toString("utf8")])
+    );
+
+    expect(a.equals(b)).toBe(true);
+    expect(entries.map((entry) => entry.path)).toEqual(
+      files.map((file) => file.path)
+    );
+    expect(entries.every((entry) => entry.method === 0)).toBe(true);
+    expect(contentByPath.get("SKILL.md")).toBe("# Skill\n");
+    expect(contentByPath.get("scripts/run.sh")).toContain("echo ok");
+    expect(a.includes(Buffer.from([0x50, 0x4b, 0x05, 0x06]))).toBe(true);
+  });
+
   it("rejects path traversal", () => {
     expect(() =>
       normalizeSkillTreeFiles([{ path: "../escape", content: "bad" }])
@@ -80,7 +132,9 @@ describe("skillStorage", () => {
 
   it("rejects uncompressed tar bombs", () => {
     expect(() =>
-      ingestTarArchive(maliciousTarHeader("assets/big.bin", "0", 2 * 1024 * 1024))
+      ingestTarArchive(
+        maliciousTarHeader("assets/big.bin", "0", 2 * 1024 * 1024)
+      )
     ).toThrow(/exceeds cap/i);
   });
 });

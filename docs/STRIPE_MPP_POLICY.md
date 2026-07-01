@@ -23,10 +23,10 @@ protocol-listed x402 bridge, because those paths can create purchase PDA state,
 route author proceeds, fund voucher rewards, and preserve dispute/refund
 semantics.
 
-Base/USDC work may become the stronger agent-native path for smart-account or
-paymaster-style UX, but it does not make Stripe a protocol ledger. Stripe
-remains a human/card on-ramp and early-sales bridge unless and until a
-fiat -> USDC -> on-chain settlement design is approved.
+Base/USDC is the stronger agent-native path for smart-account, paymaster, and
+EIP-3009 x402 UX, but it does not make Stripe a protocol ledger. Stripe remains
+a human/card on-ramp and early-sales bridge unless and until a fiat -> USDC ->
+on-chain settlement design is approved.
 
 ## Activation Gates
 
@@ -117,3 +117,5 @@ Before treating Stripe MPP as production-ready, resolve:
 - Operator reconciliation dashboard or runbook.
 - Rate limits and abuse monitoring on checkout/session creation.
 - Public documentation that separates card checkout from protocol settlement.
+
+Use `docs/STRIPE_TEST_MODE_ROLLOUT.md` as the test-mode activation checklist.

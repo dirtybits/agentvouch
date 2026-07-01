@@ -26,7 +26,15 @@ pub struct CloseSkillListing<'info> {
     pub author: Signer<'info>,
 }
 
-pub fn handler(_ctx: Context<CloseSkillListing>, _skill_id: String) -> Result<()> {
+pub fn handler(ctx: Context<CloseSkillListing>, _skill_id: String) -> Result<()> {
+    // Closing deletes the account that slash_dispute_vouches and
+    // create_refund_pool must deserialize. Without this guard an author could
+    // remove+close mid-dispute, leaving the dispute stuck in SlashingVouchers
+    // and every voucher's revoke locked behind open_author_disputes forever.
+    require!(
+        !ctx.accounts.skill_listing.is_dispute_locked(),
+        CloseSkillError::ListingDisputeLocked
+    );
     Ok(())
 }
 
@@ -36,4 +44,6 @@ pub enum CloseSkillError {
     NotAuthor,
     #[msg("Listing must be removed before it can be closed")]
     NotRemoved,
+    #[msg("Listing is locked by an open dispute")]
+    ListingDisputeLocked,
 }

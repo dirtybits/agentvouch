@@ -277,10 +277,7 @@ export function x402SettlementReceiptPda(
   program: Program<Agentvouch>,
   paymentRefHash: Buffer
 ) {
-  return pda(program, [
-    Buffer.from("x402_settlement_receipt"),
-    paymentRefHash,
-  ]);
+  return pda(program, [Buffer.from("x402_settlement_receipt"), paymentRefHash]);
 }
 
 export function x402SettlementSignatureGuardPda(
@@ -536,16 +533,38 @@ export async function expectFailure(
 export async function registerAgent(
   ctx: TestContext,
   actor: TestActor,
-  metadataUri = "https://example.com/agent.json"
+  metadataUri = "https://example.com/agent.json",
+  options: { rentPayer?: Keypair } = {}
 ) {
+  const rentPayer = options.rentPayer ?? actor.keypair;
   await ctx.program.methods
     .registerAgent(metadataUri)
     .accountsStrict({
       agentProfile: actor.profile,
       authority: actor.keypair.publicKey,
+      rentPayer: rentPayer.publicKey,
       systemProgram: SystemProgram.programId,
     })
-    .signers([actor.keypair])
+    .signers(
+      rentPayer.publicKey.equals(actor.keypair.publicKey)
+        ? [actor.keypair]
+        : [actor.keypair, rentPayer]
+    )
+    .rpc();
+}
+
+export async function setPaused(
+  ctx: TestContext,
+  paused: boolean,
+  authority: Keypair = ctx.configAdmin
+) {
+  await ctx.program.methods
+    .setPaused(paused)
+    .accountsStrict({
+      config: ctx.config,
+      pauseAuthority: authority.publicKey,
+    })
+    .signers([authority])
     .rpc();
 }
 
@@ -797,8 +816,10 @@ export async function purchaseSkill(
   author: TestActor,
   skillListing: PublicKey,
   rewardTokenVault: PublicKey,
-  label?: string
+  label?: string,
+  options: { rentPayer?: Keypair } = {}
 ) {
+  const rentPayer = options.rentPayer ?? buyer.keypair;
   const listingAccount = await ctx.program.account.skillListing.fetch(
     skillListing
   );
@@ -833,10 +854,15 @@ export async function purchaseSkill(
       ),
       authorRewardVault: authorRewardVault(ctx.program, author.profile),
       buyer: buyer.keypair.publicKey,
+      rentPayer: rentPayer.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
-    .signers([buyer.keypair]);
+    .signers(
+      rentPayer.publicKey.equals(buyer.keypair.publicKey)
+        ? [buyer.keypair]
+        : [buyer.keypair, rentPayer]
+    );
   if (label) await sendWithMetrics(ctx, label, builder);
   else await builder.rpc();
   return purchase;
@@ -1063,6 +1089,7 @@ export async function resolveAuthorDispute(
     .accountsStrict({
       authorDispute: dispute.authorDispute,
       authorProfile: author.profile,
+      skillListing: disputeAccount.skillListing,
       config: ctx.config,
       authority: ctx.configAdmin.publicKey,
       usdcMint: ctx.usdcMint,
@@ -1153,6 +1180,84 @@ export async function claimPurchaseRefund(
     .signers([buyer.keypair])
     .rpc();
   return claim;
+}
+
+export function disputeVouchLinkPda(
+  program: Program<Agentvouch>,
+  authorDispute: PublicKey,
+  vouch: PublicKey
+) {
+  return pda(program, [
+    Buffer.from("dispute_vouch_link"),
+    authorDispute.toBuffer(),
+    vouch.toBuffer(),
+  ]);
+}
+
+export type SlashPositionAccounts = {
+  position: PublicKey;
+  vouch: PublicKey;
+  voucherProfile: PublicKey;
+};
+
+export async function slashDisputeVouches(
+  ctx: TestContext,
+  author: TestActor,
+  dispute: { authorDispute: PublicKey },
+  skillListing: PublicKey,
+  positions: SlashPositionAccounts[],
+  cranker: TestActor,
+  label?: string
+) {
+  const listingAccount = await ctx.program.account.skillListing.fetch(
+    skillListing
+  );
+  const settlement = listingAccount.currentSettlement;
+  const remainingAccounts = positions.flatMap((entry) => [
+    { pubkey: entry.position, isWritable: true, isSigner: false },
+    { pubkey: entry.vouch, isWritable: true, isSigner: false },
+    {
+      pubkey: vouchVault(ctx.program, entry.voucherProfile, author.profile),
+      isWritable: true,
+      isSigner: false,
+    },
+    {
+      pubkey: vouchVaultAuthority(
+        ctx.program,
+        entry.voucherProfile,
+        author.profile
+      ),
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: disputeVouchLinkPda(
+        ctx.program,
+        dispute.authorDispute,
+        entry.vouch
+      ),
+      isWritable: true,
+      isSigner: false,
+    },
+  ]);
+  const builder = ctx.program.methods
+    .slashDisputeVouches()
+    .accountsStrict({
+      authorDispute: dispute.authorDispute,
+      authorProfile: author.profile,
+      skillListing,
+      listingSettlement: settlement,
+      config: ctx.config,
+      usdcMint: ctx.usdcMint,
+      authorProceedsVault: listingAccount.currentAuthorProceedsVault,
+      cranker: cranker.keypair.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts(remainingAccounts)
+    .signers([cranker.keypair]);
+  if (label) await sendWithMetrics(ctx, label, builder);
+  else await builder.rpc();
 }
 
 export async function setupPaidListingWithVouch(

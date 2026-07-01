@@ -4,7 +4,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 use crate::events::AuthorDisputeResolved as AuthorDisputeResolvedEvent;
 use crate::state::{
     AgentProfile, AuthorBond, AuthorDispute, AuthorDisputeLiabilityScope, AuthorDisputeRuling,
-    AuthorDisputeStatus, ListingSettlement, ReputationConfig, AUTHOR_BOND_SEED,
+    AuthorDisputeStatus, ListingSettlement, ReputationConfig, SkillListing, AUTHOR_BOND_SEED,
 };
 
 #[derive(Accounts)]
@@ -15,6 +15,12 @@ pub struct ResolveAuthorDispute<'info> {
 
     #[account(mut)]
     pub author_profile: Box<Account<'info, AgentProfile>>,
+
+    #[account(
+        mut,
+        constraint = skill_listing.key() == author_dispute.skill_listing @ ErrorCode::SkillListingMismatch,
+    )]
+    pub skill_listing: Box<Account<'info, SkillListing>>,
 
     #[account()]
     pub config: Box<Account<'info, ReputationConfig>>,
@@ -195,12 +201,28 @@ pub fn handler<'info>(
         ctx.accounts.usdc_mint.decimals,
     )?;
 
-    ctx.accounts.author_profile.open_author_disputes = ctx
-        .accounts
-        .author_profile
-        .open_author_disputes
-        .checked_sub(1)
-        .ok_or(ErrorCode::OpenAuthorDisputeCountUnderflow)?;
+    // Upheld paid disputes with linked vouch positions park in
+    // SlashingVouchers: the ruling is recorded and the bond is slashed now,
+    // but the dispute stays open (open_author_disputes, settlement + listing
+    // locks) until `slash_dispute_vouches` processes the final page.
+    let linked_vouch_count = if ruling == AuthorDisputeRuling::Upheld
+        && ctx.accounts.author_dispute.liability_scope
+            == AuthorDisputeLiabilityScope::AuthorBondThenVouchers
+    {
+        ctx.accounts.skill_listing.active_reward_position_count
+    } else {
+        0
+    };
+    let parked_for_slashing = linked_vouch_count > 0;
+
+    if !parked_for_slashing {
+        ctx.accounts.author_profile.open_author_disputes = ctx
+            .accounts
+            .author_profile
+            .open_author_disputes
+            .checked_sub(1)
+            .ok_or(ErrorCode::OpenAuthorDisputeCountUnderflow)?;
+    }
     match ruling {
         AuthorDisputeRuling::Upheld => {
             ctx.accounts.author_profile.author_bond_usdc_micros = ctx
@@ -231,10 +253,15 @@ pub fn handler<'info>(
         .compute_reputation(&ctx.accounts.config);
 
     let author_dispute = &mut ctx.accounts.author_dispute;
-    author_dispute.status = AuthorDisputeStatus::Resolved;
     author_dispute.ruling = Some(ruling);
-    author_dispute.resolved_at = Some(clock.unix_timestamp);
     author_dispute.author_bond_slashed_usdc_micros = author_bond_slashed_usdc_micros;
+    author_dispute.linked_vouch_count = linked_vouch_count;
+    if parked_for_slashing {
+        author_dispute.status = AuthorDisputeStatus::SlashingVouchers;
+    } else {
+        author_dispute.status = AuthorDisputeStatus::Resolved;
+        author_dispute.resolved_at = Some(clock.unix_timestamp);
+    }
 
     if let Some(settlement) = ctx.accounts.listing_settlement.as_deref_mut() {
         require!(
@@ -249,6 +276,12 @@ pub fn handler<'info>(
             settlement.locked_by_dispute = None;
             settlement.updated_at = clock.unix_timestamp;
         }
+    }
+    if ruling == AuthorDisputeRuling::Dismissed
+        && ctx.accounts.skill_listing.locked_by_dispute == Some(author_dispute.key())
+    {
+        ctx.accounts.skill_listing.locked_by_dispute = None;
+        ctx.accounts.skill_listing.updated_at = clock.unix_timestamp;
     }
 
     emit!(AuthorDisputeResolvedEvent {
@@ -432,4 +465,6 @@ pub enum ErrorCode {
     InvalidTokenOwner,
     #[msg("Listing settlement does not match dispute lock")]
     ListingSettlementMismatch,
+    #[msg("Skill listing does not match dispute")]
+    SkillListingMismatch,
 }

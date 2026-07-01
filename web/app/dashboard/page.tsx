@@ -30,6 +30,7 @@ import {
   FiExternalLink,
   FiGitCommit,
   FiSearch,
+  FiSettings,
   FiShield,
   FiUser,
   FiUsers,
@@ -38,11 +39,15 @@ import {
 import { isRpcRateLimitError } from "@/lib/rpcErrors";
 import { getErrorMessage } from "@/lib/errors";
 import { normalizeRegisteredAt } from "@/lib/registeredAt";
+import { getPublicSkillPath, type PublicSkillUrlFields } from "@/lib/skillUrls";
 
 type Tab = "profile" | "vouch" | "explorer" | "disputes";
 
 type MarketplaceListingRow = {
   id: string;
+  skill_id?: string | null;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   name: string;
   description: string | null;
   on_chain_address?: string | null;
@@ -60,12 +65,25 @@ type AgentProfileData = NonNullable<
 type VouchRecord = Awaited<
   ReturnType<ReputationOracle["getAllVouchesForAgent"]>
 >[number];
-type PurchaseRecord = Awaited<
-  ReturnType<ReputationOracle["getPurchasesByBuyer"]>
->[number];
-type SkillListingRecord = Awaited<
-  ReturnType<ReputationOracle["getAllSkillListings"]>
->[number];
+type PurchaseRecord = {
+  publicKey: string;
+  account: {
+    skillListing: string;
+    purchasedAt: string;
+    pricePaidUsdcMicros: string;
+  };
+};
+type SkillListingRecord = {
+  publicKey: string;
+  account: {
+    name: string;
+    skillUri: string;
+  };
+};
+type DashboardPurchasesResponse = {
+  purchases?: PurchaseRecord[];
+  listings?: SkillListingRecord[];
+};
 type AgentListingRecord = Awaited<
   ReturnType<ReputationOracle["getAllAgents"]>
 >[number];
@@ -100,10 +118,10 @@ function getSolanaFmTxUrl(tx: string): string {
 }
 
 function getAuthorActionHref(
-  detailId: string,
+  skill: PublicSkillUrlFields,
   action: "edit-listing" | "publish-version"
 ): string {
-  return `/skills/${detailId}?authorAction=${action}#author-actions`;
+  return `${getPublicSkillPath(skill)}?authorAction=${action}#author-actions`;
 }
 
 function toBigInt(value: unknown): bigint {
@@ -204,14 +222,15 @@ export default function DashboardPage() {
       const rewardIndex = toBigInt(
         authorProfileData?.rewardIndexUsdcMicrosX1e12
       );
-      const entryIndex = toBigInt(
-        vouch.account.entryAuthorRewardIndexX1e12
-      );
-      const indexDelta = rewardIndex > entryIndex ? rewardIndex - entryIndex : 0n;
+      const entryIndex = toBigInt(vouch.account.entryAuthorRewardIndexX1e12);
+      const indexDelta =
+        rewardIndex > entryIndex ? rewardIndex - entryIndex : 0n;
       const stakeUsdcMicros = toBigInt(vouch.account.stakeUsdcMicros);
       const accruedSinceLastTouch =
         (stakeUsdcMicros * indexDelta) / REWARD_INDEX_SCALE;
-      const pendingUsdcMicros = toBigInt(vouch.account.pendingRewardsUsdcMicros);
+      const pendingUsdcMicros = toBigInt(
+        vouch.account.pendingRewardsUsdcMicros
+      );
       const estimatedClaimableUsdcMicros =
         pendingUsdcMicros + accruedSinceLastTouch;
 
@@ -342,21 +361,29 @@ export default function DashboardPage() {
   const loadPurchases = async () => {
     if (!publicKey) return;
     try {
-      const [purchaseList, listings] = await Promise.all([
-        oracle.getPurchasesByBuyer(publicKey),
-        oracle.getAllSkillListings(),
-      ]);
-      let authoredMarketplaceSkills: MarketplaceListingRow[] = [];
-      try {
-        const response = await fetch(
+      const [dashboardPurchases, marketplaceResponse] = await Promise.all([
+        fetch(
+          `/api/dashboard/purchases?buyer=${encodeURIComponent(
+            String(publicKey)
+          )}`
+        ).then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Failed to fetch dashboard purchases");
+          }
+          return (await response.json()) as DashboardPurchasesResponse;
+        }),
+        fetch(
           `/api/skills?author=${encodeURIComponent(
             String(publicKey)
           )}&sort=newest`
-        );
-        if (!response.ok) {
+        ),
+      ]);
+      let authoredMarketplaceSkills: MarketplaceListingRow[] = [];
+      try {
+        if (!marketplaceResponse.ok) {
           throw new Error("Failed to fetch marketplace listings");
         }
-        const data = await response.json();
+        const data = await marketplaceResponse.json();
         authoredMarketplaceSkills = (data.skills ?? []).filter(
           (skill: MarketplaceListingRow) => !!skill.on_chain_address
         );
@@ -368,6 +395,8 @@ export default function DashboardPage() {
           "Marketplace listing health could not be refreshed right now."
         );
       }
+      const purchaseList = dashboardPurchases.purchases ?? [];
+      const listings = dashboardPurchases.listings ?? [];
       setPurchases(
         [...purchaseList].sort(
           (a, b) =>
@@ -551,7 +580,8 @@ export default function DashboardPage() {
       setStatusTx(tx);
       await loadAgentProfile();
       setAuthorBondSuccess({
-        message: "Author bond deposit confirmed. Your profile balance is refreshed.",
+        message:
+          "Author bond deposit confirmed. Your profile balance is refreshed.",
         tx,
       });
     } catch (error: unknown) {
@@ -650,7 +680,10 @@ export default function DashboardPage() {
         void loadVouches();
       }, VOUCHER_REVENUE_REFRESH_DELAY_MS);
     } catch (error: unknown) {
-      const message = getErrorMessage(error, "Failed to claim voucher revenue.");
+      const message = getErrorMessage(
+        error,
+        "Failed to claim voucher revenue."
+      );
       console.error("[voucher-revenue-claim] failed", error);
       setVoucherRevenueStatus({
         success: false,
@@ -878,6 +911,12 @@ export default function DashboardPage() {
                 {tab.icon} {tab.label}
               </button>
             ))}
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1 px-4 py-2.5 font-medium whitespace-nowrap transition text-sm border-b-2 -mb-[2px] border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <FiSettings className="inline-block mr-1" /> Settings
+            </Link>
           </div>
 
           {activeTab === "profile" && !connected && (
@@ -1140,7 +1179,9 @@ export default function DashboardPage() {
                                   {listing?.account.name ?? "Purchased skill"}
                                 </span>
                                 <span className="text-xs text-green-600 dark:text-green-400 font-mono">
-                                  {formatUsdc(purchase.account.pricePaidUsdcMicros)}
+                                  {formatUsdc(
+                                    purchase.account.pricePaidUsdcMicros
+                                  )}
                                 </span>
                               </div>
                               {listing?.account.skillUri ? (
@@ -1203,7 +1244,8 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-3">
                     {marketplaceListings.map((listing) => {
-                      const canPublishVersion = !listing.id.startsWith("chain-");
+                      const canPublishVersion =
+                        !listing.id.startsWith("chain-");
                       const listingPriceUsdcMicros =
                         listing.price_usdc_micros ?? "0";
                       const downloads =
@@ -1218,7 +1260,7 @@ export default function DashboardPage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-2">
                                 <Link
-                                  href={`/skills/${listing.id}`}
+                                  href={getPublicSkillPath(listing)}
                                   className="text-base font-bold text-gray-900 dark:text-white hover:text-[var(--lobster-accent)] transition hover:underline"
                                 >
                                   {listing.name}
@@ -1245,7 +1287,7 @@ export default function DashboardPage() {
                             <div className="flex flex-wrap items-center gap-2 shrink-0">
                               <Link
                                 href={getAuthorActionHref(
-                                  listing.id,
+                                  listing,
                                   "edit-listing"
                                 )}
                                 className={navButtonSecondaryInlineClass}
@@ -1256,7 +1298,7 @@ export default function DashboardPage() {
                               {canPublishVersion && (
                                 <Link
                                   href={getAuthorActionHref(
-                                    listing.id,
+                                    listing,
                                     "publish-version"
                                   )}
                                   className={navButtonSecondaryInlineClass}
@@ -1266,7 +1308,7 @@ export default function DashboardPage() {
                                 </Link>
                               )}
                               <Link
-                                href={`/skills/${listing.id}`}
+                                href={getPublicSkillPath(listing)}
                                 className={navButtonSecondaryInlineClass}
                               >
                                 View
@@ -1283,12 +1325,12 @@ export default function DashboardPage() {
               {agentProfile && (
                 <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                   <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-                    <FiDollarSign className="text-[var(--sea-accent)]" /> Voucher
-                    Revenue
+                    <FiDollarSign className="text-[var(--sea-accent)]" />{" "}
+                    Voucher Revenue
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                    Revenue earned from paid purchases routed through authors you
-                    vouch for.
+                    Revenue earned from paid purchases routed through authors
+                    you vouch for.
                   </p>
 
                   <div className="grid gap-3 md:grid-cols-3 mb-4">
@@ -1297,7 +1339,9 @@ export default function DashboardPage() {
                         Active Backing
                       </p>
                       <p className="mt-1 font-mono text-base font-bold text-gray-900 dark:text-white">
-                        {formatUsdc(voucherRevenueTotals.activeBackingUsdcMicros)}
+                        {formatUsdc(
+                          voucherRevenueTotals.activeBackingUsdcMicros
+                        )}
                       </p>
                     </div>
                     <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
@@ -1354,9 +1398,9 @@ export default function DashboardPage() {
 
                   {voucherRevenueRows.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      No voucher revenue yet. Revenue appears here after you vouch
-                      for authors and their paid listings generate voucher-share
-                      rewards.
+                      No voucher revenue yet. Revenue appears here after you
+                      vouch for authors and their paid listings generate
+                      voucher-share rewards.
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -1382,7 +1426,9 @@ export default function DashboardPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="mb-2 flex flex-wrap items-center gap-2">
                                   <span className="font-mono text-base font-bold text-green-600 dark:text-green-400">
-                                    {formatUsdc(row.estimatedClaimableUsdcMicros)}
+                                    {formatUsdc(
+                                      row.estimatedClaimableUsdcMicros
+                                    )}
                                   </span>
                                   <span className="text-xs text-gray-400 dark:text-gray-500">
                                     claimable
@@ -1413,7 +1459,9 @@ export default function DashboardPage() {
                                   <span>
                                     Claimed:{" "}
                                     <span className="font-mono text-gray-900 dark:text-white">
-                                      {formatUsdc(row.lifetimeClaimedUsdcMicros)}
+                                      {formatUsdc(
+                                        row.lifetimeClaimedUsdcMicros
+                                      )}
                                     </span>
                                   </span>
                                   <span>
@@ -1874,7 +1922,9 @@ export default function DashboardPage() {
                                 </span>
                                 <span className="inline-flex items-center gap-1">
                                   <FiDollarSign />{" "}
-                                  {formatUsdc(agent.account.totalVouchStakeUsdcMicros)}
+                                  {formatUsdc(
+                                    agent.account.totalVouchStakeUsdcMicros
+                                  )}
                                 </span>
                               </div>
                             </div>

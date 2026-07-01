@@ -1,14 +1,19 @@
 import { AGENTVOUCH_PROGRAM_ID } from "@agentvouch/protocol";
 import anchor from "@coral-xyz/anchor";
 import {
+  Connection,
   Keypair,
   PublicKey,
   SystemProgram,
   type Commitment,
 } from "@solana/web3.js";
 import agentvouchIdl from "../../../../web/agentvouch.json";
+// Anchor program type, committed (generated from web/agentvouch.json) instead of
+// imported from the gitignored `target/types/agentvouch` build artifact, which
+// only exists after `anchor build` and broke typecheck on a fresh checkout.
+import type { Agentvouch } from "../idl/agentvouch.js";
 
-const { AnchorProvider, Program, Wallet, web3 } = anchor;
+const { AnchorProvider, Program, Wallet } = anchor;
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 );
@@ -65,20 +70,20 @@ function assertSupportedListingPrice(priceUsdcMicros: bigint) {
 }
 
 export class AgentVouchSolanaClient {
-  readonly connection: web3.Connection;
+  readonly connection: Connection;
   readonly provider: anchor.AnchorProvider;
-  readonly program: anchor.Program<anchor.Idl>;
+  readonly program: anchor.Program<Agentvouch>;
 
   constructor(
     private readonly keypair: Keypair,
     rpcUrl: string,
     commitment: Commitment = "confirmed"
   ) {
-    this.connection = new web3.Connection(rpcUrl, commitment);
+    this.connection = new Connection(rpcUrl, commitment);
     this.provider = new AnchorProvider(this.connection, new Wallet(keypair), {
       commitment,
     });
-    this.program = new Program(agentvouchIdl as anchor.Idl, this.provider);
+    this.program = new Program(agentvouchIdl as Agentvouch, this.provider);
   }
 
   get authority(): PublicKey {
@@ -303,9 +308,12 @@ export class AgentVouchSolanaClient {
 
     const tx = await this.program.methods
       .registerAgent(metadataUri)
-      .accounts({
+      .accountsPartial({
         agentProfile,
         authority: this.authority,
+        // Self-funded path: the CLI wallet pays its own rent. A sponsor would pass a
+        // different rent_payer here (the program supports it for gasless onboarding).
+        rentPayer: this.authority,
         systemProgram: SystemProgram.programId,
       })
       .signers([this.keypair])
@@ -348,7 +356,7 @@ export class AgentVouchSolanaClient {
     }
     const tx = await this.program.methods
       .vouch(toMicrosBn(stakeMicros, "stakeUsdcMicros"))
-      .accounts({
+      .accountsPartial({
         vouch,
         voucherProfile,
         voucheeProfile,
@@ -407,7 +415,7 @@ export class AgentVouchSolanaClient {
       this.getAuthorProceedsVaultAuthorityAddress(listingSettlement);
     const tx = await this.program.methods
       .purchaseSkill()
-      .accounts({
+      .accountsPartial({
         skillListing: skillListingKey,
         purchase,
         author: new PublicKey(authorAddress),
@@ -421,6 +429,7 @@ export class AgentVouchSolanaClient {
         authorRewardVaultAuthority,
         authorRewardVault,
         buyer: this.authority,
+        rentPayer: this.authority,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
@@ -434,10 +443,7 @@ export class AgentVouchSolanaClient {
     };
   }
 
-  async claimVoucherRevenue(
-    skillListingAddress: string,
-    authorAddress: string
-  ) {
+  async claimVoucherRevenue(authorAddress: string) {
     const voucherProfile = this.getAgentProfileAddress(this.authority);
     const authorProfile = this.getAgentProfileAddress(authorAddress);
     const vouch = this.getVouchAddress(authorAddress);
@@ -453,7 +459,7 @@ export class AgentVouchSolanaClient {
 
     const tx = await this.program.methods
       .claimVoucherRevenue()
-      .accounts({
+      .accountsPartial({
         authorProfile,
         vouch,
         voucherProfile,
@@ -470,7 +476,6 @@ export class AgentVouchSolanaClient {
 
     return {
       tx,
-      skillListing: skillListingAddress,
       vouch: vouch.toBase58(),
       voucherProfile: voucherProfile.toBase58(),
       authorProfile: authorProfile.toBase58(),
@@ -517,10 +522,12 @@ export class AgentVouchSolanaClient {
         input.description,
         toMicrosBn(priceUsdcMicros, "priceUsdcMicros")
       )
-      .accounts({
+      .accountsPartial({
         skillListing,
         authorProfile,
         config,
+        // null for paid listings — author_bond is an optional account in the IDL,
+        // so Anchor types it Address | null and resolves null as "omitted".
         authorBond,
         usdcMint,
         listingSettlement,

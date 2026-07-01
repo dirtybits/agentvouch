@@ -1,0 +1,182 @@
+{
+  "schema_version": "2026-06-16",
+  "canonical_root": "~/.agents/skills",
+  "wallet_inventory_checked": {
+    "wallet_pubkey": "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+    "checked_at": "2026-06-16T22:36:07Z",
+    "agentvouch_skill_count": 11
+  },
+  "classification_values": [
+    "authored",
+    "mirrored-upstream",
+    "private-local",
+    "skip"
+  ],
+  "publish_decisions": [
+    "already-published",
+    "candidate",
+    "needs-provenance",
+    "do-not-publish"
+  ],
+  "skills": [
+    {
+      "name": "8004-solana-sdk",
+      "path": "8004-solana-sdk",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Frontmatter names QuantuLabs upstream GitHub project and version metadata; preserve upstream attribution before any AgentVouch mirror listing.",
+      "upstream": "https://github.com/QuantuLabs/8004-solana-ts"
+    },
+    {
+      "name": "agentvouch-skill-security-vetting",
+      "path": "agentvouch-skill-security-vetting",
+      "classification": "private-local",
+      "publish_decision": "do-not-publish",
+      "rationale": "Targets localhost AgentVouch dev server and a fixed dev keypair path; useful locally but not a public marketplace skill as written."
+    },
+    {
+      "name": "connectorkit",
+      "path": "connectorkit",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Documents an external Solana wallet connection library with API references; confirm ownership/license before listing under a wallet."
+    },
+    {
+      "name": "financial-analysis",
+      "path": "financial-analysis",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "4915b468-8d5e-4f9f-97d4-b4a80f421ccc",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/financial-analysis",
+      "rationale": "Published as a free repo-backed AgentVouch listing under the checked wallet."
+    },
+    {
+      "name": "find-skills",
+      "path": "find-skills",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "b893dde9-691c-474b-a134-8b983dbebd37",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/find-skills",
+      "rationale": "Published as a free repo-backed AgentVouch listing under the checked wallet."
+    },
+    {
+      "name": "fix-bugbot-pr-comments",
+      "path": "fix-bugbot-pr-comments",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "8969aa89-981e-40dd-8f40-bbec454617d1",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/fix-bugbot-pr-comments",
+      "rationale": "Published as a free repo-backed AgentVouch listing under the checked wallet."
+    },
+    {
+      "name": "frontend-design",
+      "path": "frontend-design",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "47292702-865c-4b3b-ad6b-919264ec7ec3",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/frontend-design",
+      "rationale": "Published as a free repo-backed AgentVouch listing under the checked wallet."
+    },
+    {
+      "name": "llms-txt-generator",
+      "path": "llms-txt-generator",
+      "classification": "private-local",
+      "publish_decision": "do-not-publish",
+      "rationale": "Repo-specific workflow for scanning apps/ and regenerating llms text files."
+    },
+    {
+      "name": "pay",
+      "path": "pay",
+      "classification": "private-local",
+      "publish_decision": "do-not-publish",
+      "rationale": "Paid local Pay MCP/x402 workflow with provider-selection and setup references; needs a separate public packaging pass."
+    },
+    {
+      "name": "pdf",
+      "path": "pdf",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Generic PDF skill likely mirrored from a broader skill pack; confirm origin/license before wallet publishing."
+    },
+    {
+      "name": "plan-writing",
+      "path": "plan-writing",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "56ec4087-a03c-4d92-b851-b9e57526325a",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/plan-writing",
+      "rationale": "Already published under the checked wallet."
+    },
+    {
+      "name": "playwright",
+      "path": "playwright",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Generic browser automation skill likely mirrored from a broader skill pack; confirm origin/license before wallet publishing."
+    },
+    {
+      "name": "refresh-agent-context",
+      "path": "refresh-agent-context",
+      "classification": "private-local",
+      "publish_decision": "do-not-publish",
+      "rationale": "Turborepo-specific context-refresh workflow; publish only after generalizing beyond this local repo."
+    },
+    {
+      "name": "skills-organization",
+      "path": "skills-organization",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "928e765a-56f5-4f60-80c0-f5ae55207a14",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/skills-organization",
+      "rationale": "Already published under the checked wallet."
+    },
+    {
+      "name": "solana-core-docs",
+      "path": "solana-core-docs",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Summarizes Solana core documentation; preserve Solana documentation provenance before any listing."
+    },
+    {
+      "name": "solana-dev",
+      "path": "solana-dev",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Frontmatter declares Solana Foundation author/license metadata; do not publish as original wallet-authored work."
+    },
+    {
+      "name": "subagent-orchestration",
+      "path": "subagent-orchestration",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "ff3f728a-313e-46ba-80cd-a1a331327967",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/subagent-orchestration",
+      "rationale": "Already published under the checked wallet."
+    },
+    {
+      "name": "supabase-postgres-best-practices",
+      "path": "supabase-postgres-best-practices",
+      "classification": "mirrored-upstream",
+      "publish_decision": "needs-provenance",
+      "rationale": "Frontmatter declares Supabase organization metadata and MIT license; publish only as an attributed mirror if desired."
+    },
+    {
+      "name": "turn-closeout",
+      "path": "turn-closeout",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "c02c5021-98d6-4379-9ce0-f5e4216a6b8a",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/turn-closeout",
+      "rationale": "Already published under the checked wallet."
+    },
+    {
+      "name": "web3-protocol-design",
+      "path": "web3-protocol-design",
+      "classification": "authored",
+      "publish_decision": "already-published",
+      "agentvouch_repo_skill_id": "71a463dc-4071-452d-880f-f00738e0bee8",
+      "agentvouch_url": "https://agentvouch.xyz/skills/wallet-asuavudg/web3-protocol-design",
+      "rationale": "Already published under the checked wallet."
+    }
+  ]
+}

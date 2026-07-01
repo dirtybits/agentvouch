@@ -23,6 +23,8 @@ import {
   getBytesEncoder,
   getI64Decoder,
   getI64Encoder,
+  getOptionDecoder,
+  getOptionEncoder,
   getStructDecoder,
   getStructEncoder,
   getU128Decoder,
@@ -46,6 +48,8 @@ import {
   type FetchAccountsConfig,
   type MaybeAccount,
   type MaybeEncodedAccount,
+  type Option,
+  type OptionOrNullable,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
@@ -88,6 +92,13 @@ export type SkillListing = {
   createdAt: bigint;
   updatedAt: bigint;
   status: SkillStatus;
+  /**
+   * Mirror of the current settlement's dispute lock, kept at the listing
+   * level so it survives settlement rotation: while set, vouch positions
+   * cannot be linked/unlinked, the revision cannot be bumped, and no new
+   * settlement can be initialized for this listing.
+   */
+  lockedByDispute: Option<Address>;
   bump: number;
   rewardVaultBump: number;
 };
@@ -114,6 +125,13 @@ export type SkillListingArgs = {
   createdAt: number | bigint;
   updatedAt: number | bigint;
   status: SkillStatusArgs;
+  /**
+   * Mirror of the current settlement's dispute lock, kept at the listing
+   * level so it survives settlement rotation: while set, vouch positions
+   * cannot be linked/unlinked, the revision cannot be bumped, and no new
+   * settlement can be initialized for this listing.
+   */
+  lockedByDispute: OptionOrNullable<Address>;
   bump: number;
   rewardVaultBump: number;
 };
@@ -144,6 +162,7 @@ export function getSkillListingEncoder(): Encoder<SkillListingArgs> {
       ["createdAt", getI64Encoder()],
       ["updatedAt", getI64Encoder()],
       ["status", getSkillStatusEncoder()],
+      ["lockedByDispute", getOptionEncoder(getAddressEncoder())],
       ["bump", getU8Encoder()],
       ["rewardVaultBump", getU8Encoder()],
     ]),
@@ -176,6 +195,7 @@ export function getSkillListingDecoder(): Decoder<SkillListing> {
     ["createdAt", getI64Decoder()],
     ["updatedAt", getI64Decoder()],
     ["status", getSkillStatusDecoder()],
+    ["lockedByDispute", getOptionDecoder(getAddressDecoder())],
     ["bump", getU8Decoder()],
     ["rewardVaultBump", getU8Decoder()],
   ]);

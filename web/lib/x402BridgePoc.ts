@@ -1,6 +1,9 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import {
+  findAssociatedTokenPda,
+  TOKEN_PROGRAM_ADDRESS,
+} from "@solana-program/token";
 import { address, createSolanaRpc, isAddress } from "@solana/kit";
 import { getConfiguredUsdcMint, getFacilitatorUrl } from "@/lib/x402";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
@@ -112,7 +115,9 @@ export function evaluateX402BridgePoc(): X402BridgePocReport {
 
   const productionEnabled = isProtocolX402BridgeEnabled();
   const status =
-    !productionEnabled && checks.every((check) => check.passed) ? "pass" : "fail";
+    !productionEnabled && checks.every((check) => check.passed)
+      ? "pass"
+      : "fail";
 
   return {
     status,
@@ -130,7 +135,14 @@ function getX402SvmPackageVersion(): string | null {
   try {
     const packageJson = JSON.parse(
       readFileSync(
-        join(process.cwd(), "..", "node_modules", "@x402", "svm", "package.json"),
+        join(
+          process.cwd(),
+          "..",
+          "node_modules",
+          "@x402",
+          "svm",
+          "package.json"
+        ),
         "utf8"
       )
     ) as { version?: unknown };
@@ -140,7 +152,11 @@ function getX402SvmPackageVersion(): string | null {
   }
 }
 
-async function deriveAta(owner: string | null, mint: string, tokenProgram: string) {
+async function deriveAta(
+  owner: string | null,
+  mint: string,
+  tokenProgram: string
+) {
   if (!owner || !isAddress(owner)) return null;
   const [ata] = await findAssociatedTokenPda({
     owner: address(owner),
@@ -154,7 +170,9 @@ export async function evaluateX402SettlementDestinationPoc(): Promise<X402Settle
   const programId = getAgentVouchProgramId();
   const usdcMint = getConfiguredUsdcMint();
   const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
-  const [configPda] = await findConfigPda({ programAddress: address(programId) });
+  const [configPda] = await findConfigPda({
+    programAddress: address(programId),
+  });
   const [x402SettlementVaultAuthorityPda] =
     await findX402SettlementVaultAuthorityPda({
       programAddress: address(programId),
@@ -180,8 +198,7 @@ export async function evaluateX402SettlementDestinationPoc(): Promise<X402Settle
       error instanceof Error ? error.message : "Unable to fetch config";
   }
 
-  const configuredVaultForComparison =
-    configuredX402SettlementVault ?? null;
+  const configuredVaultForComparison = configuredX402SettlementVault ?? null;
   const stockCompatibleX402SettlementVaultAta = await deriveAta(
     x402SettlementVaultAuthorityPda.toString(),
     usdcMint,
@@ -301,7 +318,8 @@ export async function evaluateX402SettlementDestinationPoc(): Promise<X402Settle
       settlementAuthority,
     },
     programPdas: {
-      x402SettlementVaultAuthorityPda: x402SettlementVaultAuthorityPda.toString(),
+      x402SettlementVaultAuthorityPda:
+        x402SettlementVaultAuthorityPda.toString(),
       stockCompatibleX402SettlementVaultAta,
     },
     x402Model: {

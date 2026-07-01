@@ -5,15 +5,21 @@ use anchor_lang::prelude::*;
 pub struct RegisterAgent<'info> {
     #[account(
         init_if_needed,
-        payer = authority,
+        payer = rent_payer,
         space = AgentProfile::LEN,
         seeds = [b"agent", authority.key().as_ref()],
         bump
     )]
     pub agent_profile: Account<'info, AgentProfile>,
 
-    #[account(mut)]
+    /// The agent identity being registered. Signs to authorize, but does NOT pay rent —
+    /// so a gas/rent sponsor (e.g. Kora) can register a user holding zero SOL.
     pub authority: Signer<'info>,
+
+    /// Funds the AgentProfile PDA rent on first registration. Set equal to `authority` for
+    /// the self-funded path, or to a sponsor for gasless onboarding. Mirrors purchase_skill.
+    #[account(mut)]
+    pub rent_payer: Signer<'info>,
 
     pub system_program: Program<'info, System>,
 }

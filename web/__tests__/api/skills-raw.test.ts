@@ -48,8 +48,28 @@ vi.mock("@/lib/x402", () => ({
 
 vi.mock("@/lib/usdcPurchases", () => ({
   X402_BRIDGE_PURCHASE_PAYMENT_FLOW: "x402-bridge-purchase-skill",
+  hasChainUsdcPurchaseEntitlement: vi.fn(),
   hasUsdcPurchaseEntitlement: vi.fn(),
   recordUsdcPurchaseReceipt: vi.fn(),
+}));
+
+vi.mock("@/lib/baseX402", () => ({
+  BASE_X402_PURCHASE_PAYMENT_FLOW: "base-x402-purchase-skill",
+  buildBaseX402PaymentRequirement: vi.fn().mockResolvedValue({
+    scheme: "exact",
+    network: "eip155:84532",
+    amount: "1000000",
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    payTo: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    maxTimeoutSeconds: 3600,
+    extra: {
+      agentvouch_payment_flow: "base-x402-purchase-skill",
+      agentvouch_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    },
+  }),
+  verifyBaseX402PaymentPayload: vi.fn(),
+  relayAndRecordBaseX402Purchase: vi.fn(),
 }));
 
 vi.mock("@/lib/x402BridgePoc", () => ({
@@ -110,9 +130,15 @@ import {
   verifyX402Payment,
 } from "@/lib/x402";
 import {
+  hasChainUsdcPurchaseEntitlement,
   hasUsdcPurchaseEntitlement,
   recordUsdcPurchaseReceipt,
 } from "@/lib/usdcPurchases";
+import {
+  buildBaseX402PaymentRequirement,
+  relayAndRecordBaseX402Purchase,
+  verifyBaseX402PaymentPayload,
+} from "@/lib/baseX402";
 import { isProtocolX402BridgeEnabled } from "@/lib/x402BridgePoc";
 import {
   buildProtocolX402BridgeRequirement,
@@ -133,12 +159,18 @@ const mockBuildMsg = buildDownloadRawMessage as unknown as ReturnType<
 const mockHasPurchase = hasOnChainPurchase as unknown as ReturnType<
   typeof vi.fn
 >;
-const mockHasUsdcEntitlement = hasUsdcPurchaseEntitlement as unknown as ReturnType<
-  typeof vi.fn
->;
-const mockRecordUsdcReceipt = recordUsdcPurchaseReceipt as unknown as ReturnType<
-  typeof vi.fn
->;
+const mockHasUsdcEntitlement =
+  hasUsdcPurchaseEntitlement as unknown as ReturnType<typeof vi.fn>;
+const mockHasChainUsdcEntitlement =
+  hasChainUsdcPurchaseEntitlement as unknown as ReturnType<typeof vi.fn>;
+const mockRecordUsdcReceipt =
+  recordUsdcPurchaseReceipt as unknown as ReturnType<typeof vi.fn>;
+const mockBuildBaseX402Requirement =
+  buildBaseX402PaymentRequirement as unknown as ReturnType<typeof vi.fn>;
+const mockVerifyBaseX402Payload =
+  verifyBaseX402PaymentPayload as unknown as ReturnType<typeof vi.fn>;
+const mockRelayBaseX402Purchase =
+  relayAndRecordBaseX402Purchase as unknown as ReturnType<typeof vi.fn>;
 const mockBridgeEnabled = isProtocolX402BridgeEnabled as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -201,6 +233,20 @@ const PROTOCOL_USDC_SKILL = {
   on_chain_program_id: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
   chain_context: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 };
+const BASE_USDC_SKILL = {
+  ...USDC_SKILL,
+  id: "uuid-base-usdc",
+  author_pubkey: "0x1111111111111111111111111111111111111111",
+  chain_context: "eip155:84532",
+  currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  on_chain_protocol_version: "base-poc-v0",
+  on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+  evm_listing_id:
+    "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+  evm_tx_hash:
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+};
 
 function validAuthHeader(
   id: string,
@@ -220,6 +266,37 @@ describe("GET /api/skills/[id]/raw", () => {
     vi.clearAllMocks();
     mockBridgeEnabled.mockReturnValue(false);
     mockHasPurchase.mockResolvedValue(false);
+    mockHasChainUsdcEntitlement.mockResolvedValue(false);
+    mockVerifyBaseX402Payload.mockResolvedValue({
+      buyerAddress: "0x2222222222222222222222222222222222222222",
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      listingRevision: "1",
+      priceUsdcMicros: 1000000n,
+      validAfter: 0n,
+      validBefore: 9999999999n,
+      v: 27,
+      r: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      s: "0x2222222222222222222222222222222222222222222222222222222222222222",
+      signature:
+        "0x111111111111111111111111111111111111111111111111111111111111111122222222222222222222222222222222222222222222222222222222222222221b",
+      authorizationNonce:
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+      paymentRefHashHex:
+        "4444444444444444444444444444444444444444444444444444444444444444",
+    });
+    mockRelayBaseX402Purchase.mockResolvedValue({
+      transaction:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      payer: "0x2222222222222222222222222222222222222222",
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      purchaseId:
+        "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      paymentRefHashHex:
+        "4444444444444444444444444444444444444444444444444444444444444444",
+      listingRevision: "1",
+    });
   });
 
   it("proxies chain-only signed downloads through the raw API", async () => {
@@ -331,6 +408,66 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(body.payment_flow).toBe("listing-required");
     expect(body.amount_micros).toBe("1000000");
     expect(body.on_chain_address).toBeNull();
+  });
+
+  it("returns a Base EIP-3009 x402 requirement for Base-listed paid skills", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([BASE_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-base-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("PAYMENT-REQUIRED")).toBe(
+      "encoded-payment-required"
+    );
+    const body = await res.json();
+    expect(body.extensions.payment_flow).toBe("base-x402-purchase-skill");
+    expect(mockBuildBaseX402Requirement).toHaveBeenCalledWith({
+      skillDbId: "uuid-base-usdc",
+      skill: expect.objectContaining({
+        evm_listing_id: BASE_USDC_SKILL.evm_listing_id,
+        chain_context: "eip155:84532",
+      }),
+      priceUsdcMicros: 1000000n,
+    });
+    expect(mockOnChain).not.toHaveBeenCalled();
+  });
+
+  it("settles a Base EIP-3009 x402 payment before serving raw content", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([BASE_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    const paymentPayload = {
+      x402Version: 2,
+      resource: {},
+      accepted: {},
+      payload: {},
+    };
+    mockDecodePaymentHeader.mockReturnValue(paymentPayload);
+
+    const { req, params } = makeRequest("uuid-base-usdc", {
+      "payment-signature": "encoded-base-payment",
+    });
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SKILL_CONTENT);
+    expect(mockVerifyBaseX402Payload).toHaveBeenCalledWith({
+      skillDbId: "uuid-base-usdc",
+      skill: expect.objectContaining({
+        evm_listing_id: BASE_USDC_SKILL.evm_listing_id,
+      }),
+      priceUsdcMicros: 1000000n,
+      payload: paymentPayload,
+    });
+    expect(mockHasChainUsdcEntitlement).toHaveBeenCalledWith("uuid-base-usdc", {
+      buyerChainContext: "eip155:84532",
+      buyerAddress: "0x2222222222222222222222222222222222222222",
+    });
+    expect(mockRelayBaseX402Purchase).toHaveBeenCalled();
+    expect(res.headers.get("PAYMENT-RESPONSE")).toBe(
+      "encoded-payment-response"
+    );
   });
 
   it("returns 402 for paid skill with no auth header", async () => {
@@ -595,7 +732,9 @@ describe("GET /api/skills/[id]/raw", () => {
         listingAddress: string | null | undefined,
         timestamp: number
       ) =>
-        `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${listingAddress ?? "x402-usdc-direct"}\nTimestamp: ${timestamp}`
+        `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${
+          listingAddress ?? "x402-usdc-direct"
+        }\nTimestamp: ${timestamp}`
     );
     mockHasUsdcEntitlement.mockResolvedValue(true);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FiLink2, FiShield, FiUser, FiZap } from "react-icons/fi";
+import { FiGithub, FiLink2, FiShield, FiUser, FiZap } from "react-icons/fi";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { getChainDisplayLabel } from "@/lib/chains";
 
@@ -47,7 +47,7 @@ export function AgentIdentityPanel({
         <div className="flex items-center gap-2">
           <FiLink2 className="w-4 h-4 text-[var(--sea-accent)]" />
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-sm font-normal text-gray-900 dark:text-white">
               {title}
             </h2>
             {identity.displayName && (
@@ -77,6 +77,32 @@ export function AgentIdentityPanel({
         ) : null}
         {identity.registryAsset ? (
           <IdentityRow label="Registry Asset" value={identity.registryAsset} />
+        ) : null}
+        {identity.username ? (
+          <IdentityRow
+            label={
+              identity.usernameSource === "fallback"
+                ? "Username"
+                : "Chosen Username"
+            }
+            value={`@${identity.username}`}
+          />
+        ) : null}
+        {identity.githubProfile ? (
+          <div className="flex items-start justify-between gap-3 py-2 border-t border-gray-100 dark:border-gray-800 first:border-t-0 first:pt-0 last:pb-0">
+            <span className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 shrink-0">
+              GitHub
+            </span>
+            <a
+              href={identity.githubProfile.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-w-0 items-center gap-1 font-mono text-xs text-right text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+            >
+              <FiGithub className="h-3 w-3 shrink-0" />
+              <span className="truncate">@{identity.githubProfile.login}</span>
+            </a>
+          </div>
         ) : null}
         {identity.ownerWallet ? (
           <IdentityRow label="Owner Wallet" value={identity.ownerWallet} />

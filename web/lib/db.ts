@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { neon } from "@neondatabase/serverless";
 import {
   SOLANA_DEVNET_CHAIN_CONTEXT,
@@ -11,7 +12,7 @@ import {
 } from "@/lib/protocolMetadata";
 
 type SqlRow = Record<string, unknown>;
-type SqlQuery = {
+export type SqlQuery = {
   <TRow extends SqlRow = SqlRow>(
     strings: TemplateStringsArray,
     ...values: unknown[]
@@ -38,12 +39,90 @@ function sqlStringLiteral(db: SqlQuery, value: string) {
   return db.unsafe(`'${value.replace(/'/g, "''")}'`);
 }
 
-export async function initializeDatabase() {
-  if (_initializePromise) {
-    return _initializePromise;
+// Concurrent cold starts can each run this idempotent bootstrap at once. Postgres
+// then throws "tuple concurrently updated" (XX000) when two sessions CREATE OR
+// REPLACE the same function, or deadlocks. Those are transient: the DDL is
+// idempotent, so a short retry converges instead of failing the request.
+function isTransientInitError(error: unknown): boolean {
+  const message = ((error as Error)?.message ?? "").toLowerCase();
+  const code = (error as { code?: string })?.code;
+  return (
+    message.includes("tuple concurrently updated") ||
+    message.includes("tuple concurrently deleted") ||
+    code === "40P01" // deadlock_detected
+  );
+}
+
+async function initWithRetry(run: () => Promise<void>): Promise<void> {
+  const maxAttempts = 5;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await run();
+      return;
+    } catch (error) {
+      if (attempt >= maxAttempts || !isTransientInitError(error)) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, 40 * attempt + Math.floor(Math.random() * 60))
+      );
+    }
+  }
+}
+
+// --- Schema version gate ---
+// Replaying the full idempotent DDL (~75 statements) on every cold start costs
+// seconds of sequential round trips before the first real query. Each schema
+// component instead records a fingerprint in db_schema_version: when it
+// matches, bootstrap is a single SELECT. The fingerprint hashes the DDL
+// function's own source plus the env-derived values baked into the DDL, so
+// editing the schema code (or changing chain context / program id) re-runs it
+// automatically  -  no manual version bump. To force a re-run by hand, delete
+// the component's row from db_schema_version.
+export function computeSchemaFingerprint(
+  ddlSource: string,
+  extras: string[] = []
+): string {
+  return createHash("sha256")
+    .update(ddlSource)
+    .update("\0")
+    .update(extras.join("\0"))
+    .digest("hex");
+}
+
+export async function runSchemaDdlOnce(
+  db: SqlQuery,
+  component: string,
+  fingerprint: string,
+  run: () => Promise<void>
+): Promise<void> {
+  try {
+    const rows = await db`
+      SELECT version FROM db_schema_version WHERE component = ${component}
+    `;
+    if (rows.length > 0 && rows[0].version === fingerprint) {
+      return;
+    }
+  } catch {
+    // db_schema_version doesn't exist yet  -  first boot on this database.
   }
 
-  _initializePromise = (async () => {
+  await run();
+
+  await db`
+    CREATE TABLE IF NOT EXISTS db_schema_version (
+      component TEXT PRIMARY KEY,
+      version TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await db`
+    INSERT INTO db_schema_version (component, version, updated_at)
+    VALUES (${component}, ${fingerprint}, NOW())
+    ON CONFLICT (component)
+    DO UPDATE SET version = EXCLUDED.version, updated_at = NOW()
+  `;
+}
+
+async function runCoreSchemaDdl() {
   const db = sql();
   const configuredSolanaChainContext = getConfiguredSolanaChainContext();
   const currentProgramId = getAgentVouchProgramId();
@@ -118,6 +197,47 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS mirror_source_key VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS synced_repo_url VARCHAR(256)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS public_slug VARCHAR(96)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS public_author_slug VARCHAR(96)
+  `;
+
+  // Base/EVM listing identity (Phase 3b). Additive + nullable — existing Solana rows keep
+  // these NULL. The Base bytes32 listing id is carried HERE, not in on_chain_address (which is
+  // a Solana PDA the purchase path interprets via @solana/kit). See
+  // .agents/plans/base-port-chain-adapter-phase-3b.plan.md (D1/D4).
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS evm_contract_address VARCHAR(42)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS evm_tx_hash VARCHAR(66)
+  `;
+
+  await db`DROP INDEX IF EXISTS idx_skills_public_slug`;
+
+  await db`
     UPDATE skills
     SET
       author_kind = CASE
@@ -145,6 +265,102 @@ export async function initializeDatabase() {
         author_pubkey IS NULL
         AND (author_kind = 'wallet' OR publisher_tier = 'registered')
       )
+  `;
+
+  await db`
+    WITH normalized AS (
+      SELECT
+        id,
+        COALESCE(
+          NULLIF(
+            trim(
+              BOTH '-' FROM substring(
+                regexp_replace(
+                  regexp_replace(lower(skill_id), '[^a-z0-9-]+', '-', 'g'),
+                  '-{2,}',
+                  '-',
+                  'g'
+                )
+                FROM 1 FOR 64
+              )
+            ),
+            ''
+          ),
+          left(replace(id::text, '-', ''), 8)
+        ) AS base_skill_slug,
+        COALESCE(
+          NULLIF(
+            CASE
+              WHEN author_handle IS NOT NULL AND author_handle <> '' THEN trim(
+                BOTH '-' FROM substring(
+                  regexp_replace(
+                    regexp_replace(lower(author_handle), '[^a-z0-9-]+', '-', 'g'),
+                    '-{2,}',
+                    '-',
+                    'g'
+                  )
+                  FROM 1 FOR 64
+                )
+              )
+              WHEN author_pubkey IS NOT NULL AND author_pubkey <> '' THEN 'wallet-' || lower(left(author_pubkey, 8))
+              WHEN publisher_identity_key IS NOT NULL AND publisher_identity_key <> '' THEN trim(
+                BOTH '-' FROM substring(
+                  regexp_replace(
+                    regexp_replace(lower(replace(publisher_identity_key, ':', '-')), '[^a-z0-9-]+', '-', 'g'),
+                    '-{2,}',
+                    '-',
+                    'g'
+                  )
+                  FROM 1 FOR 64
+                )
+              )
+              ELSE NULL
+            END,
+            ''
+          ),
+          'publisher-' || left(replace(id::text, '-', ''), 8)
+        ) AS base_author_slug
+      FROM skills
+      WHERE public_slug IS NULL
+        OR public_slug = ''
+        OR public_author_slug IS NULL
+        OR public_author_slug = ''
+    )
+    UPDATE skills s
+    SET
+      public_slug = COALESCE(NULLIF(s.public_slug, ''), normalized.base_skill_slug),
+      public_author_slug = COALESCE(NULLIF(s.public_author_slug, ''), normalized.base_author_slug)
+    FROM normalized
+    WHERE s.id = normalized.id
+  `;
+
+  await db`
+    WITH ranked AS (
+      SELECT
+        id,
+        public_slug,
+        public_author_slug,
+        ROW_NUMBER() OVER (
+          PARTITION BY public_author_slug, public_slug
+          ORDER BY id
+        ) AS route_rank
+      FROM skills
+    )
+    UPDATE skills s
+    SET public_slug = left(ranked.public_slug, 84) || '-' || left(replace(s.id::text, '-', ''), 8)
+    FROM ranked
+    WHERE s.id = ranked.id
+      AND ranked.route_rank > 1
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ALTER COLUMN public_slug SET NOT NULL
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ALTER COLUMN public_author_slug SET NOT NULL
   `;
 
   // Per-identity uniqueness is enforced by the canonical partial index
@@ -267,6 +483,33 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE TABLE IF NOT EXISTS skill_download_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      skill_db_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+      skill_version_id UUID REFERENCES skill_versions(id) ON DELETE SET NULL,
+      skill_version INTEGER,
+      event_kind VARCHAR(24) NOT NULL,
+      requested_path TEXT,
+      wallet_pubkey VARCHAR(44),
+      auth_present BOOLEAN NOT NULL DEFAULT false,
+      user_agent TEXT,
+      referrer TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skill_download_events_skill_created
+    ON skill_download_events(skill_db_id, created_at DESC)
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skill_download_events_wallet_created
+    ON skill_download_events(wallet_pubkey, created_at DESC)
+    WHERE wallet_pubkey IS NOT NULL
+  `;
+
+  await db`
     ALTER TABLE skill_scans
     ADD COLUMN IF NOT EXISTS scan_source VARCHAR(32) NOT NULL DEFAULT 'model'
   `;
@@ -367,6 +610,32 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    CREATE OR REPLACE FUNCTION release_ai_scan_budget()
+    RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      day_start DATE := CURRENT_DATE;
+      month_start DATE := date_trunc('month', NOW())::date;
+    BEGIN
+      PERFORM pg_advisory_xact_lock(hashtext('agentvouch:ai_scan_budget')::bigint);
+
+      UPDATE ai_scan_budget_counters
+      SET used = GREATEST(used - 1, 0),
+          updated_at = NOW()
+      WHERE bucket = 'day'
+        AND period_start = day_start;
+
+      UPDATE ai_scan_budget_counters
+      SET used = GREATEST(used - 1, 0),
+          updated_at = NOW()
+      WHERE bucket = 'month'
+        AND period_start = month_start;
+    END;
+    $$;
+  `;
+
+  await db`
     CREATE INDEX IF NOT EXISTS idx_skill_versions_tree_hash
     ON skill_versions(tree_hash)
   `;
@@ -392,7 +661,8 @@ export async function initializeDatabase() {
   `;
 
   // AI-generated one-liner for the current version's content. Cache key is
-  // (summary_sha256, summary_model): regenerate only when content or model change.
+  // (summary_sha256, summary_model, summary_rubric_version): regenerate when
+  // content, model, or summary rubric changes.
   await db`
     ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS summary TEXT
@@ -406,6 +676,18 @@ export async function initializeDatabase() {
   await db`
     ALTER TABLE skills
     ADD COLUMN IF NOT EXISTS summary_sha256 VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS summary_rubric_version VARCHAR(16)
+  `;
+
+  // Structured "what it does" capability phrases generated alongside the summary
+  // one-liner. NULL means never generated (pre-feature rows re-summarize once).
+  await db`
+    ALTER TABLE skills
+    ADD COLUMN IF NOT EXISTS summary_capabilities JSONB
   `;
 
   await db`
@@ -430,15 +712,51 @@ export async function initializeDatabase() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       skill_db_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
       buyer_pubkey VARCHAR(44) NOT NULL,
+      buyer_chain_context VARCHAR(64),
+      buyer_address VARCHAR(128),
       payment_tx_signature VARCHAR(128) NOT NULL UNIQUE,
       recipient_ata VARCHAR(44) NOT NULL,
+      recipient_chain_context VARCHAR(64),
+      recipient_address VARCHAR(128),
       currency_mint VARCHAR(44) NOT NULL,
+      asset_chain_context VARCHAR(64),
+      asset_address VARCHAR(128),
       amount_micros BIGINT NOT NULL,
       verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(skill_db_id, buyer_pubkey)
     )
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS buyer_chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS buyer_address VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS recipient_chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS recipient_address VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS asset_chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS asset_address VARCHAR(128)
   `;
 
   await db`
@@ -468,6 +786,16 @@ export async function initializeDatabase() {
 
   await db`
     ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS evm_purchase_id VARCHAR(66)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
     ADD COLUMN IF NOT EXISTS purchase_pda VARCHAR(44)
   `;
 
@@ -478,13 +806,132 @@ export async function initializeDatabase() {
   `;
 
   await db`
+    UPDATE usdc_purchase_receipts
+    SET
+      buyer_chain_context = COALESCE(buyer_chain_context, chain_context),
+      buyer_address = COALESCE(buyer_address, buyer_pubkey),
+      recipient_chain_context = COALESCE(recipient_chain_context, chain_context),
+      recipient_address = COALESCE(recipient_address, recipient_ata),
+      asset_chain_context = COALESCE(asset_chain_context, chain_context),
+      asset_address = COALESCE(asset_address, currency_mint)
+    WHERE buyer_chain_context IS NULL
+       OR buyer_address IS NULL
+       OR recipient_chain_context IS NULL
+       OR recipient_address IS NULL
+       OR asset_chain_context IS NULL
+       OR asset_address IS NULL
+  `;
+
+  await db`
+    CREATE EXTENSION IF NOT EXISTS pg_trgm
+  `;
+
+  await db`
+    CREATE OR REPLACE FUNCTION agentvouch_skill_search_tsvector(
+      skill_name text,
+      skill_id text,
+      public_slug text,
+      tags text[],
+      description text,
+      author_handle text,
+      author_display_name text,
+      agent_username text,
+      linked_github_login text
+    )
+    RETURNS tsvector
+    LANGUAGE sql
+    IMMUTABLE
+    PARALLEL SAFE
+    AS $$
+      SELECT
+        setweight(to_tsvector('english', COALESCE(skill_name, '')), 'A') ||
+        setweight(to_tsvector('english', COALESCE(skill_id, '') || ' ' || COALESCE(public_slug, '')), 'A') ||
+        setweight(to_tsvector('english', array_to_string(COALESCE(tags, ARRAY[]::text[]), ' ')), 'B') ||
+        setweight(to_tsvector('english', COALESCE(agent_username, '') || ' ' || COALESCE(linked_github_login, '') || ' ' || COALESCE(author_handle, '') || ' ' || COALESCE(author_display_name, '')), 'B') ||
+        setweight(to_tsvector('english', COALESCE(description, '')), 'C')
+    $$
+  `;
+
+  await db`
+    CREATE OR REPLACE FUNCTION agentvouch_skill_search_text(
+      skill_name text,
+      skill_id text,
+      public_slug text,
+      tags text[],
+      description text,
+      author_handle text,
+      author_display_name text,
+      agent_username text,
+      linked_github_login text
+    )
+    RETURNS text
+    LANGUAGE sql
+    IMMUTABLE
+    PARALLEL SAFE
+    AS $$
+      SELECT lower(
+        COALESCE(skill_name, '') || ' ' ||
+        COALESCE(skill_id, '') || ' ' ||
+        COALESCE(public_slug, '') || ' ' ||
+        COALESCE(description, '') || ' ' ||
+        array_to_string(COALESCE(tags, ARRAY[]::text[]), ' ') || ' ' ||
+        COALESCE(author_handle, '') || ' ' ||
+        COALESCE(author_display_name, '') || ' ' ||
+        COALESCE(agent_username, '') || ' ' ||
+        COALESCE(linked_github_login, '')
+      )
+    $$
+  `;
+
+  await db`
     CREATE INDEX IF NOT EXISTS idx_usdc_purchase_receipts_skill_buyer
     ON usdc_purchase_receipts(skill_db_id, buyer_pubkey)
   `;
 
   await db`
+    CREATE INDEX IF NOT EXISTS idx_usdc_purchase_receipts_chain_buyer
+    ON usdc_purchase_receipts(skill_db_id, buyer_chain_context, buyer_address)
+    WHERE buyer_chain_context IS NOT NULL
+      AND buyer_address IS NOT NULL
+  `;
+
+  await db`
     CREATE INDEX IF NOT EXISTS idx_skills_search ON skills
     USING GIN (to_tsvector('english', name || ' ' || COALESCE(description, '')))
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_search_v2 ON skills
+    USING GIN (
+      agentvouch_skill_search_tsvector(
+        name,
+        skill_id,
+        public_slug,
+        tags,
+        description,
+        author_handle,
+        author_display_name,
+        NULL::text,
+        NULL::text
+      )
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_search_trgm ON skills
+    USING GIN (
+      agentvouch_skill_search_text(
+        name,
+        skill_id,
+        public_slug,
+        tags,
+        description,
+        author_handle,
+        author_display_name,
+        NULL::text,
+        NULL::text
+      ) gin_trgm_ops
+    )
   `;
 
   await db`
@@ -494,12 +941,19 @@ export async function initializeDatabase() {
   // Canonical per-publisher uniqueness (wallet:<pk> / github:<id>). Partial on
   // NOT NULL so legacy null-key rows are excluded. Intentionally fail-closed: a
   // build failure here means pre-existing duplicate (publisher_identity_key,
-  // skill_id) rows that must be cleaned up (see runbook) — we do not silently skip
+  // skill_id) rows that must be cleaned up (see runbook)  -  we do not silently skip
   // it. Verified 0 duplicates at rollout; IF NOT EXISTS makes steady-state a no-op.
   await db`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_publisher_identity_skill_id
     ON skills(publisher_identity_key, skill_id)
     WHERE publisher_identity_key IS NOT NULL
+  `;
+
+  await db`DROP INDEX IF EXISTS idx_skills_public_slug`;
+
+  await db`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_public_route
+    ON skills(public_author_slug, public_slug)
   `;
 
   await db`
@@ -508,6 +962,12 @@ export async function initializeDatabase() {
 
   await db`
     CREATE INDEX IF NOT EXISTS idx_skills_tags ON skills USING GIN(tags)
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_mirror_source_key
+    ON skills(mirror_source_key)
+    WHERE mirror_source_key IS NOT NULL
   `;
 
   await db`
@@ -525,6 +985,24 @@ export async function initializeDatabase() {
   await db`
     CREATE INDEX IF NOT EXISTS idx_author_trust_snapshots_score
     ON author_trust_snapshots(chain_context, reputation_score DESC)
+  `;
+
+  // Singleton-per-chain snapshot of the homepage platform metrics. Refreshed
+  // from on-chain data by the background snapshot refresh job so /api/landing
+  // can serve metrics straight from Postgres instead of scanning program
+  // accounts on every request.
+  await db`
+    CREATE TABLE IF NOT EXISTS platform_metrics_snapshot (
+      chain_context VARCHAR(64) PRIMARY KEY,
+      agents BIGINT NOT NULL DEFAULT 0,
+      authors BIGINT NOT NULL DEFAULT 0,
+      skills BIGINT NOT NULL DEFAULT 0,
+      revenue_usdc_micros BIGINT NOT NULL DEFAULT 0,
+      staked_usdc_micros BIGINT NOT NULL DEFAULT 0,
+      on_chain_downloads BIGINT NOT NULL DEFAULT 0,
+      downloads BIGINT NOT NULL DEFAULT 0,
+      refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `;
 
   await db`
@@ -548,7 +1026,56 @@ export async function initializeDatabase() {
   await db`
     CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)
   `;
-  })().catch((error) => {
+
+  // First-party "connected repos": a wallet authorizes a GitHub repo it owns to
+  // be kept in sync as its own listings (distinct from community mirrors, which
+  // are hardcoded in lib/mirror/sources.ts and attributed to a synthetic GitHub
+  // identity). One repo maps to exactly one wallet.
+  await db`
+    CREATE TABLE IF NOT EXISTS connected_repos (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_wallet VARCHAR(44) NOT NULL,
+      github_owner VARCHAR(120) NOT NULL,
+      github_repo VARCHAR(140) NOT NULL,
+      branch VARCHAR(120) NOT NULL DEFAULT 'main',
+      include_paths TEXT[] NOT NULL DEFAULT '{}',
+      verification_method VARCHAR(24) NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'active',
+      last_commit_sha VARCHAR(64),
+      last_synced_at TIMESTAMPTZ,
+      last_sync_status VARCHAR(16),
+      last_sync_detail TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(github_owner, github_repo)
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_connected_repos_owner
+    ON connected_repos(owner_wallet)
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_connected_repos_status
+    ON connected_repos(status)
+    WHERE status = 'active'
+  `;
+}
+
+export async function initializeDatabase() {
+  if (_initializePromise) {
+    return _initializePromise;
+  }
+
+  _initializePromise = initWithRetry(async () => {
+    const fingerprint = computeSchemaFingerprint(runCoreSchemaDdl.toString(), [
+      getConfiguredSolanaChainContext(),
+      getAgentVouchProgramId(),
+      AGENTVOUCH_PROTOCOL_VERSION,
+    ]);
+    await runSchemaDdlOnce(sql(), "core", fingerprint, runCoreSchemaDdl);
+  }).catch((error) => {
     _initializePromise = null;
     throw error;
   });

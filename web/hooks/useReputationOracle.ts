@@ -87,13 +87,18 @@ import { normalizeRegisteredAt } from "@/lib/registeredAt";
 import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
+  confirmDirectPurchaseAfterSponsoredUnavailable,
+  runSponsoredCheckout,
+  runSponsoredRegisterAgent,
+  sponsoredCheckoutPubliclyEnabled,
+} from "@/lib/sponsoredPurchaseClient";
+import {
   assertUsdcAccountReady,
   fetchAssociatedTokenAccountState,
   formatUsdcMicrosValue,
   getAssociatedTokenAccount,
   getCreateAssociatedTokenAccountIdempotentInstruction,
   logTransactionSummary,
-  TOKEN_PROGRAM_ID,
   usdcToMicros,
   type AgentVouchTransactionSummary,
 } from "@/lib/agentvouchUsdc";
@@ -107,7 +112,7 @@ const rpc = createSolanaRpc(ENDPOINT);
 const SIGNATURE_CONFIRMATION_TIMEOUT_MS = 45_000;
 const SIGNATURE_CONFIRMATION_POLL_MS = 1_000;
 const MIN_REPUTATION_CONFIG_SIZE = 457;
-const AGENT_PROFILE_ACCOUNT_SPACE = 301;
+const AGENT_PROFILE_ACCOUNT_SPACE = 390;
 const REGISTRATION_FEE_BUFFER_LAMPORTS = 10_000n;
 
 const textEncoder = getUtf8Encoder();
@@ -626,13 +631,6 @@ async function getAuthorProceedsVaultPDA(
   return deriveAddress(["author_proceeds_vault", listingSettlement]);
 }
 
-async function getListingVouchPositionPDA(
-  skillListing: Address,
-  vouch: Address
-): Promise<Address> {
-  return deriveAddress(["listing_vouch_position", skillListing, vouch]);
-}
-
 async function getProtocolTreasuryVaultPDA(): Promise<Address> {
   return deriveAddress(["treasury_vault"]);
 }
@@ -1104,11 +1102,13 @@ async function waitForConfirmedSignature(
 export function useReputationOracle() {
   const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
-  const { signer: activeSigner } = useAgentVouchTransactionSigner();
+  const {
+    signer: activeSigner,
+    connectorSigner,
+    capabilities,
+  } = useAgentVouchTransactionSigner();
 
-  const walletAddress: Address | null = connected
-    ? (account as Address)
-    : null;
+  const walletAddress: Address | null = connected ? (account as Address) : null;
 
   const signer: TransactionSigner | null = activeSigner ?? null;
 
@@ -1160,16 +1160,37 @@ export function useReputationOracle() {
     async (metadataUri: string) => {
       if (!signer || !walletAddress) throw new Error("Wallet not connected");
       const authorAddress = getConnectedAuthorAddress(walletAddress, signer);
+      // Gasless onboarding: route through the sponsor so a USDC-only wallet (no
+      // SOL) can register. The sponsor pays gas + the AgentProfile rent; the user
+      // reimburses in USDC. Falls back to direct self-pay when unavailable.
+      const sponsoredCheckoutEnabled = sponsoredCheckoutPubliclyEnabled();
+      if (sponsoredCheckoutEnabled && connectorSigner && capabilities.canSign) {
+        const sponsored = await runSponsoredRegisterAgent({
+          connectorSigner,
+          metadataUri,
+        });
+        if (sponsored) {
+          const agentProfile = await getAgentPDA(authorAddress);
+          return { tx: sponsored.signature, agentProfile };
+        }
+      } else if (sponsoredCheckoutEnabled) {
+        confirmDirectPurchaseAfterSponsoredUnavailable(
+          "This wallet connection cannot sign the prepared sponsored transaction."
+        );
+      }
+
+      // Direct (self-pay) path: the connected wallet pays its own gas + rent in SOL.
       await assertRegisterAgentClusterReady(walletAddress);
       const ix = await getRegisterAgentInstructionAsync({
         authority: signer,
+        rentPayer: signer,
         metadataUri,
       });
       const tx = await sendIx(ix);
       const agentProfile = await getAgentPDA(authorAddress);
       return { tx, agentProfile };
     },
-    [signer, walletAddress, sendIx]
+    [signer, walletAddress, sendIx, connectorSigner, capabilities.canSign]
   );
 
   /**
@@ -1573,6 +1594,7 @@ export function useReputationOracle() {
       const ix = getResolveAuthorDisputeInstruction({
         authorDispute,
         authorProfile,
+        skillListing: maybeAuthorDisputeAccount.data.skillListing,
         config: configInfo.config,
         authority: signer,
         usdcMint: configInfo.data.usdcMint,
@@ -2232,6 +2254,33 @@ export function useReputationOracle() {
           purchase: purchasePda,
         };
       }
+      const sponsoredCheckoutEnabled = sponsoredCheckoutPubliclyEnabled();
+      if (sponsoredCheckoutEnabled && connectorSigner && capabilities.canSign) {
+        const sponsored = await runSponsoredCheckout({
+          connectorSigner,
+          skillListing: String(skillListingKey),
+          priceUsdcMicros: listing.data.priceUsdcMicros,
+          expectedUsdcMint: String(await getProtocolUsdcMint()),
+        });
+        if (sponsored) {
+          const summary = {
+            action: "Purchase skill",
+            token: "USDC" as const,
+            amountUsdcMicros:
+              BigInt(listing.data.priceUsdcMicros) +
+              sponsored.setupFeeUsdcMicros,
+            recipient: listing.data.currentAuthorProceedsVault,
+            feePayer: sponsored.sponsor,
+            cluster: getConfiguredNetworkDescription(),
+          };
+          logTransactionSummary(summary);
+          return { tx: sponsored.signature, summary };
+        }
+      } else if (sponsoredCheckoutEnabled) {
+        confirmDirectPurchaseAfterSponsoredUnavailable(
+          "This wallet connection cannot sign the prepared sponsored transaction."
+        );
+      }
       let purchaseEstimate: PurchasePreflightAssessment | null = null;
       try {
         purchaseEstimate = await estimatePurchasePreflight(
@@ -2293,6 +2342,7 @@ export function useReputationOracle() {
         authorRewardVaultAuthority,
         authorRewardVault,
         buyer: signer,
+        rentPayer: signer,
       });
       const summary = {
         action: "Purchase skill",
@@ -2352,7 +2402,7 @@ export function useReputationOracle() {
         throw error;
       }
     },
-    [signer, walletAddress, sendIx]
+    [capabilities.canSign, connectorSigner, signer, walletAddress, sendIx]
   );
 
   const getListingSettlement = useCallback(async (skillListingKey: Address) => {

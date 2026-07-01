@@ -10,6 +10,7 @@ import {
   FiFileText,
   FiFolder,
   FiLoader,
+  FiLock,
 } from "react-icons/fi";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { finalizeSlug } from "@/lib/skillDraft";
@@ -30,6 +31,9 @@ interface SkillFileTreeProps {
   hasExecutable: boolean;
   securityScan?: SkillSecurityScan | null;
   initialContent: string | null;
+  /** Paid skill whose content is gated: show the tree, lock the file body. */
+  walled?: boolean;
+  priceLabel?: string;
 }
 
 type TreeFileNode = {
@@ -128,24 +132,6 @@ function collectDirectoryPaths(directory: TreeDirectoryNode): string[] {
   );
 }
 
-function getScanBanner(scan: SkillSecurityScan | null | undefined) {
-  if (!scan) return null;
-  if (scan.verdict === "avoid") {
-    return {
-      text: "Automated advisory scan found concrete risk in this skill tree.",
-      className:
-        "border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
-    };
-  }
-  return {
-    text: scan.truncated
-      ? "Automated advisory scan reviewed this skill tree with truncation. Review before installing."
-      : "Automated advisory scan completed for this skill tree. Review before installing.",
-    className:
-      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
-  };
-}
-
 export default function SkillFileTree({
   skillId,
   skillName,
@@ -154,6 +140,8 @@ export default function SkillFileTree({
   hasExecutable,
   securityScan,
   initialContent,
+  walled = false,
+  priceLabel,
 }: SkillFileTreeProps) {
   const tree = useMemo(
     () => buildTree(files, getSkillTreeRootName(skillName)),
@@ -169,11 +157,12 @@ export default function SkillFileTree({
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const selected = files.find((file) => file.path === selectedPath);
-  const scanBanner = getScanBanner(securityScan);
-
   async function selectFile(file: SkillFileTreeEntry) {
     setSelectedPath(file.path);
     setError(null);
+    if (walled) {
+      return;
+    }
     if (file.path === "SKILL.md") {
       setSelectedContent(initialContent ?? "");
       return;
@@ -218,7 +207,7 @@ export default function SkillFileTree({
             type="button"
             onClick={() => toggleDirectory(node.path)}
             aria-expanded={expanded}
-            className="flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left font-mono text-xs font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200"
+            className="flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left font-mono text-xs font-normal text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200"
             style={{ paddingLeft }}
           >
             {expanded ? (
@@ -266,32 +255,24 @@ export default function SkillFileTree({
   }
 
   return (
-    <div className="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-lg border border-gray-200 bg-white/70 p-6 dark:border-gray-800 dark:bg-gray-900/50">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <FiFolder className="h-4 w-4 text-gray-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          <span className="text-xs font-normal uppercase tracking-wider text-gray-500 dark:text-gray-400">
             Skill Files
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-gray-500 dark:text-gray-400">
           <span>{files.length} files</span>
           <span>{formatBytes(totalBytes)}</span>
-          {treeHash && <span title={treeHash}>tree {treeHash.slice(0, 10)}...</span>}
+          {treeHash && (
+            <span title={treeHash}>tree {treeHash.slice(0, 10)}...</span>
+          )}
         </div>
       </div>
 
-      {scanBanner ? (
-        <div
-          className={`mb-4 flex items-start gap-2 rounded-sm border px-3 py-2 text-sm ${scanBanner.className}`}
-        >
-          <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            {scanBanner.text} This automated signal is advisory, not a staked
-            vouch.
-          </span>
-        </div>
-      ) : hasExecutable ? (
+      {hasExecutable && !securityScan ? (
         <div className="mb-4 flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>Contains executable code — not yet security-scanned.</span>
@@ -311,7 +292,7 @@ export default function SkillFileTree({
 
         <div className="min-w-0 rounded-sm border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-gray-200 pb-3 dark:border-gray-800">
-            <span className="truncate font-mono text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <span className="truncate font-mono text-xs font-normal text-gray-600 dark:text-gray-300">
               {selectedPath}
             </span>
             {selected && (
@@ -320,15 +301,32 @@ export default function SkillFileTree({
               </span>
             )}
           </div>
-          {loading ? (
+          {walled ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+              <FiLock className="h-6 w-6 text-gray-400" />
+              <p className="font-article text-lg text-gray-700 dark:text-gray-200">
+                Full content unlocks after purchase
+              </p>
+              <p className="max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                You can review the file tree and the security-scan read now.
+                SKILL.md and any scripts are delivered on a verified, per-buyer
+                download once you purchase
+                {priceLabel ? ` (${priceLabel})` : ""}.
+              </p>
+            </div>
+          ) : loading ? (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <FiLoader className="h-4 w-4 animate-spin" />
               Loading file...
             </div>
           ) : error ? (
-            <p className="text-sm text-amber-600 dark:text-amber-400">{error}</p>
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              {error}
+            </p>
           ) : selectedPath === "SKILL.md" ? (
-            <MarkdownRenderer content={selectedContent} />
+            <div className="max-h-[620px] overflow-auto pr-1">
+              <MarkdownRenderer content={selectedContent} variant="skill" />
+            </div>
           ) : (
             <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-gray-700 dark:text-gray-300">
               <code>{selectedContent}</code>

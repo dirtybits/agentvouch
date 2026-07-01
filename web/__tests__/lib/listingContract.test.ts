@@ -19,4 +19,15 @@ describe("getSkillPaymentFlow", () => {
       })
     ).toBe("direct-purchase-skill");
   });
+
+  it("keeps linked Base listings on the direct purchase path", () => {
+    expect(
+      getSkillPaymentFlow({
+        priceUsdcMicros: "1000000",
+        onChainAddress: null,
+        evmListingId:
+          "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      })
+    ).toBe("direct-purchase-skill");
+  });
 });

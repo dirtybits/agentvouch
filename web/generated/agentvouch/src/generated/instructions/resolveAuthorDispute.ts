@@ -60,6 +60,7 @@ export type ResolveAuthorDisputeInstruction<
   TProgram extends string = typeof AGENTVOUCH_PROGRAM_ADDRESS,
   TAccountAuthorDispute extends string | AccountMeta<string> = string,
   TAccountAuthorProfile extends string | AccountMeta<string> = string,
+  TAccountSkillListing extends string | AccountMeta<string> = string,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountUsdcMint extends string | AccountMeta<string> = string,
@@ -85,6 +86,9 @@ export type ResolveAuthorDisputeInstruction<
       TAccountAuthorProfile extends string
         ? WritableAccount<TAccountAuthorProfile>
         : TAccountAuthorProfile,
+      TAccountSkillListing extends string
+        ? WritableAccount<TAccountSkillListing>
+        : TAccountSkillListing,
       TAccountConfig extends string
         ? ReadonlyAccount<TAccountConfig>
         : TAccountConfig,
@@ -169,6 +173,7 @@ export function getResolveAuthorDisputeInstructionDataCodec(): FixedSizeCodec<
 export type ResolveAuthorDisputeInput<
   TAccountAuthorDispute extends string = string,
   TAccountAuthorProfile extends string = string,
+  TAccountSkillListing extends string = string,
   TAccountConfig extends string = string,
   TAccountAuthority extends string = string,
   TAccountUsdcMint extends string = string,
@@ -183,6 +188,7 @@ export type ResolveAuthorDisputeInput<
 > = {
   authorDispute: Address<TAccountAuthorDispute>;
   authorProfile: Address<TAccountAuthorProfile>;
+  skillListing: Address<TAccountSkillListing>;
   config: Address<TAccountConfig>;
   authority: TransactionSigner<TAccountAuthority>;
   usdcMint: Address<TAccountUsdcMint>;
@@ -201,6 +207,7 @@ export type ResolveAuthorDisputeInput<
 export function getResolveAuthorDisputeInstruction<
   TAccountAuthorDispute extends string,
   TAccountAuthorProfile extends string,
+  TAccountSkillListing extends string,
   TAccountConfig extends string,
   TAccountAuthority extends string,
   TAccountUsdcMint extends string,
@@ -217,6 +224,7 @@ export function getResolveAuthorDisputeInstruction<
   input: ResolveAuthorDisputeInput<
     TAccountAuthorDispute,
     TAccountAuthorProfile,
+    TAccountSkillListing,
     TAccountConfig,
     TAccountAuthority,
     TAccountUsdcMint,
@@ -234,6 +242,7 @@ export function getResolveAuthorDisputeInstruction<
   TProgramAddress,
   TAccountAuthorDispute,
   TAccountAuthorProfile,
+  TAccountSkillListing,
   TAccountConfig,
   TAccountAuthority,
   TAccountUsdcMint,
@@ -253,6 +262,7 @@ export function getResolveAuthorDisputeInstruction<
   const originalAccounts = {
     authorDispute: { value: input.authorDispute ?? null, isWritable: true },
     authorProfile: { value: input.authorProfile ?? null, isWritable: true },
+    skillListing: { value: input.skillListing ?? null, isWritable: true },
     config: { value: input.config ?? null, isWritable: false },
     authority: { value: input.authority ?? null, isWritable: false },
     usdcMint: { value: input.usdcMint ?? null, isWritable: false },
@@ -302,6 +312,7 @@ export function getResolveAuthorDisputeInstruction<
     accounts: [
       getAccountMeta("authorDispute", accounts.authorDispute),
       getAccountMeta("authorProfile", accounts.authorProfile),
+      getAccountMeta("skillListing", accounts.skillListing),
       getAccountMeta("config", accounts.config),
       getAccountMeta("authority", accounts.authority),
       getAccountMeta("usdcMint", accounts.usdcMint),
@@ -328,6 +339,7 @@ export function getResolveAuthorDisputeInstruction<
     TProgramAddress,
     TAccountAuthorDispute,
     TAccountAuthorProfile,
+    TAccountSkillListing,
     TAccountConfig,
     TAccountAuthority,
     TAccountUsdcMint,
@@ -350,17 +362,18 @@ export type ParsedResolveAuthorDisputeInstruction<
   accounts: {
     authorDispute: TAccountMetas[0];
     authorProfile: TAccountMetas[1];
-    config: TAccountMetas[2];
-    authority: TAccountMetas[3];
-    usdcMint: TAccountMetas[4];
-    disputeBondVaultAuthority: TAccountMetas[5];
-    disputeBondVault: TAccountMetas[6];
-    protocolTreasuryVault: TAccountMetas[7];
-    listingSettlement?: TAccountMetas[8] | undefined;
-    authorBondVaultAuthority: TAccountMetas[9];
-    challenger: TAccountMetas[10];
-    challengerUsdcAccount: TAccountMetas[11];
-    tokenProgram: TAccountMetas[12];
+    skillListing: TAccountMetas[2];
+    config: TAccountMetas[3];
+    authority: TAccountMetas[4];
+    usdcMint: TAccountMetas[5];
+    disputeBondVaultAuthority: TAccountMetas[6];
+    disputeBondVault: TAccountMetas[7];
+    protocolTreasuryVault: TAccountMetas[8];
+    listingSettlement?: TAccountMetas[9] | undefined;
+    authorBondVaultAuthority: TAccountMetas[10];
+    challenger: TAccountMetas[11];
+    challengerUsdcAccount: TAccountMetas[12];
+    tokenProgram: TAccountMetas[13];
   };
   data: ResolveAuthorDisputeInstructionData;
 };
@@ -373,12 +386,12 @@ export function parseResolveAuthorDisputeInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedResolveAuthorDisputeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 13) {
+  if (instruction.accounts.length < 14) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 13,
+        expectedAccountMetas: 14,
       },
     );
   }
@@ -399,6 +412,7 @@ export function parseResolveAuthorDisputeInstruction<
     accounts: {
       authorDispute: getNextAccount(),
       authorProfile: getNextAccount(),
+      skillListing: getNextAccount(),
       config: getNextAccount(),
       authority: getNextAccount(),
       usdcMint: getNextAccount(),

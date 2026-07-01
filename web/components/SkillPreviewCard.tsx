@@ -11,22 +11,38 @@ import {
   FiShield,
   FiUsers,
 } from "react-icons/fi";
-import { LiaCoinsSolid } from "react-icons/lia";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
+import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
+import { getChainDisplayLabel } from "@/lib/chains";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
+import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 
 interface SkillPreviewCardSkill {
   id: string;
+  public_slug?: string | null;
+  skill_id?: string | null;
   author_pubkey: string | null;
   author_kind?: string | null;
   author_handle?: string | null;
   author_display_name?: string | null;
+  author_identity?: {
+    username?: string | null;
+    usernameSource?: string | null;
+    githubProfile?: {
+      login: string;
+      url: string;
+    } | null;
+  } | null;
   publisher_identity_key?: string | null;
   publisher_tier?: string | null;
+  mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
   name: string;
   description: string | null;
   tags: string[];
@@ -37,6 +53,8 @@ interface SkillPreviewCardSkill {
   has_executable?: boolean | null;
   security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
   payment_flow?:
     | "free"
     | "legacy-sol"
@@ -66,7 +84,8 @@ interface SkillPreviewCardProps {
   purchaseBlocked: boolean;
   purchasePreflightStatus?: PurchasePreflightStatus;
   descriptionFallback?: string | null;
-  onPurchase: () => void;
+  onPurchase?: () => void;
+  onTagClick?: (tag: string) => void;
 }
 
 type Verdict = "allow" | "review" | "avoid" | "unknown";
@@ -86,12 +105,9 @@ function truncateAtWord(value: string, maxChars: number): string {
   return `${trimmed.trimEnd()}...`;
 }
 
-function shortAddr(addr: string): string {
-  return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-}
-
-function formatUsdc(micros: number): string {
-  return `${formatUsdcMicros(micros) ?? "0"} USDC`;
+function shortChainAddress(value: string): string {
+  if (value.length <= 13) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 // Mirrors the server-side getRecommendedAction, with one intentional softening:
@@ -207,12 +223,13 @@ function VerdictDot({
 interface ActionPill {
   label: string;
   Icon?: React.ComponentType<{ className?: string }>;
-  variant: "primary" | "installed" | "muted";
+  variant: "primary" | "price" | "installed" | "muted";
 }
 
 function getActionPill(params: {
   isOwn: boolean;
   hasPurchased: boolean;
+  isReadOnlyChainListing: boolean;
   isListingRequired: boolean;
   hasUsdcPrimary: boolean;
   hasAccessPath: boolean;
@@ -223,6 +240,15 @@ function getActionPill(params: {
   if (params.hasPurchased) {
     return { label: "Installed", Icon: FiCheckCircle, variant: "installed" };
   }
+  if (params.isReadOnlyChainListing) {
+    return {
+      label: params.primaryUsdcPrice
+        ? `${params.primaryUsdcPrice} USDC`
+        : "Read-only",
+      Icon: params.primaryUsdcPrice ? UsdcIcon : FiInfo,
+      variant: "muted",
+    };
+  }
   if (params.isListingRequired) {
     return { label: "Setup", Icon: FiInfo, variant: "muted" };
   }
@@ -232,7 +258,7 @@ function getActionPill(params: {
         ? `${params.primaryUsdcPrice} USDC`
         : "USDC",
       Icon: UsdcIcon,
-      variant: "primary",
+      variant: "price",
     };
   }
   if (params.hasAccessPath && params.legacySolLamports === 0) {
@@ -247,6 +273,8 @@ function getActionPill(params: {
 const PILL_VARIANT: Record<ActionPill["variant"], string> = {
   primary:
     "bg-[var(--lobster-accent)] text-white shadow-sm hover:bg-[var(--lobster-accent-strong)]",
+  price:
+    "border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] hover:bg-[var(--sea-accent-soft-hover)]",
   installed:
     "border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
   muted:
@@ -261,6 +289,7 @@ export default function SkillPreviewCard({
   hasPurchased,
   isOwn,
   descriptionFallback,
+  onTagClick,
 }: SkillPreviewCardProps) {
   // Author copy stays primary; AI summaries fill gaps for thin listings.
   const description =
@@ -277,18 +306,45 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
-  const authorLabel = skill.author_handle
-    ? `@${skill.author_handle}`
-    : skill.author_pubkey
-    ? shortAddr(skill.author_pubkey)
-    : "Unverified publisher";
-  const authorHref = skill.author_pubkey
-    ? `/author/${skill.author_pubkey}`
-    : skill.author_kind === "github" && skill.author_handle
-    ? `https://github.com/${skill.author_handle}`
+  const isReadOnlyEvmListing = Boolean(
+    skill.evm_listing_id && skill.chain_context?.startsWith("eip155:")
+  );
+  const chainLabel = isReadOnlyEvmListing
+    ? getChainDisplayLabel(skill.chain_context)
     : null;
-  const authorTitle = skill.author_pubkey
-    ? "Author wallet that published this skill"
+  const walletAuthorLabel = skill.author_pubkey
+    ? isReadOnlyEvmListing
+      ? shortChainAddress(skill.author_pubkey)
+      : formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
+    : null;
+  const linkedGithubProfile =
+    skill.author_pubkey && !isReadOnlyEvmListing
+      ? skill.author_identity?.githubProfile
+      : null;
+  const isMirror = Boolean(skill.mirror_source_key);
+  const authorLabel = walletAuthorLabel
+    ? walletAuthorLabel
+    : isMirror && skill.author_handle
+    ? `Mirror · @${skill.author_handle}`
+    : skill.author_handle
+    ? `@${skill.author_handle}`
+    : "Unverified publisher";
+  const authorHref =
+    skill.author_pubkey && !isReadOnlyEvmListing
+      ? `/author/${skill.author_pubkey}`
+      : skill.author_kind === "github" && skill.author_handle
+      ? `https://github.com/${skill.author_handle}`
+      : null;
+  const authorTitle = isReadOnlyEvmListing
+    ? `${
+        chainLabel ?? "EVM"
+      } author address for this read-only marketplace listing.`
+    : skill.author_pubkey
+    ? linkedGithubProfile
+      ? `Author wallet linked to GitHub @${linkedGithubProfile.login}`
+      : "Author wallet that published this skill"
+    : isMirror
+    ? "Community mirror of a public GitHub skill, published by AgentVouch — not posted here by the upstream author."
     : skill.author_kind === "github"
     ? "GitHub identity that published this unverified skill"
     : "Unverified publisher identity";
@@ -313,6 +369,7 @@ export default function SkillPreviewCard({
   const pill = getActionPill({
     isOwn,
     hasPurchased,
+    isReadOnlyChainListing: isReadOnlyEvmListing,
     isListingRequired,
     hasUsdcPrimary,
     hasAccessPath,
@@ -321,55 +378,30 @@ export default function SkillPreviewCard({
   });
   const PillIcon = pill.Icon;
   const registered = Boolean(trust && trust.isRegistered);
+  const skillHref = getPublicSkillPath(skill);
+  const visibleTags = skill.tags.filter((tag) => !RESERVED_SKILL_TAGS.has(tag));
+  // First-party skill the author keeps in sync from their own GitHub repo
+  // (distinct from a community mirror, which uses mirror_source_key).
+  const isSynced = !isMirror && Boolean(skill.synced_repo_url);
 
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
-      {/* verdict accent rail */}
-      <span
-        className={`absolute inset-y-0 left-0 w-1 ${verdictMeta.dot} opacity-0 transition-opacity duration-200 group-hover:opacity-100`}
-        aria-hidden
-      />
-
-      <div className="flex flex-1 flex-col p-4">
-        {/* Top strip: app icon + action pill */}
-        <div className="flex items-start justify-between gap-3">
-          <Link
-            href={`/skills/${skill.id}`}
-            className="transition-transform duration-200 group-hover:scale-[1.03]"
-            aria-label={skill.name}
-          >
-            <SkillIcon
-              seed={authorSeed}
-              size={40}
-              ringClass={verdictMeta.ring}
-              badge={<VerdictDot verdict={verdict} meta={verdictMeta} />}
-            />
-          </Link>
-
-          <Link
-            href={`/skills/${skill.id}`}
-            className={`mt-0.5 shrink-0 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
-              PILL_VARIANT[pill.variant]
-            }`}
-            title={
-              isListingRequired ? "Paid skill setup is incomplete" : pill.label
-            }
-          >
-            {PillIcon && <PillIcon className="h-3.5 w-3.5" />}
-            {pill.label}
-          </Link>
-        </div>
-
-        {/* Title (hero — full width, up to two lines) + author */}
-        <div className="mt-3">
-          <Link
-            href={`/skills/${skill.id}`}
-            className="block font-heading text-[18px] font-bold leading-snug text-gray-900 line-clamp-2 break-words transition group-hover:text-[var(--lobster-accent)] dark:text-white"
-            title={skill.name}
-          >
-            {skill.name}
-          </Link>
-          <div className="mt-1 flex items-center gap-1.5">
+    <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
+      <div className="flex flex-1 flex-col gap-2.5 p-4">
+        {/* Byline cluster (author icon + handle) + verdict chip */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              href={skillHref}
+              aria-label={skill.name}
+              className="shrink-0 transition-transform duration-200 group-hover:scale-[1.03]"
+            >
+              <SkillIcon
+                seed={authorSeed}
+                size={30}
+                ringClass={verdictMeta.ring}
+                badge={<VerdictDot verdict={verdict} meta={verdictMeta} />}
+              />
+            </Link>
             {authorHref?.startsWith("http") ? (
               <a
                 href={authorHref}
@@ -397,6 +429,17 @@ export default function SkillPreviewCard({
                 {authorLabel}
               </span>
             )}
+            {linkedGithubProfile && (
+              <a
+                href={linkedGithubProfile.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-gray-400 transition hover:text-[var(--sea-accent)]"
+                title={`Linked GitHub @${linkedGithubProfile.login}`}
+              >
+                <FiGithub className="h-3 w-3" />
+              </a>
+            )}
             {skill.source !== "chain" && (
               <span
                 className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500"
@@ -406,21 +449,49 @@ export default function SkillPreviewCard({
               </span>
             )}
           </div>
+          <span
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${verdictMeta.chip}`}
+            title={verdictMeta.title}
+          >
+            <verdictMeta.Icon className="h-3 w-3" />
+            {verdictMeta.label}
+          </span>
         </div>
 
-        {/* Description */}
+        {/* Title — serif, unbolded */}
+        <Link
+          href={skillHref}
+          className="block break-words font-display text-[20px] leading-snug text-gray-900 line-clamp-2 transition group-hover:text-[var(--lobster-accent)] dark:text-white"
+          title={skill.name}
+        >
+          {skill.name}
+        </Link>
+
+        {/* Description — serif */}
         {displayDescription && (
           <p
-            className="mt-3 line-clamp-2 min-h-[2.5rem] text-[13px] leading-5 text-gray-500 dark:text-gray-400"
+            className="font-article line-clamp-2 min-h-[2.5rem] text-[14px] leading-snug text-gray-500 dark:text-gray-400"
             title={description}
           >
             {displayDescription}
           </p>
         )}
 
-        {/* One trust line — the App Store rating, translated to skin-in-the-game.
-            Full backing/self/aggregate breakdown lives on the skill detail page. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        {/* Signals + tags. Mirror provenance is shown in the author byline
+            ("Mirror · @handle"), so it is intentionally not repeated here. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {isSynced && sanitizeSyncedRepoUrl(skill.synced_repo_url) && (
+            <a
+              href={sanitizeSyncedRepoUrl(skill.synced_repo_url)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"
+              title="Kept in sync from this author's GitHub repo"
+            >
+              <FiGithub className="h-3 w-3" />
+              Synced
+            </a>
+          )}
           {scanMeta && (
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
@@ -439,81 +510,106 @@ export default function SkillPreviewCard({
               Unscanned executable code
             </span>
           )}
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${verdictMeta.chip}`}
-            title={verdictMeta.title}
-          >
-            <verdictMeta.Icon className="h-3 w-3" />
-            {verdictMeta.label}
-          </span>
-          {registered && trust ? (
-            <>
-              <span
-                className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400"
-                title="Reputation combines public backing, endorsements, and dispute history."
-              >
-                <FiShield className="h-3.5 w-3.5" />
-                {trust.reputationScore.toLocaleString("en-US")}
-              </span>
-              <span
-                className="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"
-                title="Total stake at risk — outside backing plus the author's own first-loss bond."
-              >
-                <LiaCoinsSolid className="h-3.5 w-3.5" />
-                {formatUsdc(trust.totalStakeAtRisk)}
-              </span>
-              <span
-                className="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"
-                title="Vouches are outside endorsements staked behind the author."
-              >
-                <FiUsers className="h-3.5 w-3.5" />
-                {trust.totalVouchesReceived.toLocaleString("en-US")}
-              </span>
-              {hasDisputeFlag && authorReports && (
-                <span
-                  className={`inline-flex items-center gap-1 text-[12px] font-medium ${authorReports.color}`}
-                  title="Current or historical dispute status against this author."
-                >
-                  <FiAlertTriangle className="h-3.5 w-3.5" />
-                  {authorReports.label}
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="text-[12px] text-gray-400 dark:text-gray-500">
-              No trust profile yet
+          {isReadOnlyEvmListing && chainLabel && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)]"
+              title={`${chainLabel} listing fetched through the chain adapter.`}
+            >
+              {chainLabel}
             </span>
           )}
-        </div>
-
-        {/* Footer: tags · installs, bottom-aligned across the grid */}
-        <div className="mt-auto flex items-end justify-between gap-3 pt-3">
-          <div className="flex min-w-0 flex-wrap gap-1.5">
-            {skill.tags.slice(0, 3).map((tag) => (
+          {hasDisputeFlag && authorReports && (
+            <span
+              className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${authorReports.color}`}
+              title="Current or historical dispute status against this author."
+            >
+              <FiAlertTriangle className="h-3 w-3" />
+              {authorReports.label}
+            </span>
+          )}
+          {visibleTags.slice(0, 3).map((tag) =>
+            onTagClick ? (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => onTagClick(tag)}
+                className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-[var(--lobster-accent)] transition hover:border-[var(--lobster-accent)] hover:bg-white dark:hover:bg-gray-900"
+                title={`Show all skills tagged ${tag}`}
+              >
+                {tag}
+              </button>
+            ) : (
               <span
                 key={tag}
-                className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2 py-0.5 font-mono text-[10px] lowercase tracking-wide text-[var(--lobster-accent)]"
                 title="Tags summarize the skill's core capabilities."
               >
                 {tag}
               </span>
-            ))}
-          </div>
-          <span
-            className="shrink-0 inline-flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500"
-            title="Successful installs and raw downloads."
-          >
-            <FiDownload className="h-3 w-3" />
-            {downloads.toLocaleString("en-US")}
-          </span>
+            )
+          )}
         </div>
 
-        {/* Purchase risk warning */}
+        {/* Bottom stats — anchored: action/price · rep · vouches · downloads */}
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+          <Link
+            href={skillHref}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+              PILL_VARIANT[pill.variant]
+            }`}
+            title={
+              isReadOnlyEvmListing
+                ? `${chainLabel ?? "EVM"} listing is read-only in this phase.`
+                : isListingRequired
+                ? "Paid skill setup is incomplete"
+                : pill.label
+            }
+          >
+            {PillIcon && <PillIcon className="h-3.5 w-3.5" />}
+            {pill.label}
+          </Link>
+          <div className="flex items-center gap-3 font-mono text-[12px]">
+            {registered && trust ? (
+              <>
+                <span
+                  className="inline-flex items-center gap-1 font-normal text-emerald-600 dark:text-emerald-400"
+                  title="Reputation — public backing, endorsements, and dispute history."
+                >
+                  <FiShield className="h-3.5 w-3.5" />
+                  {trust.reputationScore.toLocaleString("en-US")}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                  title="Vouches — outside accounts staking USDC behind this author."
+                >
+                  <FiUsers className="h-3.5 w-3.5" />
+                  {trust.totalVouchesReceived.toLocaleString("en-US")}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                  title="Successful installs and downloads."
+                >
+                  <FiDownload className="h-3.5 w-3.5" />
+                  {downloads.toLocaleString("en-US")}
+                </span>
+              </>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                title="Successful installs and downloads."
+              >
+                <FiDownload className="h-3.5 w-3.5" />
+                {downloads.toLocaleString("en-US")}
+              </span>
+            )}
+          </div>
+        </div>
+
         {skill.purchaseRiskWarning &&
           hasUsdcPrimary &&
           !isListingRequired &&
           !hasPurchased && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <div className="mt-3 flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
               <FiInfo className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{skill.purchaseRiskWarning}</span>
             </div>

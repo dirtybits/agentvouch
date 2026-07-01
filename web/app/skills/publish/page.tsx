@@ -18,8 +18,11 @@ import {
   normalizeSkillContact,
   normalizeSkillDescription,
   normalizeSkillName,
+  normalizeSkillTags,
+  RESERVED_SKILL_TAGS,
   slugify,
 } from "@/lib/skillDraft";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import { formatMinPrice, isValidListingPriceMicros } from "@/lib/pricing";
@@ -188,7 +191,7 @@ function PublishSkillPageInner() {
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>(() => {
     const initial = searchParams.get("tag");
-    return initial ? [initial.toLowerCase()] : [];
+    return initial ? normalizeSkillTags([initial]) : [];
   });
   const [tagInput, setTagInput] = useState("");
   const [contact, setContact] = useState("");
@@ -345,7 +348,11 @@ function PublishSkillPageInner() {
       return;
     }
 
-    if (usdcPriceMicros && !skipProfileCheck && (!profileChecked || profileLoading)) {
+    if (
+      usdcPriceMicros &&
+      !skipProfileCheck &&
+      (!profileChecked || profileLoading)
+    ) {
       setResult(null);
       return;
     }
@@ -363,7 +370,12 @@ function PublishSkillPageInner() {
 
     try {
       let auth:
-        | { pubkey: string; signature: string; message: string; timestamp: number }
+        | {
+            pubkey: string;
+            signature: string;
+            message: string;
+            timestamp: number;
+          }
         | undefined;
       if (connected && publicKey && signMessage) {
         const timestamp = Date.now();
@@ -420,6 +432,7 @@ function PublishSkillPageInner() {
       }
 
       const skillDbId: string = data.id;
+      const publicSkillPath = getPublicSkillPath(data);
       const ipfsCid: string | null = data.ipfs_cid;
       const skillUri = ipfsCid
         ? `${window.location.origin}/api/skills/${skillDbId}/raw`
@@ -432,7 +445,7 @@ function PublishSkillPageInner() {
             "Free skill published. It will appear as unverified until you link a wallet or add protocol backing.",
           id: skillDbId,
         });
-        setTimeout(() => router.push(`/skills/${skillDbId}`), 1500);
+        setTimeout(() => router.push(publicSkillPath), 1500);
         return;
       }
 
@@ -488,7 +501,7 @@ function PublishSkillPageInner() {
           )}. Visit the skill page to retry.`,
           id: skillDbId,
         });
-        setTimeout(() => router.push(`/skills/${skillDbId}`), 3000);
+        setTimeout(() => router.push(publicSkillPath), 3000);
         return;
       }
 
@@ -498,7 +511,7 @@ function PublishSkillPageInner() {
         id: skillDbId,
       });
 
-      setTimeout(() => router.push(`/skills/${skillDbId}`), 1500);
+      setTimeout(() => router.push(publicSkillPath), 1500);
     } catch (error: unknown) {
       setResult({ success: false, message: getErrorMessage(error) });
     } finally {
@@ -662,7 +675,7 @@ function PublishSkillPageInner() {
   );
 
   const addTag = () => {
-    const tag = tagInput.trim().toLowerCase();
+    const tag = normalizeSkillTags([tagInput])[0];
     if (tag && !tags.includes(tag) && tags.length < 5) {
       setTags([...tags, tag]);
       setTagInput("");
@@ -850,7 +863,8 @@ function PublishSkillPageInner() {
                   Drop SKILL.md here, click to select, or upload a folder
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Folder format: SKILL.md with optional scripts/, references/, assets/
+                  Folder format: SKILL.md with optional scripts/, references/,
+                  assets/
                 </p>
                 <button
                   type="button"
@@ -896,7 +910,7 @@ function PublishSkillPageInner() {
             <div className="p-4">
               {showPreview ? (
                 content ? (
-                  <MarkdownRenderer content={content} />
+                  <MarkdownRenderer content={content} variant="skill" />
                 ) : (
                   <p className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">
                     Nothing to preview yet
@@ -915,7 +929,7 @@ function PublishSkillPageInner() {
 
           {/* Metadata form */}
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            <h3 className="text-sm font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
               Skill Metadata
             </h3>
 
@@ -1003,7 +1017,11 @@ function PublishSkillPageInner() {
                     onKeyDown={(e) =>
                       e.key === "Enter" && (e.preventDefault(), addTag())
                     }
-                    placeholder="Add a tag..."
+                    placeholder={
+                      RESERVED_SKILL_TAGS.has(tagInput.trim().toLowerCase())
+                        ? "Reserved tag"
+                        : "Add a tag..."
+                    }
                     className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--lobster-focus-ring)] focus:border-[var(--lobster-accent)]"
                   />
                   <button
@@ -1045,7 +1063,7 @@ function PublishSkillPageInner() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <UsdcIcon className="w-4 h-4 text-[var(--lobster-accent)]" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Listing Mode
                   </span>
                 </div>
@@ -1060,7 +1078,7 @@ function PublishSkillPageInner() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <FiGithub className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      <span className="text-sm font-normal text-gray-900 dark:text-white">
                         GitHub publisher
                       </span>
                     </div>
@@ -1096,7 +1114,7 @@ function PublishSkillPageInner() {
               <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <UsdcIcon className="w-4 h-4 text-[var(--lobster-accent)]" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Primary price
                   </span>
                 </div>
@@ -1132,7 +1150,7 @@ function PublishSkillPageInner() {
               <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <FiDollarSign className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <span className="text-sm font-normal text-gray-900 dark:text-white">
                     Protocol currency
                   </span>
                 </div>
@@ -1152,7 +1170,9 @@ function PublishSkillPageInner() {
               connected={connected}
               githubConnected={githubConnected}
               isPaidPublish={isPaidPublish}
-              profileLoading={isPaidPublish && (profileLoading || !profileChecked)}
+              profileLoading={
+                isPaidPublish && (profileLoading || !profileChecked)
+              }
               hasProfile={!!agentProfile}
               hasContent={!!content}
               hasName={!!name}
@@ -1168,7 +1188,8 @@ function PublishSkillPageInner() {
                 !priceIsValid ||
                 githubLoading ||
                 !hasPublisherAuth ||
-                (isPaidPublish && (!connected || !profileChecked || profileLoading))
+                (isPaidPublish &&
+                  (!connected || !profileChecked || profileLoading))
               }
               className={`${navButtonPrimaryInlineClass} shrink-0`}
             >

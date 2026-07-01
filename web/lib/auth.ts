@@ -1,72 +1,23 @@
 import { getAddressCodec, type Address } from "@solana/kit";
 import nacl from "tweetnacl";
-import { encodeBase64 } from "@/lib/base64";
+import type { AuthPayload } from "@/lib/authPayload";
 import { getErrorMessage } from "@/lib/errors";
 
-const AUTH_PAYLOAD_MAX_AGE_MS = 5 * 60_000;
-
-export interface AuthPayload {
-  pubkey: string;
-  signature: string;
-  message: string;
-  timestamp: number;
-}
-
-export function buildSignMessage(action: string, timestamp: number): string {
-  return `AgentVouch Skill Repo\nAction: ${action}\nTimestamp: ${timestamp}`;
-}
-
-export function buildDownloadRawMessage(
-  skillId: string,
-  listingAddress: string | null | undefined,
-  timestamp: number
-): string {
-  return `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${
-    listingAddress ?? "x402-usdc-direct"
-  }\nTimestamp: ${timestamp}`;
-}
-
-export function buildStripeCheckoutMessage(
-  skillId: string,
-  timestamp: number
-): string {
-  return `AgentVouch Stripe Checkout\nAction: stripe-checkout\nSkill id: ${skillId}\nTimestamp: ${timestamp}`;
-}
-
-export async function createSignedDownloadAuthPayload(input: {
-  walletAddress: string;
-  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
-  skillId: string;
-  listingAddress?: string | null;
-  timestamp?: number;
-}): Promise<AuthPayload> {
-  const timestamp = input.timestamp ?? Date.now();
-  const message = buildDownloadRawMessage(
-    input.skillId,
-    input.listingAddress,
-    timestamp
-  );
-  const signatureBytes = await input.signMessage(
-    new TextEncoder().encode(message)
-  );
-
-  return {
-    pubkey: input.walletAddress,
-    signature: encodeBase64(signatureBytes),
-    message,
-    timestamp,
-  };
-}
-
-export function normalizeProtocolNewlines(value: string): string {
-  return value.replace(/\r\n/g, "\n");
-}
+export {
+  buildDownloadRawMessage,
+  buildSignMessage,
+  buildStripeCheckoutMessage,
+  createSignedDownloadAuthPayload,
+  normalizeProtocolNewlines,
+  type AuthPayload,
+} from "@/lib/authPayload";
 
 type ApiKeyLookupRow = {
   owner_pubkey: string;
   permissions: string[] | null;
 };
 
+const AUTH_PAYLOAD_MAX_AGE_MS = 5 * 60_000;
 const addressCodec = getAddressCodec();
 
 export function verifyWalletSignature(payload: AuthPayload): {

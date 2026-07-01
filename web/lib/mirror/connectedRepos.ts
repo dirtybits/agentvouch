@@ -1,0 +1,271 @@
+// First-party "connected repos": a wallet authorizes a public GitHub repo it
+// owns to be kept in sync as its OWN listings (attributed to the wallet, not a
+// synthetic GitHub identity like community mirrors). This module owns the
+// connected_repos table CRUD and repo-ownership verification.
+//
+// Ownership is proven one of two ways (see verifyRepoOwnership):
+//   - linked-login: the repo owner matches the GitHub account the wallet linked
+//     on /settings (covers personal repos, github.com/<you>/<repo>).
+//   - verify-file: the repo contains .well-known/agentvouch.json with the
+//     wallet pubkey (works for any public repo incl. orgs; agent-friendly).
+//
+// Connected repos must be PUBLIC — the sync engine fetches content over
+// unauthenticated raw.githubusercontent.com.
+
+import { sql } from "@/lib/db";
+import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
+import { verifyWalletSignature } from "@/lib/auth";
+import { buildSignMessage, type AuthPayload } from "@/lib/authPayload";
+export { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
+
+export type ConnectAuthResult =
+  | { ok: true; pubkey: string }
+  | { ok: false; status: number; error: string };
+
+// Wallet-signature auth bound to a specific action (connect-repo / sync-repo /
+// disconnect-repo), so a signature for one action can't be replayed for another.
+export function verifyConnectAuth(
+  auth: AuthPayload | undefined,
+  expectedPubkey: string,
+  action: string
+): ConnectAuthResult {
+  if (!auth) {
+    return { ok: false, status: 400, error: "Missing required field: auth" };
+  }
+  const v = verifyWalletSignature(auth);
+  if (!v.valid || !v.pubkey) {
+    return { ok: false, status: 401, error: v.error || "Invalid signature" };
+  }
+  if (v.pubkey !== expectedPubkey) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Wallet does not match this identity.",
+    };
+  }
+  if (auth.message !== buildSignMessage(action, auth.timestamp)) {
+    return {
+      ok: false,
+      status: 401,
+      error: `Signature is not for action "${action}".`,
+    };
+  }
+  return { ok: true, pubkey: v.pubkey };
+}
+
+export type ConnectedRepo = {
+  id: string;
+  owner_wallet: string;
+  github_owner: string;
+  github_repo: string;
+  branch: string;
+  include_paths: string[];
+  verification_method: string;
+  status: string;
+  last_commit_sha: string | null;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+  last_sync_detail: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OwnershipResult =
+  | { verified: true; method: "linked-login" | "verify-file" }
+  | { verified: false; reason: string };
+
+const OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const REPO_RE = /^[A-Za-z0-9._-]{1,100}$/;
+const BRANCH_RE = /^[A-Za-z0-9._\/-]{1,120}$/;
+
+export const VERIFICATION_FILE_PATH = ".well-known/agentvouch.json";
+
+export function validateRepoCoords(input: {
+  githubOwner: string;
+  githubRepo: string;
+  branch?: string;
+}): { ok: true; branch: string } | { ok: false; error: string } {
+  if (!OWNER_RE.test(input.githubOwner)) {
+    return { ok: false, error: "Invalid GitHub owner" };
+  }
+  if (!REPO_RE.test(input.githubRepo)) {
+    return { ok: false, error: "Invalid GitHub repo" };
+  }
+  const branch = (input.branch || "main").trim();
+  if (!BRANCH_RE.test(branch)) {
+    return { ok: false, error: "Invalid branch" };
+  }
+  return { ok: true, branch };
+}
+
+async function linkedGithubLogin(walletPubkey: string): Promise<string | null> {
+  const summary = await resolveAgentIdentityByWallet(walletPubkey, {
+    createIfMissing: false,
+    persistDerived: false,
+  }).catch(() => null);
+  return summary?.githubProfile?.login ?? null;
+}
+
+async function repoVerificationFileMatches(
+  githubOwner: string,
+  githubRepo: string,
+  branch: string,
+  walletPubkey: string
+): Promise<boolean> {
+  const url = `https://raw.githubusercontent.com/${githubOwner}/${githubRepo}/${branch}/${VERIFICATION_FILE_PATH}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "agentvouch-connect" },
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as {
+      owner_wallet?: unknown;
+      wallet?: unknown;
+    };
+    const claimed = String(body.owner_wallet ?? body.wallet ?? "").trim();
+    return claimed === walletPubkey;
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyRepoOwnership(input: {
+  walletPubkey: string;
+  githubOwner: string;
+  githubRepo: string;
+  branch: string;
+}): Promise<OwnershipResult> {
+  const login = await linkedGithubLogin(input.walletPubkey);
+  if (login && login.toLowerCase() === input.githubOwner.toLowerCase()) {
+    return { verified: true, method: "linked-login" };
+  }
+
+  if (
+    await repoVerificationFileMatches(
+      input.githubOwner,
+      input.githubRepo,
+      input.branch,
+      input.walletPubkey
+    )
+  ) {
+    return { verified: true, method: "verify-file" };
+  }
+
+  return {
+    verified: false,
+    reason: login
+      ? `Repo owner "${input.githubOwner}" is not your linked GitHub account (@${login}), and ${VERIFICATION_FILE_PATH} with your wallet was not found on ${input.githubOwner}/${input.githubRepo}@${input.branch}.`
+      : `Link your GitHub account on /settings (if you own ${input.githubOwner}), or add ${VERIFICATION_FILE_PATH} containing {"owner_wallet":"${input.walletPubkey}"} to the repo.`,
+  };
+}
+
+export async function listConnectedRepos(
+  ownerWallet: string
+): Promise<ConnectedRepo[]> {
+  return sql()<ConnectedRepo>`
+    SELECT * FROM connected_repos
+    WHERE owner_wallet = ${ownerWallet}
+    ORDER BY created_at DESC
+  `;
+}
+
+export async function listActiveConnectedRepos(): Promise<ConnectedRepo[]> {
+  return sql()<ConnectedRepo>`
+    SELECT * FROM connected_repos
+    WHERE status = 'active'
+    ORDER BY created_at ASC
+  `;
+}
+
+export async function getConnectedRepo(
+  id: string
+): Promise<ConnectedRepo | null> {
+  const rows = await sql()<ConnectedRepo>`
+    SELECT * FROM connected_repos WHERE id = ${id}::uuid LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+export type CreateConnectedRepoResult =
+  | { ok: true; repo: ConnectedRepo; created: boolean }
+  | { ok: false; status: number; error: string };
+
+export async function createConnectedRepo(input: {
+  ownerWallet: string;
+  githubOwner: string;
+  githubRepo: string;
+  branch: string;
+  includePaths: string[];
+  verificationMethod: string;
+}): Promise<CreateConnectedRepoResult> {
+  // Use INSERT ... ON CONFLICT to avoid a SELECT-then-INSERT TOCTOU race on the
+  // UNIQUE(github_owner, github_repo) constraint. Three cases:
+  //   1. No prior row → insert succeeds, RETURNING returns the new row.
+  //   2. Same wallet owns it → DO UPDATE re-applies settings, created = false.
+  //   3. Different wallet owns it → DO UPDATE only fires when owner_wallet matches,
+  //      so RETURNING returns 0 rows; we then fetch the conflicting row to build
+  //      a proper 409.
+  const rows = await sql()<ConnectedRepo>`
+    INSERT INTO connected_repos (
+      owner_wallet, github_owner, github_repo, branch,
+      include_paths, verification_method, status
+    ) VALUES (
+      ${input.ownerWallet}, ${input.githubOwner}, ${input.githubRepo}, ${input.branch},
+      ${input.includePaths}::text[], ${input.verificationMethod}, 'active'
+    )
+    ON CONFLICT (github_owner, github_repo) DO UPDATE
+      SET branch = EXCLUDED.branch,
+          include_paths = EXCLUDED.include_paths,
+          verification_method = EXCLUDED.verification_method,
+          status = 'active',
+          updated_at = NOW()
+      WHERE connected_repos.owner_wallet = EXCLUDED.owner_wallet
+    RETURNING *, (xmax = 0) AS inserted
+  `;
+
+  if (rows.length === 0) {
+    // Conflict row belongs to a different wallet.
+    return {
+      ok: false,
+      status: 409,
+      error: `${input.githubOwner}/${input.githubRepo} is already connected by another wallet.`,
+    };
+  }
+
+  const row = rows[0] as ConnectedRepo & { inserted: boolean };
+  const { inserted, ...repo } = row;
+  return { ok: true, repo: repo as ConnectedRepo, created: inserted };
+}
+
+export async function deleteConnectedRepo(
+  id: string,
+  ownerWallet: string
+): Promise<boolean> {
+  const rows = await sql()<{ id: string }>`
+    DELETE FROM connected_repos
+    WHERE id = ${id}::uuid AND owner_wallet = ${ownerWallet}
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+export async function updateConnectedRepoSyncState(
+  id: string,
+  state: {
+    lastCommitSha?: string | null;
+    status?: "ok" | "error";
+    detail?: string | null;
+  }
+): Promise<void> {
+  await sql()`
+    UPDATE connected_repos
+    SET last_synced_at = NOW(),
+        last_commit_sha = COALESCE(${
+          state.lastCommitSha ?? null
+        }, last_commit_sha),
+        last_sync_status = ${state.status ?? null},
+        last_sync_detail = ${state.detail ?? null},
+        updated_at = NOW()
+    WHERE id = ${id}::uuid
+  `;
+}

@@ -52,7 +52,10 @@ export async function updateSkill(
     );
   }
 
-  if ((metadata?.source ?? "repo") === "chain" || skillId.startsWith("chain-")) {
+  if (
+    (metadata?.source ?? "repo") === "chain" ||
+    skillId.startsWith("chain-")
+  ) {
     throw new CliError(
       "Version-aware updates are only supported for repo-backed skills."
     );
@@ -124,6 +127,8 @@ export async function updateSkill(
     requiresPurchase: check.requires_purchase,
     dryRun: false,
     mode: installResult.mode,
-    purchaseTx: installResult.purchaseTx,
+    // installSkill yields string | null; UpdateResult.purchaseTx is optional
+    // string. Normalize the "no purchase" case (null -> undefined).
+    purchaseTx: installResult.purchaseTx ?? undefined,
   };
 }

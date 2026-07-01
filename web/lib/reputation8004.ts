@@ -77,9 +77,12 @@ export async function writeUsdcPurchaseFeedback(input: {
       return { skipped: "disabled" as const };
     }
 
-    const identity = await resolveAgentIdentityByWallet(input.authorWalletPubkey, {
-      createIfMissing: false,
-    });
+    const identity = await resolveAgentIdentityByWallet(
+      input.authorWalletPubkey,
+      {
+        createIfMissing: false,
+      }
+    );
     const authorAgentAsset = identity?.registryAsset;
     if (!authorAgentAsset) {
       return { skipped: "no-registry-asset" as const };
@@ -88,13 +91,13 @@ export async function writeUsdcPurchaseFeedback(input: {
     const feedbackResult = await sdk.giveFeedback(
       new PublicKey(authorAgentAsset),
       {
-      value: "1",
-      valueDecimals: 0,
-      tag1: Tag.x402ResourceDelivered,
-      tag2: Tag.x402Svm,
-      score: 100,
-      endpoint: input.endpoint,
-      feedbackUri: `https://agentvouch.xyz/api/skills/${input.skillId}`,
+        value: "1",
+        valueDecimals: 0,
+        tag1: Tag.x402ResourceDelivered,
+        tag2: Tag.x402Svm,
+        score: 100,
+        endpoint: input.endpoint,
+        feedbackUri: `https://agentvouch.xyz/api/skills/${input.skillId}`,
       }
     );
 

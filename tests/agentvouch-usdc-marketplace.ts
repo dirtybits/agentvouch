@@ -1,4 +1,4 @@
-import { SystemProgram } from "@solana/web3.js";
+import { Keypair, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { assert } from "chai";
 import {
@@ -13,6 +13,7 @@ import {
   createVouch,
   depositAuthorBond,
   expectFailure,
+  fundSol,
   fundX402SettlementVault,
   getTestContext,
   linkVouchToListing,
@@ -30,6 +31,20 @@ import {
 } from "./helpers/agentvouchUsdc";
 
 describe("agentvouch usdc marketplace rewards", () => {
+  it("keeps protocol fee deferred while author and voucher shares consume the full split", async () => {
+    const ctx = await getTestContext();
+    const config = await ctx.program.account.reputationConfig.fetch(ctx.config);
+    const authorShareBps = Number(config.authorShareBps);
+    const voucherShareBps = Number(config.voucherShareBps);
+    const protocolFeeBps = Number(config.protocolFeeBps);
+
+    assert.equal(protocolFeeBps, 0);
+    assert.equal(authorShareBps, 6_000);
+    assert.equal(voucherShareBps, 4_000);
+    assert.equal(authorShareBps + voucherShareBps + protocolFeeBps, 10_000);
+    assert.equal(authorShareBps + voucherShareBps, 10_000);
+  });
+
   it("settles x402 purchases through the protocol vault and preserves voucher economics", async () => {
     const ctx = await getTestContext();
     const { author, buyer, listing } = await setupPaidListingWithVouch(
@@ -85,7 +100,10 @@ describe("agentvouch usdc marketplace rewards", () => {
     assert.equal(Number(purchaseAccount.authorShareUsdcMicros), 3 * ONE_USDC);
     assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 2 * ONE_USDC);
     assert.equal(receiptAccount.purchase.toBase58(), purchase.toBase58());
-    assert.deepEqual(Buffer.from(receiptAccount.paymentRefHash), paymentRefHash);
+    assert.deepEqual(
+      Buffer.from(receiptAccount.paymentRefHash),
+      paymentRefHash
+    );
     assert.deepEqual(
       Buffer.from(receiptAccount.settlementTxSignatureHash),
       settlementTxSignatureHash
@@ -294,7 +312,12 @@ describe("agentvouch usdc marketplace rewards", () => {
       listing.vault
     );
 
-    await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      ONE_USDC
+    );
     assert.equal(Number(await tokenAmount(ctx, listing.vault)), 0);
 
     const listingAccount = await ctx.program.account.skillListing.fetch(
@@ -334,12 +357,70 @@ describe("agentvouch usdc marketplace rewards", () => {
       listing.vault
     );
 
-    await assertTokenDelta(ctx, listing.proceedsVault, proceedsBefore, ONE_USDC);
+    await assertTokenDelta(
+      ctx,
+      listing.proceedsVault,
+      proceedsBefore,
+      ONE_USDC
+    );
     assert.equal(Number(await tokenAmount(ctx, listing.vault)), 0);
 
     const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
     assert.equal(Number(purchaseAccount.authorShareUsdcMicros), ONE_USDC);
     assert.equal(Number(purchaseAccount.voucherPoolUsdcMicros), 0);
+  });
+
+  it("allows a separate rent payer to sponsor purchase account creation", async () => {
+    const ctx = await getTestContext();
+    const author = await createActor(ctx);
+    const buyer = await createActor(ctx);
+    await registerAgent(ctx, author);
+    const listing = await createSkillListing(
+      ctx,
+      author,
+      uniqueSkillId("rentpay"),
+      5 * ONE_USDC
+    );
+    const rentPayer = Keypair.generate();
+    await fundSol(ctx.provider, rentPayer, 1);
+
+    const buyerLamportsBefore = await ctx.provider.connection.getBalance(
+      buyer.keypair.publicKey
+    );
+    const rentPayerLamportsBefore = await ctx.provider.connection.getBalance(
+      rentPayer.publicKey
+    );
+    const purchase = await purchaseSkill(
+      ctx,
+      buyer,
+      author,
+      listing.skillListing,
+      listing.vault,
+      "purchase_skill sponsored rent payer",
+      { rentPayer }
+    );
+    const buyerLamportsAfter = await ctx.provider.connection.getBalance(
+      buyer.keypair.publicKey
+    );
+    const rentPayerLamportsAfter = await ctx.provider.connection.getBalance(
+      rentPayer.publicKey
+    );
+
+    assert.equal(buyerLamportsAfter, buyerLamportsBefore);
+    assert.isBelow(rentPayerLamportsAfter, rentPayerLamportsBefore);
+
+    const purchaseAccount = await ctx.program.account.purchase.fetch(purchase);
+    const authorProfile = await ctx.program.account.agentProfile.fetch(
+      author.profile
+    );
+    assert.equal(
+      purchaseAccount.buyer.toBase58(),
+      buyer.keypair.publicKey.toBase58()
+    );
+    assert.equal(
+      authorProfile.rewardVaultRentPayer.toBase58(),
+      rentPayer.publicKey.toBase58()
+    );
   });
 
   it("rejects invalid purchase and claim accounts", async () => {
@@ -369,6 +450,7 @@ describe("agentvouch usdc marketplace rewards", () => {
           authorRewardVaultAuthority: listing.vaultAuthority,
           authorRewardVault: listing.vault,
           buyer: buyer.keypair.publicKey,
+          rentPayer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
@@ -394,6 +476,7 @@ describe("agentvouch usdc marketplace rewards", () => {
           authorRewardVaultAuthority: listing.vaultAuthority,
           authorRewardVault: ctx.protocolTreasuryVault,
           buyer: buyer.keypair.publicKey,
+          rentPayer: buyer.keypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })

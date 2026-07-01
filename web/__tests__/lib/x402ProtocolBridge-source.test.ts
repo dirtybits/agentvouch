@@ -9,7 +9,9 @@ describe("x402 protocol bridge source", () => {
   );
 
   it("keeps the on-chain memo compact and binds details through the payment ref hash", () => {
-    expect(source).toContain("const memo = input.paymentRefHashHex.slice(0, 32)");
+    expect(source).toContain(
+      "const memo = input.paymentRefHashHex.slice(0, 32)"
+    );
     expect(source).toContain("agentvouch_skill_db_id");
     expect(source).toContain("agentvouch_listing");
     expect(source).toContain("agentvouch_buyer");
@@ -20,5 +22,10 @@ describe("x402 protocol bridge source", () => {
   it("accepts base64-wrapped JSON keypairs for local bridge smoke envs", () => {
     expect(source).toContain('decodedText.startsWith("[")');
     expect(source).toContain("base64:<json-secret>");
+  });
+
+  it("fails closed before protocol x402 settlement when the on-chain config is paused", () => {
+    expect(source).toContain("configAccount.data.paused");
+    expect(source).toContain("AgentVouch protocol is paused");
   });
 });

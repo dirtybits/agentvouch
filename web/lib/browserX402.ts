@@ -6,7 +6,7 @@ import {
   x402HTTPClient,
 } from "@x402/fetch";
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
-import { createSignedDownloadAuthPayload } from "@/lib/auth";
+import { createSignedDownloadAuthPayload } from "@/lib/authPayload";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 import type { TransactionSignerCapabilities } from "@solana/connector/headless";
 
@@ -71,12 +71,12 @@ export async function fetchSkillWithBrowserX402(input: {
   signMessage: BrowserSignMessage;
   skillId: string;
   listingAddress?: string;
-  rawPath: string;
+  path: string;
   rpcUrl?: string;
   fetchImpl?: typeof fetch;
 }): Promise<{
   authHeader: string;
-  content: string;
+  blob: Blob;
   paymentResponse?: BrowserX402SettleResponse;
 }> {
   const authHeader = JSON.stringify(
@@ -93,7 +93,7 @@ export async function fetchSkillWithBrowserX402(input: {
     rpcUrl: input.rpcUrl,
     fetchImpl: input.fetchImpl,
   });
-  const response = await paidFetch(input.rawPath, { method: "GET" });
+  const response = await paidFetch(input.path, { method: "GET" });
 
   if (!response.ok) {
     const contentType = response.headers.get("content-type") || "";
@@ -116,7 +116,7 @@ export async function fetchSkillWithBrowserX402(input: {
 
   return {
     authHeader,
-    content: await response.text(),
+    blob: await response.blob(),
     paymentResponse: paymentResponseHeader
       ? decodePaymentResponseHeader(paymentResponseHeader)
       : undefined,

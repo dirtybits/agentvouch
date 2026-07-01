@@ -31,6 +31,11 @@ import { getErrorMessage } from "@/lib/errors";
 import { wrapRpcLookupError } from "@/lib/rpcErrors";
 import { getConfiguredUsdcMint } from "@/lib/x402";
 import {
+  confirmDirectPurchaseAfterSponsoredUnavailable,
+  runSponsoredCheckout,
+  sponsoredCheckoutPubliclyEnabled,
+} from "@/lib/sponsoredPurchaseClient";
+import {
   assertUsdcAccountReady,
   formatUsdcMicrosValue,
   getAssociatedTokenAccount,
@@ -205,10 +210,7 @@ function buildPurchaseBalanceError(
   )} USDC plus SOL for receipt rent and network fees.`;
 }
 
-function buildPurchaseClusterMismatchError(
-  walletAddress: Address,
-  estimate: PurchasePreflightAssessment
-) {
+function buildPurchaseClusterMismatchError(walletAddress: Address) {
   const configuredNetwork = `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`;
   return `Phantom reported insufficient SOL, but connected wallet ${shortAddress(
     walletAddress
@@ -255,11 +257,13 @@ async function waitForConfirmedSignature(
 export function useMarketplaceOracle() {
   const { status, account } = useAgentVouchWallet();
   const connected = status === "connected" && !!account;
-  const { signer: activeSigner } = useAgentVouchTransactionSigner();
+  const {
+    signer: activeSigner,
+    connectorSigner,
+    capabilities,
+  } = useAgentVouchTransactionSigner();
 
-  const walletAddress: Address | null = connected
-    ? (account as Address)
-    : null;
+  const walletAddress: Address | null = connected ? (account as Address) : null;
 
   const signer: TransactionSigner | null = activeSigner ?? null;
 
@@ -510,6 +514,33 @@ export function useMarketplaceOracle() {
           purchase: purchasePda,
         };
       }
+      const sponsoredCheckoutEnabled = sponsoredCheckoutPubliclyEnabled();
+      if (sponsoredCheckoutEnabled && connectorSigner && capabilities.canSign) {
+        const sponsored = await runSponsoredCheckout({
+          connectorSigner,
+          skillListing: String(skillListingKey),
+          priceUsdcMicros: listing.data.priceUsdcMicros,
+          expectedUsdcMint: getConfiguredUsdcMint(),
+        });
+        if (sponsored) {
+          const summary = {
+            action: "Purchase skill",
+            token: "USDC" as const,
+            amountUsdcMicros:
+              BigInt(listing.data.priceUsdcMicros) +
+              sponsored.setupFeeUsdcMicros,
+            recipient: listing.data.currentAuthorProceedsVault,
+            feePayer: sponsored.sponsor,
+            cluster: `${getConfiguredSolanaChainDisplayLabel()} (${getConfiguredSolanaRpcTargetLabel()} RPC)`,
+          };
+          logTransactionSummary(summary);
+          return { tx: sponsored.signature, summary };
+        }
+      } else if (sponsoredCheckoutEnabled) {
+        confirmDirectPurchaseAfterSponsoredUnavailable(
+          "This wallet connection cannot sign the prepared sponsored transaction."
+        );
+      }
       let purchaseEstimate: PurchasePreflightAssessment | null = null;
       try {
         purchaseEstimate = await estimatePurchasePreflight(
@@ -571,6 +602,7 @@ export function useMarketplaceOracle() {
         authorRewardVaultAuthority,
         authorRewardVault,
         buyer: signer,
+        rentPayer: signer,
       });
       const summary = {
         action: "Purchase skill",
@@ -622,15 +654,13 @@ export function useMarketplaceOracle() {
                   "This listing is temporarily not purchasable."
               );
             }
-            throw new Error(
-              buildPurchaseClusterMismatchError(walletAddress, latestEstimate)
-            );
+            throw new Error(buildPurchaseClusterMismatchError(walletAddress));
           }
         }
         throw error;
       }
     },
-    [signer, walletAddress, sendIx]
+    [capabilities.canSign, connectorSigner, signer, walletAddress, sendIx]
   );
 
   return useMemo(

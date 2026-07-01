@@ -13,13 +13,14 @@ import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { useAgentVouchWallet } from "@/components/WalletContextProvider";
-import type { AuthPayload } from "@/lib/auth";
+import type { AuthPayload } from "@/lib/authPayload";
 import type { AuthorDisputeRecord } from "@/lib/authorDisputes";
 import {
   navButtonPrimaryFlexClass,
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
+import { formatDate } from "@/lib/formatDate";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
@@ -37,6 +38,7 @@ import {
 import type { SolanaRegistryCandidate } from "@/lib/solanaAgentRegistry";
 import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
+import { getPublicSkillPath } from "@/lib/skillUrls";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -48,6 +50,7 @@ import {
   FiFlag,
   FiLoader,
   FiPackage,
+  FiSettings,
   FiShield,
   FiTag,
   FiTrendingUp,
@@ -67,25 +70,15 @@ function shortAddr(addr: string): string {
 const REWARD_INDEX_SCALE = 1_000_000_000_000n;
 const AUTHOR_REWARD_POOL_CLAIM_ID = "author-reward-pool";
 
-function formatUsdc(micros: number | bigint | string | null | undefined): string {
+function formatUsdc(
+  micros: number | bigint | string | null | undefined
+): string {
   return formatUsdcMicros(micros) ?? "0";
 }
 
 function toBigInt(value: number | bigint | string | null | undefined): bigint {
   if (value === null || value === undefined || value === "") return 0n;
   return BigInt(value);
-}
-
-function formatDate(isoOrTimestamp: string | number): string {
-  const d =
-    typeof isoOrTimestamp === "number"
-      ? new Date(isoOrTimestamp * 1000)
-      : new Date(isoOrTimestamp);
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function sleep(ms: number) {
@@ -95,6 +88,8 @@ function sleep(ms: number) {
 interface RepoSkill {
   id: string;
   skill_id: string;
+  public_slug?: string | null;
+  public_author_slug?: string | null;
   author_pubkey: string;
   name: string;
   description: string | null;
@@ -119,9 +114,6 @@ type AgentProfileData = NonNullable<
 type VouchRecord = Awaited<
   ReturnType<ReputationOracle["getAllVouchesForAgent"]>
 >[number];
-type SkillListingRecord = Awaited<
-  ReturnType<ReputationOracle["getSkillListingsByAuthor"]>
->[number];
 
 export default function AuthorProfilePage() {
   const params = useParams();
@@ -141,9 +133,6 @@ export default function AuthorProfilePage() {
   const [vouchesGiven, setVouchesGiven] = useState<VouchRecord[]>([]);
   const [repoSkills, setRepoSkills] = useState<RepoSkill[]>([]);
   const [chainSkills, setChainSkills] = useState<RepoSkill[]>([]);
-  const [authorSkillListings, setAuthorSkillListings] = useState<
-    SkillListingRecord[]
-  >([]);
   const [authorTrust, setAuthorTrust] = useState<TrustData | null>(null);
   const [authorIdentity, setAuthorIdentity] =
     useState<AgentIdentitySummary | null>(null);
@@ -214,19 +203,17 @@ export default function AuthorProfilePage() {
     setLoading(true);
     try {
       const agentAddr = address(pubkey);
-      const [prof, received, given, onChainListings, repoRes, authorRes] =
-        await Promise.all([
+      const [prof, received, given, repoRes, authorRes] = await Promise.all([
         oracle.getAgentProfile(agentAddr).catch(() => null),
         oracle.getAllVouchesReceivedByAgent(agentAddr).catch(() => []),
         oracle.getAllVouchesForAgent(agentAddr).catch(() => []),
-        oracle.getSkillListingsByAuthor(agentAddr).catch(() => []),
         fetch(`/api/skills?author=${pubkey}`)
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
-          fetch(`/api/author/${pubkey}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-        ]);
+        fetch(`/api/author/${pubkey}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
       const relatedProfileKeys = Array.from(
         new Set(
           [
@@ -255,7 +242,6 @@ export default function AuthorProfilePage() {
       setProfile(prof);
       setVouchesReceived(received);
       setVouchesGiven(given);
-      setAuthorSkillListings(onChainListings);
       const apiSkills = (repoRes?.skills ?? []) as RepoSkill[];
       setRepoSkills(apiSkills.filter((skill) => skill.source !== "chain"));
       setChainSkills(apiSkills.filter((skill) => skill.source === "chain"));
@@ -651,8 +637,7 @@ export default function AuthorProfilePage() {
       accruedSinceLastTouch
     );
   }, [profile, viewerVouch]);
-  const viewerCanClaimVoucherRevenue =
-    viewerEstimatedClaimableUsdcMicros > 0n;
+  const viewerCanClaimVoucherRevenue = viewerEstimatedClaimableUsdcMicros > 0n;
   const claimSkillOptions = useMemo(
     () => [
       ...repoSkills
@@ -691,8 +676,7 @@ export default function AuthorProfilePage() {
 
   const clearClaimRouteParams = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams.toString());
-    const hadClaimRoute =
-      nextParams.has("report") || nextParams.has("skill");
+    const hadClaimRoute = nextParams.has("report") || nextParams.has("skill");
     if (!hadClaimRoute) return;
 
     nextParams.delete("report");
@@ -726,44 +710,44 @@ export default function AuthorProfilePage() {
     clearClaimRouteParams();
   }, [claiming, clearClaimRouteParams]);
 
-  const handleClaimVoucherRevenue = useCallback(
-    async () => {
-      if (!connected) {
-        setClaimRevenueStatus({
-          success: false,
-          message: "Connect your wallet to claim voucher revenue.",
-        });
-        setClaimRevenueTx(null);
-        return;
-      }
-
-      setClaimingRevenueListing(AUTHOR_REWARD_POOL_CLAIM_ID);
-      setClaimRevenueStatus(null);
+  const handleClaimVoucherRevenue = useCallback(async () => {
+    if (!connected) {
+      setClaimRevenueStatus({
+        success: false,
+        message: "Connect your wallet to claim voucher revenue.",
+      });
       setClaimRevenueTx(null);
+      return;
+    }
 
-      try {
-        const { tx } = await oracle.claimVoucherRevenue(address(pubkey));
-        setClaimRevenueStatus({
-          success: true,
-          message: "Voucher revenue claimed.",
-        });
-        setClaimRevenueTx(tx);
-        setTimeout(loadData, 2000);
-      } catch (error: unknown) {
-        const message = getErrorMessage(error, "Failed to claim voucher revenue.");
-        setClaimRevenueStatus({
-          success: false,
-          message: /Insufficient funds in author reward pool/i.test(message)
-            ? "This author's recorded voucher revenue is higher than its actual on-chain reward vault balance, so the claim would fail. This looks like stale devnet accounting on an older author profile."
-            : message,
-        });
-        setClaimRevenueTx(null);
-      } finally {
-        setClaimingRevenueListing(null);
-      }
-    },
-    [connected, loadData, oracle, pubkey]
-  );
+    setClaimingRevenueListing(AUTHOR_REWARD_POOL_CLAIM_ID);
+    setClaimRevenueStatus(null);
+    setClaimRevenueTx(null);
+
+    try {
+      const { tx } = await oracle.claimVoucherRevenue(address(pubkey));
+      setClaimRevenueStatus({
+        success: true,
+        message: "Voucher revenue claimed.",
+      });
+      setClaimRevenueTx(tx);
+      setTimeout(loadData, 2000);
+    } catch (error: unknown) {
+      const message = getErrorMessage(
+        error,
+        "Failed to claim voucher revenue."
+      );
+      setClaimRevenueStatus({
+        success: false,
+        message: /Insufficient funds in author reward pool/i.test(message)
+          ? "This author's recorded voucher revenue is higher than its actual on-chain reward vault balance, so the claim would fail. This looks like stale devnet accounting on an older author profile."
+          : message,
+      });
+      setClaimRevenueTx(null);
+    } finally {
+      setClaimingRevenueListing(null);
+    }
+  }, [connected, loadData, oracle, pubkey]);
 
   const handleSubmitClaim = async () => {
     if (!connected) {
@@ -870,6 +854,10 @@ export default function AuthorProfilePage() {
       setClaimRouteDismissed(false);
     }
   }, [searchParams]);
+
+  const authorDisplayHandle = authorIdentity?.username
+    ? `@${authorIdentity.username}`
+    : null;
 
   if (loading) {
     return (
@@ -1090,18 +1078,23 @@ export default function AuthorProfilePage() {
         )}
 
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
             <Link
               href="/skills"
-              className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition"
+              className="mt-1 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition"
             >
               <FiArrowLeft className="w-4 h-4" />
             </Link>
             <div>
               <h1 className="text-2xl md:text-3xl font-display text-gray-900 dark:text-white">
-                Author Trust Record
+                {authorDisplayHandle ?? "Author Trust Record"}
               </h1>
+              {authorDisplayHandle && (
+                <p className="mt-1 text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  Author Trust Record
+                </p>
+              )}
               <button
                 onClick={copyPubkey}
                 className="flex items-center gap-1.5 font-mono text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition mt-1"
@@ -1127,6 +1120,15 @@ export default function AuthorProfilePage() {
               </p>
             </div>
           </div>
+          {isOwnProfile && (
+            <Link
+              href="/settings"
+              className={`${navButtonSecondaryInlineClass} shrink-0 sm:mt-1`}
+            >
+              <FiSettings className="w-4 h-4" />
+              Settings
+            </Link>
+          )}
         </div>
 
         {/* Trust Badge */}
@@ -1266,7 +1268,7 @@ export default function AuthorProfilePage() {
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="space-y-2">
                         <div>
-                          <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                          <div className="text-sm font-normal text-gray-900 dark:text-white">
                             {candidate.displayName ||
                               `Agent ${shortAddr(candidate.coreAssetPubkey)}`}
                           </div>
@@ -1436,8 +1438,7 @@ export default function AuthorProfilePage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
                 <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <FiShield className="text-[var(--sea-accent)]" /> Your
-                  Backing
+                  <FiShield className="text-[var(--sea-accent)]" /> Your Backing
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   This connected wallet is staking behind this author&apos;s
@@ -1620,7 +1621,7 @@ export default function AuthorProfilePage() {
               <div className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-1">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                    <div className="text-sm font-normal text-gray-900 dark:text-white">
                       Author-wide reward pool
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -1708,7 +1709,7 @@ export default function AuthorProfilePage() {
                 return (
                   <Link
                     key={skill.id}
-                    href={`/skills/${skill.id}`}
+                    href={getPublicSkillPath(skill)}
                     className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition block"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -1716,11 +1717,11 @@ export default function AuthorProfilePage() {
                         {skill.name}
                       </h3>
                       {skill.price_usdc_micros ? (
-                        <span className="text-xs font-semibold text-gray-900 dark:text-white shrink-0">
+                        <span className="text-xs font-normal text-gray-900 dark:text-white shrink-0">
                           {formatUsdc(skill.price_usdc_micros)} USDC
                         </span>
                       ) : skill.price_lamports && skill.price_lamports > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                        <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-600 dark:text-gray-300 shrink-0">
                           Legacy SOL
                         </span>
                       ) : null}
@@ -1760,7 +1761,7 @@ export default function AuthorProfilePage() {
                   return (
                     <Link
                       key={skill.id}
-                      href={`/skills/${skill.id}`}
+                      href={getPublicSkillPath(skill)}
                       className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition block"
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
@@ -1768,11 +1769,11 @@ export default function AuthorProfilePage() {
                           {skill.name || "Untitled"}
                         </h3>
                         {priceUsdcMicros ? (
-                          <span className="text-xs font-semibold text-gray-900 dark:text-white shrink-0">
+                          <span className="text-xs font-normal text-gray-900 dark:text-white shrink-0">
                             {formatUsdc(priceUsdcMicros)} USDC
                           </span>
                         ) : legacySolPrice > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                          <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-600 dark:text-gray-300 shrink-0">
                             Legacy SOL
                           </span>
                         ) : null}

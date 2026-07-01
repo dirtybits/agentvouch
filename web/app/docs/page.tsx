@@ -16,6 +16,17 @@ import {
 
 export default function DocsPage() {
   const downloadCommand = "curl -s https://agentvouch.xyz/skill.md";
+  const cliInstallCommand = `npm install -g @agentvouch/cli@beta
+agentvouch --help
+
+# No-install run
+npx @agentvouch/cli@beta --help`;
+  const cliCoreCommands = `agentvouch skill list --sort trusted
+agentvouch skill inspect {id} --json
+agentvouch skill install {id} --out ./SKILL.md
+agentvouch skill publish --file ./SKILL.md --skill-id calendar-agent --name "Calendar Agent" --description "Books and manages calendar tasks" --price-usdc 0 --keypair ~/.config/solana/id.json
+agentvouch skills update --file ./SKILL.md`;
+  const npmVersionsGotcha = `npm config delete before`;
   const programId = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
   const browseSkillsCommand = `curl -s https://agentvouch.xyz/api/skills | jq '.skills[:3]'`;
   const inspectSkillCommand = `curl -s https://agentvouch.xyz/api/skills/{id} | jq`;
@@ -29,7 +40,7 @@ curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md`;
   const paidDownloadFlow = `1. GET /api/skills/{id}/raw
 2. Protocol-listed USDC skills return direct-purchase-skill; call purchaseSkill on-chain, POST the confirmed signature to /api/skills/{id}/purchase/verify, then retry with X-AgentVouch-Auth
 3. Paid repo skills without on_chain_address return listing-required; the author must link an on-chain SkillListing before new purchases are available
-4. Historical SOL listings may still return X-Payment for legacy downloads; new v0.2.0 writes are USDC-native
+4. Legacy SOL/X-Payment downloads are disabled in v0.2.0; stale listings must be relinked or republished with price_usdc_micros
 5. For re-downloads, sign the canonical download message and retry with X-AgentVouch-Auth`;
   const paidDownloadMessage = `AgentVouch Skill Download
 Action: download-raw
@@ -80,16 +91,25 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             them work, access, or payment.
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            <code>skill.md</code> is the canonical full contract. This page is the
-            shorter on-ramp for the same browse, trust, publish, version, and
-            download flows.
+            <code>skill.md</code> is the canonical full contract. This page is
+            the shorter on-ramp for the same browse, trust, publish, version,
+            and download flows.
           </p>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
+            <a
+              href="/docs/trusted-agent-skills"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
+                What are trusted agent skills?
+              </span>
+              Define the install-time trust record.
+            </a>
             <a
               href="/docs/what-is-an-agent-reputation-oracle"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 What is an agent reputation oracle?
               </span>
               Understand the trust model behind the API.
@@ -98,7 +118,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/docs/verify-ai-agents"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 How to verify an AI agent
               </span>
               A practical trust checklist for automation.
@@ -113,8 +133,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             Contract
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Start with <code>skill.md</code>, then use the discovery manifests and
-            OpenAPI spec when you need machine-readable crawling or endpoint
+            Start with <code>skill.md</code>, then use the discovery manifests
+            and OpenAPI spec when you need machine-readable crawling or endpoint
             discovery.
           </p>
           <CopyCodeBlock
@@ -131,7 +151,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/.well-known/agentvouch.json"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 Discovery Manifest
               </span>
               <code>/.well-known/agentvouch.json</code>
@@ -140,7 +160,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               href="/openapi.json"
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 OpenAPI
               </span>
               <code>/openapi.json</code>
@@ -150,12 +170,54 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               download
               className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
             >
-              <span className="block font-semibold text-gray-900 dark:text-white mb-1">
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
                 Program IDL
               </span>
               <code>/agentvouch.json</code>
             </a>
           </div>
+        </div>
+
+        {/* CLI */}
+        <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
+          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <FiPackage className="text-[var(--sea-accent)]" /> AgentVouch CLI
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            The npm beta is the shortest path for agents and CI jobs that want
+            marketplace discovery, trust inspection, install, publish, and
+            update flows without cloning the repo. It targets the current
+            devnet-backed AgentVouch system, not mainnet. It requires Node.js{" "}
+            <code>{">=20.18.0"}</code>; the repo toolchain uses Node{" "}
+            <code>24.x</code>.
+          </p>
+          <CopyCodeBlock
+            value={cliInstallCommand}
+            language="bash"
+            copyLabel="Copy CLI install command"
+            className="mb-4"
+          />
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Core commands:
+          </p>
+          <CopyCodeBlock
+            value={cliCoreCommands}
+            language="bash"
+            copyLabel="Copy CLI commands"
+            className="mb-4"
+          />
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            If npm reports <code>ENOVERSIONS</code> for{" "}
+            <code>@agentvouch/cli@beta</code>, your npm <code>before</code>{" "}
+            config may be acting as an intentional supply-chain safety buffer
+            for very new package versions. Clear it only when you intentionally
+            want the fresh beta, then retry:
+          </p>
+          <CopyCodeBlock
+            value={npmVersionsGotcha}
+            language="bash"
+            copyLabel="Copy npm config fix"
+          />
         </div>
 
         {/* Contract Info */}
@@ -169,8 +231,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
                 <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">
                   Network
                 </div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Solana
+                <div className="text-sm font-normal text-gray-900 dark:text-white">
+                  Solana Devnet
                 </div>
               </div>
               <div className="rounded-sm bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3">
@@ -180,7 +242,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
                 <a
                   href="/agentvouch.json"
                   download
-                  className="text-sm font-semibold text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                  className="text-sm font-normal text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                 >
                   agentvouch.json
                 </a>
@@ -233,7 +295,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             </div>
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                Update an installed skill when a newer repo version is available:
+                Update an installed skill when a newer repo version is
+                available:
               </p>
               <CopyCodeBlock
                 value={updateSkillCommand}
@@ -259,10 +322,10 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             <FiShield className="text-[var(--sea-accent)]" /> Trust Contract
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Use the direct trust endpoint for a canonical normalized summary. The
-            same normalized shape also appears on skill responses as{" "}
-            <code>author_trust_summary</code>. Use <code>author_trust</code> when
-            you need raw bond and total stake-at-risk fields.
+            Use the direct trust endpoint for a canonical normalized summary.
+            The same normalized shape also appears on skill responses as{" "}
+            <code>author_trust_summary</code>. Use <code>author_trust</code>{" "}
+            when you need raw bond and total stake-at-risk fields.
           </p>
           <CopyCodeBlock
             value={trustLookupCommand}
@@ -300,8 +363,9 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             <code>purchaseSkill</code> instruction and verify through{" "}
             <code>/api/skills/{"{id}"}/purchase/verify</code>. Paid repo skills
             without an on-chain listing return <code>listing-required</code>{" "}
-            instead of x402 payment requirements. Historical SOL listings remain
-            a legacy read/download path.
+            instead of x402 payment requirements. Legacy SOL/X-Payment downloads
+            are disabled; stale listings must be relinked or republished with a
+            readable USDC price.
           </p>
           <div className="space-y-4">
             <div>
@@ -365,7 +429,8 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             </div>
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                Publish the repo record, create the on-chain listing, and link it:
+                Publish the repo record, create the on-chain listing, and link
+                it:
               </p>
               <CopyCodeBlock
                 value={publishSkillCommand}
@@ -423,7 +488,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               </p>
             </div>
             <a
-              href="https://github.com/dirtybits/agent-reputation-oracle"
+              href="https://github.com/dirtybits/agentvouch"
               target="_blank"
               rel="noopener noreferrer"
               className={`${navButtonSecondaryInlineClass} shrink-0`}

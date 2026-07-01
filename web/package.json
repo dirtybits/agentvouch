@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
     "db:cutover": "tsx scripts/db-cutover.ts",
     "x402:bridge-poc": "tsx scripts/x402-bridge-poc.ts",
     "test": "vitest run",
@@ -44,10 +45,12 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tweetnacl": "^1.0.3",
+    "viem": "^2.52.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -123,6 +123,12 @@ pub fn handler(
     config.paused = false;
     config.bump = ctx.bumps.config;
 
+    require!(config.validate_splits(), ErrorCode::InvalidRevenueSplits);
+    require!(
+        config.validate_deferred_protocol_fee(),
+        ErrorCode::ProtocolFeeDeferred
+    );
+
     Ok(())
 }
 
@@ -132,4 +138,8 @@ pub enum ErrorCode {
     ChainContextTooLong,
     #[msg("Slash percentage must be between 0 and 100")]
     InvalidSlashPercentage,
+    #[msg("Revenue shares must sum to 10,000 basis points")]
+    InvalidRevenueSplits,
+    #[msg("Protocol fee collection is deferred; protocol_fee_bps must be 0")]
+    ProtocolFeeDeferred,
 }

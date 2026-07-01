@@ -43,6 +43,10 @@ pub mod agentvouch {
         instructions::migrate_skill_listing_m13::handler(ctx)
     }
 
+    pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+        instructions::set_paused::handler(ctx, paused)
+    }
+
     pub fn register_agent(ctx: Context<RegisterAgent>, metadata_uri: String) -> Result<()> {
         instructions::register_agent::handler(ctx, metadata_uri)
     }
@@ -84,6 +88,12 @@ pub mod agentvouch {
         ruling: AuthorDisputeRuling,
     ) -> Result<()> {
         instructions::resolve_author_dispute::handler(ctx, dispute_id, ruling)
+    }
+
+    pub fn slash_dispute_vouches<'info>(
+        ctx: Context<'_, '_, 'info, 'info, SlashDisputeVouches<'info>>,
+    ) -> Result<()> {
+        instructions::slash_dispute_vouches::handler(ctx)
     }
 
     pub fn create_skill_listing(

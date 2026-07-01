@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  incrementInstalls,
+  getOptionalDownloadAuthPubkey,
+  recordInstallAndDownloadEvent,
   resolveSkillAccess,
 } from "@/lib/skillRawAccess";
 import { buildArchiveForVersion } from "@/lib/skillStorage";
@@ -18,7 +19,18 @@ export async function GET(
     }
 
     const archive = await buildArchiveForVersion(access.skill);
-    await incrementInstalls(access.skill.id);
+    await recordInstallAndDownloadEvent(access.skill.id, {
+      kind: "archive",
+      request,
+      walletPubkey: getOptionalDownloadAuthPubkey(
+        request,
+        id,
+        access.skill.on_chain_address
+      ),
+      authPresent: Boolean(request.headers.get("x-agentvouch-auth")),
+      skillVersionId: access.skill.version_id,
+      skillVersion: access.skill.version,
+    });
     const treeHash = access.skill.tree_hash ?? "skill";
     return new NextResponse(new Uint8Array(archive), {
       headers: {

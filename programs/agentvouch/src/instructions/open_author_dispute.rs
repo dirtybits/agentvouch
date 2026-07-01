@@ -29,6 +29,7 @@ pub struct OpenAuthorDispute<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Box<Account<'info, ReputationConfig>>,
 
+    #[account(mut)]
     pub skill_listing: Box<Account<'info, SkillListing>>,
 
     pub purchase: Option<Box<Account<'info, Purchase>>>,
@@ -140,6 +141,11 @@ pub fn handler<'info>(
             settlement.skill_listing == skill_listing,
             ErrorCode::ListingSettlementMismatch
         );
+        require_keys_eq!(
+            settlement.key(),
+            ctx.accounts.skill_listing.current_settlement,
+            ErrorCode::ListingSettlementMismatch
+        );
         require!(
             settlement.revision == ctx.accounts.skill_listing.current_revision,
             ErrorCode::ListingSettlementMismatch
@@ -148,8 +154,17 @@ pub fn handler<'info>(
             settlement.locked_by_dispute.is_none(),
             ErrorCode::ListingSettlementAlreadyLocked
         );
+        // Listing-level mirror of the settlement lock: survives settlement
+        // rotation, freezes slash-set membership (link/unlink), revision
+        // bumps, and new-settlement init until the dispute fully settles.
+        require!(
+            !ctx.accounts.skill_listing.is_dispute_locked(),
+            ErrorCode::ListingSettlementAlreadyLocked
+        );
         settlement.locked_by_dispute = Some(ctx.accounts.author_dispute.key());
         settlement.updated_at = clock.unix_timestamp;
+        ctx.accounts.skill_listing.locked_by_dispute = Some(ctx.accounts.author_dispute.key());
+        ctx.accounts.skill_listing.updated_at = clock.unix_timestamp;
     }
     let purchase = ctx.accounts.purchase.as_ref().map(|account| account.key());
 

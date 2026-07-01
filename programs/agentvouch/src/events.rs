@@ -1,6 +1,14 @@
 use anchor_lang::prelude::*;
 
 #[event]
+pub struct PauseStateChanged {
+    pub config: Pubkey,
+    pub pause_authority: Pubkey,
+    pub paused: bool,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct VouchCreated {
     pub vouch: Pubkey,
     pub voucher: Pubkey,
@@ -80,6 +88,27 @@ pub struct AuthorDisputeResolved {
 pub struct AuthorDisputeVouchLinked {
     pub author_dispute: Pubkey,
     pub vouch: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct VoucherSlashed {
+    pub author_dispute: Pubkey,
+    pub vouch: Pubkey,
+    pub voucher: Pubkey,
+    pub vouchee: Pubkey,
+    pub listing_vouch_position: Pubkey,
+    pub slash_usdc_micros: u64,
+    pub residual_stake_usdc_micros: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct AuthorDisputeSlashingFinalized {
+    pub author_dispute: Pubkey,
+    pub author: Pubkey,
+    pub processed_vouch_count: u32,
+    pub voucher_slashed_usdc_micros: u64,
     pub timestamp: i64,
 }
 

@@ -46,7 +46,9 @@ const ACCOUNT_FEATURES = [
 ] as const;
 
 type StandardEvent = "change";
-type StandardEventListener = (event: { accounts: readonly WalletAccount[] }) => void;
+type StandardEventListener = (event: {
+  accounts: readonly WalletAccount[];
+}) => void;
 type SignAndSendInput = {
   account: WalletAccount;
   transaction?: Uint8Array;
@@ -62,8 +64,7 @@ export type PhantomEmbeddedWalletHandle = {
 };
 
 function base58ToBytes(base58: string): Uint8Array {
-  const ALPHABET =
-    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const map = new Map<string, number>();
   for (let i = 0; i < ALPHABET.length; i++) {
     map.set(ALPHABET[i], i);
@@ -100,7 +101,10 @@ export function createPhantomEmbeddedWallet(): PhantomEmbeddedWalletHandle {
   let accounts: WalletAccount[] = [];
   const listeners = new Map<StandardEvent, Set<StandardEventListener>>();
 
-  const emit = (event: StandardEvent, payload: { accounts: readonly WalletAccount[] }) => {
+  const emit = (
+    event: StandardEvent,
+    payload: { accounts: readonly WalletAccount[] }
+  ) => {
     const set = listeners.get(event);
     if (!set) return;
     for (const listener of set) {

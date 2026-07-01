@@ -12,6 +12,10 @@ pub enum AuthorDisputeReason {
 pub enum AuthorDisputeStatus {
     Open,
     Resolved,
+    /// Upheld ruling recorded, but linked vouch positions are still being
+    /// slashed page by page via `slash_dispute_vouches`. The dispute still
+    /// counts as open for `open_author_disputes` until the final page.
+    SlashingVouchers,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]

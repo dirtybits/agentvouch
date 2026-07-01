@@ -10,6 +10,10 @@ export type RecommendedAction = "allow" | "review" | "avoid";
 export interface AgentTrustSummary {
   wallet_pubkey: string;
   canonical_agent_id: string;
+  username: string | null;
+  display_name: string | null;
+  github_login: string | null;
+  github_url: string | null;
   chain_context: string;
   schema_version: string;
   trust_updated_at: string;
@@ -58,6 +62,10 @@ export function buildAgentTrustSummary(params: {
     canonical_agent_id:
       params.identity?.canonicalAgentId ||
       buildLocalCanonicalAgentId(params.walletPubkey, chainContext),
+    username: params.identity?.username ?? null,
+    display_name: params.identity?.displayName ?? null,
+    github_login: params.identity?.githubProfile?.login ?? null,
+    github_url: params.identity?.githubProfile?.url ?? null,
     chain_context: chainContext,
     schema_version: AGENT_DISCOVERY_SCHEMA_VERSION,
     trust_updated_at: params.trustUpdatedAt || new Date().toISOString(),

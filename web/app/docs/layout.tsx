@@ -7,9 +7,12 @@ export const metadata: Metadata = buildMetadata({
     "Integrate with the AgentVouch reputation oracle. Discover skills, inspect author trust, verify paid downloads, and query on-chain reputation signals for AI agents.",
   path: "/docs",
   keywords: [
+    "trusted agent skills",
+    "trusted skills marketplace",
     "agent reputation oracle",
     "solana agent reputation",
     "agent trust score",
+    "AgentVouch CLI",
     "skill.md security",
   ],
 });

@@ -11,6 +11,7 @@ import {
   hasScanEscalationSignal,
   recordHeuristicReviewScan,
 } from "@/lib/ai/scan";
+import { reserveScanBudget, releaseScanBudget } from "@/lib/ai/scanBudget";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -24,8 +25,12 @@ import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
 import type { AuthorTrust } from "@/lib/trust";
 import { resolveAuthorTrust } from "@/lib/trust";
 import type { SkillSecurityScan } from "@/lib/securityScan";
-
-type OpenWorldAction = "allow" | "review" | "avoid" | "unknown";
+import {
+  buildTrustSignals,
+  recommendedActionFromSignals,
+  type OpenWorldAction,
+} from "@/lib/trustSignals";
+import { upsertResolvedAuthorTrustSnapshot } from "@/lib/trustSnapshots";
 
 type CheckRequestBody = {
   author?: unknown;
@@ -53,16 +58,39 @@ const IP_GENERATION_LIMIT = Number(process.env.AI_SCAN_IP_WINDOW_LIMIT ?? 20);
 const GLOBAL_GENERATION_LIMIT = Number(
   process.env.AI_SCAN_GLOBAL_WINDOW_LIMIT ?? 100
 );
-const DAILY_GENERATION_LIMIT = Number(
-  process.env.AI_SCAN_DAILY_GENERATION_LIMIT ?? 200
-);
-const MONTHLY_GENERATION_LIMIT = Number(
-  process.env.AI_SCAN_MONTHLY_GENERATION_LIMIT ?? 2000
-);
 const MAX_CHECK_BODY_BYTES = MAX_SKILL_TREE_BYTES + 256 * 1024;
+
+const MAX_TRACKED_IPS = 10_000;
 
 const ipWindows = new Map<string, RateWindow>();
 const globalWindow: RateWindow = { resetAt: 0, count: 0 };
+
+// On Vercel, x-real-ip is set by the platform to the true client IP and cannot
+// be spoofed by the caller; x-forwarded-for may carry client-prepended hops, so
+// its leftmost entry is attacker-controlled. Prefer x-real-ip, falling back to
+// the nearest (rightmost) forwarded hop only for local / non-Vercel dev.
+function clientIp(request: NextRequest): string {
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  const hops = request.headers
+    .get("x-forwarded-for")
+    ?.split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return hops && hops.length > 0 ? hops[hops.length - 1] : "unknown";
+}
+
+// Bound the in-memory IP table so a flood of distinct IPs cannot grow it without
+// limit. Drop windows that have already expired; if still over the cap, the
+// global window and the durable daily/monthly budget remain as backstops. Note:
+// this map is per-instance and is best-effort burst smoothing only — the durable
+// budget counters are the authoritative cross-instance spend cap.
+function pruneIpWindows(now: number) {
+  if (ipWindows.size <= MAX_TRACKED_IPS) return;
+  for (const [ip, window] of ipWindows) {
+    if (now >= window.resetAt) ipWindows.delete(ip);
+  }
+}
 
 class CheckRequestError extends Error {
   constructor(message: string, public status = 400) {
@@ -101,7 +129,9 @@ async function readBoundedJsonBody(
   }
 
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as CheckRequestBody;
+    return JSON.parse(
+      Buffer.concat(chunks).toString("utf8")
+    ) as CheckRequestBody;
   } catch {
     throw new CheckRequestError("Invalid JSON body", 400);
   }
@@ -114,12 +144,12 @@ function resetWindowIfNeeded(window: RateWindow, now: number) {
   }
 }
 
-function takeGenerationSlot(request: NextRequest):
-  | { ok: true }
-  | { ok: false; reason: string; retryAfterSeconds: number } {
+function takeGenerationSlot(
+  request: NextRequest
+): { ok: true } | { ok: false; reason: string; retryAfterSeconds: number } {
   const now = Date.now();
-  const forwarded = request.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  pruneIpWindows(now);
+  const ip = clientIp(request);
   const ipWindow = ipWindows.get(ip) ?? { resetAt: 0, count: 0 };
   resetWindowIfNeeded(ipWindow, now);
   resetWindowIfNeeded(globalWindow, now);
@@ -146,52 +176,6 @@ function takeGenerationSlot(request: NextRequest):
   return { ok: true };
 }
 
-async function reserveScanBudget(): Promise<
-  | { ok: true }
-  | { ok: false; reason: "daily_scan_budget_exhausted" | "monthly_scan_budget_exhausted" }
-> {
-  if (!Number.isFinite(DAILY_GENERATION_LIMIT) || DAILY_GENERATION_LIMIT <= 0) {
-    return { ok: false, reason: "daily_scan_budget_exhausted" };
-  }
-  if (
-    !Number.isFinite(MONTHLY_GENERATION_LIMIT) ||
-    MONTHLY_GENERATION_LIMIT <= 0
-  ) {
-    return { ok: false, reason: "monthly_scan_budget_exhausted" };
-  }
-
-  const rows = await sql()<{
-    ok: boolean;
-    reason: string | null;
-    daily_reserved: boolean;
-    monthly_reserved: boolean;
-    daily_used: string | number;
-    monthly_used: string | number;
-  }>`
-    SELECT
-      ok,
-      reason,
-      ok AS daily_reserved,
-      ok AS monthly_reserved,
-      daily_used,
-      monthly_used
-    FROM reserve_ai_scan_budget(
-      ${DAILY_GENERATION_LIMIT}::integer,
-      ${MONTHLY_GENERATION_LIMIT}::integer
-    )
-  `;
-  const row = rows[0];
-  if (row?.ok) {
-    return { ok: true };
-  }
-
-  if (row?.reason === "daily_scan_budget_exhausted") {
-    return { ok: false, reason: "daily_scan_budget_exhausted" };
-  }
-
-  return { ok: false, reason: "monthly_scan_budget_exhausted" };
-}
-
 function parseFilesInput(body: CheckRequestBody): SkillTreeInputFile[] | null {
   if (typeof body.content === "string") {
     return [{ path: "SKILL.md", content: body.content }];
@@ -200,11 +184,15 @@ function parseFilesInput(body: CheckRequestBody): SkillTreeInputFile[] | null {
 
   const files = body.files.map((entry): SkillTreeInputFile => {
     if (!entry || typeof entry !== "object") {
-      throw new Error("files entries must be objects with path and content");
+      throw new CheckRequestError(
+        "files entries must be objects with path and content"
+      );
     }
     const file = entry as Record<string, unknown>;
     if (typeof file.path !== "string" || typeof file.content !== "string") {
-      throw new Error("files entries must include string path and content");
+      throw new CheckRequestError(
+        "files entries must include string path and content"
+      );
     }
     return { path: file.path, content: file.content };
   });
@@ -306,7 +294,30 @@ async function buildStakedBlock(author: string | null): Promise<{
   };
 }
 
-function scanBlock(scan: SkillSecurityScan | null, extra?: Record<string, unknown>) {
+async function refreshCachedTrustFromCheck(input: {
+  author: string | null;
+  trust: AuthorTrust | null;
+  summary: AgentTrustSummary | null;
+}): Promise<void> {
+  if (!input.author || !input.trust || !input.summary) return;
+  try {
+    await upsertResolvedAuthorTrustSnapshot({
+      walletPubkey: input.author,
+      trust: input.trust,
+      summary: input.summary,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to refresh author trust snapshot from /api/check:",
+      error
+    );
+  }
+}
+
+function scanBlock(
+  scan: SkillSecurityScan | null,
+  extra?: Record<string, unknown>
+) {
   if (!scan) {
     return {
       verdict: "unknown" as const,
@@ -337,12 +348,14 @@ async function resolveScanForFiles(input: {
 }): Promise<{
   action: OpenWorldAction;
   response: ReturnType<typeof scanBlock>;
+  scan: SkillSecurityScan | null;
 }> {
   const cached = await getCachedSkillScan(input.treeHash);
   if (cached) {
     return {
       action: cached.verdict,
       response: scanBlock(cached, { cached: true, generated: false }),
+      scan: cached,
     };
   }
 
@@ -355,6 +368,7 @@ async function resolveScanForFiles(input: {
         generated: false,
         source: "heuristic_prefilter",
       }),
+      scan: heuristic,
     };
   }
 
@@ -366,6 +380,7 @@ async function resolveScanForFiles(input: {
         unavailable_reason: slot.reason,
         retry_after_seconds: slot.retryAfterSeconds,
       }),
+      scan: null,
     };
   }
 
@@ -376,30 +391,26 @@ async function resolveScanForFiles(input: {
       response: scanBlock(null, {
         unavailable_reason: budget.reason,
       }),
+      scan: null,
     };
   }
 
-  const generated = await ensureSkillScan(input.treeHash, input.files);
+  // The reservation already incremented the durable counter; refund it if the
+  // model call fails so a provider outage does not burn budget without a scan.
+  const generated = await ensureSkillScan(input.treeHash, input.files).catch(
+    async (error) => {
+      await releaseScanBudget();
+      throw error;
+    }
+  );
   return {
     action: generated.verdict,
     response: scanBlock(generated, {
       cached: generated.cached,
       generated: generated.generated,
     }),
+    scan: generated,
   };
-}
-
-function fuseActions(input: {
-  staked: OpenWorldAction;
-  scan: OpenWorldAction;
-}): OpenWorldAction {
-  const rank: Record<OpenWorldAction, number> = {
-    avoid: 0,
-    review: 1,
-    unknown: 2,
-    allow: 3,
-  };
-  return rank[input.staked] <= rank[input.scan] ? input.staked : input.scan;
 }
 
 export async function POST(request: NextRequest) {
@@ -417,8 +428,8 @@ export async function POST(request: NextRequest) {
     const inputFiles = parseFilesInput(body);
 
     let author = explicitAuthor;
-    let scanAction: OpenWorldAction = "unknown";
     let scanResponse = scanBlock(null);
+    let rawScan: SkillSecurityScan | null = null;
     let resolvedTreeHash: string | null = treeHash;
 
     if (inputFiles) {
@@ -430,8 +441,8 @@ export async function POST(request: NextRequest) {
         files: tree.filesWithBytes,
         knownSkill: false,
       });
-      scanAction = scan.action;
       scanResponse = scan.response;
+      rawScan = scan.scan;
     } else {
       const known = await lookupSkillVersion({ skill, treeHash });
       if (known) {
@@ -445,8 +456,8 @@ export async function POST(request: NextRequest) {
             files,
             knownSkill: true,
           });
-          scanAction = scan.action;
           scanResponse = scan.response;
+          rawScan = scan.scan;
         }
       } else if (treeHash) {
         scanResponse = scanBlock(null, {
@@ -456,15 +467,24 @@ export async function POST(request: NextRequest) {
     }
 
     const staked = await buildStakedBlock(author);
-    const recommendedAction = fuseActions({
-      staked: staked.action,
-      scan: scanAction,
+    await refreshCachedTrustFromCheck({
+      author: staked.response.author,
+      trust: staked.response.trust,
+      summary: staked.response.summary,
     });
+    // The checklist is the source of truth; the one-line verdict is derived from
+    // it so the two can never drift.
+    const signals = buildTrustSignals({
+      trust: staked.response.trust,
+      scan: rawScan,
+    });
+    const recommendedAction = recommendedActionFromSignals(signals);
 
     return NextResponse.json(
       {
         recommended_action: recommendedAction,
         tree_hash: resolvedTreeHash,
+        signals,
         staked: staked.response,
         scan: scanResponse,
         disclaimer:

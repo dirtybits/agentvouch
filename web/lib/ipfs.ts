@@ -21,6 +21,21 @@ export interface PinResult {
 }
 
 /**
+ * Best-effort unpin. No-ops when Pinata is not configured or the CID is empty.
+ * Used for cleanup on DB insert failures so orphaned pins don't accumulate.
+ */
+export async function unpinSkillContent(cid: string): Promise<void> {
+  if (!cid) return;
+  const pinata = getPinata();
+  if (!pinata) return;
+  try {
+    await pinata.files.public.delete([cid]);
+  } catch {
+    // Ignore — this is always best-effort.
+  }
+}
+
+/**
  * Pins SKILL.md content to IPFS via Pinata.
  * Returns CID on success. If Pinata is unavailable, returns a graceful failure
  * so the skill can still be stored in Postgres without blocking.

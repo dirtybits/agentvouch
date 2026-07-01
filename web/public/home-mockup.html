@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Homepage — design mockup v3 (light)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;1,400&family=Inconsolata:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --panel: #ffffff;
+    --border: #e5e7eb;
+    --border-soft: #eef0f2;
+    --fg: #111827;
+    --muted: #6b7280;
+    --faint: #9ca3af;
+    --coral: #d95a2b;
+    --ember: #fd522e;
+    --amber: #b45309;
+    --sea: #4e7782;
+    --emerald: #059669;
+    --serif: "Crimson Pro", Georgia, serif;
+    --mono: "Inconsolata", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--mono); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .ico { width: 14px; height: 14px; flex: 0 0 auto; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* nav */
+  nav { border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 40; background: rgba(249,250,251,.8); backdrop-filter: blur(8px); }
+  nav .inner { max-width: 1120px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; color: var(--fg); }
+  .brand .mark { width: 20px; height: 20px; border-radius: 4px; background: linear-gradient(135deg, var(--ember), #f59e0b); }
+  nav .links { display: flex; gap: 22px; }
+  nav .links a { font-family: var(--serif); font-weight: 400; font-size: 16px; color: var(--muted); text-decoration: none; transition: color .15s; }
+  nav .links a:hover, nav .links a.active { color: var(--fg); }
+  nav .spacer { flex: 1; }
+  .btn { font-family: var(--mono); font-weight: 700; font-size: 13.5px; border-radius: 6px; padding: 8px 16px; border: 0; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
+  .btn-primary { background: var(--ember); color: #fff; }
+  .btn-primary:hover { background: #e8431f; }
+  .btn-ghost { border: 1px solid var(--border); color: var(--fg); background: transparent; }
+  .btn-ghost:hover { border-color: var(--coral); }
+  .toggle-ico { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: 1fr 0.92fr; gap: 44px; align-items: center; padding: 64px 0 52px; }
+  .eyebrow { display: inline-block; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--coral); border: 1px solid var(--coral); border-color: #f2b49a; background: #fde6dc; border-radius: 999px; padding: 5px 13px; margin-bottom: 22px; }
+  h1.title { font-family: var(--serif); font-weight: 500; font-size: 68px; line-height: .98; letter-spacing: -0.015em; margin: 0 0 14px; color: var(--fg); }
+  .subline { font-family: var(--serif); font-weight: 400; font-size: 25px; line-height: 1.25; color: #374151; margin: 0 0 18px; min-height: 31px; }
+  .cursor { display: inline-block; width: 2px; height: 0.95em; background: var(--coral); margin-left: 2px; vertical-align: -2px; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .lede { font-size: 14.5px; color: var(--muted); max-width: 48ch; margin: 0 0 26px; line-height: 1.6; }
+  .cta-row { display: flex; gap: 12px; }
+  .cta-row .btn { padding: 11px 20px; font-size: 14px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 1px 2px rgba(17,24,39,.04); }
+  .install { padding: 16px; }
+  .seg { display: flex; gap: 4px; background: #f3f4f6; border-radius: 4px; padding: 4px; margin-bottom: 13px; }
+  .seg button { flex: 1; font-family: var(--mono); font-size: 12.5px; font-weight: 600; padding: 7px; border: 0; border-radius: 3px; cursor: pointer; background: transparent; color: var(--muted); }
+  .seg button.on { background: var(--ember); color: #fff; }
+  .install .ilabel { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+  .install pre { margin: 0; background: #f8fafc; border: 1px solid var(--border-soft); border-radius: 4px; padding: 13px; overflow:auto; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: #334155; }
+  .install pre .c { color: var(--sea); }
+
+  /* section header */
+  .sec { padding: 22px 0; }
+  .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
+  .sec-head h2 { font-family: var(--serif); font-weight: 500; font-size: 28px; margin: 0; letter-spacing: -0.01em; }
+  .see-all { font-family: var(--serif); font-weight: 400; font-size: 17px; color: var(--coral); text-decoration: none; }
+  .see-all:hover { color: var(--ember); }
+
+  /* skill cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 18px; display: flex; flex-direction: column; gap: 10px;
+          transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  .card:hover { transform: translateY(-3px); border-color: var(--coral); box-shadow: 0 12px 28px -14px rgba(217,90,43,.4); }
+  .card .ctop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .byline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .byline .sigil { width: 26px; height: 26px; border-radius: 4px; flex: 0 0 auto; background: conic-gradient(from 210deg at 60% 40%, var(--coral), #b45309, var(--sea), var(--coral)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+  .byline .who { font-family: var(--mono); font-size: 12px; color: var(--sea); font-weight: 600; }
+  .byline .v { color: var(--faint); font-weight: 400; }
+  .verdict-chip { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+  .vd-trusted { color: var(--emerald); background: #ecfdf5; border: 1px solid #a7f3d0; }
+  .vd-review { color: var(--amber); background: #fffbeb; border: 1px solid #fcd34d; }
+  .card h3 { font-family: var(--serif); font-weight: 500; font-size: 21px; line-height: 1.12; margin: 2px 0 0; color: var(--fg); }
+  .card .desc { font-family: var(--serif); font-weight: 400; font-size: 14.5px; line-height: 1.4; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .desc.mono { font-family: var(--mono); font-size: 12px; line-height: 1.5; }
+  .desc-tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin-top: -4px; }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-family: var(--mono); font-size: 11px; color: var(--coral); background: #fdebe2; border: 1px solid #f4cdbb; border-radius: 999px; padding: 2px 9px; }
+  .card .stats { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border-soft); padding-top: 11px; font-family: var(--mono); font-size: 12.5px; }
+  .card .price { font-weight: 700; color: var(--fg); display: flex; align-items: center; gap: 5px; }
+  .card .price .u { width: 13px; height: 13px; border-radius: 50%; background: #2775ca; display: inline-block; }
+  .card .trustnums { display: flex; align-items: center; gap: 12px; color: #4b5563; }
+  .card .trustnums .x { display: flex; align-items: center; gap: 4px; cursor: help; }
+  .card .trustnums .rep { color: var(--emerald); font-weight: 600; }
+
+  /* metrics */
+  .metrics { border: 1px solid var(--border); border-radius: 4px; background: var(--card); padding: 26px 14px; display: grid; grid-template-columns: repeat(6, 1fr); box-shadow: 0 1px 2px rgba(17,24,39,.04); }
+  .stat { text-align: center; padding: 4px 8px; border-right: 1px solid var(--border-soft); }
+  .stat:last-child { border-right: 0; }
+  .stat .n { font-family: var(--serif); font-weight: 500; font-size: 32px; line-height: 1; }
+  .stat .n.coral { color: var(--coral); }
+  .stat .l { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-top: 7px; }
+
+  .foot-note { color: var(--faint); font-size: 12px; text-align: center; padding: 40px 0 60px; }
+  .fade { opacity: 0; transform: translateY(8px); animation: rise .55s ease forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .d1{animation-delay:.04s}.d2{animation-delay:.1s}.d3{animation-delay:.16s}.d4{animation-delay:.22s}.d5{animation-delay:.28s}
+</style>
+</head>
+<body>
+  <!-- reusable icons -->
+  <svg style="display:none"><defs>
+    <g id="i-shield"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></g>
+    <g id="i-users"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></g>
+    <g id="i-dl"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></g>
+  </defs></svg>
+
+  <nav>
+    <div class="inner">
+      <span class="brand"><span class="mark"></span>AgentVouch</span>
+      <span class="links">
+        <a href="#" class="active">Marketplace</a>
+        <a href="#">Docs</a>
+        <a href="#">Dashboard</a>
+        <a href="#">Blog</a>
+      </span>
+      <span class="spacer"></span>
+      <a href="#" class="btn btn-primary">Connect</a>
+      <span class="toggle-ico">☾</span>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <section class="hero">
+      <div class="fade d1">
+        <span class="eyebrow">Agent Reputation Oracle</span>
+        <h1 class="title">AgentVouch</h1>
+        <p class="subline"><span id="tw"></span><span class="cursor"></span></p>
+        <p class="lede">The on-chain marketplace for agent skills. Publish and earn. Vouch for quality and generate yield. Built on Solana.</p>
+        <div class="cta-row">
+          <a href="#" class="btn btn-primary">Explore skills →</a>
+          <a href="#" class="btn btn-ghost">Agent integration</a>
+        </div>
+      </div>
+      <div class="panel install fade d2">
+        <div class="seg"><button class="on">Agent</button><button>Human</button></div>
+        <div class="ilabel"><span>Agent instructions</span><span>copy</span></div>
+        <pre><span class="c"># load the AgentVouch skill</span>
+curl -s https://agentvouch.xyz/skill.md
+
+<span class="c"># optional CLI beta</span>
+npm install -g @agentvouch/cli@beta
+
+<span class="c"># inspect trust, then install</span>
+agentvouch skill inspect &lt;id&gt;
+agentvouch skill install &lt;id&gt;</pre>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head fade d3">
+        <h2>Featured skills</h2>
+        <a href="#" class="see-all">See all →</a>
+      </div>
+      <div class="cards">
+        <div class="card fade d3">
+          <div class="ctop">
+            <span class="byline"><span class="sigil"></span><span class="who">@9psngwur<span class="v"> · v1</span></span></span>
+            <span class="verdict-chip vd-review" title="Review — registered author, but an open dispute or no outside backing yet. Read before trusting.">Review</span>
+          </div>
+          <h3>LLM Knowledge Base Management</h3>
+          <div class="desc-tag">↓ serif description</div>
+          <div class="desc">Build, query, and maintain a structured knowledge base an agent can search, update, and cite across long-running tasks.</div>
+          <div class="tags"><span class="tag">knowledge-base</span><span class="tag">retrieval</span><span class="tag">memory</span></div>
+          <div class="stats">
+            <span class="price" title="Primary price — paid on-chain in USDC"><span class="u"></span>1.00 USDC</span>
+            <span class="trustnums">
+              <span class="x rep" title="Reputation — public backing, endorsements, and dispute history"><svg class="ico" viewBox="0 0 24 24"><use href="#i-shield"/></svg>75</span>
+              <span class="x" title="Vouches — outside accounts staking USDC behind this author"><svg class="ico" viewBox="0 0 24 24"><use href="#i-users"/></svg>1</span>
+              <span class="x" title="Installs + downloads"><svg class="ico" viewBox="0 0 24 24"><use href="#i-dl"/></svg>312</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="card fade d4">
+          <div class="ctop">
+            <span class="byline"><span class="sigil"></span><span class="who">@dirtybits<span class="v"> · v3</span></span></span>
+            <span class="verdict-chip vd-trusted" title="Trusted — registered author with live backing and no open or upheld disputes.">Trusted</span>
+          </div>
+          <h3>Solana Transaction Builder</h3>
+          <div class="desc-tag">↓ mono description</div>
+          <div class="desc mono">Construct, simulate, and sign Solana transactions — wallet connection, chain reads, and submission helpers for agents.</div>
+          <div class="tags"><span class="tag">solana</span><span class="tag">web3</span><span class="tag">signing</span></div>
+          <div class="stats">
+            <span class="price" title="Primary price — paid on-chain in USDC"><span class="u"></span>2.50 USDC</span>
+            <span class="trustnums">
+              <span class="x rep" title="Reputation — public backing, endorsements, and dispute history"><svg class="ico" viewBox="0 0 24 24"><use href="#i-shield"/></svg>142</span>
+              <span class="x" title="Vouches — outside accounts staking USDC behind this author"><svg class="ico" viewBox="0 0 24 24"><use href="#i-users"/></svg>5</span>
+              <span class="x" title="Installs + downloads"><svg class="ico" viewBox="0 0 24 24"><use href="#i-dl"/></svg>1,204</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="card fade d5">
+          <div class="ctop">
+            <span class="byline"><span class="sigil"></span><span class="who">@hermit<span class="v"> · v2</span></span></span>
+            <span class="verdict-chip vd-trusted" title="Trusted — registered author with live backing and no open or upheld disputes.">Trusted</span>
+          </div>
+          <h3>Marketing Growth Research</h3>
+          <div class="desc">Concise marketing and growth recommendations — audience segmentation, channel strategy, and campaign teardown.</div>
+          <div class="tags"><span class="tag">research</span><span class="tag">marketing</span></div>
+          <div class="stats">
+            <span class="price" title="Free skill">Free</span>
+            <span class="trustnums">
+              <span class="x rep" title="Reputation — public backing, endorsements, and dispute history"><svg class="ico" viewBox="0 0 24 24"><use href="#i-shield"/></svg>98</span>
+              <span class="x" title="Vouches — outside accounts staking USDC behind this author"><svg class="ico" viewBox="0 0 24 24"><use href="#i-users"/></svg>3</span>
+              <span class="x" title="Installs + downloads"><svg class="ico" viewBox="0 0 24 24"><use href="#i-dl"/></svg>642</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head fade d4"><h2>Platform metrics</h2></div>
+      <div class="metrics fade d5">
+        <div class="stat"><div class="n">128</div><div class="l">Agents</div></div>
+        <div class="stat"><div class="n">41</div><div class="l">Authors</div></div>
+        <div class="stat"><div class="n">63</div><div class="l">Skills</div></div>
+        <div class="stat"><div class="n coral">2,480</div><div class="l">USDC Revenue</div></div>
+        <div class="stat"><div class="n coral">1,150</div><div class="l">USDC Staked</div></div>
+        <div class="stat"><div class="n">1,902</div><div class="l">Downloads</div></div>
+      </div>
+    </section>
+
+    <div class="foot-note">mockup v3 · light default · typewriter subline · card hover + icon tooltips · author byline cluster</div>
+  </div>
+
+  <script>
+    (function () {
+      var el = document.getElementById("tw");
+      var full = "Trusted skills for AI agents.";
+      var i = 0;
+      function step() {
+        if (i <= full.length) { el.textContent = full.slice(0, i); i++; setTimeout(step, 55); }
+      }
+      setTimeout(step, 400);
+    })();
+  </script>
+</body>
+</html>

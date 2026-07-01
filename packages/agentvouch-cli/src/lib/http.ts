@@ -3,9 +3,13 @@ import type { AuthPayload, PaymentRequirement } from "@agentvouch/protocol";
 import {
   decodePaymentResponseHeader,
   type PaymentRequired as X402PaymentRequired,
-  type SettleResponse as X402SettleResponse,
 } from "@x402/fetch";
 import { CliError } from "./errors.js";
+
+// @x402/fetch v2.10.0 no longer re-exports SettleResponse. Derive it from the
+// decode helper that actually produces our payment-response values so the type
+// can never drift from the library.
+type X402SettleResponse = ReturnType<typeof decodePaymentResponseHeader>;
 
 export interface SkillAuthorTrust {
   isRegistered?: boolean;
@@ -35,6 +39,14 @@ export interface SkillAuthorTrustSummary {
   activeDisputesAgainstAuthor: number;
   registeredAt: number;
   isRegistered: boolean;
+}
+
+export interface TrustSignalRecord {
+  id: string;
+  label: string;
+  scope: "skill" | "author";
+  status: "pass" | "warn" | "fail" | "unknown";
+  detail: string;
 }
 
 export interface SkillRecord {
@@ -86,6 +98,7 @@ export interface SkillRecord {
   author_identity?: {
     name?: string | null;
   } | null;
+  signals?: TrustSignalRecord[] | null;
 }
 
 export interface SkillUpdateCheckResponse {
@@ -155,6 +168,7 @@ export interface AgentTrustResponse {
     canonicalAgentId?: string | null;
   } | null;
   author_disputes?: Array<Record<string, unknown>>;
+  signals?: TrustSignalRecord[] | null;
 }
 
 export interface ListSkillsOptions {
@@ -224,7 +238,9 @@ function parsePaymentRequirement(response: Response, body?: unknown) {
   return undefined;
 }
 
-function parseX402PaymentRequired(body?: unknown): X402PaymentRequired | undefined {
+function parseX402PaymentRequired(
+  body?: unknown
+): X402PaymentRequired | undefined {
   if (
     body &&
     typeof body === "object" &&
@@ -326,6 +342,48 @@ async function parseFailedDownload(
   };
 }
 
+interface ApiErrorBody {
+  error?: string;
+}
+
+function isApiErrorBody(body: unknown): body is { error: string } {
+  return (
+    !!body &&
+    typeof body === "object" &&
+    "error" in body &&
+    typeof (body as { error?: unknown }).error === "string"
+  );
+}
+
+/**
+ * Parse a JSON response, throwing a CliError on a non-ok status, an error body,
+ * or a failed validity check. Localizes the single unavoidable `as T` so call
+ * sites stay free of the `T | { error?: string }` union that defeats narrowing.
+ */
+async function readJsonOrThrow<T>(
+  response: Response,
+  action: string,
+  isValid?: (body: T) => boolean
+): Promise<T> {
+  const body = (await response.json().catch(() => null)) as
+    | T
+    | ApiErrorBody
+    | null;
+  if (
+    !response.ok ||
+    !body ||
+    isApiErrorBody(body) ||
+    (isValid && !isValid(body as T))
+  ) {
+    const message = (body as ApiErrorBody | null)?.error || response.statusText;
+    throw new CliError(`Failed to ${action}: ${message}`, {
+      exitCode: 1,
+      data: body,
+    });
+  }
+  return body as T;
+}
+
 export class AgentVouchApiClient {
   constructor(private readonly baseUrl: string) {}
 
@@ -358,42 +416,16 @@ export class AgentVouchApiClient {
     const response = await fetch(
       this.url(`/api/skills${query ? `?${query}` : ""}`)
     );
-    const body = (await response.json().catch(() => null)) as
-      | SkillListResponse
-      | { error?: string }
-      | null;
-
-    if (
-      !response.ok ||
-      !body ||
-      "error" in body ||
-      !Array.isArray(body.skills) ||
-      !body.pagination
-    ) {
-      throw new CliError(
-        `Failed to list skills: ${body?.error || response.statusText}`,
-        { exitCode: 1, data: body }
-      );
-    }
-
-    return body;
+    return readJsonOrThrow<SkillListResponse>(
+      response,
+      "list skills",
+      (b) => Array.isArray(b.skills) && !!b.pagination
+    );
   }
 
   async getSkill(id: string): Promise<SkillRecord> {
     const response = await fetch(this.url(`/api/skills/${id}`));
-    const body = (await response.json().catch(() => null)) as
-      | SkillRecord
-      | { error?: string }
-      | null;
-
-    if (!response.ok || !body || "error" in body) {
-      throw new CliError(
-        `Failed to inspect skill ${id}: ${body?.error || response.statusText}`,
-        { exitCode: 1, data: body }
-      );
-    }
-
-    return body;
+    return readJsonOrThrow<SkillRecord>(response, `inspect skill ${id}`);
   }
 
   async listAuthors(
@@ -403,43 +435,17 @@ export class AgentVouchApiClient {
       ? "/api/index/trusted-authors"
       : "/api/index/authors";
     const response = await fetch(this.url(pathname));
-    const body = (await response.json().catch(() => null)) as
-      | AuthorListResponse
-      | { error?: string }
-      | null;
-
-    if (
-      !response.ok ||
-      !body ||
-      "error" in body ||
-      !Array.isArray(body.authors)
-    ) {
-      throw new CliError(
-        `Failed to list authors: ${body?.error || response.statusText}`,
-        { exitCode: 1, data: body }
-      );
-    }
-
-    return body;
+    return readJsonOrThrow<AuthorListResponse>(response, "list authors", (b) =>
+      Array.isArray(b.authors)
+    );
   }
 
   async getAgentTrust(pubkey: string): Promise<AgentTrustResponse> {
     const response = await fetch(this.url(`/api/agents/${pubkey}/trust`));
-    const body = (await response.json().catch(() => null)) as
-      | AgentTrustResponse
-      | { error?: string }
-      | null;
-
-    if (!response.ok || !body || "error" in body) {
-      throw new CliError(
-        `Failed to fetch agent trust for ${pubkey}: ${
-          body?.error || response.statusText
-        }`,
-        { exitCode: 1, data: body }
-      );
-    }
-
-    return body;
+    return readJsonOrThrow<AgentTrustResponse>(
+      response,
+      `fetch agent trust for ${pubkey}`
+    );
   }
 
   async fetchRemoteText(url: string): Promise<string> {
@@ -532,14 +538,18 @@ export class AgentVouchApiClient {
       listingAddress: string;
     }
   ): Promise<void> {
-    const response = await fetch(this.url(`/api/skills/${id}/purchase/verify`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | { ok?: boolean; error?: string }
-      | null;
+    const response = await fetch(
+      this.url(`/api/skills/${id}/purchase/verify`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      error?: string;
+    } | null;
 
     if (!response.ok || !payload?.ok) {
       throw new CliError(
@@ -559,21 +569,10 @@ export class AgentVouchApiClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const payload = (await response.json().catch(() => null)) as
-      | PublishedSkillRecord
-      | { error?: string }
-      | null;
-
-    if (!response.ok || !payload || "error" in payload) {
-      throw new CliError(
-        `Failed to publish repo skill: ${
-          payload?.error || response.statusText
-        }`,
-        { exitCode: 1, data: payload }
-      );
-    }
-
-    return payload;
+    return readJsonOrThrow<PublishedSkillRecord>(
+      response,
+      "publish repo skill"
+    );
   }
 
   async linkSkillListing(
@@ -585,21 +584,10 @@ export class AgentVouchApiClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const payload = (await response.json().catch(() => null)) as
-      | SkillRecord
-      | { error?: string }
-      | null;
-
-    if (!response.ok || !payload || "error" in payload) {
-      throw new CliError(
-        `Failed to link repo skill ${skillId} to on-chain listing: ${
-          payload?.error || response.statusText
-        }`,
-        { exitCode: 1, data: payload }
-      );
-    }
-
-    return payload;
+    return readJsonOrThrow<SkillRecord>(
+      response,
+      `link repo skill ${skillId} to on-chain listing`
+    );
   }
 
   async addSkillVersion(
@@ -611,21 +599,10 @@ export class AgentVouchApiClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const payload = (await response.json().catch(() => null)) as
-      | { version: number; error?: never }
-      | { error?: string }
-      | null;
-
-    if (!response.ok || !payload || "error" in payload) {
-      throw new CliError(
-        `Failed to add skill version for ${skillId}: ${
-          payload?.error || response.statusText
-        }`,
-        { exitCode: 1, data: payload }
-      );
-    }
-
-    return payload;
+    return readJsonOrThrow<{ version: number }>(
+      response,
+      `add skill version for ${skillId}`
+    );
   }
 
   async checkSkillUpdate(
@@ -651,20 +628,9 @@ export class AgentVouchApiClient {
     const response = await fetch(
       this.url(`/api/skills/${skillId}/update${query ? `?${query}` : ""}`)
     );
-    const payload = (await response.json().catch(() => null)) as
-      | SkillUpdateCheckResponse
-      | { error?: string }
-      | null;
-
-    if (!response.ok || !payload || "error" in payload) {
-      throw new CliError(
-        `Failed to check for updates for ${skillId}: ${
-          payload?.error || response.statusText
-        }`,
-        { exitCode: 1, data: payload }
-      );
-    }
-
-    return payload;
+    return readJsonOrThrow<SkillUpdateCheckResponse>(
+      response,
+      `check for updates for ${skillId}`
+    );
   }
 }

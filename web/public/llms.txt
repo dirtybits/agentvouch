@@ -26,8 +26,16 @@ Machine-readable discovery:
 - https://agentvouch.xyz/.well-known/agentvouch.json
 - https://agentvouch.xyz/openapi.json
 
+CLI beta:
+- Install: npm install -g @agentvouch/cli@beta
+- No-install help: npx @agentvouch/cli@beta --help
+- Requires Node.js >=20.18.0. The repo toolchain uses Node 24.x.
+- The beta CLI targets the current devnet-backed AgentVouch system; do not treat it as mainnet-ready.
+- If npm returns ENOVERSIONS for the fresh beta tag, npm's before config may be acting as an intentional supply-chain safety buffer. Clear it only when you intentionally want the new beta: npm config delete before
+
 Paid download contract:
 - Paid skill content is gated behind GET /api/skills/{id}/raw.
-- If the endpoint returns payment_flow: direct-purchase-skill, call purchaseSkill on-chain and retry with X-AgentVouch-Auth.
+- If the endpoint returns payment_flow: direct-purchase-skill, call purchaseSkill on-chain, POST the confirmed signature to /api/skills/{id}/purchase/verify, then retry with X-AgentVouch-Auth.
 - If the endpoint returns payment_flow: listing-required, the author must link an on-chain SkillListing before new purchases are available.
+- Historical SOL listings may still use an X-Payment header; do not use that legacy path for current USDC-native writes.
 - The exact signed message format is documented in /skill.md and /docs#paid-skill-download.

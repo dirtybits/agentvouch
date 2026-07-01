@@ -23,9 +23,28 @@ describe("db schema bootstrap source", () => {
   it("tracks AI scan budget reservations durably", () => {
     const source = readFileSync(join(process.cwd(), "lib/db.ts"), "utf8");
 
-    expect(source).toContain("CREATE TABLE IF NOT EXISTS ai_scan_budget_counters");
+    expect(source).toContain(
+      "CREATE TABLE IF NOT EXISTS ai_scan_budget_counters"
+    );
     expect(source).toContain("PRIMARY KEY (bucket, period_start)");
-    expect(source).toContain("CREATE OR REPLACE FUNCTION reserve_ai_scan_budget");
+    expect(source).toContain(
+      "CREATE OR REPLACE FUNCTION reserve_ai_scan_budget"
+    );
+    expect(source).toContain(
+      "CREATE OR REPLACE FUNCTION release_ai_scan_budget"
+    );
+    expect(source).toContain("GREATEST(used - 1, 0)");
     expect(source).toContain("pg_advisory_xact_lock");
+  });
+
+  it("records successful skill download events separately from aggregate counts", () => {
+    const source = readFileSync(join(process.cwd(), "lib/db.ts"), "utf8");
+
+    expect(source).toContain(
+      "CREATE TABLE IF NOT EXISTS skill_download_events"
+    );
+    expect(source).toContain("wallet_pubkey VARCHAR(44)");
+    expect(source).toContain("idx_skill_download_events_skill_created");
+    expect(source).toContain("idx_skill_download_events_wallet_created");
   });
 });

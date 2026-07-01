@@ -46,6 +46,22 @@ import {
 } from "@phantom/react-sdk";
 import { useMounted } from "@/hooks/useMounted";
 import {
+  BASE_PASSKEY_WALLET_NAME,
+  BASE_PASSKEY_WALLET_SOURCE,
+  BASE_SEPOLIA_CHAIN_LABEL,
+  BASE_WALLET_UNCONFIGURED_MESSAGE,
+  getBaseWalletConfig,
+} from "@/lib/adapters/baseWalletConfig";
+import {
+  createBasePasskeyChainWallet,
+  type BasePasskeySmartAccount,
+} from "@/lib/adapters/baseWallet";
+import type { ChainWallet } from "@/lib/adapters/types";
+import {
+  BASE_SEPOLIA_CHAIN_CONTEXT,
+  getConfiguredSolanaChainContext,
+} from "@/lib/chains";
+import {
   createPhantomEmbeddedWallet,
   PHANTOM_EMBEDDED_WALLET_NAME,
   type PhantomEmbeddedWalletHandle,
@@ -101,6 +117,33 @@ type AgentVouchWalletSignerContextValue = {
   source: AgentVouchWalletSource;
 };
 
+type BasePasskeyWalletContextValue = {
+  status: AgentVouchWalletStatus;
+  account: string | null;
+  walletName: typeof BASE_PASSKEY_WALLET_NAME | null;
+  source: typeof BASE_PASSKEY_WALLET_SOURCE | null;
+  chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+  chainLabel: typeof BASE_SEPOLIA_CHAIN_LABEL;
+  configured: boolean;
+  config: ReturnType<typeof getBaseWalletConfig>;
+  error: string | null;
+  chainWallet: ChainWallet | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+};
+
+type AgentVouchChainWalletContextValue = {
+  status: AgentVouchWalletStatus;
+  account: string | null;
+  chainContext: string | null;
+  walletName: string | null;
+  source: AgentVouchWalletSource | typeof BASE_PASSKEY_WALLET_SOURCE;
+  chainWallet: ChainWallet | null;
+  solana: AgentVouchWalletContextValue;
+  base: BasePasskeyWalletContextValue;
+  disconnect: () => Promise<void>;
+};
+
 const AgentVouchWalletContext = createContext<AgentVouchWalletContextValue>({
   status: "disconnected",
   account: null,
@@ -122,9 +165,72 @@ const AgentVouchWalletSignerContext =
     source: null,
   });
 
+const baseWalletConfig = getBaseWalletConfig();
+const baseWalletConfigured = baseWalletConfig.configured;
+const solanaChainContext = getConfiguredSolanaChainContext();
+const baseWalletConfigError = baseWalletConfigured
+  ? null
+  : BASE_WALLET_UNCONFIGURED_MESSAGE;
+const BasePasskeyWalletContext = createContext<BasePasskeyWalletContextValue>({
+  status: "disconnected",
+  account: null,
+  walletName: null,
+  source: null,
+  chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+  chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
+  configured: baseWalletConfigured,
+  config: baseWalletConfig,
+  error: baseWalletConfigError,
+  chainWallet: null,
+  connect: async () => {
+    throw new Error("Base wallet provider is not mounted");
+  },
+  disconnect: async () => {},
+});
+
+const AgentVouchChainWalletContext =
+  createContext<AgentVouchChainWalletContextValue>({
+    status: "disconnected",
+    account: null,
+    chainContext: null,
+    walletName: null,
+    source: null,
+    chainWallet: null,
+    solana: {
+      status: "disconnected",
+      account: null,
+      walletName: null,
+      source: null,
+      phantomInstalled: false,
+      connectPhantomExtension: async () => {
+        throw new Error("Wallet provider is not mounted");
+      },
+      disconnect: async () => {},
+    },
+    base: {
+      status: "disconnected",
+      account: null,
+      walletName: null,
+      source: null,
+      chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+      chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
+      configured: baseWalletConfigured,
+      config: baseWalletConfig,
+      error: baseWalletConfigError,
+      chainWallet: null,
+      connect: async () => {
+        throw new Error("Base wallet provider is not mounted");
+      },
+      disconnect: async () => {},
+    },
+    disconnect: async () => {},
+  });
+
 export const useAgentVouchWallet = () => useContext(AgentVouchWalletContext);
 export const useAgentVouchWalletSigner = () =>
   useContext(AgentVouchWalletSignerContext);
+export const useBasePasskeyWallet = () => useContext(BasePasskeyWalletContext);
+export const useChainWallet = () => useContext(AgentVouchChainWalletContext);
 
 const ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -322,10 +428,7 @@ function StoredWalletAutoConnectBridge({
         saveStoredWalletName(name);
         wasConnectedRef.current = true;
       }
-    } else if (
-      wallet.status === "disconnected" &&
-      wasConnectedRef.current
-    ) {
+    } else if (wallet.status === "disconnected" && wasConnectedRef.current) {
       clearStoredWalletName();
       wasConnectedRef.current = false;
     }
@@ -336,8 +439,7 @@ function StoredWalletAutoConnectBridge({
     if (attemptedRef.current) return;
     if (wallet.status === "connected" || wallet.status === "connecting") return;
 
-    const storedWalletName =
-      initialWalletName ?? getStoredWalletName();
+    const storedWalletName = initialWalletName ?? getStoredWalletName();
     if (!storedWalletName) return;
     if (storedWalletName === PHANTOM_LEGACY_WALLET_NAME) return;
 
@@ -413,6 +515,11 @@ function AgentVouchWalletBridge({
   const [phantomStatus, setPhantomStatus] =
     useState<AgentVouchWalletStatus>("disconnected");
   const [phantomAccount, setPhantomAccount] = useState<Address | null>(null);
+  const [baseStatus, setBaseStatus] =
+    useState<AgentVouchWalletStatus>("disconnected");
+  const [baseSmartAccount, setBaseSmartAccount] =
+    useState<BasePasskeySmartAccount | null>(null);
+  const [baseError, setBaseError] = useState<string | null>(null);
   const directAutoConnectAttemptedRef = useRef(false);
 
   const connectorWalletName = useMemo(
@@ -522,6 +629,37 @@ function AgentVouchWalletBridge({
     });
   }, [connectPhantomExtension, phantomLegacy]);
 
+  useEffect(() => {
+    if (!baseWalletConfigured) return;
+
+    let cancelled = false;
+    void import("@/lib/adapters/baseWallet")
+      .then(({ restoreBasePasskeyAccount }) => restoreBasePasskeyAccount())
+      .then((account) => {
+        if (cancelled || !account) return;
+        setBaseSmartAccount(account);
+        setBaseStatus("connected");
+        setBaseError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Failed to restore Base passkey wallet:", error);
+        // Surface the failure instead of leaving the user silently
+        // disconnected; restoreBasePasskeyAccount has already cleared the
+        // active flag so this won't loop on reload.
+        setBaseStatus("error");
+        setBaseError(
+          error instanceof Error
+            ? error.message
+            : "Failed to restore Base passkey wallet"
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const connectorConnected =
     connectorWallet.status === "connected" && !!connectorWallet.account;
   const connectorConnecting = connectorWallet.status === "connecting";
@@ -555,16 +693,17 @@ function AgentVouchWalletBridge({
     ? (connectorWallet.account as Address)
     : null;
 
-  const directConnectorSigner = useMemo<ConnectorTransactionSigner | null>(() => {
-    if (!directConnected || !phantomLegacy || !phantomAccount) return null;
-    const account = getFirstWalletAccount(phantomLegacy, phantomAccount);
-    if (!account) return null;
-    return createTransactionSigner({
-      wallet: phantomLegacy.wallet,
-      account,
-      cluster: CONNECTOR_CLUSTER,
-    });
-  }, [directConnected, phantomAccount, phantomLegacy]);
+  const directConnectorSigner =
+    useMemo<ConnectorTransactionSigner | null>(() => {
+      if (!directConnected || !phantomLegacy || !phantomAccount) return null;
+      const account = getFirstWalletAccount(phantomLegacy, phantomAccount);
+      if (!account) return null;
+      return createTransactionSigner({
+        wallet: phantomLegacy.wallet,
+        account,
+        cluster: CONNECTOR_CLUSTER,
+      });
+    }, [directConnected, phantomAccount, phantomLegacy]);
 
   const directKitSigner = useMemo<KitTransactionSigner | null>(
     () =>
@@ -605,6 +744,64 @@ function AgentVouchWalletBridge({
     source,
   ]);
 
+  const disconnectBasePasskey = useCallback(async () => {
+    const { disconnectBasePasskeyAccount } = await import(
+      "@/lib/adapters/baseWallet"
+    );
+    disconnectBasePasskeyAccount();
+    setBaseSmartAccount(null);
+    setBaseStatus("disconnected");
+    setBaseError(null);
+  }, []);
+
+  const connectBasePasskey = useCallback(async () => {
+    if (!baseWalletConfigured) {
+      setBaseStatus("error");
+      setBaseError(BASE_WALLET_UNCONFIGURED_MESSAGE);
+      throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
+    }
+
+    setBaseStatus("connecting");
+    setBaseError(null);
+    try {
+      const { createBasePasskeyAccount } = await import(
+        "@/lib/adapters/baseWallet"
+      );
+      const account = await createBasePasskeyAccount();
+      setBaseSmartAccount(account);
+      setBaseStatus("connected");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to connect Base passkey wallet";
+      setBaseSmartAccount(null);
+      setBaseStatus("error");
+      setBaseError(message);
+      throw error;
+    }
+  }, []);
+
+  // Enforce a single active wallet. Solana takes priority everywhere else
+  // (chainWalletValue, the header pill), so drop any live Base passkey session
+  // once a Solana wallet connects. Without this, a reload that both
+  // auto-connects Solana and restores a Base passkey leaves the Base session
+  // live in state and localStorage with no rendered control to disconnect it.
+  useEffect(() => {
+    if (status === "connected" && account && baseSmartAccount) {
+      void disconnectBasePasskey();
+    }
+  }, [status, account, baseSmartAccount, disconnectBasePasskey]);
+
+  const baseChainWallet = useMemo<ChainWallet | null>(() => {
+    if (!baseSmartAccount) return null;
+
+    return createBasePasskeyChainWallet(
+      baseSmartAccount,
+      disconnectBasePasskey
+    );
+  }, [baseSmartAccount, disconnectBasePasskey]);
+
   const walletValue = useMemo<AgentVouchWalletContextValue>(
     () => ({
       status,
@@ -639,10 +836,89 @@ function AgentVouchWalletBridge({
     [directCapabilities, directConnectorSigner, directKitSigner, source]
   );
 
+  const baseWalletValue = useMemo<BasePasskeyWalletContextValue>(
+    () => ({
+      status: baseStatus,
+      account: baseSmartAccount?.address ?? null,
+      walletName: baseSmartAccount ? BASE_PASSKEY_WALLET_NAME : null,
+      source: baseSmartAccount ? BASE_PASSKEY_WALLET_SOURCE : null,
+      chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+      chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
+      configured: baseWalletConfigured,
+      config: baseWalletConfig,
+      error: baseWalletConfigError ?? baseError,
+      chainWallet: baseChainWallet,
+      connect: connectBasePasskey,
+      disconnect: disconnectBasePasskey,
+    }),
+    [
+      baseChainWallet,
+      baseError,
+      baseSmartAccount,
+      baseStatus,
+      connectBasePasskey,
+      disconnectBasePasskey,
+    ]
+  );
+
+  const chainWalletValue = useMemo<AgentVouchChainWalletContextValue>(() => {
+    const solanaConnected = status === "connected" && !!account;
+    const baseConnected = baseWalletValue.status === "connected";
+    if (solanaConnected && account) {
+      return {
+        status,
+        account,
+        chainContext: solanaChainContext,
+        walletName,
+        source,
+        chainWallet: null,
+        solana: walletValue,
+        base: baseWalletValue,
+        disconnect,
+      };
+    }
+    if (baseConnected && baseWalletValue.account) {
+      return {
+        status: baseWalletValue.status,
+        account: baseWalletValue.account,
+        chainContext: baseWalletValue.chainContext,
+        walletName: baseWalletValue.walletName,
+        source: baseWalletValue.source,
+        chainWallet: baseWalletValue.chainWallet,
+        solana: walletValue,
+        base: baseWalletValue,
+        disconnect: baseWalletValue.disconnect,
+      };
+    }
+    return {
+      status: baseWalletValue.status === "connecting" ? "connecting" : status,
+      account: null,
+      chainContext: null,
+      walletName: null,
+      source: null,
+      chainWallet: null,
+      solana: walletValue,
+      base: baseWalletValue,
+      disconnect,
+    };
+  }, [
+    account,
+    baseWalletValue,
+    disconnect,
+    source,
+    status,
+    walletName,
+    walletValue,
+  ]);
+
   return (
     <AgentVouchWalletContext.Provider value={walletValue}>
       <AgentVouchWalletSignerContext.Provider value={signerValue}>
-        {children}
+        <BasePasskeyWalletContext.Provider value={baseWalletValue}>
+          <AgentVouchChainWalletContext.Provider value={chainWalletValue}>
+            {children}
+          </AgentVouchChainWalletContext.Provider>
+        </BasePasskeyWalletContext.Provider>
       </AgentVouchWalletSignerContext.Provider>
     </AgentVouchWalletContext.Provider>
   );

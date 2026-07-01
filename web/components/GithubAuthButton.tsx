@@ -18,6 +18,7 @@ type SessionState =
   | { status: "authed"; user: SessionUser };
 
 const passthroughLoader: ImageLoader = ({ src }) => src;
+const showDevPlaceholder = process.env.NODE_ENV === "development";
 
 function GithubMark({ className }: { className?: string }) {
   return (
@@ -73,8 +74,23 @@ export function GithubAuthButton() {
   }, []);
 
   // Hidden until we know it's configured — avoids a flash of a control that may
-  // not belong, and renders nothing when OAuth creds aren't set.
-  if (state.status === "loading" || state.status === "hidden") return null;
+  // not belong. In local dev, keep a disabled affordance so the nav layout still
+  // shows the GitHub publisher entry even when OAuth env vars are absent.
+  if (state.status === "loading") return null;
+  if (state.status === "hidden") {
+    if (!showDevPlaceholder) return null;
+    return (
+      <button
+        type="button"
+        disabled
+        className={`${navButtonSecondaryInlineClass} cursor-not-allowed opacity-50`}
+        title="GitHub sign-in is not configured in this development environment"
+      >
+        <GithubMark />
+        <span>GitHub</span>
+      </button>
+    );
+  }
 
   const returnTo = encodeURIComponent(pathname || "/skills/publish");
 

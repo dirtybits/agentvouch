@@ -1,0 +1,1181 @@
+"use client";
+
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { address, type Address } from "@solana/kit";
+import Link from "next/link";
+import { useAgentVouchWallet } from "@/components/WalletContextProvider";
+import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
+import {
+  formatWalletAuthorLabel,
+  shortWalletAddress,
+} from "@/lib/authorDisplay";
+import { getConfiguredSolanaExplorerTxUrl } from "@/lib/chains";
+import { UsdcIcon } from "@/components/UsdcIcon";
+import {
+  navButtonFlexClass,
+  navButtonInlineClass,
+  navButtonPrimaryFlexClass,
+  navButtonPrimaryInlineClass,
+} from "@/lib/buttonStyles";
+import { formatUsdcMicros } from "@/lib/pricing";
+import SkillPreviewCard from "@/components/SkillPreviewCard";
+import type { TrustData } from "@/components/TrustBadge";
+import type { Purchase } from "../../generated/agentvouch/src/generated/accounts/purchase";
+import type { SkillListing } from "../../generated/agentvouch/src/generated/accounts/skillListing";
+import {
+  FiAlertTriangle,
+  FiBookOpen,
+  FiBox,
+  FiCheckCircle,
+  FiDownload,
+  FiEdit2,
+  FiGitCommit,
+  FiLoader,
+  FiPlus,
+  FiSearch,
+  FiShoppingCart,
+  FiTrendingUp,
+  FiXCircle,
+} from "react-icons/fi";
+import { isRpcRateLimitError } from "@/lib/rpcErrors";
+import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
+import { getErrorMessage } from "@/lib/errors";
+import type { SkillSecurityScan } from "@/lib/securityScan";
+import { getPublicSkillPath, type PublicSkillUrlFields } from "@/lib/skillUrls";
+
+type PageTab = "browse" | "my-purchases" | "my-listings";
+
+interface SkillRow {
+  id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
+  author_pubkey: string | null;
+  author_kind?: string | null;
+  author_handle?: string | null;
+  author_display_name?: string | null;
+  author_identity?: {
+    username?: string | null;
+    usernameSource?: string | null;
+    githubProfile?: {
+      login: string;
+      url: string;
+    } | null;
+  } | null;
+  publisher_identity_key?: string | null;
+  publisher_tier?: string | null;
+  mirror_source_key?: string | null;
+  synced_repo_url?: string | null;
+  name: string;
+  description: string | null;
+  tags: string[];
+  current_version: number;
+  ipfs_cid: string | null;
+  total_installs: number;
+  total_downloads?: number;
+  total_revenue?: number;
+  price_lamports?: number;
+  price_usdc_micros?: string | null;
+  currency_mint?: string | null;
+  chain_context?: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
+  payment_flow?:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
+  on_chain_address?: string | null;
+  skill_uri?: string | null;
+  source?: "repo" | "chain";
+  created_at: string;
+  author_trust: TrustData | null;
+  summary?: string | null;
+  has_executable?: boolean | null;
+  security_scan?: SkillSecurityScan | null;
+  estimatedPurchaseRentLamports?: number;
+  feeBufferLamports?: number;
+  estimatedBuyerTotalLamports?: number;
+  purchasePreflightStatus?: PurchasePreflightStatus;
+  purchasePreflightMessage?: string | null;
+  purchaseRiskWarning?: string | null;
+  priceDisclosure?: string | null;
+  buyerHasPurchased?: boolean;
+}
+
+interface ApiResponse {
+  skills: SkillRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+interface HydrateResponse {
+  skills?: Record<string, Partial<SkillRow>>;
+}
+
+type SkillListingData = { publicKey: Address; account: SkillListing };
+type PurchaseData = { publicKey: Address; account: Purchase };
+type ActivityRepoListing = {
+  id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
+  name: string;
+  author_pubkey: string | null;
+  on_chain_address: string | null;
+  chain_context: string | null;
+  price_usdc_micros: string | null;
+  currency_mint: string | null;
+  payment_flow:
+    | "free"
+    | "legacy-sol"
+    | "listing-required"
+    | "x402-usdc"
+    | "direct-purchase-skill";
+  created_at: string;
+};
+type ActivityUsdcPurchase = {
+  payment_tx_signature: string;
+  buyer_pubkey: string;
+  currency_mint: string;
+  amount_micros: string;
+  verified_at: string;
+  skill_db_id: string;
+  skill_id: string;
+  public_slug: string;
+  public_author_slug: string;
+  skill_name: string;
+  author_pubkey: string | null;
+  on_chain_address: string | null;
+  chain_context: string | null;
+  price_usdc_micros: string | null;
+  price_lamports: number | null;
+};
+type ActivityResponse = {
+  repoListings: ActivityRepoListing[];
+  usdcPurchases: ActivityUsdcPurchase[];
+};
+type FeedItem = {
+  id: string;
+  type: "purchase" | "listing";
+  actor: string | null;
+  actorChainContext: string | null;
+  skillListing: string | null;
+  skillName: string;
+  skillRepoId: string | null;
+  publicSlug: string | null;
+  publicAuthorSlug: string | null;
+  author: string | null;
+  timestamp: number;
+  legacySolLamports: number | null;
+  priceUsdcMicros: string | null;
+};
+
+type SortOption = "newest" | "installs" | "trusted" | "name";
+
+const SEARCH_DEBOUNCE_MS = 250;
+// Must match MARKETPLACE_PAGE_SIZE in lib/marketplaceBrowse.ts (the server
+// snapshot); a client component can't import that module without pulling
+// server-only deps into the bundle.
+const MARKETPLACE_PAGE_SIZE = 9;
+
+function formatUsdc(
+  micros: number | bigint | string | null | undefined
+): string {
+  return formatUsdcMicros(micros) ?? "0";
+}
+
+function ActorLink({
+  pubkey,
+  chainContext,
+  fallback = "Unverified publisher",
+}: {
+  pubkey: string | null;
+  chainContext?: string | null;
+  fallback?: string;
+}) {
+  if (!pubkey) {
+    return (
+      <span className="font-mono font-medium text-gray-500 dark:text-gray-400">
+        {fallback}
+      </span>
+    );
+  }
+
+  if (chainContext?.startsWith("eip155:")) {
+    return (
+      <span
+        className="font-mono font-medium text-gray-500 dark:text-gray-400"
+        title={`${chainContext} actor ${pubkey}`}
+      >
+        {shortWalletAddress(pubkey)}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={`/author/${pubkey}`}
+      className="font-mono font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+    >
+      {formatWalletAuthorLabel(pubkey)}
+    </Link>
+  );
+}
+
+function timeAgo(ts: number): string {
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function formatDate(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString();
+}
+
+function isBlockingPurchaseStatus(
+  status: PurchasePreflightStatus | null | undefined
+) {
+  return (
+    status === "buyerInsufficientBalance" ||
+    status === "buyerMissingUsdcAccount" ||
+    status === "authorPayoutRentBlocked"
+  );
+}
+
+function getCapabilityFallback(tags: string[]): string | null {
+  if (!tags.length) return null;
+  return `Capabilities: ${tags.slice(0, 3).join(", ")}`;
+}
+
+function getAuthorActionHref(
+  skill: PublicSkillUrlFields,
+  action: "edit-listing" | "publish-version"
+): string {
+  return `${getPublicSkillPath(skill)}?authorAction=${action}#author-actions`;
+}
+
+export default function MarketplaceClient({
+  initialSkills = null,
+  initialTotal = 0,
+  pageSize = MARKETPLACE_PAGE_SIZE,
+}: {
+  initialSkills?: SkillRow[] | null;
+  initialTotal?: number;
+  pageSize?: number;
+}) {
+  const { status, account } = useAgentVouchWallet();
+  const connected = status === "connected" && !!account;
+  const publicKey = account ?? null;
+  const oracle = useMarketplaceOracle();
+
+  const [activeTab, setActiveTab] = useState<PageTab>("browse");
+
+  // Browse state, seeded from the server snapshot when available so first
+  // paint shows real cards without waiting for a client fetch.
+  const [skills, setSkills] = useState<SkillRow[]>(initialSkills ?? []);
+  const [loading, setLoading] = useState(!initialSkills);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortOption>("trusted");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(
+    Math.max(1, Math.ceil(initialTotal / pageSize))
+  );
+  const [total, setTotal] = useState(initialTotal);
+  // The query state the server snapshot covers. While the live state still
+  // matches it, the browse fetch is redundant; any change (search, sort, page,
+  // wallet) breaks the match and fetches as usual. A plain ref flag would
+  // misfire under StrictMode's double effect run.
+  const snapshotKeyRef = useRef(
+    initialSkills ? "page=1 sort=trusted q= tags= buyer=" : null
+  );
+
+  // Marketplace state
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [purchasedKeys, setPurchasedKeys] = useState<Set<string>>(new Set());
+  const [txSuccess, setTxSuccess] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [purchaseStatusWarning, setPurchaseStatusWarning] = useState<
+    string | null
+  >(null);
+
+  // My data
+  const [myPurchases, setMyPurchases] = useState<PurchaseData[]>([]);
+  const [myPurchaseListings, setMyPurchaseListings] = useState<
+    SkillListingData[]
+  >([]);
+  const [myListings, setMyListings] = useState<SkillListingData[]>([]);
+  const [myListingDetails, setMyListingDetails] = useState<
+    Map<string, SkillRow>
+  >(new Map());
+  const browseRequestRef = useRef(0);
+  const purchaseStateWalletRef = useRef<string | null>(null);
+  const hydrationRequestRef = useRef(0);
+
+  // Feed state
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const purchasedSkillListingKeys = useMemo(
+    () =>
+      new Set([
+        ...purchasedKeys,
+        ...myPurchases.map((purchase) => String(purchase.account.skillListing)),
+      ]),
+    [myPurchases, purchasedKeys]
+  );
+  const aggregateLabel = useMemo(() => {
+    const weekAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
+    const weeklyPurchases = feedItems.filter(
+      (item) => item.type === "purchase" && item.timestamp >= weekAgo
+    );
+    if (weeklyPurchases.length > 0) {
+      const volumeMicros = weeklyPurchases.reduce(
+        (sum, item) => sum + BigInt(item.priceUsdcMicros ?? 0),
+        0n
+      );
+      const sold = `${weeklyPurchases.length} sold this week`;
+      return volumeMicros > 0n
+        ? `${sold} · ${formatUsdcMicros(volumeMicros)} USDC volume`
+        : sold;
+    }
+    // Low-volume fallback: a durable cumulative stat reads better than "0 sold".
+    return total > 0 ? `${total} skills listed` : null;
+  }, [feedItems, total]);
+
+  const hydrateVisibleSkills = useCallback(
+    async (visibleSkills: SkillRow[]) => {
+      const skillIds = [
+        ...new Set(visibleSkills.map((skill) => skill.id).filter(Boolean)),
+      ];
+      if (skillIds.length === 0) return;
+
+      const requestId = ++hydrationRequestRef.current;
+      try {
+        const res = await fetch("/api/skills/hydrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            skillIds,
+            buyer: publicKey ? String(publicKey) : null,
+            includeBuyerStatus: Boolean(publicKey),
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to hydrate skills");
+        const data = (await res.json()) as HydrateResponse;
+        if (hydrationRequestRef.current !== requestId) return;
+        const updates = data.skills ?? {};
+        setSkills((prev) =>
+          prev.map((skill) =>
+            updates[skill.id] ? { ...skill, ...updates[skill.id] } : skill
+          )
+        );
+      } catch (err) {
+        console.error("Error hydrating skills:", err);
+      }
+    },
+    [publicKey]
+  );
+
+  const fetchSkills = useCallback(async () => {
+    const requestId = ++browseRequestRef.current;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      if (selectedTag) params.set("tags", selectedTag);
+      params.set("mode", "fast");
+      params.set("sort", sort);
+      params.set("page", String(page));
+      params.set("pageSize", String(MARKETPLACE_PAGE_SIZE));
+
+      const res = await fetch(`/api/skills?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch skills");
+      const data: ApiResponse = await res.json();
+      if (browseRequestRef.current !== requestId) return;
+
+      setSkills(data.skills);
+      setTotalPages(data.pagination.totalPages);
+      setTotal(data.pagination.total);
+      void hydrateVisibleSkills(data.skills);
+    } catch (err) {
+      if (browseRequestRef.current !== requestId) return;
+      console.error("Error fetching skills:", err);
+      setSkills([]);
+    } finally {
+      if (browseRequestRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  }, [debouncedSearch, hydrateVisibleSkills, page, selectedTag, sort]);
+
+  const loadFeed = useCallback(async () => {
+    try {
+      const activityRes = await fetch("/api/skills/activity");
+      if (!activityRes.ok) {
+        throw new Error("Failed to fetch marketplace activity");
+      }
+      const activity = (await activityRes.json()) as ActivityResponse;
+      const listingItems: FeedItem[] = activity.repoListings.map((listing) => ({
+        id: listing.on_chain_address ?? listing.id,
+        type: "listing",
+        actor: listing.author_pubkey,
+        actorChainContext: listing.chain_context,
+        skillListing: listing.on_chain_address,
+        skillName: listing.name,
+        skillRepoId: listing.id,
+        publicSlug: listing.public_slug,
+        publicAuthorSlug: listing.public_author_slug,
+        author: listing.author_pubkey,
+        timestamp: Math.floor(new Date(listing.created_at).getTime() / 1000),
+        legacySolLamports: null,
+        priceUsdcMicros: listing.price_usdc_micros,
+      }));
+      const usdcPurchaseItems: FeedItem[] = activity.usdcPurchases.map(
+        (purchase) => ({
+          id: `usdc-${purchase.payment_tx_signature}`,
+          type: "purchase",
+          actor: purchase.buyer_pubkey,
+          actorChainContext: purchase.chain_context,
+          skillListing: purchase.on_chain_address,
+          skillName: purchase.skill_name,
+          skillRepoId: purchase.skill_db_id,
+          publicSlug: purchase.public_slug,
+          publicAuthorSlug: purchase.public_author_slug,
+          author: purchase.author_pubkey,
+          timestamp: Math.floor(
+            new Date(purchase.verified_at).getTime() / 1000
+          ),
+          legacySolLamports: null,
+          priceUsdcMicros: purchase.amount_micros,
+        })
+      );
+      const items: FeedItem[] = [...listingItems, ...usdcPurchaseItems]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 20);
+      setFeedItems(items);
+    } catch (e) {
+      console.error("Failed to load feed:", e);
+    }
+  }, []);
+
+  const loadMyData = useCallback(async () => {
+    if (!publicKey) {
+      setMyPurchases([]);
+      setMyPurchaseListings([]);
+      setMyListings([]);
+      setMyListingDetails(new Map());
+      setPurchasedKeys(new Set());
+      setPurchaseStatusWarning(null);
+      purchaseStateWalletRef.current = null;
+      return;
+    }
+    try {
+      const [purchases, authorListings, authoredSkillsResponse] =
+        await Promise.all([
+          oracle.getPurchasesByBuyer(publicKey),
+          oracle.getSkillListingsByAuthor(publicKey),
+          fetch(
+            `/api/skills?author=${encodeURIComponent(
+              String(publicKey)
+            )}&sort=newest`
+          ),
+        ]);
+      const purchasedListingAddresses = [
+        ...new Set(
+          purchases.map((purchase) => String(purchase.account.skillListing))
+        ),
+      ].map((skillListing) => address(skillListing));
+      const purchaseListings =
+        purchasedListingAddresses.length > 0
+          ? await oracle.getSkillListingsByAddresses(purchasedListingAddresses)
+          : [];
+      const authoredSkillsData: ApiResponse | null = authoredSkillsResponse.ok
+        ? await authoredSkillsResponse.json()
+        : null;
+      setMyPurchases(purchases);
+      setMyPurchaseListings(purchaseListings);
+      setMyListings(authorListings);
+      setMyListingDetails(
+        new Map(
+          (authoredSkillsData?.skills ?? [])
+            .filter((skill) => !!skill.on_chain_address)
+            .map((skill) => [String(skill.on_chain_address), skill])
+        )
+      );
+      setPurchasedKeys(
+        new Set(purchases.map((p) => String(p.account.skillListing)))
+      );
+      setPurchaseStatusWarning(null);
+      purchaseStateWalletRef.current = String(publicKey);
+    } catch (e) {
+      console.error("Failed to load user data:", e);
+      if (purchaseStateWalletRef.current !== String(publicKey)) {
+        setMyPurchases([]);
+        setMyPurchaseListings([]);
+        setMyListings([]);
+        setMyListingDetails(new Map());
+        setPurchasedKeys(new Set());
+      }
+      setPurchaseStatusWarning(
+        isRpcRateLimitError(e)
+          ? "Purchase status is temporarily unavailable because the RPC is rate-limiting requests."
+          : "Purchase status could not be refreshed right now."
+      );
+    }
+  }, [oracle, publicKey]);
+
+  // Seed search from a ?q= deep link (e.g. the homepage search bar's
+  // "see all results"). Read on mount to avoid a useSearchParams Suspense
+  // boundary for a one-time read.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q")?.trim();
+    if (q) {
+      setSearch(q);
+      setDebouncedSearch(q);
+    }
+  }, []);
+
+  useEffect(() => {
+    const nextSearch = search.trim();
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearch(nextSearch);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    const browseKey = `page=${page} sort=${sort} q=${debouncedSearch} tags=${
+      selectedTag ?? ""
+    } buyer=${publicKey ? String(publicKey) : ""}`;
+    if (snapshotKeyRef.current === browseKey) {
+      return;
+    }
+    snapshotKeyRef.current = null;
+    fetchSkills();
+  }, [debouncedSearch, fetchSkills, page, publicKey, selectedTag, sort]);
+  useEffect(() => {
+    void loadFeed();
+  }, [loadFeed]);
+  useEffect(() => {
+    if (!publicKey) {
+      void loadMyData();
+      return;
+    }
+    if (activeTab === "my-purchases" || activeTab === "my-listings") {
+      void loadMyData();
+    }
+  }, [activeTab, loadMyData, publicKey]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDebouncedSearch(search.trim());
+    setPage(1);
+  };
+
+  const handleTagClick = useCallback((tag: string) => {
+    setSelectedTag(tag);
+    setSearch("");
+    setDebouncedSearch("");
+    setPage(1);
+  }, []);
+
+  const handlePurchase = async (listingPubkey: Address, authorKey: Address) => {
+    if (!connected) return;
+    setPurchasing(listingPubkey as string);
+    setTxError(null);
+    setTxSuccess(null);
+    try {
+      const { tx, alreadyPurchased } = await oracle.purchaseSkill(
+        listingPubkey,
+        authorKey
+      );
+      if (alreadyPurchased) {
+        setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
+        setPurchaseStatusWarning(null);
+        setTxSuccess("Already purchased with this wallet.");
+      } else if (tx) {
+        setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
+        setPurchaseStatusWarning(null);
+        setTxSuccess(tx);
+      }
+      await Promise.all([
+        fetchSkills(),
+        activeTab === "my-purchases" || activeTab === "my-listings"
+          ? loadMyData()
+          : Promise.resolve(),
+      ]);
+    } catch (error: unknown) {
+      console.error("Purchase failed:", error);
+      setTxError(getErrorMessage(error, "Transaction failed"));
+    } finally {
+      setPurchasing(null);
+    }
+  };
+
+  const sortOptions: { value: SortOption; label: string }[] = [
+    { value: "trusted", label: "Trusted" },
+    { value: "newest", label: "Newest" },
+    { value: "installs", label: "Installs" },
+    { value: "name", label: "Name" },
+  ];
+
+  const tabs: { key: PageTab; label: string }[] = [
+    { key: "browse", label: "Browse" },
+    { key: "my-purchases", label: "My purchases" },
+    { key: "my-listings", label: "My listings" },
+  ];
+
+  return (
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl md:text-4xl font-display text-gray-900 dark:text-white mb-1">
+            Marketplace
+          </h1>
+          <p className="max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+            Reputation-backed skills for AI agents — inspect stake, peer
+            vouches, and dispute history before you install or pay.{" "}
+            <Link
+              href="/docs/trusted-agent-skills"
+              className="text-[var(--sea-accent)] underline decoration-dotted underline-offset-4 hover:text-[var(--sea-accent-strong)]"
+            >
+              How trust works ↗
+            </Link>
+            {total > 0 && (
+              <span className="ml-2 text-gray-400 dark:text-gray-500">
+                · {total} skills
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* Live activity strip */}
+        {(feedItems.length > 0 || aggregateLabel) && (
+          <div className="mb-8 flex h-11 items-center gap-3.5 overflow-hidden rounded-sm border border-gray-200 bg-white px-3.5 dark:border-gray-800 dark:bg-gray-900">
+            {feedItems.length > 0 && (
+              <>
+                <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                  Live
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-6 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(90deg,#000_calc(100%-32px),transparent)]">
+                  {feedItems.slice(0, 2).map((item, index) => (
+                    <span
+                      key={item.id}
+                      className={`${
+                        index > 0 ? "hidden xl:inline-flex" : "inline-flex"
+                      } items-center gap-1.5 font-mono text-xs text-gray-500 dark:text-gray-400`}
+                    >
+                      <span
+                        className={
+                          item.type === "purchase"
+                            ? "text-[var(--lobster-accent)]"
+                            : "text-[var(--sea-accent)]"
+                        }
+                      >
+                        ●
+                      </span>
+                      <ActorLink
+                        pubkey={item.actor}
+                        chainContext={item.actorChainContext}
+                      />
+                      {item.type === "purchase" ? "bought" : "listed"}
+                      {item.skillRepoId ? (
+                        <Link
+                          href={getPublicSkillPath({
+                            id: item.skillRepoId,
+                            skill_id: item.skillName,
+                            public_slug: item.publicSlug,
+                            public_author_slug: item.publicAuthorSlug,
+                          })}
+                          className="font-display text-sm text-gray-900 hover:text-[var(--sea-accent)] dark:text-white"
+                        >
+                          {item.skillName}
+                        </Link>
+                      ) : (
+                        <span className="font-display text-sm text-gray-900 dark:text-white">
+                          {item.skillName}
+                        </span>
+                      )}
+                      {item.type === "purchase" && item.priceUsdcMicros ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-[var(--lobster-accent)]">
+                          <UsdcIcon className="h-3 w-3" />
+                          {formatUsdcMicros(item.priceUsdcMicros)} USDC
+                        </span>
+                      ) : null}
+                      <span className="text-gray-400 dark:text-gray-500">
+                        {timeAgo(item.timestamp)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+            {aggregateLabel && (
+              <span className="ml-auto shrink-0 border-l border-gray-100 pl-3.5 font-mono text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+                {aggregateLabel}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Toast notifications */}
+        {txSuccess && (
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-green-600 dark:text-green-400">
+                <FiCheckCircle />
+              </span>
+              <span className="text-green-800 dark:text-green-200 text-sm">
+                Transaction confirmed:{" "}
+                <a
+                  href={getConfiguredSolanaExplorerTxUrl(txSuccess)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-mono"
+                >
+                  {shortWalletAddress(txSuccess)}
+                </a>
+              </span>
+            </div>
+            <button
+              onClick={() => setTxSuccess(null)}
+              className="text-green-600 dark:text-green-400 hover:text-green-800"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {txError && (
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-red-600 dark:text-red-400">
+                <FiXCircle />
+              </span>
+              <span className="text-red-800 dark:text-red-200 text-sm">
+                {txError}
+              </span>
+            </div>
+            <button
+              onClick={() => setTxError(null)}
+              className="text-red-600 dark:text-red-400 hover:text-red-800"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {purchaseStatusWarning && connected && (
+          <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-sm flex items-start gap-2">
+            <span className="mt-0.5 text-amber-600 dark:text-amber-400">
+              <FiAlertTriangle />
+            </span>
+            <span className="text-amber-800 dark:text-amber-200 text-sm">
+              {purchaseStatusWarning} Purchased badges may be incomplete until
+              the status refresh succeeds.
+            </span>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 gap-1 overflow-x-auto border-b border-gray-200 pb-2 dark:border-gray-800">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 py-2 font-display text-[17px] whitespace-nowrap transition border-b-2 -mb-[2px] ${
+                  activeTab === tab.key
+                    ? "border-[var(--sea-accent)] text-gray-900 dark:text-white"
+                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex shrink-0 justify-start lg:justify-end">
+            <Link
+              href="/skills/publish"
+              className={`${navButtonPrimaryFlexClass} whitespace-nowrap`}
+            >
+              <FiPlus className="w-4 h-4" />
+              <span>Publish Skill</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* ===== BROWSE TAB ===== */}
+        {activeTab === "browse" && (
+          <div>
+            <div className="min-w-0">
+              {/* Search + Sort */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                <form onSubmit={handleSearch} className="flex-1 relative">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search skills..."
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sea-focus-ring)] focus:border-[var(--sea-accent)] transition"
+                  />
+                </form>
+                <div className="flex items-center gap-2">
+                  {sortOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setSort(opt.value);
+                        setPage(1);
+                      }}
+                      className={`${navButtonFlexClass} font-medium ${
+                        sort === opt.value
+                          ? "bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)]"
+                          : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {selectedTag && (
+                <div className="mb-6 flex flex-wrap items-center gap-2 font-mono text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">
+                    Showing tag
+                  </span>
+                  <span className="rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-2.5 py-1 lowercase tracking-wide text-[var(--lobster-accent)]">
+                    {selectedTag}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTag(null);
+                      setPage(1);
+                    }}
+                    className="text-gray-500 underline-offset-2 transition hover:text-[var(--sea-accent)] hover:underline dark:text-gray-400"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              {/* Skill Cards */}
+              {loading ? (
+                <div className="flex items-center justify-center py-20">
+                  <FiLoader className="w-6 h-6 animate-spin text-gray-400" />
+                </div>
+              ) : skills.length === 0 ? (
+                <div className="text-center py-20">
+                  <FiBookOpen className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-700 mb-4" />
+                  <p className="text-gray-500 dark:text-gray-400 mb-2">
+                    No skills found
+                  </p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500">
+                    {search
+                      ? "Try a different search term"
+                      : "Be the first to publish a skill"}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {skills.map((skill) => {
+                      const downloads =
+                        (skill.total_installs ?? 0) +
+                        (skill.total_downloads ?? 0);
+                      const listingPubkey = skill.on_chain_address ?? null;
+                      const hasPurchased =
+                        Boolean(skill.buyerHasPurchased) ||
+                        (listingPubkey
+                          ? purchasedSkillListingKeys.has(listingPubkey)
+                          : false);
+                      const isOwn =
+                        publicKey &&
+                        skill.author_pubkey === (publicKey as string);
+                      const isPurchasing = listingPubkey
+                        ? purchasing === listingPubkey
+                        : false;
+                      const legacySolLamports =
+                        skill.price_usdc_micros || listingPubkey
+                          ? 0
+                          : skill.price_lamports ?? 0;
+                      const purchasePreflightStatus =
+                        skill.purchasePreflightStatus ??
+                        (skill.price_usdc_micros || listingPubkey
+                          ? "estimateUnavailable"
+                          : "ok");
+                      const purchaseBlocked =
+                        Boolean(skill.price_usdc_micros || listingPubkey) &&
+                        isBlockingPurchaseStatus(purchasePreflightStatus);
+                      const hasAccessPath =
+                        skill.source === "repo" || Boolean(listingPubkey);
+                      return (
+                        <SkillPreviewCard
+                          key={skill.id}
+                          skill={skill}
+                          hasAccessPath={hasAccessPath}
+                          legacySolLamports={legacySolLamports}
+                          downloads={downloads}
+                          connected={connected}
+                          isOwn={Boolean(isOwn)}
+                          hasPurchased={hasPurchased}
+                          isPurchasing={isPurchasing}
+                          purchaseBlocked={purchaseBlocked}
+                          purchasePreflightStatus={purchasePreflightStatus}
+                          descriptionFallback={getCapabilityFallback(
+                            skill.tags ?? []
+                          )}
+                          onTagClick={handleTagClick}
+                          onPurchase={() => {
+                            if (!listingPubkey) return;
+                            if (!skill.author_pubkey) return;
+                            handlePurchase(
+                              address(listingPubkey),
+                              address(skill.author_pubkey)
+                            );
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-8">
+                      <button
+                        onClick={() => setPage(Math.max(1, page - 1))}
+                        disabled={page === 1}
+                        className="px-3 py-1.5 rounded-sm text-sm border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        Page {page} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setPage(Math.min(totalPages, page + 1))}
+                        disabled={page === totalPages}
+                        className="px-3 py-1.5 rounded-sm text-sm border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===== MY PURCHASES TAB ===== */}
+        {activeTab === "my-purchases" && (
+          <div>
+            {!connected ? (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
+                  <FiShoppingCart />
+                </div>
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
+                  Connect Wallet
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Connect your wallet to see your purchases.
+                </p>
+              </div>
+            ) : myPurchases.length === 0 ? (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
+                  <FiShoppingCart />
+                </div>
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
+                  No purchases yet
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Browse the marketplace to find useful skills.
+                </p>
+                <button
+                  onClick={() => setActiveTab("browse")}
+                  className={navButtonPrimaryInlineClass}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <FiBookOpen /> Browse Skills
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {myPurchases.map((purchase) => {
+                  const listing = myPurchaseListings.find(
+                    (l) => l.publicKey === purchase.account.skillListing
+                  );
+                  return (
+                    <div
+                      key={purchase.publicKey}
+                      className="bg-white dark:bg-gray-900 rounded-sm p-5 border border-gray-200 dark:border-gray-800 flex items-center justify-between"
+                    >
+                      <div>
+                        <h3 className="font-display text-lg text-gray-900 dark:text-white">
+                          {listing?.account.name || "Unknown Skill"}
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Purchased{" "}
+                          {formatDate(Number(purchase.account.purchasedAt))} ·{" "}
+                          <span className="font-mono text-gray-900 dark:text-white">
+                            {formatUsdc(purchase.account.pricePaidUsdcMicros)}{" "}
+                            USDC
+                          </span>
+                        </p>
+                      </div>
+                      {listing?.account.skillUri && (
+                        <a
+                          href={listing.account.skillUri}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`${navButtonInlineClass} font-normal bg-green-600 hover:bg-green-700 text-white transition`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <FiDownload /> Download
+                          </span>
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== MY LISTINGS TAB ===== */}
+        {activeTab === "my-listings" && (
+          <div>
+            {!connected ? (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
+                  <FiBox />
+                </div>
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
+                  Connect Wallet
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Connect your wallet to see your listings.
+                </p>
+              </div>
+            ) : myListings.length === 0 ? (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-2xl text-gray-400 dark:text-gray-500">
+                  <FiBox />
+                </div>
+                <h3 className="font-display text-xl text-gray-900 dark:text-white mb-2">
+                  No skills published
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Publish your first skill to start earning.
+                </p>
+                <Link
+                  href="/skills/publish"
+                  className={navButtonPrimaryInlineClass}
+                >
+                  <FiPlus /> Publish a Skill
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {myListings.map((listing) => {
+                  const listingDetail = myListingDetails.get(
+                    String(listing.publicKey)
+                  );
+                  const detailSkill = listingDetail ?? {
+                    id: `chain-${String(listing.publicKey)}`,
+                    skill_id: String(listing.publicKey),
+                  };
+                  const canPublishVersion =
+                    !!listingDetail && !detailSkill.id.startsWith("chain-");
+                  const price = Number(listing.account.priceUsdcMicros);
+                  const downloads = Number(listing.account.totalDownloads);
+                  const revenue = Number(
+                    listing.account.totalRevenueUsdcMicros
+                  );
+                  const authorEarnings = Math.floor(revenue * 0.6);
+
+                  return (
+                    <div
+                      key={listing.publicKey}
+                      className="bg-white dark:bg-gray-900 rounded-sm p-5 border border-gray-200 dark:border-gray-800"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-display text-lg text-gray-900 dark:text-white">
+                          {listing.account.name}
+                        </h3>
+                        <span className="text-green-600 dark:text-green-400 font-mono font-bold">
+                          <span className="inline-flex items-center gap-1">
+                            <UsdcIcon className="w-3.5 h-3.5" />
+                            {formatUsdc(price)} USDC
+                          </span>
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                        {listing.account.description}
+                      </p>
+                      <div className="flex gap-4 text-sm">
+                        <span className="text-gray-500 dark:text-gray-400">
+                          <span className="inline-flex items-center gap-1">
+                            <FiDownload /> {downloads} downloads
+                          </span>
+                        </span>
+                        <span className="text-green-600 dark:text-green-400 font-mono">
+                          <span className="inline-flex items-center gap-1">
+                            <FiTrendingUp /> {formatUsdc(revenue)} USDC total (
+                            {formatUsdc(authorEarnings)} your share)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <Link
+                          href={getAuthorActionHref(
+                            detailSkill,
+                            "edit-listing"
+                          )}
+                          className={navButtonInlineClass}
+                        >
+                          <FiEdit2 className="w-3.5 h-3.5" />
+                          Edit Listing
+                        </Link>
+                        {canPublishVersion && (
+                          <Link
+                            href={getAuthorActionHref(
+                              detailSkill,
+                              "publish-version"
+                            )}
+                            className={navButtonInlineClass}
+                          >
+                            <FiGitCommit className="w-3.5 h-3.5" />
+                            Publish New Version
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

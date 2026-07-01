@@ -186,9 +186,10 @@ async function countRows(db: Db, tableName: string) {
       }[];
       break;
     case "agent_identity_bindings":
-      rows = (await db`SELECT COUNT(*)::text AS count FROM agent_identity_bindings`) as {
-        count: string;
-      }[];
+      rows =
+        (await db`SELECT COUNT(*)::text AS count FROM agent_identity_bindings`) as {
+          count: string;
+        }[];
       break;
     case "api_keys":
       rows = (await db`SELECT COUNT(*)::text AS count FROM api_keys`) as {
@@ -196,14 +197,16 @@ async function countRows(db: Db, tableName: string) {
       }[];
       break;
     case "usdc_purchase_receipts":
-      rows = (await db`SELECT COUNT(*)::text AS count FROM usdc_purchase_receipts`) as {
-        count: string;
-      }[];
+      rows =
+        (await db`SELECT COUNT(*)::text AS count FROM usdc_purchase_receipts`) as {
+          count: string;
+        }[];
       break;
     case "usdc_purchase_entitlements":
-      rows = (await db`SELECT COUNT(*)::text AS count FROM usdc_purchase_entitlements`) as {
-        count: string;
-      }[];
+      rows =
+        (await db`SELECT COUNT(*)::text AS count FROM usdc_purchase_entitlements`) as {
+          count: string;
+        }[];
       break;
     default:
       throw new Error(`Unsupported inventory table: ${tableName}`);
@@ -224,7 +227,10 @@ async function inventory() {
   ];
   const counts = Object.fromEntries(
     await Promise.all(
-      tables.map(async (tableName) => [tableName, await countRows(db, tableName)])
+      tables.map(async (tableName) => [
+        tableName,
+        await countRows(db, tableName),
+      ])
     )
   );
 
@@ -287,7 +293,9 @@ async function bootstrap() {
 }
 
 function normalizeSkill(row: SkillExportRow): SkillExportRow {
-  const hasProtocolListing = Boolean(row.on_chain_address && row.price_usdc_micros);
+  const hasProtocolListing = Boolean(
+    row.on_chain_address && row.price_usdc_micros
+  );
   return {
     ...row,
     chain_context: row.chain_context ?? getConfiguredSolanaChainContext(),
@@ -738,7 +746,10 @@ async function cleanupDevnet() {
 
   const skillsExists = await tableExists(db, "skills");
   const receiptsExists = await tableExists(db, "usdc_purchase_receipts");
-  const entitlementsExists = await tableExists(db, "usdc_purchase_entitlements");
+  const entitlementsExists = await tableExists(
+    db,
+    "usdc_purchase_entitlements"
+  );
   const bindingsExists = await tableExists(db, "agent_identity_bindings");
 
   const staleLinkedSkills = skillsExists

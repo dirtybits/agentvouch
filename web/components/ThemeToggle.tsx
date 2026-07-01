@@ -14,7 +14,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className={`${navButtonInlineClass} font-semibold transition bg-[var(--sea-accent-soft)] hover:bg-[var(--sea-accent-soft-hover)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)]`}
+      className={`${navButtonInlineClass} font-normal transition bg-[var(--sea-accent-soft)] hover:bg-[var(--sea-accent-soft-hover)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)]`}
       aria-label="Toggle theme"
     >
       {theme === "dark" ? <IoSunnyOutline /> : <IoMoonOutline />}

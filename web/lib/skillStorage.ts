@@ -6,7 +6,11 @@ import {
   MAX_SKILL_FILE_BYTES,
   MAX_SKILL_TREE_BYTES,
   MAX_SKILL_TREE_FILES,
+  MIRROR_MAX_SKILL_TREE_BYTES,
+  MIRROR_MAX_SKILL_TREE_FILES,
 } from "@/lib/skillDraft";
+
+type TreeCaps = { maxFiles: number; maxBytes: number };
 
 export type SkillStorageBackend = "blob" | "inline";
 
@@ -47,6 +51,9 @@ export interface StoredSkillVersionRef extends Record<string, unknown> {
 }
 
 const TAR_BLOCK_SIZE = 512;
+const ZIP_UTF8_FLAG = 0x0800;
+const ZIP_STORE_METHOD = 0;
+const ZIP_DOS_EPOCH_DATE = (1 << 5) | 1;
 const BLOB_ARCHIVE_PREFIX = "skills";
 const EXECUTABLE_EXTENSIONS = new Set([
   ".bat",
@@ -96,12 +103,16 @@ export function normalizeSkillPath(input: string): string {
   const raw = input.replace(/\\/g, "/").trim();
   if (!raw) throw new Error("File path is required");
   if (raw.startsWith("/") || /^[a-zA-Z]:\//.test(raw)) {
-    throw new Error(`Invalid skill file path "${input}": absolute paths are not allowed`);
+    throw new Error(
+      `Invalid skill file path "${input}": absolute paths are not allowed`
+    );
   }
 
   const parts = raw.split("/");
   if (parts.some((part) => part === ".." || part === "" || part === ".")) {
-    throw new Error(`Invalid skill file path "${input}": path traversal is not allowed`);
+    throw new Error(
+      `Invalid skill file path "${input}": path traversal is not allowed`
+    );
   }
 
   const normalized = path.posix.normalize(raw);
@@ -110,16 +121,20 @@ export function normalizeSkillPath(input: string): string {
     normalized.startsWith("../") ||
     normalized.includes("/../")
   ) {
-    throw new Error(`Invalid skill file path "${input}": path traversal is not allowed`);
+    throw new Error(
+      `Invalid skill file path "${input}": path traversal is not allowed`
+    );
   }
   return normalized;
 }
 
 export function contentTypeForPath(filePath: string): string {
   const ext = path.posix.extname(filePath).toLowerCase();
-  if (filePath === "SKILL.md" || ext === ".md") return "text/markdown; charset=utf-8";
+  if (filePath === "SKILL.md" || ext === ".md")
+    return "text/markdown; charset=utf-8";
   if ([".json", ".map"].includes(ext)) return "application/json; charset=utf-8";
-  if ([".txt", ".log", ".env", ".csv"].includes(ext)) return "text/plain; charset=utf-8";
+  if ([".txt", ".log", ".env", ".csv"].includes(ext))
+    return "text/plain; charset=utf-8";
   if ([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"].includes(ext)) {
     return "text/plain; charset=utf-8";
   }
@@ -142,31 +157,42 @@ function isExecutablePath(filePath: string, content: Buffer): boolean {
 }
 
 export function normalizeSkillTreeFiles(
-  files: SkillTreeInputFile[]
+  files: SkillTreeInputFile[],
+  caps: TreeCaps = {
+    maxFiles: MAX_SKILL_TREE_FILES,
+    maxBytes: MAX_SKILL_TREE_BYTES,
+  }
 ): Array<SkillTreeInputFile & { path: string; bytes: Buffer }> {
   if (files.length === 0) {
     throw new Error("Skill tree must include SKILL.md");
   }
-  if (files.length > MAX_SKILL_TREE_FILES) {
-    throw new Error(`Skill tree has ${files.length} files, exceeds cap of ${MAX_SKILL_TREE_FILES}`);
+  if (files.length > caps.maxFiles) {
+    throw new Error(
+      `Skill tree has ${files.length} files, exceeds cap of ${caps.maxFiles}`
+    );
   }
 
   const seen = new Set<string>();
   let totalBytes = 0;
   const normalized = files.map((file) => {
     const filePath = normalizeSkillPath(file.path);
-    if (seen.has(filePath)) throw new Error(`Duplicate skill file path "${filePath}"`);
+    if (seen.has(filePath))
+      throw new Error(`Duplicate skill file path "${filePath}"`);
     seen.add(filePath);
 
     const bytes = toBuffer(file.content);
     const fileCap =
       filePath === "SKILL.md" ? MAX_SKILL_CONTENT_BYTES : MAX_SKILL_FILE_BYTES;
     if (bytes.byteLength > fileCap) {
-      throw new Error(`File "${filePath}" is ${bytes.byteLength} bytes, exceeds cap of ${fileCap} bytes`);
+      throw new Error(
+        `File "${filePath}" is ${bytes.byteLength} bytes, exceeds cap of ${fileCap} bytes`
+      );
     }
     totalBytes += bytes.byteLength;
-    if (totalBytes > MAX_SKILL_TREE_BYTES) {
-      throw new Error(`Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes`);
+    if (totalBytes > caps.maxBytes) {
+      throw new Error(
+        `Skill tree is ${totalBytes} bytes, exceeds cap of ${caps.maxBytes} bytes`
+      );
     }
     return { ...file, path: filePath, bytes };
   });
@@ -203,7 +229,12 @@ export function computeTreeHash(
   return createHash("sha256").update(entries.join("\n")).digest("hex");
 }
 
-function writeOctal(target: Buffer, offset: number, length: number, value: number) {
+function writeOctal(
+  target: Buffer,
+  offset: number,
+  length: number,
+  value: number
+) {
   const octal = value.toString(8).padStart(length - 1, "0");
   target.write(octal.slice(-length + 1), offset, length - 1, "ascii");
   target[offset + length - 1] = 0;
@@ -247,10 +278,98 @@ export function buildTarArchive(
     header[154] = 0;
     header[155] = 0x20;
     chunks.push(header, file.bytes);
-    const padding = (TAR_BLOCK_SIZE - (file.bytes.byteLength % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
+    const padding =
+      (TAR_BLOCK_SIZE - (file.bytes.byteLength % TAR_BLOCK_SIZE)) %
+      TAR_BLOCK_SIZE;
     if (padding) chunks.push(Buffer.alloc(padding));
   }
   chunks.push(Buffer.alloc(TAR_BLOCK_SIZE * 2));
+  return Buffer.concat(chunks);
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[i] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+export function buildZipArchive(
+  files: Array<{ path: string; bytes: Buffer }>
+): Buffer {
+  const chunks: Buffer[] = [];
+  const centralDirectory: Buffer[] = [];
+  let offset = 0;
+
+  for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+    const name = Buffer.from(file.path, "utf8");
+    const size = file.bytes.byteLength;
+    const digest = crc32(file.bytes);
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(ZIP_UTF8_FLAG, 6);
+    localHeader.writeUInt16LE(ZIP_STORE_METHOD, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(ZIP_DOS_EPOCH_DATE, 12);
+    localHeader.writeUInt32LE(digest, 14);
+    localHeader.writeUInt32LE(size, 18);
+    localHeader.writeUInt32LE(size, 22);
+    localHeader.writeUInt16LE(name.byteLength, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    chunks.push(localHeader, name, file.bytes);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(0x0314, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(ZIP_UTF8_FLAG, 8);
+    centralHeader.writeUInt16LE(ZIP_STORE_METHOD, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(ZIP_DOS_EPOCH_DATE, 14);
+    centralHeader.writeUInt32LE(digest, 16);
+    centralHeader.writeUInt32LE(size, 20);
+    centralHeader.writeUInt32LE(size, 24);
+    centralHeader.writeUInt16LE(name.byteLength, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE((0o100644 << 16) >>> 0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralDirectory.push(centralHeader, name);
+
+    offset += localHeader.byteLength + name.byteLength + size;
+  }
+
+  const centralDirectoryOffset = offset;
+  const centralDirectoryBytes = Buffer.concat(centralDirectory);
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4);
+  endOfCentralDirectory.writeUInt16LE(0, 6);
+  endOfCentralDirectory.writeUInt16LE(files.length, 8);
+  endOfCentralDirectory.writeUInt16LE(files.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryBytes.byteLength, 12);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20);
+
+  chunks.push(centralDirectoryBytes, endOfCentralDirectory);
   return Buffer.concat(chunks);
 }
 
@@ -291,23 +410,34 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
     const filePath = normalizeSkillPath(prefix ? `${prefix}/${name}` : name);
     const size = readOctal(header, 124, 12);
     if (size > MAX_SKILL_FILE_BYTES && filePath !== "SKILL.md") {
-      throw new Error(`File "${filePath}" is ${size} bytes, exceeds cap of ${MAX_SKILL_FILE_BYTES} bytes`);
+      throw new Error(
+        `File "${filePath}" is ${size} bytes, exceeds cap of ${MAX_SKILL_FILE_BYTES} bytes`
+      );
     }
     if (filePath === "SKILL.md" && size > MAX_SKILL_CONTENT_BYTES) {
-      throw new Error(`File "SKILL.md" is ${size} bytes, exceeds cap of ${MAX_SKILL_CONTENT_BYTES} bytes`);
+      throw new Error(
+        `File "SKILL.md" is ${size} bytes, exceeds cap of ${MAX_SKILL_CONTENT_BYTES} bytes`
+      );
     }
     totalBytes += size;
     if (files.length + 1 > MAX_SKILL_TREE_FILES) {
-      throw new Error(`Skill tree exceeds cap of ${MAX_SKILL_TREE_FILES} files`);
+      throw new Error(
+        `Skill tree exceeds cap of ${MAX_SKILL_TREE_FILES} files`
+      );
     }
     if (totalBytes > MAX_SKILL_TREE_BYTES) {
-      throw new Error(`Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes`);
+      throw new Error(
+        `Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes`
+      );
     }
     if (offset + size > bytes.byteLength) {
       throw new Error("Tar archive is truncated");
     }
 
-    files.push({ path: filePath, content: bytes.subarray(offset, offset + size) });
+    files.push({
+      path: filePath,
+      content: bytes.subarray(offset, offset + size),
+    });
     offset += size;
     offset += (TAR_BLOCK_SIZE - (size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
   }
@@ -315,8 +445,11 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
   return files;
 }
 
-export function prepareSkillTree(files: SkillTreeInputFile[]): SkillTreeStoreResult {
-  const normalized = normalizeSkillTreeFiles(files);
+export function prepareSkillTree(
+  files: SkillTreeInputFile[],
+  caps?: TreeCaps
+): SkillTreeStoreResult {
+  const normalized = normalizeSkillTreeFiles(files, caps);
   const manifest = buildSkillManifest(normalized);
   const treeHash = computeTreeHash(manifest);
   const archiveBytes = buildTarArchive(normalized);
@@ -332,22 +465,53 @@ export function prepareSkillTree(files: SkillTreeInputFile[]): SkillTreeStoreRes
     filesWithBytes: normalized.map((file) => ({
       path: file.path,
       bytes: file.bytes,
-      contentType: contentTypeByPath.get(file.path) ?? contentTypeForPath(file.path),
+      contentType:
+        contentTypeByPath.get(file.path) ?? contentTypeForPath(file.path),
       executable: isExecutablePath(file.path, file.bytes),
     })),
   };
 }
 
 export async function putSkillTree(
-  files: SkillTreeInputFile[]
+  files: SkillTreeInputFile[],
+  caps?: TreeCaps
 ): Promise<SkillTreeStoreResult> {
-  const tree = prepareSkillTree(files);
+  const tree = prepareSkillTree(files, caps);
   await put(getBlobArchivePath(tree.treeHash), tree.archiveBytes, {
     access: "private",
     allowOverwrite: true,
     contentType: "application/x-tar",
   });
   return tree;
+}
+
+/** Mirror-scoped wrappers that apply raised caps for syncing external repos. */
+const MIRROR_CAPS: TreeCaps = {
+  maxFiles: MIRROR_MAX_SKILL_TREE_FILES,
+  maxBytes: MIRROR_MAX_SKILL_TREE_BYTES,
+};
+
+export function prepareSkillTreeForMirror(
+  files: SkillTreeInputFile[]
+): SkillTreeStoreResult {
+  return prepareSkillTree(files, MIRROR_CAPS);
+}
+
+export async function putSkillTreeForMirror(
+  files: SkillTreeInputFile[]
+): Promise<SkillTreeStoreResult> {
+  return putSkillTree(files, MIRROR_CAPS);
+}
+
+/** Persist a previously prepared tree to blob storage (avoids double prepare). */
+export async function writePreparedTreeToBlob(
+  tree: SkillTreeStoreResult
+): Promise<void> {
+  await put(getBlobArchivePath(tree.treeHash), tree.archiveBytes, {
+    access: "private",
+    allowOverwrite: true,
+    contentType: "application/x-tar",
+  });
 }
 
 async function readStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -374,7 +538,9 @@ export async function buildArchiveForVersion(
     return readStream(blob.stream);
   }
 
-  const tree = prepareSkillTree([{ path: "SKILL.md", content: version.content }]);
+  const tree = prepareSkillTree([
+    { path: "SKILL.md", content: version.content },
+  ]);
   return tree.archiveBytes;
 }
 
@@ -400,6 +566,13 @@ export async function getFilesForVersion(
     contentType: contentTypeForPath(file.path),
     executable: isExecutablePath(file.path, file.bytes),
   }));
+}
+
+export async function buildZipForVersion(
+  version: StoredSkillVersionRef
+): Promise<Buffer> {
+  const files = await getFilesForVersion(version);
+  return buildZipArchive(files);
 }
 
 export async function getFileForVersion(

@@ -35,13 +35,39 @@ describe("author page source", () => {
       "utf8"
     );
 
-    expect(source).toContain("This connected wallet is staking behind this author");
+    expect(source).toContain(
+      "This connected wallet is staking behind this author"
+    );
     expect(source).toContain("REWARD_INDEX_SCALE");
     expect(source).toContain("rewardIndexUsdcMicrosX1e12");
     expect(source).toContain("entryAuthorRewardIndexX1e12");
     expect(source).toContain("pendingRewardsUsdcMicros");
     expect(source).toContain("authorUnclaimedVoucherRevenueUsdcMicros");
     expect(source).toContain("Author-wide reward pool");
-    expect(source).not.toContain("listing.account.unclaimedVoucherRevenueUsdcMicros");
+    expect(source).not.toContain(
+      "listing.account.unclaimedVoucherRevenueUsdcMicros"
+    );
+  });
+
+  it("shows a username in the author header when identity has one", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("authorDisplayHandle");
+    expect(source).toContain("authorIdentity?.username");
+    expect(source).toContain("Author Trust Record");
+  });
+
+  it("shows settings only on the connected user's public author profile", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("{isOwnProfile && (");
+    expect(source).toContain('href="/settings"');
+    expect(source).toContain("FiSettings");
   });
 });

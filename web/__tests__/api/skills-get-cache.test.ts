@@ -21,6 +21,7 @@ vi.mock("@/lib/ipfs", () => ({
 
 vi.mock("@/lib/agentIdentity", () => ({
   buildLocalCanonicalAgentId: vi.fn((wallet: string) => `local:${wallet}`),
+  ensureAgentIdentitySchema: vi.fn(),
   resolveManyAgentIdentitiesByWallet: vi.fn(),
   upsertLocalAgentIdentity: vi.fn(),
 }));
@@ -156,6 +157,104 @@ describe("GET /api/skills cache headers", () => {
     expect(mockCreatePurchasePreflightContext).not.toHaveBeenCalled();
   });
 
+  it("resolves full-mode author identities without write-side effects", async () => {
+    const author = "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw";
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          skill_id: "identity-skill",
+          author_pubkey: author,
+          name: "Identity Skill",
+          description: null,
+          tags: [],
+          current_version: 1,
+          ipfs_cid: null,
+          on_chain_address: null,
+          chain_context: "solana:devnet",
+          total_installs: 0,
+          cached_author_trust: {
+            reputationScore: 42,
+            totalVouchesReceived: 1,
+            totalStakedFor: 1000,
+            authorBondUsdcMicros: 0,
+            totalStakeAtRisk: 1000,
+            disputesAgainstAuthor: 0,
+            disputesUpheldAgainstAuthor: 0,
+            activeDisputesAgainstAuthor: 0,
+            registeredAt: 1,
+            isRegistered: true,
+          },
+          created_at: "2026-05-11T00:00:00.000Z",
+          updated_at: "2026-05-11T00:00:00.000Z",
+        },
+      ])
+    );
+
+    const res = await GET(makeRequest("?sort=trusted&page=1"));
+
+    expect(res.status).toBe(200);
+    expect(mockResolveManyAgentIdentitiesByWallet).toHaveBeenCalledWith(
+      [author],
+      {
+        hasAgentProfileByWallet: new Map([[author, true]]),
+        persistDerived: false,
+      }
+    );
+  });
+
+  it("orders searched skills by search rank before sort tie-breakers", async () => {
+    const lowerRankAlphabeticalFirst = {
+      id: "11111111-1111-4111-8111-111111111111",
+      skill_id: "aaa-lower-rank",
+      author_pubkey: "2DGYWtztLvPB6GxgGXT16gjCoEf56jEmwSxjMwK21Pg3",
+      name: "AAA Lower Rank",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      search_rank: 0.1,
+      created_at: "2026-05-11T00:00:00.000Z",
+      updated_at: "2026-05-11T00:00:00.000Z",
+    };
+    const higherRankAlphabeticalSecond = {
+      id: "22222222-2222-4222-8222-222222222222",
+      skill_id: "zzz-higher-rank",
+      author_pubkey: "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+      name: "ZZZ Higher Rank",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      search_rank: 0.9,
+      created_at: "2026-05-10T00:00:00.000Z",
+      updated_at: "2026-05-10T00:00:00.000Z",
+    };
+    mockSql.mockReturnValue(
+      vi
+        .fn()
+        .mockResolvedValue([
+          lowerRankAlphabeticalFirst,
+          higherRankAlphabeticalSecond,
+        ])
+    );
+
+    const res = await GET(makeRequest("?q=ranked&sort=name&mode=fast"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
+    expect(
+      body.skills.map((skill: { skill_id: string }) => skill.skill_id)
+    ).toEqual(["zzz-higher-rank", "aaa-lower-rank"]);
+  });
+
   it("disables shared caching for buyer-status responses", async () => {
     const res = await GET(
       makeRequest(
@@ -167,6 +266,65 @@ describe("GET /api/skills cache headers", () => {
     expect(res.headers.get("Cache-Control")).toBe(
       "private, no-store, max-age=0"
     );
+  });
+
+  it("uses downloads before recency for trusted sort ties", async () => {
+    const authorTrust = {
+      reputationScore: 42,
+      totalVouchesReceived: 1,
+      totalStakedFor: 1000,
+      authorBondUsdcMicros: 0,
+      totalStakeAtRisk: 1000,
+      disputesAgainstAuthor: 0,
+      disputesUpheldAgainstAuthor: 0,
+      activeDisputesAgainstAuthor: 0,
+      registeredAt: 1,
+      isRegistered: true,
+    };
+    const olderDownloadedSkill = {
+      id: "11111111-1111-4111-8111-111111111111",
+      skill_id: "older-downloaded",
+      author_pubkey: "2DGYWtztLvPB6GxgGXT16gjCoEf56jEmwSxjMwK21Pg3",
+      name: "Older Downloaded",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 2,
+      total_downloads: 8,
+      cached_author_trust: authorTrust,
+      created_at: "2026-05-10T00:00:00.000Z",
+      updated_at: "2026-05-10T00:00:00.000Z",
+    };
+    const newerUnusedSkill = {
+      id: "22222222-2222-4222-8222-222222222222",
+      skill_id: "newer-unused",
+      author_pubkey: "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+      name: "Newer Unused",
+      description: null,
+      tags: [],
+      current_version: 1,
+      ipfs_cid: null,
+      on_chain_address: null,
+      chain_context: "solana:devnet",
+      total_installs: 0,
+      total_downloads: 0,
+      cached_author_trust: authorTrust,
+      created_at: "2026-05-11T00:00:00.000Z",
+      updated_at: "2026-05-11T00:00:00.000Z",
+    };
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([newerUnusedSkill, olderDownloadedSkill])
+    );
+
+    const res = await GET(makeRequest("?sort=trusted&page=1&mode=fast"));
+    const body = await res.json();
+
+    expect(
+      body.skills.map((skill: { skill_id: string }) => skill.skill_id)
+    ).toEqual(["older-downloaded", "newer-unused"]);
   });
 
   it("defaults browse ordering to reputation-weighted trusted sort", async () => {
