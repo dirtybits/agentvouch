@@ -5,15 +5,23 @@ import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import {
+  hasChainUsdcPurchaseEntitlement,
   getUsdcPurchaseEntitlementSummary,
   hasUsdcPurchaseEntitlement,
 } from "@/lib/usdcPurchases";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import { buildTrustSignals } from "@/lib/trustSignals";
 import {
   getConfiguredSolanaChainContext,
+  BASE_SEPOLIA_CHAIN_CONTEXT,
+  normalizeInputChainContext,
   normalizePersistedChainContext,
 } from "@/lib/chains";
+import {
+  verifyBaseSkillListing,
+  type BaseSkillListingRow,
+} from "@/lib/baseListingVerification";
 import {
   buildPublicCacheControl,
   PRIVATE_NO_STORE_CACHE_CONTROL,
@@ -29,6 +37,7 @@ import {
 } from "@/lib/purchasePreflight";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
 import { address, createSolanaRpc, isAddress } from "@solana/kit";
+import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchProgramId,
@@ -48,6 +57,47 @@ const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 async function applyLiveAuthorTrust(
   snapshot: SkillDetailSnapshot
 ): Promise<SkillDetailSnapshot> {
+  const snapshotChainContext = snapshot.chain_context;
+  if (
+    snapshot.author_pubkey &&
+    snapshotChainContext?.startsWith("eip155:") &&
+    isEvmAddress(snapshot.author_pubkey)
+  ) {
+    const authorAddress = getEvmAddress(snapshot.author_pubkey);
+    const authorTrust = await resolveBaseAuthorTrust(
+      authorAddress,
+      snapshotChainContext
+    );
+    const authorIdentity =
+      (await resolveAgentIdentityByWallet(authorAddress, {
+        chainContext: snapshotChainContext,
+        hasAgentProfile: authorTrust.isRegistered,
+      }).catch(() => null)) ?? snapshot.author_identity;
+    const authorTrustSummary = buildAgentTrustSummary({
+      walletPubkey: authorAddress,
+      trust: authorTrust,
+      identity: authorIdentity,
+    });
+
+    return {
+      ...snapshot,
+      author_pubkey: authorAddress,
+      author_trust: authorTrust,
+      author_trust_summary: authorTrustSummary,
+      author_identity: authorIdentity,
+      signals: buildTrustSignals({
+        trust: authorTrust,
+        scan: snapshot.security_scan,
+      }),
+      purchaseRiskWarning:
+        snapshot.price_usdc_micros &&
+        BigInt(snapshot.price_usdc_micros) > 0n &&
+        authorTrust.totalStakeAtRisk === 0
+          ? "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution."
+          : null,
+    };
+  }
+
   if (!snapshot.author_pubkey || !isAddress(snapshot.author_pubkey)) {
     return snapshot;
   }
@@ -115,6 +165,9 @@ type SkillRow = {
   ipfs_cid: string | null;
   on_chain_address: string | null;
   chain_context: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   total_installs: number;
   total_downloads?: number;
   price_lamports?: number;
@@ -139,6 +192,11 @@ export async function GET(
     const useLiveTrust = searchParams.get("trust") === "live";
     const buyer = searchParams.get("buyer");
     const buyerAddress = buyer && isAddress(buyer) ? address(buyer) : null;
+    const buyerEvmAddress =
+      buyer && isEvmAddress(buyer) ? getEvmAddress(buyer) : null;
+    const buyerChainContextParam =
+      searchParams.get("buyerChainContext") ??
+      searchParams.get("buyer_chain_context");
 
     if (id.startsWith(CHAIN_PREFIX)) {
       const onChainAddr = id.slice(CHAIN_PREFIX.length);
@@ -288,7 +346,18 @@ export async function GET(
 
     const priceUsdcMicros = skillSnapshot.price_usdc_micros;
     const paymentFlow = skillSnapshot.payment_flow;
-    if (!buyerAddress) {
+    const skillChainContext = skillSnapshot.chain_context;
+    const isEvmSkill =
+      Boolean(skillSnapshot.evm_listing_id) ||
+      skillChainContext?.startsWith("eip155:");
+    const normalizedBuyerChainContext =
+      normalizeInputChainContext(buyerChainContextParam) ??
+      (isEvmSkill ? skillChainContext : null);
+    const canCheckEvmBuyer =
+      Boolean(buyerEvmAddress) &&
+      Boolean(normalizedBuyerChainContext?.startsWith("eip155:"));
+
+    if (!buyerAddress && !canCheckEvmBuyer) {
       return NextResponse.json(skillSnapshot, {
         headers: {
           "Cache-Control": useLiveTrust
@@ -299,6 +368,28 @@ export async function GET(
               ),
         },
       });
+    }
+
+    if (canCheckEvmBuyer && buyerEvmAddress && normalizedBuyerChainContext) {
+      const buyerHasPurchased = priceUsdcMicros
+        ? await hasChainUsdcPurchaseEntitlement(skillDbId, {
+            buyerChainContext: normalizedBuyerChainContext,
+            buyerAddress: buyerEvmAddress,
+          }).catch(() => false)
+        : false;
+
+      return NextResponse.json(
+        {
+          ...skillSnapshot,
+          buyerHasPurchased,
+          buyerPurchaseSummary: null,
+        },
+        {
+          headers: {
+            "Cache-Control": PRIVATE_NO_STORE_CACHE_CONTROL,
+          },
+        }
+      );
     }
 
     const preflightContext = await createPurchasePreflightContext({
@@ -378,10 +469,110 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { auth, on_chain_address } = body as {
-      auth: AuthPayload;
-      on_chain_address: string;
+    const { auth, on_chain_address, baseListing } = body as {
+      auth?: AuthPayload;
+      on_chain_address?: string;
+      baseListing?: {
+        txHash?: string;
+        authorAddress?: string;
+        chainContext?: string;
+        expectedPriceUsdcMicros?: string;
+      };
     };
+
+    if (baseListing) {
+      const submittedChainContext = normalizeInputChainContext(
+        baseListing.chainContext
+      );
+      if (submittedChainContext !== BASE_SEPOLIA_CHAIN_CONTEXT) {
+        return NextResponse.json(
+          { error: "Base listings must use Base Sepolia" },
+          { status: 400 }
+        );
+      }
+      if (!baseListing.txHash) {
+        return NextResponse.json(
+          { error: "Missing required field: baseListing.txHash" },
+          { status: 400 }
+        );
+      }
+
+      const rows = await sql()<BaseSkillListingRow>`
+        SELECT
+          id,
+          skill_id,
+          author_pubkey,
+          name,
+          description,
+          price_usdc_micros::text,
+          currency_mint,
+          chain_context,
+          on_chain_protocol_version,
+          on_chain_program_id,
+          evm_listing_id,
+          evm_contract_address
+        FROM skills
+        WHERE id = ${id}::uuid
+      `;
+      const row = rows[0];
+      if (!row) {
+        return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+      }
+      if (
+        normalizeInputChainContext(row.chain_context) !==
+        BASE_SEPOLIA_CHAIN_CONTEXT
+      ) {
+        return NextResponse.json(
+          { error: "Base listings can only be linked to Base Sepolia skills" },
+          { status: 400 }
+        );
+      }
+      if (
+        !row.author_pubkey ||
+        !isEvmAddress(row.author_pubkey) ||
+        !baseListing.authorAddress ||
+        !isEvmAddress(baseListing.authorAddress) ||
+        getEvmAddress(row.author_pubkey) !==
+          getEvmAddress(baseListing.authorAddress)
+      ) {
+        return NextResponse.json(
+          { error: "Not the Base skill author" },
+          { status: 403 }
+        );
+      }
+
+      const verification = await verifyBaseSkillListing({
+        skill: row,
+        txHash: baseListing.txHash,
+        authorAddress: baseListing.authorAddress,
+        expectedPriceUsdcMicros: baseListing.expectedPriceUsdcMicros ?? null,
+        expectedUri: `${request.nextUrl.origin}/api/skills/${id}/raw`,
+      });
+
+      const [updated] = await sql()<SkillRow>`
+        UPDATE skills
+        SET
+          chain_context = ${verification.chainContext},
+          on_chain_address = NULL,
+          price_usdc_micros = ${verification.priceUsdcMicros},
+          currency_mint = ${
+            verification.priceUsdcMicros ? verification.currencyMint : null
+          },
+          on_chain_protocol_version = ${verification.protocolVersion},
+          on_chain_program_id = ${verification.onChainProgramId},
+          evm_listing_id = ${verification.listingId},
+          evm_contract_address = ${verification.onChainProgramId},
+          evm_tx_hash = ${verification.txHash},
+          updated_at = NOW()
+        WHERE id = ${id}::uuid
+        RETURNING *
+      `;
+
+      return NextResponse.json({
+        ...updated,
+        chain_context: normalizePersistedChainContext(updated.chain_context),
+      });
+    }
 
     if (!auth || !on_chain_address) {
       return NextResponse.json(

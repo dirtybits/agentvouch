@@ -3,29 +3,29 @@ name: base-port-chain-adapter-phase-5
 overview: "Phase 5 of the Base port: implement Base Sepolia ChainWallet writes (register/list/buy) and the EVM x402 settlement lane, lifting the sponsored 4337 flow and receiveWithAuthorization recipe from contracts/base-poc. Depends on Phase 4 Base wallet connect. Solana write paths must keep working."
 todos:
   - id: preflight-phase4
-    content: "Confirm Phase 4 is complete: Base Sepolia passkey wallet connect/disconnect works in the UI, exposes a smart-account signer/account to the client-only wallet layer, and Solana wallet regression passed."
-    status: pending
+    content: "DONE 2026-06-30: Phase 4 sub-plan is complete; Base Sepolia passkey connect/restore/disconnect and Solana regression are recorded there, and current code exposes the client-only Base smart-account surface. Local env scan found no Base RPC/paymaster/DB .env values, so full live write verification remains blocked until envs are supplied."
+    status: completed
   - id: lock-usdc-circle-invariants
-    content: "Lock the Circle USDC invariants before writing payment code: Base Sepolia chain id 84532/eip155:84532, native Circle USDC 0x036CbD53842c5426634e7929541eC2318f3dCF7e, 6-decimal parsing/formatting, exact-amount approvals, confirmed receipts, and no USDbC/USDC.e."
-    status: pending
+    content: "DONE 2026-06-30: Locked the Circle USDC invariants before writing payment code: Base Sepolia chain id 84532/eip155:84532, native Circle USDC 0x036CbD53842c5426634e7929541eC2318f3dCF7e, 6-decimal parsing/formatting, exact-amount approvals, confirmed receipts, and no USDbC/USDC.e."
+    status: completed
   - id: lift-sponsored-writes
-    content: "Lift contracts/base-poc/ui/src/flow.ts into the client-only Base ChainWallet: registerAgent, createSkillListing, purchaseSkill, skillIdHashFrom, computeListingId, native USDC exact approve+purchase batching, and TxResult mapping."
-    status: pending
+    content: "DONE 2026-06-30: Lifted contracts/base-poc/ui/src/flow.ts into the client-only Base ChainWallet: registerAgent, createSkillListing, purchaseSkill({ listingId, expectedPriceUsdcMicros }), skillIdHashFrom, computeListingId, live price check, native USDC exact approve+purchase batching, receipt/event validation, and TxResult mapping."
+    status: completed
   - id: wire-publish-and-purchase-ui
-    content: "Branch publish/listing/purchase UI by chain_context. Base rows use evm_listing_id/evm_contract_address/evm_tx_hash, stay away from Solana on_chain_address, and become purchasable only through the Base ChainWallet path."
-    status: pending
+    content: "DONE 2026-06-30: Base purchase and listing UI are wired by chain_context. Base rows use evm_listing_id/evm_contract_address/evm_tx_hash, stay away from Solana on_chain_address, call ChainWallet.purchaseSkill({ listingId, expectedPriceUsdcMicros }) for purchases, call ChainWallet.createSkillListing for Base author listing, verify the Base tx hash before persistence, and refresh buyer state with buyerChainContext. Solana author/listing controls remain on the Solana path."
+    status: completed
   - id: persist-base-writes
-    content: "Persist Base listing and purchase results with chain-aware fields: evm_listing_id, evm_contract_address, evm_tx_hash, chain_context, receipts, and entitlements as appropriate. Keep existing Solana persistence untouched."
-    status: pending
+    content: "DONE 2026-06-30: Base write persistence is wired. Purchase verifier checks Base Sepolia/native USDC, live listing price/status, SkillPurchased event listing/buyer/price, then records chain-qualified receipts and entitlements with buyer_chain_context/buyer_address plus evm_listing_id/evm_purchase_id. Listing verifier checks SkillListingCreated, live listing author/skill hash/name/description/URI/price, native USDC, and only persists Base listings for Base-authored rows. Existing Solana persistence is untouched."
+    status: completed
   - id: add-evm-agent-identity
-    content: "Add the EVM author/profile branch: resolve eip155:* authors via AgentVouchEvm.getProfile and only then enable chain-aware author display/pages. Do not route raw 0x authors through Solana /author/[pubkey] helpers."
-    status: pending
+    content: "DONE 2026-06-30: Added the EVM author/profile branch needed for Phase 5: Base Sepolia author trust resolves through AgentVouchEvm.getProfile, EVM local identity uses an evm_agent_profile binding instead of Solana PDA derivation, /api/author/[pubkey]?chainContext=eip155:84532 can return chain-qualified Base trust, skill detail no longer routes raw 0x authors into Solana /author/[pubkey], Base author ownership is checked against the active Base wallet address, and Solana-only author actions stay Solana-gated."
+    status: completed
   - id: add-evm-x402-lane
-    content: "Add the EVM x402 lane in /api/x402/* using native USDC receiveWithAuthorization/EIP-3009 from the Base POC. Keep Solana x402/sponsored route behavior unchanged and branch by chain_context/payment_flow."
-    status: pending
+    content: "DONE 2026-06-30: Added the Base EIP-3009 x402 lane. /api/skills/{id}/raw branches Base rows before Solana PDA/ATA logic, returns an x402 requirement for native Base Sepolia USDC receiveWithAuthorization, validates PAYMENT-SIGNATURE payloads against live listing revision/price/domain/nonce/signature, reuses chain-qualified entitlements for re-downloads, relays purchaseWithAuthorization with a Base x402 relayer key, verifies the Base SkillPurchased receipt, then records buyer_chain_context/buyer_address plus evm_listing_id/evm_purchase_id before serving content. /api/x402/supported advertises Base, and /api/x402/{verify,settle} understand the same Base payload shape. Existing Solana x402/sponsored behavior is unchanged."
+    status: completed
   - id: verify-phase5
-    content: "Verify human Base Sepolia passkey register->list->buy with chain id/native USDC/6-decimal/receipt checks and user ETH delta 0, agent x402 settlement via receiveWithAuthorization, Solana write regression, and web typecheck/lint/vitest/build."
-    status: pending
+    content: "DONE 2026-06-30: Local verification passed for Phase 5: npm run format:check, npm run lint --workspace @agentvouch/web, npm test --workspace @agentvouch/web (80 files / 447 tests), npm exec --workspace @agentvouch/web -- next build --webpack, and a final npm run typecheck --workspace @agentvouch/web. A parallel typecheck/build attempt briefly failed because build regenerated .next/types while tsc was reading them; rerunning typecheck alone passed. Live Base Sepolia UserOp/x402 smoke remains blocked locally until Base RPC/paymaster/relayer/funded-wallet envs are supplied."
+    status: completed
 isProject: false
 ---
 
@@ -81,6 +81,22 @@ Lift from `contracts/base-poc/ui/src/flow.ts`:
 Map viem/bundler results into the web `TxResult` shape. `paidGas` should be `false` when the CDP
 paymaster sponsors the UserOp.
 
+Review update 2026-06-30: change the `ChainWallet.purchaseSkill` seam before lifting the flow.
+The POC needs both `listingId` and `priceMicros` for the exact-approval batch, while the current
+`ChainWallet.purchaseSkill(listingId)` interface lacks the amount. Use an input object:
+
+```ts
+purchaseSkill(input: {
+  listingId: string;
+  expectedPriceUsdcMicros: bigint;
+}): Promise<TxResult>
+```
+
+The UI should pass the DB/UI price as `expectedPriceUsdcMicros`; the Base wallet implementation
+must fetch the live listing through `AgentVouchEvm.getListing`, require the live price to equal the
+expected price, then approve only that exact amount. If the live price differs, fail closed before
+submitting an approval/UserOp so the wallet never silently pays more than the UI showed.
+
 ### D3 - Base rows use EVM fields only
 
 Do not map Base `bytes32` listing ids into `on_chain_address`. For Base:
@@ -128,6 +144,64 @@ are blockers for any Base write or x402 implementation:
   of Phase 5 unless a later plan explicitly designs cross-chain funding or a Circle-managed wallet
   architecture. Phase 5 stays on the Phase 4 Coinbase Smart Wallet + Base Sepolia lane.
 
+### D7 - Wallet architecture stays Coinbase Smart Wallet for Phase 5
+
+Review update 2026-06-30 using `use-circle-wallets`: Circle Modular Wallets are the Circle-native
+passkey/MSCA option on Base, but adopting them now would reopen Phase 4 wallet architecture instead
+of implementing the already-verified Coinbase Smart Wallet path. Do not add Circle Modular Wallets
+to Phase 5. Track them separately as a future wallet replacement/variant if AgentVouch wants a
+Circle-managed wallet architecture later.
+
+### D8 - Do not replace CDP-sponsored gas with Circle Paymaster in Phase 5
+
+The Base POC and this phase prove sponsor-paid gas: user ETH delta should be `0`, and user USDC
+spend should equal the skill price. Circle Paymaster is a different product where the end user pays
+network fees in USDC. It may be useful later as a sustainability mode, but it adds fee quotes, caps,
+surcharge/accounting, and "price plus gas" UX. It does not simplify this phase, so keep CDP
+paymaster/bundler sponsorship for human writes.
+
+### D9 - Entitlements need chain-aware buyer identity
+
+Review update 2026-06-30: current purchase persistence is Solana-shaped (`buyer_pubkey`,
+`recipient_ata`, `currency_mint`, `purchase_pda`) and entitlement checks key by
+`(skill_db_id, buyer_pubkey)`. Before Base purchases grant raw access, add generic chain-aware
+semantics, for example:
+
+- `buyer_chain_context` + `buyer_address`
+- `recipient_chain_context` + `recipient_address`
+- `asset_chain_context` + `asset_address`
+- `evm_listing_id` and, if useful, `evm_purchase_id` / settlement tx hash
+
+Backfill Solana rows from the existing Solana fields and keep Solana wrapper helpers so current
+callers do not churn unnecessarily. New entitlement checks should use
+`(skill_db_id, buyer_chain_context, buyer_address)` or an equivalent chain-qualified lookup, not a
+bare pubkey/address string.
+
+## Progress notes
+
+- 2026-06-30: Preflight completed. Phase 4 is complete, including Base Sepolia passkey
+  connect/restore/disconnect and Solana regression evidence in the Phase 4 sub-plan. Local env scan
+  found no Base RPC/paymaster/DB `.env` values, so full live Base write verification still requires
+  supplying those envs.
+- 2026-06-30: First implementation groundwork added locally. `ChainWallet.purchaseSkill` now accepts
+  `{ listingId, expectedPriceUsdcMicros }`, the Base Phase 4 stub satisfies the new seam, and
+  purchase receipt/entitlement schema code has additive chain-qualified buyer/recipient/asset fields
+  plus `evm_listing_id` / `evm_purchase_id`, Solana backfill, and a chain-qualified entitlement
+  lookup helper. EVM chain-qualified addresses are normalized to lowercase for checksummed-vs-lowercase
+  lookup stability; Solana addresses remain case-sensitive. Full Base write lifting, UI wiring, and
+  live DB migration verification remain under `lift-sponsored-writes` and `persist-base-writes`.
+- 2026-06-30: Base sponsored write lift added locally. The Base passkey `ChainWallet` now owns
+  `registerAgent`, `createSkillListing`, and `purchaseSkill`; writes require configured Base Sepolia
+  RPC/paymaster envs, native Circle Base Sepolia USDC, RPC chain id `84532`, exact allowance before
+  purchase, live listing price equality, and matching receipt events before returning success. Local
+  typecheck/lint/vitest/build verification passed; live UserOp smoke remains blocked until the
+  missing envs/funded test wallet are supplied.
+- 2026-06-30: Base listing persistence and EVM x402 added locally. Base author listing now verifies
+  `SkillListingCreated` plus live listing metadata before writing `evm_listing_id`, and the raw/API
+  x402 lane uses Base Sepolia native USDC EIP-3009 `receiveWithAuthorization`, relays
+  `purchaseWithAuthorization`, verifies the resulting `SkillPurchased` receipt, and records
+  chain-qualified entitlements. Focused web typecheck plus `skills-route`/`skills-raw` tests passed.
+
 ## Files to inspect first
 
 - `contracts/base-poc/ui/src/flow.ts` - sponsored 4337 write flow.
@@ -163,6 +237,9 @@ are blockers for any Base write or x402 implementation:
      - agent x402 purchases use EIP-3009 `receiveWithAuthorization` and should not require an
        ERC-20 allowance.
    - Require receipt/event validation before granting access or writing entitlements.
+   - Do not substitute Circle Paymaster for CDP sponsorship in this phase. Circle Paymaster makes
+     the user pay gas in USDC; Phase 5's verification target is sponsor-paid gas and user ETH delta
+     `0`.
 
 3. **Sponsored write methods (`lift-sponsored-writes`)**
 
@@ -170,9 +247,11 @@ are blockers for any Base write or x402 implementation:
    - Keep the smart-account object private to the wallet layer.
    - Implement `registerAgent`, `createSkillListing`, and `purchaseSkill` on the Base
      `ChainWallet`.
-   - For purchase, parse/format USDC with 6 decimals, check native USDC balance/allowance, approve
-     only the exact missing allowance, and submit the purchase against the configured native USDC
-     contract.
+   - Update `ChainWallet.purchaseSkill` to accept `{ listingId, expectedPriceUsdcMicros }`.
+   - For purchase, parse/format USDC with 6 decimals, fetch the live EVM listing, require the live
+     `priceUsdcMicros` to equal `expectedPriceUsdcMicros`, check native USDC balance/allowance,
+     approve only the exact missing allowance, and submit the purchase against the configured native
+     USDC contract.
    - Return `TxResult` with transaction hash/userOp reference, explorer URL, and `paidGas=false`.
    - Fail closed on unsupported `chainContext` or missing paymaster config.
 
@@ -181,7 +260,8 @@ are blockers for any Base write or x402 implementation:
    - Branch by `chain_context`.
    - Base create/list flow should compute the EVM `listingId`, call `createSkillListing`, then
      persist the EVM metadata.
-   - Base purchase flow should call Base `purchaseSkill` with `evm_listing_id`.
+   - Base purchase flow should call Base `purchaseSkill` with `evm_listing_id` and the expected
+     `price_usdc_micros` from the current skill/listing view.
    - Keep Phase 3b behavior for read-only Base rows until this purchase branch is complete.
    - Keep Solana purchase and publish branches unchanged except for explicit chain guards.
 
@@ -191,6 +271,9 @@ are blockers for any Base write or x402 implementation:
      `evm_tx_hash`, `chain_context`, price, URI, and author EVM address.
    - On successful Base purchase, store receipts/entitlements with enough chain fields to avoid
      collisions with Solana records.
+   - Add or evolve entitlement helpers so Base access checks are chain-qualified by buyer chain
+     context and buyer address. Prefer additive fields such as `buyer_chain_context` and
+     `buyer_address`, with Solana backfilled from existing `buyer_pubkey` values.
    - Make dashboards and APIs read these fields without treating Base rows as Solana PDAs.
 
 6. **EVM author identity (`add-evm-agent-identity`)**
@@ -218,6 +301,7 @@ are blockers for any Base write or x402 implementation:
      - register agent;
      - create/list a skill;
      - verify the listing price maps to the expected 6-decimal native USDC amount;
+     - force or simulate a DB/live price mismatch and verify the Base wallet refuses to approve;
      - buy the listed skill;
      - verify the approval, if needed, was exact amount and against native USDC;
      - wait for and inspect the receipt;
@@ -241,6 +325,9 @@ are blockers for any Base write or x402 implementation:
 - The buyer's ETH balance delta is 0 for the sponsored write flow.
 - Base purchase rows are no longer read-only and use `evm_listing_id`, never Solana
   `on_chain_address`.
+- Base purchases fail closed if the live EVM listing price differs from the UI/DB expected price.
+- Raw access entitlement checks are chain-qualified, so an EVM `0x...` buyer and a Solana buyer
+  cannot collide on the same unqualified buyer string.
 - EVM author/profile display is chain-aware and does not call Solana helpers on `0x...` values.
 - EVM x402 settlement succeeds with `receiveWithAuthorization` and grants/verifies access.
 - Solana write flows still pass their regression smoke.

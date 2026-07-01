@@ -1,29 +1,45 @@
 "use client";
 
 import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
+import {
+  BASE_NATIVE_USDC_ADDRESS,
+  BASE_PASSKEY_WALLET_NAME,
+  BASE_PASSKEY_WALLET_SOURCE,
+  BASE_SEPOLIA_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_LABEL,
+  BASE_SEPOLIA_EXPLORER_URL,
+  BASE_USDC_DECIMALS,
+  BASE_WALLET_UNCONFIGURED_MESSAGE,
+  DEFAULT_BASE_AGENTVOUCH_ADDRESS,
+  DEFAULT_BASE_SEPOLIA_RPC_URL,
+  DEFAULT_BASE_SEPOLIA_USDC_ADDRESS,
+} from "./baseConstants";
 
-const DEFAULT_AGENTVOUCH_ADDRESS = "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854";
-const DEFAULT_USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-const DEFAULT_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
 const configuredClientRpcUrl =
   process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL?.trim() ?? "";
 
-export const BASE_PASSKEY_WALLET_NAME = "Coinbase Smart Wallet";
-export const BASE_PASSKEY_WALLET_SOURCE = "coinbase-smart-wallet-passkey";
-export const BASE_SEPOLIA_CHAIN_ID = 84532;
-export const BASE_SEPOLIA_CHAIN_LABEL = "Base Sepolia";
-export const BASE_SEPOLIA_EXPLORER_URL = "https://sepolia.basescan.org";
-export const BASE_WALLET_UNCONFIGURED_MESSAGE =
-  "Base wallet connect is not configured in this environment.";
+export {
+  BASE_NATIVE_USDC_ADDRESS,
+  BASE_PASSKEY_WALLET_NAME,
+  BASE_PASSKEY_WALLET_SOURCE,
+  BASE_SEPOLIA_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_LABEL,
+  BASE_SEPOLIA_EXPLORER_URL,
+  BASE_USDC_DECIMALS,
+  BASE_WALLET_UNCONFIGURED_MESSAGE,
+};
 
-export const BASE_SEPOLIA_RPC_URL = configuredClientRpcUrl || DEFAULT_RPC_URL;
+export const BASE_SEPOLIA_RPC_URL =
+  configuredClientRpcUrl || DEFAULT_BASE_SEPOLIA_RPC_URL;
 export const BASE_WALLET_CONFIGURED = Boolean(configuredClientRpcUrl);
 
 export const BASE_AGENTVOUCH_CONTRACT_ADDRESS =
-  process.env.NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS || DEFAULT_AGENTVOUCH_ADDRESS;
+  process.env.NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS ||
+  DEFAULT_BASE_AGENTVOUCH_ADDRESS;
 
 export const BASE_USDC_ADDRESS =
-  process.env.NEXT_PUBLIC_BASE_USDC_ADDRESS || DEFAULT_USDC_ADDRESS;
+  process.env.NEXT_PUBLIC_BASE_USDC_ADDRESS ||
+  DEFAULT_BASE_SEPOLIA_USDC_ADDRESS;
 
 // Public CDP Paymaster & Bundler endpoint for Phase 5 writes. This is intentionally optional in
 // Phase 4 because passkey connect can be proven without sending UserOps.

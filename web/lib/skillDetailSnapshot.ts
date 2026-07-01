@@ -71,6 +71,9 @@ export type SkillDetailSnapshot = {
   ipfs_cid: string | null;
   on_chain_address: string | null;
   chain_context: string | null;
+  evm_listing_id?: string | null;
+  evm_contract_address?: string | null;
+  evm_tx_hash?: string | null;
   total_installs: number;
   total_downloads?: number;
   total_revenue?: number;
@@ -143,6 +146,9 @@ type SkillDetailSnapshotRow = SkillScanFieldRow &
     ipfs_cid: string | null;
     on_chain_address: string | null;
     chain_context: string | null;
+    evm_listing_id: string | null;
+    evm_contract_address: string | null;
+    evm_tx_hash: string | null;
     total_installs: number;
     total_downloads: number | null;
     total_revenue: number | null;
@@ -426,6 +432,7 @@ async function loadSkillDetailSnapshotUncached(
   const paymentFlow = getSkillPaymentFlow({
     priceUsdcMicros,
     onChainAddress: row.on_chain_address,
+    evmListingId: row.evm_listing_id,
     legacySolLamports: row.price_lamports,
     allowLegacySol: true,
   });
@@ -471,6 +478,9 @@ async function loadSkillDetailSnapshotUncached(
     ipfs_cid: row.ipfs_cid,
     on_chain_address: row.on_chain_address,
     chain_context: normalizePersistedChainContext(row.chain_context),
+    evm_listing_id: row.evm_listing_id,
+    evm_contract_address: row.evm_contract_address,
+    evm_tx_hash: row.evm_tx_hash,
     total_installs: row.total_installs,
     total_downloads: row.total_downloads ?? undefined,
     total_revenue: row.total_revenue ?? undefined,

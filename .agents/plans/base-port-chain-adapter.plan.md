@@ -12,13 +12,13 @@ todos:
     content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
     status: completed
   - id: base-adapter-wallet
-    content: "Phase 4. Chain-aware wallet: EVM connect (Coinbase Smart Wallet passkey lifted from contracts/base-poc/ui/src/accounts/passkey.ts) in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. LONG POLE. DECIDED 2026-06-25: Coinbase Smart Wallet passkey for MVP; wagmi/MetaMask injected deferred. See sub-plan .agents/plans/base-port-chain-adapter-phase-4.plan.md."
-    status: pending
+    content: "Phase 4 DONE 2026-06-30. Chain-aware wallet: Base Sepolia Coinbase Smart Wallet passkey connect/restore/disconnect works in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. Browser WebAuthn restore smoke and Solana regression passed. wagmi/MetaMask injected deferred. See sub-plan .agents/plans/base-port-chain-adapter-phase-4.plan.md."
+    status: completed
   - id: base-adapter-write
-    content: "Phase 5. Base ChainWallet writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337), kept out of server-safe BaseAdapter. Wire EVM x402 receiveWithAuthorization into the route handlers /api/transactions/sponsored/* and /api/x402/*. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
+    content: "Phase 5. Base ChainWallet writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337), kept out of server-safe BaseAdapter. purchaseSkill takes expectedPriceUsdcMicros and verifies the live EVM listing price before exact USDC approval. Wire EVM x402 receiveWithAuthorization into route handlers. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
     status: pending
   - id: db-multichain
-    content: "Phase 6. Extend Postgres for EVM alongside Solana: explicit evm_listing_id (bytes32), evm_contract_address, and evm_tx_hash keyed by chain_context. Do not overload Solana-sized on_chain_address for Base listing ids. Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
+    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana: explicit evm_listing_id (bytes32), evm_contract_address, evm_tx_hash, and chain-qualified buyer entitlement semantics. Do not overload Solana-sized on_chain_address or bare buyer_pubkey semantics for Base. Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
     status: pending
   - id: address-type-sweep
     content: "Phase 7. Replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
@@ -111,7 +111,7 @@ branch). To take over:
 
 | File / area                                                                                               | Today (Solana)                           | After (behind the adapter)                                              |
 | --------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
-| `web/components/WalletContextProvider.tsx` + exported `useAgentVouchWallet`                               | ConnectorKit / Phantom, hardcoded Solana | chain-aware provider; EVM via wagmi + Coinbase Smart Wallet / passkey   |
+| `web/components/WalletContextProvider.tsx` + exported wallet hooks                                        | ConnectorKit / Phantom, hardcoded Solana | chain-aware provider; EVM via Coinbase Smart Wallet passkey; wagmi later |
 | `web/lib/onchain.ts`                                                                                      | `getProgramAccounts` browser reads       | `SolanaAdapter.listSkillListings`; `BaseAdapter` uses viem `getListing` |
 | `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`                                       | Solana instructions + PDAs               | `adapter.purchaseSkill` (Base lifts `flow.ts`)                          |
 | `web/lib/browserX402.ts`, `web/lib/x402ProtocolBridge.ts`, `/api/x402/*`, `/api/transactions/sponsored/*` | Solana sponsored / x402                  | EVM Lane B `receiveWithAuthorization`                                   |
@@ -127,8 +127,7 @@ schema (extend, not replace), GitHub OAuth, search/indexing, markdown.
 >
 > - pure helpers (from `getAdapter(ctx)`); `ChainWallet` = client-only, wallet-bound writes (from a
 >   chain-aware `useChainWallet()` hook — connection stays in each chain's React provider). The
->   illustrative block below predates the split (it showed `connect`/writes on one interface); see
->   types.ts for the current shape.
+>   illustrative block below should stay aligned with types.ts when the seam changes.
 
 New directory **`web/lib/adapters/`** (NOT `web/lib/chains/` — `web/lib/chains.ts` already
 exists and a sibling dir of the same name causes import ambiguity):
@@ -160,12 +159,6 @@ export interface TxResult {
   paidGas: boolean; // false when sponsored (4337 / x402)
 }
 
-export interface ConnectedWallet {
-  address: string;
-  chainContext: ChainContext;
-  // the adapter holds the signer internally; the UI never touches raw keys
-}
-
 export interface ChainAdapter {
   chainContext: ChainContext;
 
@@ -178,35 +171,48 @@ export interface ChainAdapter {
   // reads (safe on server — prefer calling these from Server Components / route handlers)
   listSkillListings(): Promise<SkillListingView[]>;
   fetchSkillListing(listingId: string): Promise<SkillListingView | null>;
+}
 
-  // wallet + writes (CLIENT-ONLY — only invoked from 'use client' code)
-  connect(): Promise<ConnectedWallet>;
+export interface CreateSkillListingInput {
+  skillId: string;
+  uri: string;
+  name: string;
+  description: string;
+  priceUsdcMicros: bigint;
+}
+
+export interface X402Payment {
+  header: string;
+  payload: unknown;
+}
+
+export interface ChainWallet {
+  readonly chainContext: ChainContext;
+  readonly address: string;
+
   disconnect(): Promise<void>;
+
   registerAgent(metadataUri: string): Promise<TxResult>;
-  createSkillListing(p: {
-    skillId: string;
-    uri: string;
-    name: string;
-    description: string;
-    priceUsdcMicros: bigint;
+  createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
+  purchaseSkill(input: {
+    listingId: string;
+    expectedPriceUsdcMicros: bigint;
   }): Promise<TxResult>;
-  purchaseSkill(listingId: string): Promise<TxResult>;
 
   // agent x402 (server-verifiable payment authorization)
-  buildX402Payment(
-    listingId: string
-  ): Promise<{ header: string; payload: unknown }>;
+  buildX402Payment(listingId: string): Promise<X402Payment>;
 }
 
 // chain_context -> adapter; default from web/lib/chains.ts getConfiguredChainContext()
 export function getAdapter(ctx: ChainContext): ChainAdapter;
+export function useChainWallet(): ChainWallet | null;
 ```
 
 ## Next.js boundaries (App Router) — keep these straight
 
 - **Wallet provider is a client boundary.** `WalletContextProvider` is `'use client'`; the EVM
-  provider (wagmi / Coinbase Smart Wallet) is too. Keep wallet/write methods behind dynamic
-  (`await import(...)`) imports inside the client adapter so wallet SDKs + viem
+  provider (Coinbase Smart Wallet passkey; wagmi/injected later) is too. Keep wallet/write methods
+  behind dynamic (`await import(...)`) imports inside the client adapter so wallet SDKs + viem
   `account-abstraction` never get pulled into Server Component / RSC bundles.
 - **Reads can be server-side.** The `listSkillListings`/`fetchSkillListing` methods are
   server-safe; prefer fetching listings in Server Components to avoid client RPC waterfalls (and
@@ -256,7 +262,7 @@ export function getAdapter(ctx: ChainContext): ChainAdapter;
     (server-safe reads/format — done) + a separate client-only `ChainWallet` (writes), produced by
     a chain-aware hook `useChainWallet()` (evolve `useAgentVouchWallet`) that captures the active
     chain's connected signer and returns writes already bound to it — the UI calls
-    `wallet.purchaseSkill(id)` uniformly (no signer threading, no per-chain branching). Interfaces
+    `wallet.purchaseSkill(input)` uniformly (no signer threading, no per-chain branching). Interfaces
     materialized in `web/lib/adapters/types.ts`; `SolanaAdapter` + the registry stub trimmed to
     reads/format (typecheck green). IMPL remaining (needs a running app to verify): `SolanaWallet`
     (wrap `useMarketplaceOracle`'s prepare→sign→submit bound to the context signer), `BaseWallet`
@@ -368,20 +374,25 @@ Removed=2` — match the Solana adapter, which keys `active` on status alone).
 - **Done when:** done — the Base listing renders in the real UI, fetched live from the contract
   server-side; Solana listings still render on the unfiltered marketplace.
 
-### Phase 4 — `base-adapter-wallet` [pending] ⚠ long pole
+### Phase 4 — `base-adapter-wallet` [completed 2026-06-30]
 
 Dedicated sub-plan: [`base-port-chain-adapter-phase-4.plan.md`](./base-port-chain-adapter-phase-4.plan.md).
 
 - **Goal:** connect a Base Sepolia EVM wallet through the chain-aware wallet layer.
-- **DECIDED (2026-06-25):** Coinbase Smart Wallet **passkey** for the MVP (POC-proven, gas-free via
-  the CDP paymaster). wagmi/MetaMask injected support is deferred.
+- **Status:** done — Base Sepolia Coinbase Smart Wallet passkey connect/restore/disconnect is wired
+  through the provider, exposes the Base `ChainWallet` surface with Phase-5-guarded write stubs,
+  and keeps Solana wallet behavior available.
+- **DECIDED (2026-06-25; reaffirmed 2026-06-30):** Coinbase Smart Wallet **passkey** for the MVP
+  (POC-proven, gas-free via the CDP paymaster). wagmi/MetaMask injected support is deferred.
+  Circle Modular Wallets are the Circle-native passkey/MSCA option on Base, but adopting them now
+  would reopen Phase 4 rather than implement writes; track as a future wallet replacement/variant.
 - **Key boundary:** wallet SDKs, WebAuthn, `localStorage`, and viem account-abstraction imports stay
   in client-only wallet modules/hooks. `web/lib/adapters/base.ts` remains read-only/server-safe.
-- **Done when:** a user connects a Base Sepolia passkey wallet in the live UI, the EVM smart-account
-  address renders with chain-aware formatting, disconnect/reload behaves correctly, and switching
-  back to Solana still connects the existing Solana wallet.
-- **Verification:** browser connect proof plus web typecheck, lint, vitest, and
-  `npm run build --workspace @agentvouch/web`.
+- **Done when:** done — a user connects a Base Sepolia passkey wallet in the live UI, the EVM
+  smart-account address renders with chain-aware formatting, disconnect/reload behaves correctly,
+  and switching back to Solana still connects the existing Solana wallet.
+- **Verification:** browser connect/restore proof plus web typecheck, lint, vitest, and
+  `npm run build --workspace @agentvouch/web`; see the Phase 4 sub-plan for exact evidence.
 
 ### Phase 5 — `base-adapter-write` [pending]
 
@@ -394,6 +405,13 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chai
 - **Key boundary:** Base writes live on the client-only `ChainWallet` from Phase 4; `BaseAdapter`
   remains server-safe reads. Base listing ids stay in `evm_listing_id`, never Solana
   `on_chain_address`.
+- **Purchase safety:** `ChainWallet.purchaseSkill` takes `{ listingId, expectedPriceUsdcMicros }`.
+  The Base wallet fetches the live EVM listing, requires the live price to match the UI/DB expected
+  price, then approves only that exact native USDC amount.
+- **Entitlement safety:** Base raw access must be chain-qualified by buyer chain context and buyer
+  address. Do not grant EVM access through bare `buyer_pubkey` semantics shared with Solana.
+- **Gas model:** keep CDP-sponsored UserOps for the Phase 5 proof. Circle Paymaster makes users pay
+  gas in USDC; it is a later sustainability option, not a simplification of this sponsor-paid phase.
 - **Done when:** human passkey flow register -> list -> buy on Base Sepolia with **user ETH delta
   0**; an agent x402 purchase settles via `receiveWithAuthorization`; Solana writes still work.
 - **Verification:** Base browser write proof, EVM x402 settlement proof, Solana write regression,
@@ -401,11 +419,14 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chai
 
 ### Phase 6 — `db-multichain` [pending]
 
-- **Goal:** persist EVM purchases/listings alongside Solana.
+- **Goal:** harden multi-chain persistence after the minimum Phase 5 write/access path lands.
 - **Files:** a migration + `web/lib/db.ts`. Add explicit EVM fields (`evm_listing_id`,
-  `evm_contract_address`, `evm_tx_hash`) keyed by `chain_context`; guard reads/writes by chain.
-- **Done when:** a Base purchase persists (contract addr + tx hash) and renders in the dashboard;
-  existing Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project).
+  `evm_contract_address`, `evm_tx_hash`) keyed by `chain_context`; add or finish generic purchase
+  identity fields such as `buyer_chain_context` / `buyer_address`, `recipient_chain_context` /
+  `recipient_address`, and `asset_chain_context` / `asset_address`; guard reads/writes by chain.
+- **Done when:** a Base purchase persists (contract addr + tx hash), raw-access entitlements are
+  chain-qualified, and dashboards/activity render without treating EVM rows as Solana PDAs; existing
+  Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project).
 
 ### Phase 7 — `address-type-sweep` [pending]
 
@@ -449,9 +470,15 @@ RPC/contract/USDC/paymaster config exists — so do NOT flip the default to gene
   reads; compute balance deltas at explicit block numbers.
 - The agent (x402 Lane B) must be a plain **EOA** — `receiveWithAuthorization` uses ECDSA, so a
   smart-account / EIP-1271 agent will not work as coded.
-- Wallet UX is the long pole (Phase 4): Solana wallet-adapter and EVM passkey/wagmi are different stacks.
+- Wallet UX was the long pole for Phase 4: Solana wallet-adapter and EVM passkey/wagmi are different
+  stacks. Coinbase Smart Wallet passkey is now the MVP path; future wallet variants should stay
+  separate from Phase 5 writes.
 - Keep wallet SDK + viem `account-abstraction` imports dynamic in the client adapter so they don't
   leak into Server Component bundles.
+- Phase 5's gas-free claim means sponsor-paid gas via the CDP bundler/paymaster and user ETH delta
+  `0`. Do not swap in Circle Paymaster for this phase; Circle Paymaster is user-paid gas in USDC.
+- Base purchases must not approve from stale UI data. Pass `expectedPriceUsdcMicros`, re-read the
+  live EVM listing, and fail closed before approval if the price changed.
 
 ## Rollback
 
@@ -466,5 +493,8 @@ retained, just dormant. Per-phase: revert that phase's single PR.
 - **Wallet provider (gates Phase 4) — RESOLVED 2026-06-25:** Coinbase Smart Wallet passkey for the
   MVP (POC-proven, gas-free). wagmi/MetaMask injected = roadmapped follow-on, reconsidered if it
   proves too much lifting; not in the MVP.
+- **Circle Modular Wallets / Circle Paymaster (reviewed 2026-06-30):** not Phase 5. Modular Wallets
+  are a future Circle-native wallet variant; Circle Paymaster is a future user-pays-gas-in-USDC
+  option. The Base port MVP stays on Coinbase Smart Wallet + CDP-sponsored UserOps.
 - **Mainnet vs Sepolia (later gate):** the POC contract is Base **Sepolia**. Production needs a
   Base **mainnet** deploy + mainnet USDC + CDP mainnet paymaster.

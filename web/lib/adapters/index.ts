@@ -19,6 +19,7 @@ export type {
   ChainContext,
   ChainWallet,
   CreateSkillListingInput,
+  PurchaseSkillInput,
   SkillListingView,
   TxResult,
   X402Payment,

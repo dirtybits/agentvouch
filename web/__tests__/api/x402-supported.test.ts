@@ -13,8 +13,12 @@ describe("GET /api/x402/supported", () => {
     expect(res.status).toBe(200);
     expect(
       body.assets.map((asset: { symbol: string }) => asset.symbol)
-    ).toEqual(["USDC"]);
+    ).toEqual(["USDC", "USDC"]);
     expect(body.capabilities.protocol_listed_x402_bridge).toBe(false);
+    expect(body.capabilities.base_eip3009_x402).toBe(true);
+    expect(body.capabilities.base_protocol_listed_purchase_flow).toBe(
+      "base-x402-purchase-skill"
+    );
     expect(body.capabilities.repo_x402_usdc).toBe(false);
     expect(body.capabilities.repo_x402_usdc_legacy_entitlements).toBe(true);
     expect(body.capabilities.protocol_listed_purchase_flow).toBe(
@@ -23,6 +27,8 @@ describe("GET /api/x402/supported", () => {
     expect(body.capabilities.protocol_listed_message).toContain(
       "New repo-only x402 purchases are disabled"
     );
+    expect(body.base.chain_context).toBe("eip155:84532");
+    expect(body.base.payment_flow).toBe("base-x402-purchase-skill");
     expect(body.bridge.status).toBe("disabled");
     expect(body.program.instructions).toEqual(["purchaseSkill"]);
   });

@@ -70,6 +70,7 @@ const BINDING_TYPES = {
   walletOwner: "wallet_owner",
   walletOperational: "wallet_operational",
   agentProfilePda: "agent_profile_pda",
+  evmAgentProfile: "evm_agent_profile",
   solana8004Asset: "solana_8004_asset",
   evm8004Token: "evm_8004_token",
   githubProfile: "github_profile",
@@ -362,7 +363,7 @@ async function runAgentIdentityDdl(db: ReturnType<typeof sql>) {
   await db`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_identity_bindings_unique_identity_surface
       ON agent_identity_bindings(chain_context, binding_ref)
-      WHERE binding_type IN ('solana_8004_asset', 'agent_profile_pda', 'evm_8004_token')
+      WHERE binding_type IN ('solana_8004_asset', 'agent_profile_pda', 'evm_agent_profile', 'evm_8004_token')
     `;
 
   await db`
@@ -384,6 +385,45 @@ async function deriveAgentProfilePda(walletPubkey: string): Promise<string> {
   });
 
   return pda;
+}
+
+function isSolanaIdentityChainContext(chainContext: string): boolean {
+  return chainContext.startsWith("solana:");
+}
+
+function isEvmIdentityChainContext(chainContext: string): boolean {
+  return chainContext.startsWith("eip155:");
+}
+
+async function buildAgentProfileBinding(params: {
+  walletPubkey: string;
+  chainContext: string;
+}): Promise<{
+  bindingType: string;
+  chainContext: string;
+  bindingRef: string;
+  metadata?: Record<string, unknown> | null;
+} | null> {
+  if (isSolanaIdentityChainContext(params.chainContext)) {
+    return {
+      bindingType: BINDING_TYPES.agentProfilePda,
+      chainContext: params.chainContext,
+      bindingRef: await deriveAgentProfilePda(params.walletPubkey),
+    };
+  }
+
+  if (isEvmIdentityChainContext(params.chainContext)) {
+    return {
+      bindingType: BINDING_TYPES.evmAgentProfile,
+      chainContext: params.chainContext,
+      bindingRef: params.walletPubkey,
+      metadata: {
+        profileAddress: params.walletPubkey,
+      },
+    };
+  }
+
+  return null;
 }
 
 async function buildSyntheticLocalIdentity(params: {
@@ -410,20 +450,28 @@ async function buildSyntheticLocalIdentity(params: {
 
   let agentProfilePda: string | null = null;
   if (params.hasAgentProfile) {
-    agentProfilePda = await deriveAgentProfilePda(params.walletPubkey);
-    bindings.push({
-      id: `ephemeral-agent-profile:${chainContext}:${agentProfilePda}`,
-      bindingType: BINDING_TYPES.agentProfilePda,
+    const profileBinding = await buildAgentProfileBinding({
+      walletPubkey: params.walletPubkey,
       chainContext,
-      bindingRef: agentProfilePda,
-      registryAddress: null,
-      externalAgentId: null,
-      isPrimary: false,
-      verificationStatus: "derived",
-      rawUpstreamChainLabel: null,
-      rawUpstreamChainId: null,
-      metadata: null,
     });
+    if (profileBinding) {
+      if (profileBinding.bindingType === BINDING_TYPES.agentProfilePda) {
+        agentProfilePda = profileBinding.bindingRef;
+      }
+      bindings.push({
+        id: `ephemeral-agent-profile:${chainContext}:${profileBinding.bindingRef}`,
+        bindingType: profileBinding.bindingType,
+        chainContext,
+        bindingRef: profileBinding.bindingRef,
+        registryAddress: null,
+        externalAgentId: null,
+        isPrimary: false,
+        verificationStatus: "derived",
+        rawUpstreamChainLabel: null,
+        rawUpstreamChainId: null,
+        metadata: profileBinding.metadata ?? null,
+      });
+    }
   }
 
   return {
@@ -649,12 +697,13 @@ export async function upsertLocalAgentIdentity(params: {
     });
 
     if (params.hasAgentProfile) {
-      const agentProfilePda = await deriveAgentProfilePda(params.walletPubkey);
-      await upsertBinding(existingAgent.id, {
-        bindingType: BINDING_TYPES.agentProfilePda,
+      const profileBinding = await buildAgentProfileBinding({
+        walletPubkey: params.walletPubkey,
         chainContext,
-        bindingRef: agentProfilePda,
       });
+      if (profileBinding) {
+        await upsertBinding(existingAgent.id, profileBinding);
+      }
     }
 
     const refreshedAgent =
@@ -696,12 +745,13 @@ export async function upsertLocalAgentIdentity(params: {
   });
 
   if (params.hasAgentProfile) {
-    const agentProfilePda = await deriveAgentProfilePda(params.walletPubkey);
-    await upsertBinding(agent.id, {
-      bindingType: BINDING_TYPES.agentProfilePda,
+    const profileBinding = await buildAgentProfileBinding({
+      walletPubkey: params.walletPubkey,
       chainContext,
-      bindingRef: agentProfilePda,
     });
+    if (profileBinding) {
+      await upsertBinding(agent.id, profileBinding);
+    }
   }
 
   return loadAgentSummary(agent);
@@ -746,12 +796,13 @@ export async function resolveAgentIdentityByWallet(
     agent = await ensureAgentUsername(agent, walletPubkey);
 
     if (options?.hasAgentProfile) {
-      const agentProfilePda = await deriveAgentProfilePda(walletPubkey);
-      await upsertBinding(agent.id, {
-        bindingType: BINDING_TYPES.agentProfilePda,
+      const profileBinding = await buildAgentProfileBinding({
+        walletPubkey,
         chainContext,
-        bindingRef: agentProfilePda,
       });
+      if (profileBinding) {
+        await upsertBinding(agent.id, profileBinding);
+      }
     }
 
     agent = (await getAgentByWallet(walletPubkey, chainContext)) ?? agent;

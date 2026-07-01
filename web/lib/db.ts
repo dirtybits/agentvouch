@@ -712,15 +712,51 @@ async function runCoreSchemaDdl() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       skill_db_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
       buyer_pubkey VARCHAR(44) NOT NULL,
+      buyer_chain_context VARCHAR(64),
+      buyer_address VARCHAR(128),
       payment_tx_signature VARCHAR(128) NOT NULL UNIQUE,
       recipient_ata VARCHAR(44) NOT NULL,
+      recipient_chain_context VARCHAR(64),
+      recipient_address VARCHAR(128),
       currency_mint VARCHAR(44) NOT NULL,
+      asset_chain_context VARCHAR(64),
+      asset_address VARCHAR(128),
       amount_micros BIGINT NOT NULL,
       verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(skill_db_id, buyer_pubkey)
     )
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS buyer_chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS buyer_address VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS recipient_chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS recipient_address VARCHAR(128)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS asset_chain_context VARCHAR(64)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS asset_address VARCHAR(128)
   `;
 
   await db`
@@ -750,6 +786,16 @@ async function runCoreSchemaDdl() {
 
   await db`
     ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS evm_listing_id VARCHAR(66)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
+    ADD COLUMN IF NOT EXISTS evm_purchase_id VARCHAR(66)
+  `;
+
+  await db`
+    ALTER TABLE usdc_purchase_receipts
     ADD COLUMN IF NOT EXISTS purchase_pda VARCHAR(44)
   `;
 
@@ -757,6 +803,23 @@ async function runCoreSchemaDdl() {
     UPDATE usdc_purchase_receipts
     SET payment_flow = COALESCE(payment_flow, 'repo-x402-usdc')
     WHERE payment_flow IS NULL
+  `;
+
+  await db`
+    UPDATE usdc_purchase_receipts
+    SET
+      buyer_chain_context = COALESCE(buyer_chain_context, chain_context),
+      buyer_address = COALESCE(buyer_address, buyer_pubkey),
+      recipient_chain_context = COALESCE(recipient_chain_context, chain_context),
+      recipient_address = COALESCE(recipient_address, recipient_ata),
+      asset_chain_context = COALESCE(asset_chain_context, chain_context),
+      asset_address = COALESCE(asset_address, currency_mint)
+    WHERE buyer_chain_context IS NULL
+       OR buyer_address IS NULL
+       OR recipient_chain_context IS NULL
+       OR recipient_address IS NULL
+       OR asset_chain_context IS NULL
+       OR asset_address IS NULL
   `;
 
   await db`
@@ -823,6 +886,13 @@ async function runCoreSchemaDdl() {
   await db`
     CREATE INDEX IF NOT EXISTS idx_usdc_purchase_receipts_skill_buyer
     ON usdc_purchase_receipts(skill_db_id, buyer_pubkey)
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_usdc_purchase_receipts_chain_buyer
+    ON usdc_purchase_receipts(skill_db_id, buyer_chain_context, buyer_address)
+    WHERE buyer_chain_context IS NOT NULL
+      AND buyer_address IS NOT NULL
   `;
 
   await db`
