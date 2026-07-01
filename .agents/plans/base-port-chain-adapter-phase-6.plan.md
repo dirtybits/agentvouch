@@ -105,6 +105,14 @@ swap is deferred until there is a real multi-EVM collision risk.
   unique index will see; `migrate` refuses to run unless `EXPECTED_DATABASE_HOST` matches the
   `DATABASE_URL` host (wrong-Neon-project guard, see [[neon-db-two-projects]]), and both
   commands print the target host/database.
+- 2026-07-01 live preflight (read-only, via Neon MCP against the live `agentvouch-postgres`
+  project `calm-meadow-36819154`, default branch): ZERO duplicates on both identity keys —
+  `(chain_context, evm_contract_address, evm_listing_id)` in `skills` and case-insensitive
+  `(skill_db_id, buyer_chain_context, buyer_address)` in `usdc_purchase_entitlements`. Zero rows
+  need lowercase normalization (skills 0, entitlements 0, receipts 0). Data shape: 1 Base-listed
+  skill, 17 entitlements (all Solana-context, 0 EVM). `migrate` therefore reduces to creating the
+  two partial unique indexes. DDL was NOT run — production DDL requires an explicit operator run
+  of `db:phase6-chain-identity migrate` (or an explicitly approved session).
 - 2026-07-01 implementation discovery: the author-trust snapshot pipeline
   (`lib/trustSnapshots.ts`) persisted every skill author under the configured _Solana_ chain
   context — including `0x…` Base authors, which would have attached bogus Solana-context trust to
