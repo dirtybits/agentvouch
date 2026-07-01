@@ -1147,6 +1147,16 @@ export async function recordUsdcPurchaseReceipt(input: {
       updated_at = NOW()
     WHERE usdc_purchase_receipts.skill_db_id = EXCLUDED.skill_db_id
       AND usdc_purchase_receipts.buyer_pubkey = EXCLUDED.buyer_pubkey
+      AND (
+        usdc_purchase_receipts.buyer_chain_context IS NULL
+        OR EXCLUDED.buyer_chain_context IS NULL
+        OR usdc_purchase_receipts.buyer_chain_context = EXCLUDED.buyer_chain_context
+      )
+      AND (
+        usdc_purchase_receipts.buyer_address IS NULL
+        OR EXCLUDED.buyer_address IS NULL
+        OR usdc_purchase_receipts.buyer_address = EXCLUDED.buyer_address
+      )
     RETURNING id, verified_at::text
   `;
 

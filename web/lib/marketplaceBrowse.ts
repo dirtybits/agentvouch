@@ -313,7 +313,7 @@ export async function loadRepoSkillRows(input: {
           AND scan.model = ${SCAN_MODEL}
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
-          AND ats.chain_context = ${configuredSolanaChainContext}
+          AND ats.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
         WHERE s.id = ANY(${skillIds}::uuid[])
       `;
     }
@@ -422,11 +422,11 @@ export async function loadRepoSkillRows(input: {
           AND scan.model = ${SCAN_MODEL}
         LEFT JOIN author_trust_snapshots ats
           ON ats.wallet_pubkey = s.author_pubkey
-          AND ats.chain_context = ${configuredSolanaChainContext}
+          AND ats.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
         LEFT JOIN agent_identity_bindings owner_binding
           ON owner_binding.binding_type = 'wallet_owner'
           AND owner_binding.binding_ref = s.author_pubkey
-          AND owner_binding.chain_context = ${configuredSolanaChainContext}
+          AND owner_binding.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
         LEFT JOIN agents author_agent
           ON author_agent.id = owner_binding.agent_id
         LEFT JOIN LATERAL (
@@ -532,7 +532,7 @@ export async function loadRepoSkillRows(input: {
         AND scan.model = ${SCAN_MODEL}
       LEFT JOIN author_trust_snapshots ats
         ON ats.wallet_pubkey = s.author_pubkey
-        AND ats.chain_context = ${configuredSolanaChainContext}
+        AND ats.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
       WHERE 1=1
       ${input.author ? sql()`AND s.author_pubkey = ${input.author}` : sql()``}
       ${

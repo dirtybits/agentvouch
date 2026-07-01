@@ -21,12 +21,17 @@ type RepoListingActivityRow = {
   on_chain_protocol_version: string | null;
   on_chain_program_id: string | null;
   chain_context: string | null;
+  evm_listing_id: string | null;
+  evm_contract_address: string | null;
+  evm_tx_hash: string | null;
   created_at: string;
 };
 
 type UsdcPurchaseActivityRow = {
   payment_tx_signature: string;
   buyer_pubkey: string;
+  buyer_chain_context: string | null;
+  buyer_address: string | null;
   currency_mint: string;
   amount_micros: string;
   verified_at: string;
@@ -43,6 +48,8 @@ type UsdcPurchaseActivityRow = {
   on_chain_program_id: string | null;
   chain_context: string | null;
   purchase_pda: string | null;
+  evm_listing_id: string | null;
+  evm_purchase_id: string | null;
 };
 
 export async function GET() {
@@ -64,6 +71,9 @@ export async function GET() {
           on_chain_protocol_version,
           on_chain_program_id,
           chain_context,
+          evm_listing_id,
+          evm_contract_address,
+          evm_tx_hash,
           created_at::text AS created_at
         FROM skills
         ORDER BY created_at DESC
@@ -73,6 +83,8 @@ export async function GET() {
         SELECT
           r.payment_tx_signature,
           r.buyer_pubkey,
+          r.buyer_chain_context,
+          r.buyer_address,
           r.currency_mint,
           r.amount_micros::text AS amount_micros,
           r.verified_at::text AS verified_at,
@@ -88,7 +100,9 @@ export async function GET() {
           r.protocol_version,
           r.on_chain_program_id,
           r.chain_context,
-          r.purchase_pda
+          r.purchase_pda,
+          r.evm_listing_id,
+          r.evm_purchase_id
         FROM usdc_purchase_receipts r
         INNER JOIN skills s
           ON s.id = r.skill_db_id
@@ -104,6 +118,7 @@ export async function GET() {
           payment_flow: getSkillPaymentFlow({
             priceUsdcMicros: skill.price_usdc_micros,
             onChainAddress: skill.on_chain_address,
+            evmListingId: skill.evm_listing_id,
           }),
         })),
         usdcPurchases,

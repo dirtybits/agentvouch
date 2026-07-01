@@ -392,11 +392,11 @@ async function loadSkillDetailSnapshotUncached(
       AND scan.model = ${SCAN_MODEL}
     LEFT JOIN author_trust_snapshots ats
       ON ats.wallet_pubkey = s.author_pubkey
-      AND ats.chain_context = ${configuredSolanaChainContext}
+      AND ats.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
     LEFT JOIN agent_identity_bindings owner_binding
       ON owner_binding.binding_type = 'wallet_owner'
       AND owner_binding.binding_ref = s.author_pubkey
-      AND owner_binding.chain_context = ${configuredSolanaChainContext}
+      AND owner_binding.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
     LEFT JOIN agents a
       ON a.id = owner_binding.agent_id
     LEFT JOIN LATERAL (

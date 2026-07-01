@@ -561,7 +561,7 @@ export async function PATCH(
           on_chain_protocol_version = ${verification.protocolVersion},
           on_chain_program_id = ${verification.onChainProgramId},
           evm_listing_id = ${verification.listingId},
-          evm_contract_address = ${verification.onChainProgramId},
+          evm_contract_address = ${verification.onChainProgramId.toLowerCase()},
           evm_tx_hash = ${verification.txHash},
           updated_at = NOW()
         WHERE id = ${id}::uuid

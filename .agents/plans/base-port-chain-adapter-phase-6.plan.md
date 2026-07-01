@@ -6,20 +6,20 @@ todos:
     content: "DONE 2026-07-01: inspected merged Phase 5 schema helpers and call sites; live Neon constraint/index snapshot skipped because this worktree has no DATABASE_URL or Base envs loaded."
     status: completed
   - id: harden-skill-evm-identity
-    content: Add/verify EVM listing identity constraints and helpers so Base rows use chain_context + evm_contract_address + evm_listing_id, never Solana on_chain_address, and Solana rows keep their current PDA/program semantics.
-    status: pending
+    content: "DONE 2026-07-01: non-unique idx_skills_evm_listing + lowercase normalization added to runtime db.ts; Base listing persistence now lowercases evm_contract_address at write; partial UNIQUE variants live in web/scripts/phase6-chain-identity-migration.ts (preflight/migrate) with npm script db:phase6-chain-identity. Final gate is verify-phase6."
+    status: completed
   - id: migrate-chain-qualified-entitlements
-    content: Backfill buyer_chain_context/buyer_address plus recipient_chain_context/recipient_address and asset_chain_context/asset_address, add chain-qualified lookup/index coverage additively, and route new reads/writes through the chain-qualified helper while keeping the legacy (skill_db_id, buyer_pubkey) PK until the multi-EVM phase.
-    status: pending
+    content: "DONE 2026-07-01: Phase 5 runtime backfills + non-unique chain-buyer covering index confirmed present; receipt upsert defensive WHERE now also compares buyer_chain_context/buyer_address (D3, NULL-tolerant for pre-backfill rows); chain-qualified UNIQUE index ships via the standalone script; legacy (skill_db_id, buyer_pubkey) PK and ON CONFLICT kept. Caller routing handled under harden-chain-aware-callers."
+    status: completed
   - id: harden-chain-aware-callers
-    content: Audit and update raw access, purchase verification, x402 settlement, skill detail, marketplace activity, and dashboard/read paths so Base rows never flow through Solana PDA/ATA/pubkey assumptions.
-    status: pending
+    content: "DONE 2026-07-01: trust joins in marketplaceBrowse/skillDetailSnapshot now scope by row chain context (COALESCE to configured Solana for legacy NULL); trustSnapshots.ts drops 0x-shaped authors from Solana trust resolution/persistence at every entry point; activity route exposes buyer_chain_context/buyer_address + EVM listing/purchase fields and passes evmListingId to getSkillPaymentFlow (paid Base skills no longer show listing-required); MarketplaceClient prefers buyer_address+buyer_chain_context with buyer_pubkey fallback. Raw access, purchase verify, and x402 settle audited — already chain-safe from Phase 5 (Base branch precedes all ATA/PDA code)."
+    status: completed
   - id: add-phase6-regression-tests
-    content: Add focused tests/source assertions for chain-qualified entitlement collisions, Base/Solana raw access separation, EVM listing persistence, and activity/dashboard rendering fields.
-    status: pending
+    content: "DONE 2026-07-01: web/__tests__/lib/phase6-chain-identity.test.ts (16 tests) — source assertions for runtime-vs-migration DDL split, D3 receipt guard, chain-scoped trust joins, EVM-author trust-pipeline exclusion, activity chain fields, raw-access ordering (Base branch before ATA derivation); behavioral tests for getSkillPaymentFlow with evmListingId."
+    status: completed
   - id: verify-phase6
-    content: Run format, lint, typecheck, web tests, and Next build; run live Neon migration/smoke only when the intended DATABASE_URL and Base test envs are present.
-    status: pending
+    content: "DONE 2026-07-01: format:check, web lint, typecheck (next typegen + tsc), vitest (82 files / 469 tests), and next build --webpack all pass locally. Live Neon migration/smoke SKIPPED per D5 — no DATABASE_URL or Base envs in this worktree; run scripts/phase6-chain-identity-migration.ts preflight+migrate against the live Neon project before or at deploy."
+    status: completed
 isProject: false
 ---
 
@@ -90,6 +90,29 @@ swap is deferred until there is a real multi-EVM collision risk.
   `hasChainUsdcPurchaseEntitlement` when a buyer chain context/EVM address is present, while Solana
   and repo/x402 paths still use legacy `hasUsdcPurchaseEntitlement`. Activity responses still expose
   `buyer_pubkey` as the actor field. These are Phase 6 call-site audit targets.
+- 2026-07-01 implementation: Shipped on `feat/base-port-phase-6`. Runtime `db.ts` gained the
+  non-unique `idx_skills_evm_listing` plus an idempotent `LOWER(evm_contract_address)`
+  normalization; the partial UNIQUE variants (`uidx_skills_evm_listing_identity`,
+  `uidx_usdc_purchase_entitlements_chain_buyer`, both `WHERE ... IS NOT NULL`) live in
+  `web/scripts/phase6-chain-identity-migration.ts` (`preflight`/`migrate`, npm script
+  `db:phase6-chain-identity`), which aborts with a printed duplicate report and never touches the
+  legacy PK. Base listing persistence now lowercases `evm_contract_address` at write. D3: the
+  receipt upsert's defensive WHERE also compares `buyer_chain_context`/`buyer_address`
+  (NULL-tolerant for pre-backfill rows).
+- 2026-07-01 implementation discovery: the author-trust snapshot pipeline
+  (`lib/trustSnapshots.ts`) persisted every skill author under the configured _Solana_ chain
+  context — including `0x…` Base authors, which would have attached bogus Solana-context trust to
+  Base skills via the marketplace joins. Fixed by filtering EVM-shaped wallets at every entry
+  point (`isEvmShapedWallet`), excluding `0x%` authors from the cron refresh query, and scoping
+  the `author_trust_snapshots`/`owner_binding` joins in `marketplaceBrowse.ts` and
+  `skillDetailSnapshot.ts` by `COALESCE(s.chain_context, configured Solana)`. Base author trust
+  stays live-resolved (`resolveBaseAuthorTrust`); a persisted Base snapshot path is Phase 7+ work.
+- 2026-07-01 implementation: activity feed fixes — `/api/skills/activity` now exposes
+  `buyer_chain_context`/`buyer_address` and EVM listing/purchase ids, and passes `evmListingId`
+  to `getSkillPaymentFlow` (paid Base skills previously rendered as `listing-required`).
+  `MarketplaceClient` prefers the chain-qualified actor with `buyer_pubkey` fallback; its
+  `ActorLink` already renders `eip155:` actors without a Solana author link. Regression coverage:
+  `web/__tests__/lib/phase6-chain-identity.test.ts` (16 tests).
 - 2026-07-01 review update: Defer the destructive entitlement PK swap. Today, Solana
   `buyer_pubkey` values are base58 and Base values are lowercased `0x...` hex, so their namespaces
   are disjoint. The real collision appears only when a second EVM chain is enabled, which is blocked
