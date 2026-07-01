@@ -6,7 +6,7 @@ todos:
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: completed
   - id: extract-solana-adapter
-    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED to an app+wallet session — do Phase 3 FIRST (see NEXT STEP OVERRIDE). Full Done-when needs running-app devnet verification."
+    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor - must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED. Current sequencing 2026-07-01: circle back immediately after Phase 6 DB hardening and before Phase 7/8 default-chain work."
     status: in_progress
   - id: base-adapter-readslice
     content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
@@ -15,13 +15,13 @@ todos:
     content: "Phase 4 DONE 2026-06-30. Chain-aware wallet: Base Sepolia Coinbase Smart Wallet passkey connect/restore/disconnect works in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. Browser WebAuthn restore smoke and Solana regression passed. wagmi/MetaMask injected deferred. See sub-plan .agents/plans/base-port-chain-adapter-phase-4.plan.md."
     status: completed
   - id: base-adapter-write
-    content: "Phase 5. Base ChainWallet writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337), kept out of server-safe BaseAdapter. purchaseSkill takes expectedPriceUsdcMicros and verifies the live EVM listing price before exact USDC approval. Wire EVM x402 receiveWithAuthorization into route handlers. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
-    status: pending
+    content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke remains env-dependent. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
+    status: completed
   - id: db-multichain
-    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana: explicit evm_listing_id (bytes32), evm_contract_address, evm_tx_hash, and chain-qualified buyer entitlement semantics. Do not overload Solana-sized on_chain_address or bare buyer_pubkey semantics for Base. Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
+    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana after the Phase 5 groundwork: EVM listing identity constraints, chain-qualified receipt/entitlement uniqueness, Base/Solana raw-access separation, and activity/dashboard reads that prefer buyer_chain_context + buyer_address over bare buyer_pubkey. Do not overload Solana on_chain_address for Base. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
     status: pending
   - id: address-type-sweep
-    content: "Phase 7. Replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
+    content: "Phase 7. After Phase 6 and the Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
     status: pending
   - id: make-base-canonical
     content: "Phase 8, TWO gates (PR #58 review 2026-06-29). 8a: default chain_context -> Base SEPOLIA (eip155:84532) behind a flag, Solana still selectable. 8b (LATER, blocked): mainnet cutover once mainnet RPC/contract/USDC/paymaster exist and getAdapter accepts eip155:8453. Do NOT flip the default to generic Base/eip155:8453 before 8b."
@@ -66,20 +66,23 @@ but off by default.
 
 ## Resuming this plan in a fresh session (HANDOFF)
 
-The plan and the implementation live together on branch **`feat/base-port-chain-adapter`**
-(the plan also exists on `main` as commit `d4c8b68`, but the up-to-date copy travels with the
-branch). To take over:
+As of 2026-07-01, completed Base-port phases land through one PR branch per phase off current
+`main`. The current active branch for Phase 6 planning/execution is **`feat/base-port-phase-6`**.
+To take over:
 
-1. `git checkout feat/base-port-chain-adapter` (fresh worktree setup: [[agentvouch-worktree-setup]]).
-2. Read the frontmatter `todos`. **The first non-`completed` id is the next phase.**
-3. Read that phase's section under "## Phases" — each is self-contained (files, steps,
-   Done-when). **Phases are ordered; each depends on the previous.**
+1. `git fetch origin`, then either check out the active phase branch or create the next phase branch
+   from `origin/main` (fresh worktree setup: [[agentvouch-worktree-setup]]).
+2. Read the frontmatter `todos` **and the dated sequencing notes below**. Do not blindly use the
+   first non-`completed` id: Phase 2 is intentionally `in_progress`/paused while Phase 6 runs, then
+   Phase 2 resumes before Phase 7/8.
+3. Read the relevant phase section under "## Phases" plus its dedicated sub-plan when one exists.
+   Each phase is self-contained (files, steps, Done-when), but dated sequencing notes override
+   frontmatter order when they say so.
 4. Set the todo to `in_progress` when you start; `completed` only when its **Done when** passes
    (verification, not just compile). If you diverge from the plan, append a dated note at that
    phase. See the plan-writing skill for status discipline.
-5. **One phase = one commit/PR** off `feat/base-port-chain-adapter`, so each step is reviewable
-   and the handoff boundary is clean. Suggested branch per phase:
-   `feat/base-port-p<N>-<slug>`.
+5. **One phase = one PR** off current `main`, so each step is reviewable and the handoff boundary is
+   clean. Suggested branch per phase: `feat/base-port-phase-<N>`.
 
 > **NEXT STEP OVERRIDE (2026-06-24 review).** The strict "first non-`completed` todo = next phase"
 > rule (step 2) is **overridden once**: do **Phase 3 (`base-adapter-readslice`) NEXT**, before the
@@ -88,8 +91,15 @@ branch). To take over:
 > and only prove the Solana refactor didn't regress (no new capability). Phase 3 does **not** depend
 > on 2c — it adds `base.ts` + one `chain_context` read branch while Solana keeps working via its
 > current path (satisfying Phase 3's "Solana still renders" gate); 2c later unifies the transitional
-> dual read path (trivial churn on one call site). Batch **2b-impl + 2c + Phases 4/5** into a single
-> app+wallet session. See the Phase 3 block for the verified read-path recon.
+> dual read path (trivial churn on one call site). See the Phase 3 block for the verified read-path
+> recon.
+>
+> **POST-PHASE-5 SEQUENCING (2026-07-01).** Phase 5 has now landed, and Phase 6 is the next
+> correctness gate because it hardens the chain-qualified DB semantics that Base raw access depends
+> on. After Phase 6 completes, circle back to the remaining Phase 2 work (Solana wallet/write wrapper,
+> caller repointing, and x402 seam cleanup) **before** Phase 7 address sweep and Phase 8 Base Sepolia
+> default flip. The Base default switch should not happen while Solana still has transitional paths
+> outside the seam.
 
 ## What already exists to build on
 
@@ -394,11 +404,16 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-4.plan.md`](./base-port-chai
 - **Verification:** browser connect/restore proof plus web typecheck, lint, vitest, and
   `npm run build --workspace @agentvouch/web`; see the Phase 4 sub-plan for exact evidence.
 
-### Phase 5 — `base-adapter-write` [pending]
+### Phase 5 — `base-adapter-write` [completed 2026-07-01]
 
 Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chain-adapter-phase-5.plan.md).
 
 - **Goal:** register/list/buy on Base Sepolia from the UI plus agent x402 settlement.
+- **Status:** done - PR #67 merged as `a61f65d` on `main`. The implementation includes Base
+  ChainWallet writes, purchase/listing verification, Base author identity, chain-qualified purchase
+  groundwork, and EVM x402 settlement/entitlement paths. Local source/test/build verification is
+  recorded in the Phase 5 sub-plan; live Base write/x402 smoke still requires the Base RPC,
+  paymaster, relayer, funded wallet, and intended DB envs.
 - **DECIDED (2026-06-25):** on-chain identity via `AgentVouchEvm.registerAgent` / `getProfile`
   (already deployed; mirrors the Solana identity program). The EVM author/profile branch must read
   `getProfile` before routing EVM authors through an author page.
@@ -419,14 +434,20 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chai
 
 ### Phase 6 — `db-multichain` [pending]
 
+Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chain-adapter-phase-6.plan.md).
+
 - **Goal:** harden multi-chain persistence after the minimum Phase 5 write/access path lands.
-- **Files:** a migration + `web/lib/db.ts`. Add explicit EVM fields (`evm_listing_id`,
-  `evm_contract_address`, `evm_tx_hash`) keyed by `chain_context`; add or finish generic purchase
-  identity fields such as `buyer_chain_context` / `buyer_address`, `recipient_chain_context` /
-  `recipient_address`, and `asset_chain_context` / `asset_address`; guard reads/writes by chain.
+- **Files:** `web/lib/db.ts`, `web/lib/usdcPurchases.ts`, raw access/purchase/x402 routes, skill
+  detail and marketplace/activity read surfaces, plus focused tests. Phase 5 already added many
+  additive fields (`evm_listing_id`, `evm_contract_address`, `evm_tx_hash`, `buyer_chain_context`,
+  `buyer_address`, recipient/asset chain fields, and EVM purchase ids). Phase 6 must make those
+  fields authoritative: add/verify EVM listing identity indexes, backfill and enforce chain-qualified
+  buyer fields, move entitlement uniqueness/upserts/lookups off bare `buyer_pubkey`, and guard all
+  relevant reads/writes by `chain_context`.
 - **Done when:** a Base purchase persists (contract addr + tx hash), raw-access entitlements are
   chain-qualified, and dashboards/activity render without treating EVM rows as Solana PDAs; existing
-  Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project).
+  Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project). After this phase,
+  return to Phase 2 before Phase 7/8.
 
 ### Phase 7 — `address-type-sweep` [pending]
 
