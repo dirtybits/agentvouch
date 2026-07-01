@@ -36,9 +36,14 @@ describe("skill detail source", () => {
     expect(source).toContain("View PDA");
     expect(source).toContain("Sign & Download");
     expect(source).toContain("buildDownloadRawMessage");
+    expect(source).toContain("buildStripeCheckoutMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
     expect(source).toContain("fetchSignedRawSkill");
+    expect(source).toContain("handleStripeCheckout");
+    expect(source).toContain("Pay by Card");
+    expect(source).toContain('stripeCheckoutStatus === "success"');
+    expect(source).toContain("/api/stripe/checkout");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });
@@ -49,7 +54,9 @@ describe("skill detail source", () => {
       "utf8"
     );
 
-    expect(source).toContain("Repo-backed listings stay pinned to the canonical raw");
+    expect(source).toContain(
+      "Repo-backed listings stay pinned to the canonical raw"
+    );
     expect(source).toContain("endpoint.");
     expect(source).toContain("Publish New Version");
     expect(source).toContain("buildSignMessage");

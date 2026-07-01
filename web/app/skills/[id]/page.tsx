@@ -6,19 +6,20 @@ import { useSearchParams } from "next/navigation";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
-import SkillFileTree, { type SkillFileTreeEntry } from "@/components/SkillFileTree";
+import SkillFileTree, {
+  type SkillFileTreeEntry,
+} from "@/components/SkillFileTree";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
   buildDownloadRawMessage,
   buildSignMessage,
+  buildStripeCheckoutMessage,
   createSignedDownloadAuthPayload,
 } from "@/lib/auth";
 import { encodeBase64 } from "@/lib/base64";
-import {
-  buildPaidSkillDownloadRequiredMessage,
-} from "@/lib/skillFlowMessages";
+import { buildPaidSkillDownloadRequiredMessage } from "@/lib/skillFlowMessages";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
@@ -67,6 +68,7 @@ import {
   FiGithub,
   FiEdit2,
   FiTrash2,
+  FiCreditCard,
 } from "react-icons/fi";
 
 interface SkillVersion {
@@ -334,6 +336,7 @@ export default function SkillDetailPage({
   } | null>(null);
   const [installing, setInstalling] = useState(false);
   const [purchasingUsdc, setPurchasingUsdc] = useState(false);
+  const [startingStripeCheckout, setStartingStripeCheckout] = useState(false);
   const [usdcPurchaseTx, setUsdcPurchaseTx] = useState<string | null>(null);
   const [installResult, setInstallResult] = useState<{
     success: boolean;
@@ -382,6 +385,7 @@ export default function SkillDetailPage({
   );
   const capabilityBullets = extractCapabilityBullets(content);
   const requestedAuthorAction = searchParams.get("authorAction");
+  const stripeCheckoutStatus = searchParams.get("stripe");
 
   const refreshSkill = useCallback(async () => {
     try {
@@ -404,6 +408,29 @@ export default function SkillDetailPage({
   useEffect(() => {
     void refreshSkill();
   }, [refreshSkill]);
+
+  useEffect(() => {
+    if (stripeCheckoutStatus === "success") {
+      setInstallResult({
+        success: true,
+        message:
+          "Card checkout complete. When Stripe confirms the payment, this wallet can Sign & Download.",
+      });
+      if (walletAddress) {
+        const timer = window.setTimeout(() => {
+          void refreshSkill();
+        }, 1500);
+        return () => window.clearTimeout(timer);
+      }
+      return;
+    }
+    if (stripeCheckoutStatus === "cancelled") {
+      setInstallResult({
+        success: false,
+        message: "Card checkout was cancelled.",
+      });
+    }
+  }, [refreshSkill, stripeCheckoutStatus, walletAddress]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -682,6 +709,62 @@ export default function SkillDetailPage({
       setUsdcPurchaseTx(null);
     } finally {
       setPurchasingUsdc(false);
+    }
+  };
+
+  const handleStripeCheckout = async () => {
+    if (!skill) return;
+    if (!connected || !walletAddress) {
+      setInstallResult({
+        success: false,
+        message: "Connect a wallet before card checkout.",
+      });
+      return;
+    }
+    if (!signMessage) {
+      setInstallResult({
+        success: false,
+        message: "This wallet cannot sign the card checkout authorization.",
+      });
+      return;
+    }
+
+    setStartingStripeCheckout(true);
+    setInstallResult(null);
+    setDownloadResult(null);
+    try {
+      const timestamp = Date.now();
+      const message = buildStripeCheckoutMessage(skill.id, timestamp);
+      const signatureBytes = await signMessage(
+        new TextEncoder().encode(message)
+      );
+      const signature = encodeBase64(signatureBytes);
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skillId: skill.id,
+          auth: { pubkey: walletAddress, signature, message, timestamp },
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        url?: string | null;
+      } | null;
+      if (!response.ok) {
+        throw new Error(body?.error || "Card checkout is unavailable");
+      }
+      if (!body?.url) {
+        throw new Error("Stripe did not return a checkout URL");
+      }
+
+      window.location.assign(body.url);
+    } catch (error: unknown) {
+      setInstallResult({
+        success: false,
+        message: getErrorMessage(error, "Card checkout failed"),
+      });
+      setStartingStripeCheckout(false);
     }
   };
 
@@ -1013,6 +1096,12 @@ export default function SkillDetailPage({
     isBlockingPurchaseStatus(purchasePreflightStatus);
   const isPaidSkill = hasUsdcPrimary;
   const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
+  const stripeCheckoutAvailable = Boolean(
+    primaryUsdcPrice && !buyerHasPurchased && !isAuthor
+  );
+  const walletCanAuthorizeStripeCheckout = Boolean(
+    connected && signMessage && stripeCheckoutAvailable
+  );
   const walletCanAuthorizeDirectUsdc = Boolean(
     protocolTransactionSigner && signMessage && !isPhantomEmbeddedWallet
   );
@@ -1054,14 +1143,14 @@ export default function SkillDetailPage({
 }`;
   const installCommand = hasUsdcPrimary
     ? isListingRequired
-      ? `# Primary price: ${usdcPriceLabel}\n# This paid repo skill is not purchasable until the author links an on-chain SkillListing.\ncurl -sL ${installUrl}`
+      ? `# Primary price: ${usdcPriceLabel} via wallet-bound card checkout\n# Use the browser card checkout on this page. Agents can retry the raw endpoint with X-AgentVouch-Auth after entitlement.\ncurl -sL ${installUrl}`
       : paymentFlow === "direct-purchase-skill"
       ? `# Primary price: ${usdcPriceLabel} via purchase_skill\n# Call purchase_skill on-chain, POST the confirmed signature to /api/skills/${skill.id}/purchase/verify, then retry with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
       : `# Primary price: ${usdcPriceLabel} via x402\n# Browser checkout is available on this page for wallets with partial transaction signing.\n# Agents can call the raw endpoint directly and respond to PAYMENT-REQUIRED / PAYMENT-SIGNATURE.\ncurl -sL ${installUrl}`
     : `curl -sL ${installUrl} -o SKILL.md`;
   const purchaseTitle = primaryUsdcPrice
     ? isListingRequired
-      ? "On-chain listing required"
+      ? "Card checkout available"
       : "USDC primary pricing"
     : isPaidSkill
     ? "Paid Skill"
@@ -1071,7 +1160,7 @@ export default function SkillDetailPage({
     : isListingRequired
     ? isAuthor
       ? `This paid skill is priced at ${usdcPriceLabel}, but it is not purchasable until you create and link its on-chain SkillListing.`
-      : `This paid skill is priced at ${usdcPriceLabel}, but purchases are unavailable while the author links the on-chain listing.`
+      : `This paid skill is priced at ${usdcPriceLabel}. Card checkout can unlock this wallet while on-chain listing setup is pending.`
     : isAuthor
     ? primaryUsdcPrice
       ? `This listing is priced at ${usdcPriceLabel}.`
@@ -1084,15 +1173,13 @@ export default function SkillDetailPage({
     ? "Embedded Phantom checkout is temporarily unavailable. Connect the Phantom extension or another Solana wallet to purchase."
     : primaryUsdcPrice
     ? browserCanUseUsdc
-      ? `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
-      : `This listing is priced in ${usdcPriceLabel}. This wallet cannot use browser x402; use direct purchase or the agent/API fallback below.`
+      ? `Pay ${usdcPriceLabel} with USDC or use card checkout. Future re-downloads use Sign & Download.`
+      : `This listing is priced in ${usdcPriceLabel}. Card checkout can unlock this wallet without waiting for protocol settlement.`
     : hasLegacySolPrice
     ? "This historical SOL-priced listing is not available for new USDC checkout."
     : "Install with a wallet signature.";
   const connectWalletLabel = primaryUsdcPrice
-    ? isListingRequired
-      ? "Listing setup required before purchase"
-      : "Connect wallet to pay with USDC"
+    ? "Connect wallet to pay by card"
     : isPaidSkill
     ? "Connect wallet to buy and unlock"
     : "Connect wallet to install";
@@ -1375,7 +1462,7 @@ export default function SkillDetailPage({
         {/* Install / Buy action */}
         {(!hasLegacySolPrice || hasUsdcPrimary) && (
           <div className="rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] p-4 mb-6">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
                   {purchaseTitle}
@@ -1385,7 +1472,7 @@ export default function SkillDetailPage({
                 </p>
               </div>
               {connected ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   {!isPaidSkill ? (
                     <button
                       onClick={handleFreeInstall}
@@ -1435,6 +1522,74 @@ export default function SkillDetailPage({
                         Purchased. Signed re-downloads require an on-chain link.
                       </span>
                     )
+                  ) : primaryUsdcPrice && browserCanUseUsdc ? (
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        onClick={handleUsdcPurchase}
+                        disabled={purchasingUsdc || purchaseBlocked}
+                        className={navButtonPrimaryInlineClass}
+                      >
+                        {purchasingUsdc ? (
+                          <>
+                            <FiLoader className="w-4 h-4 animate-spin" />
+                            Processing…
+                          </>
+                        ) : (
+                          <>
+                            <UsdcIcon className="w-4 h-4" />
+                            {purchaseBlocked
+                              ? purchasePreflightStatus ===
+                                "buyerMissingUsdcAccount"
+                                ? "Set Up USDC Account"
+                                : "Need More USDC"
+                              : "Pay with USDC"}
+                          </>
+                        )}
+                      </button>
+                      {stripeCheckoutAvailable && (
+                        <button
+                          onClick={handleStripeCheckout}
+                          disabled={
+                            startingStripeCheckout ||
+                            !walletCanAuthorizeStripeCheckout
+                          }
+                          className={navButtonSecondaryInlineClass}
+                        >
+                          {startingStripeCheckout ? (
+                            <>
+                              <FiLoader className="w-4 h-4 animate-spin" />
+                              Opening…
+                            </>
+                          ) : (
+                            <>
+                              <FiCreditCard className="w-4 h-4" />
+                              Pay by Card
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  ) : stripeCheckoutAvailable ? (
+                    <button
+                      onClick={handleStripeCheckout}
+                      disabled={
+                        startingStripeCheckout ||
+                        !walletCanAuthorizeStripeCheckout
+                      }
+                      className={navButtonPrimaryInlineClass}
+                    >
+                      {startingStripeCheckout ? (
+                        <>
+                          <FiLoader className="w-4 h-4 animate-spin" />
+                          Opening…
+                        </>
+                      ) : (
+                        <>
+                          <FiCreditCard className="w-4 h-4" />
+                          Pay by Card
+                        </>
+                      )}
+                    </button>
                   ) : embeddedWalletCheckoutBlocked ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--lobster-accent)]">
                       <FiAlertTriangle className="w-3.5 h-3.5" />
@@ -1445,29 +1600,6 @@ export default function SkillDetailPage({
                       <FiAlertTriangle className="w-3.5 h-3.5" />
                       Listing setup required
                     </span>
-                  ) : primaryUsdcPrice && browserCanUseUsdc ? (
-                    <button
-                      onClick={handleUsdcPurchase}
-                      disabled={purchasingUsdc || purchaseBlocked}
-                      className={navButtonPrimaryInlineClass}
-                    >
-                      {purchasingUsdc ? (
-                        <>
-                          <FiLoader className="w-4 h-4 animate-spin" />
-                          Processing…
-                        </>
-                      ) : (
-                        <>
-                          <UsdcIcon className="w-4 h-4" />
-                          {purchaseBlocked
-                            ? purchasePreflightStatus ===
-                              "buyerMissingUsdcAccount"
-                              ? "Set Up USDC Account"
-                              : "Need More USDC"
-                            : "Pay with USDC"}
-                        </>
-                      )}
-                    </button>
                   ) : (
                     <span className="text-xs text-gray-400 dark:text-gray-500">
                       USDC checkout is required for new purchases.
@@ -1540,8 +1672,8 @@ export default function SkillDetailPage({
             {primaryUsdcPrice && (
               <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
                 {isListingRequired
-                  ? "New paid purchases are disabled until this repo skill is linked to an on-chain listing."
-                  : "USDC is the default app-layer price. Protocol-listed purchases settle through purchase_skill and signed re-downloads stay wallet-bound."}
+                  ? "Card checkout records an off-chain entitlement for this wallet while on-chain listing setup is pending."
+                  : "Protocol USDC purchases settle through purchase_skill; card checkout records an off-chain entitlement for this wallet."}
               </p>
             )}
             {skill.purchaseRiskWarning &&
@@ -1560,18 +1692,18 @@ export default function SkillDetailPage({
             {skill.purchasePreflightMessage &&
               hasUsdcPrimary &&
               !isListingRequired && (
-              <p
-                className={`text-xs mt-2 ${
-                  purchaseBlocked
-                    ? "text-amber-700 dark:text-amber-300"
-                    : purchasePreflightStatus === "estimateUnavailable"
-                    ? "text-gray-500 dark:text-gray-400"
-                    : "text-gray-500 dark:text-gray-400"
-                }`}
-              >
-                {skill.purchasePreflightMessage}
-              </p>
-            )}
+                <p
+                  className={`text-xs mt-2 ${
+                    purchaseBlocked
+                      ? "text-amber-700 dark:text-amber-300"
+                      : purchasePreflightStatus === "estimateUnavailable"
+                      ? "text-gray-500 dark:text-gray-400"
+                      : "text-gray-500 dark:text-gray-400"
+                  }`}
+                >
+                  {skill.purchasePreflightMessage}
+                </p>
+              )}
             {installResult && (
               <p
                 className={`text-xs mt-2 ${
@@ -1641,15 +1773,14 @@ export default function SkillDetailPage({
             {isPaidSkill ? (
               isListingRequired ? (
                 <>
-                  This paid repo skill is waiting for its on-chain listing. New
-                  purchases are unavailable until the author links a{" "}
+                  This paid repo skill is waiting for its on-chain listing.
+                  Browser card checkout can unlock this wallet now; agents see{" "}
                   <code className="text-amber-600 dark:text-amber-400">
-                    SkillListing
-                  </code>
-                  .
+                    listing-required
+                  </code>{" "}
+                  until an entitlement exists. .
                 </>
-              ) : (
-              primaryUsdcPrice ? (
+              ) : primaryUsdcPrice ? (
                 browserCanUseUsdc ? (
                   <>
                     This listing is USDC-primary. The button above handles the
@@ -1679,7 +1810,6 @@ export default function SkillDetailPage({
                   .
                 </>
               )
-              )
             ) : (
               <>
                 Free skills can be downloaded directly with the command below.
@@ -1702,15 +1832,14 @@ export default function SkillDetailPage({
             {isPaidSkill ? (
               isListingRequired ? (
                 <>
-                  This paid repo skill returns{" "}
+                  This paid repo skill can be bought with browser card checkout.
+                  Direct raw API requests still return{" "}
                   <code className="text-amber-600 dark:text-amber-400">
                     listing-required
                   </code>{" "}
-                  instead of x402 payment requirements until the author links an
-                  on-chain listing.
+                  until the buyer has a wallet-bound entitlement.
                 </>
-              ) : (
-              primaryUsdcPrice ? (
+              ) : primaryUsdcPrice ? (
                 <>
                   This listing is USDC-primary. Agents should use the x402 raw
                   endpoint directly; browser checkout uses the same USDC
@@ -1735,7 +1864,6 @@ export default function SkillDetailPage({
                   </Link>
                   .
                 </>
-              )
               )
             ) : (
               <>
@@ -1910,9 +2038,7 @@ export default function SkillDetailPage({
         )}
 
         {scanCopy && (
-          <div
-            className={`mb-6 rounded-sm border p-4 ${scanCopy.className}`}
-          >
+          <div className={`mb-6 rounded-sm border p-4 ${scanCopy.className}`}>
             <div className="flex items-start gap-2">
               <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>

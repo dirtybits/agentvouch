@@ -1,4 +1,4 @@
-// Tier 1 Stripe (web2 / card) payments — PROTOTYPE. See docs/STRIPE_FEASIBILITY.md.
+// Tier 1 Stripe MPP-style payments — PROTOTYPE. See docs/STRIPE_FEASIBILITY.md.
 //
 // Deliberately implemented against the Stripe REST API with `fetch` plus
 // `node:crypto` for webhook signature verification, so this adds NO new npm
@@ -11,7 +11,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const STRIPE_PAYMENT_FLOW = "stripe-fiat-offchain";
+export const STRIPE_PAYMENT_FLOW = "stripe-mpp-offchain";
 
 // Sentinels stored in chain-shaped receipt columns (see Obstacle 2 in the
 // feasibility note). These are placeholders, not real on-chain references.
@@ -30,15 +30,15 @@ export function getStripeConfig(): StripeConfig | null {
   return {
     secretKey,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
-    apiBase: (process.env.STRIPE_API_BASE?.trim() || "https://api.stripe.com").replace(
-      /\/+$/,
-      ""
-    ),
+    apiBase: (
+      process.env.STRIPE_API_BASE?.trim() || "https://api.stripe.com"
+    ).replace(/\/+$/, ""),
   };
 }
 
 export function isStripeEnabled(): boolean {
-  return getStripeConfig() !== null;
+  const config = getStripeConfig();
+  return Boolean(config?.secretKey && config.webhookSecret);
 }
 
 // Stripe charges integer minor units (cents). We treat one USDC micro-unit as
@@ -51,14 +51,6 @@ export function usdcMicrosToUsdCents(micros: bigint): number {
   return Number((micros + 5000n) / 10000n);
 }
 
-// A card buyer has no Solana pubkey. We derive a synthetic, deterministic
-// reference to key the entitlement on. The receipt column is VARCHAR(44), so
-// we truncate defensively. This is a placeholder for a real identity-link
-// table (Obstacle 1), not a design.
-export function syntheticBuyerRef(stripeCustomerOrSession: string): string {
-  return `stripe:${stripeCustomerOrSession}`.slice(0, 44);
-}
-
 function formEncode(params: Record<string, string>): string {
   return Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
@@ -68,6 +60,8 @@ function formEncode(params: Record<string, string>): string {
 export type CreateCheckoutSessionInput = {
   skillDbId: string;
   skillName: string;
+  buyerPubkey: string;
+  amountUsdcMicros: string;
   amountUsdCents: number;
   successUrl: string;
   cancelUrl: string;
@@ -94,6 +88,9 @@ export async function createCheckoutSession(
     cancel_url: input.cancelUrl,
     client_reference_id: input.skillDbId,
     "metadata[skill_db_id]": input.skillDbId,
+    "metadata[buyer_pubkey]": input.buyerPubkey,
+    "metadata[price_usdc_micros]": input.amountUsdcMicros,
+    "metadata[payment_flow]": STRIPE_PAYMENT_FLOW,
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": String(input.amountUsdCents),
@@ -114,7 +111,9 @@ export async function createCheckoutSession(
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Stripe checkout session creation failed (${res.status}): ${detail}`);
+    throw new Error(
+      `Stripe checkout session creation failed (${res.status}): ${detail}`
+    );
   }
 
   const json = (await res.json()) as { id: string; url?: string | null };
@@ -144,16 +143,25 @@ export function verifyAndParseWebhook(
     throw new Error("Missing Stripe-Signature header");
   }
 
-  const parts = Object.fromEntries(
-    signatureHeader.split(",").map((kv) => {
+  const parts = signatureHeader.split(",").reduce(
+    (acc, kv) => {
       const idx = kv.indexOf("=");
-      return [kv.slice(0, idx).trim(), kv.slice(idx + 1).trim()];
-    })
-  ) as Record<string, string>;
+      const key = kv.slice(0, idx).trim();
+      const value = kv.slice(idx + 1).trim();
+      if (!key || idx < 0) return acc;
+      if (key === "v1") {
+        acc.v1.push(value);
+      } else {
+        acc[key] = value;
+      }
+      return acc;
+    },
+    { v1: [] as string[] } as Record<string, string> & { v1: string[] }
+  );
 
   const timestamp = parts["t"];
-  const provided = parts["v1"];
-  if (!timestamp || !provided) {
+  const provided = parts.v1;
+  if (!timestamp || provided.length === 0) {
     throw new Error("Malformed Stripe-Signature header");
   }
 
@@ -167,8 +175,11 @@ export function verifyAndParseWebhook(
     .digest("hex");
 
   const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(provided, "utf8");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+  const matches = provided.some((signature) => {
+    const b = Buffer.from(signature, "utf8");
+    return a.length === b.length && timingSafeEqual(a, b);
+  });
+  if (!matches) {
     throw new Error("Stripe webhook signature mismatch");
   }
 

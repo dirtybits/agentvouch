@@ -9,7 +9,6 @@ import {
   STRIPE_PAYMENT_FLOW,
   STRIPE_RECIPIENT_SENTINEL,
   isStripeEnabled,
-  syntheticBuyerRef,
   usdcMicrosToUsdCents,
   verifyAndParseWebhook,
 } from "@/lib/stripe";
@@ -22,13 +21,27 @@ type SessionObject = {
   customer_email?: string | null;
   payment_intent?: string | null;
   amount_total?: number | null;
+  currency?: string | null;
+  mode?: string | null;
+  payment_status?: string | null;
   metadata?: Record<string, string> | null;
 };
+
+function metadataString(
+  metadata: Record<string, string> | null | undefined,
+  key: string
+) {
+  const value = metadata?.[key]?.trim();
+  return value || null;
+}
 
 export async function POST(req: NextRequest) {
   if (!isStripeEnabled()) {
     return NextResponse.json(
-      { error: "Stripe payments are not enabled" },
+      {
+        error:
+          "Stripe payments are not enabled. Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET before accepting checkout payments.",
+      },
       { status: 501 }
     );
   }
@@ -47,15 +60,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Only completed checkouts grant entitlement; ack everything else.
-  if (event.type !== "checkout.session.completed") {
+  // Only successful payment-mode checkouts grant entitlement; ack everything else.
+  if (
+    event.type !== "checkout.session.completed" &&
+    event.type !== "checkout.session.async_payment_succeeded"
+  ) {
     return NextResponse.json({ received: true, ignored: event.type });
   }
 
   const session = event.data.object as SessionObject;
   const skillDbId =
-    session.metadata?.skill_db_id?.trim() ||
+    metadataString(session.metadata, "skill_db_id") ||
     session.client_reference_id?.trim();
+  const buyerPubkey = metadataString(session.metadata, "buyer_pubkey");
+  const checkoutPriceMicros = metadataString(
+    session.metadata,
+    "price_usdc_micros"
+  );
+  const paymentFlow = metadataString(session.metadata, "payment_flow");
 
   if (!skillDbId) {
     return NextResponse.json(
@@ -63,28 +85,78 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  if (!buyerPubkey) {
+    return NextResponse.json(
+      { error: "Webhook missing buyer_pubkey" },
+      { status: 400 }
+    );
+  }
+  if (!checkoutPriceMicros) {
+    return NextResponse.json(
+      { error: "Webhook missing price_usdc_micros" },
+      { status: 400 }
+    );
+  }
+  if (paymentFlow !== STRIPE_PAYMENT_FLOW) {
+    return NextResponse.json(
+      { error: "Webhook payment_flow is not an AgentVouch Stripe payment" },
+      { status: 400 }
+    );
+  }
+  if (session.mode !== "payment") {
+    return NextResponse.json(
+      { error: "Stripe session is not a one-time payment" },
+      { status: 400 }
+    );
+  }
+  if (session.payment_status !== "paid") {
+    return NextResponse.json(
+      { error: "Stripe session is not paid" },
+      { status: 400 }
+    );
+  }
+  if ((session.currency ?? "").toLowerCase() !== "usd") {
+    return NextResponse.json(
+      { error: "Stripe session currency is not USD" },
+      { status: 400 }
+    );
+  }
 
   try {
     await initializeDatabase();
 
-    // Re-read the authoritative price from our DB rather than trusting the
-    // webhook amount, then sanity-check it matches what Stripe charged.
-    const rows = await sql()<{ price_usdc_micros: string | null }>`
-      SELECT price_usdc_micros::text AS price_usdc_micros
+    // Re-read only to ensure the skill still exists. Fulfillment uses the
+    // checkout-time amount stored in Stripe metadata, so author price changes
+    // between checkout and webhook do not strand paid buyers.
+    const rows = await sql()<{ id: string }>`
+      SELECT id
       FROM skills
       WHERE id = ${skillDbId}::uuid
       LIMIT 1
     `;
-    const priceRow = rows[0];
-    if (!priceRow) {
+    const skill = rows[0];
+    if (!skill) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
-    const micros = priceRow.price_usdc_micros
-      ? BigInt(priceRow.price_usdc_micros)
-      : 0n;
+
+    let micros: bigint;
+    try {
+      micros = BigInt(checkoutPriceMicros);
+    } catch {
+      return NextResponse.json(
+        { error: "Webhook price_usdc_micros is invalid" },
+        { status: 400 }
+      );
+    }
+    if (micros <= 0n) {
+      return NextResponse.json(
+        { error: "Webhook price_usdc_micros must be positive" },
+        { status: 400 }
+      );
+    }
 
     if (
-      typeof session.amount_total === "number" &&
+      typeof session.amount_total !== "number" ||
       session.amount_total !== usdcMicrosToUsdCents(micros)
     ) {
       return NextResponse.json(
@@ -93,9 +165,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Synthetic buyer identity + synthetic tx signature (Obstacles 1 & 2).
+    // Stripe payment reference + wallet buyer identity from checkout metadata.
     // `payment_tx_signature` is UNIQUE, giving us idempotency on retries.
-    const buyerRef = syntheticBuyerRef(session.customer || session.id);
     const paymentRef = `stripe:${session.payment_intent || session.id}`.slice(
       0,
       128
@@ -103,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     await recordUsdcPurchaseReceipt({
       skillDbId,
-      buyerPubkey: buyerRef,
+      buyerPubkey,
       paymentTxSignature: paymentRef,
       recipientAta: STRIPE_RECIPIENT_SENTINEL,
       currencyMint: STRIPE_CURRENCY_SENTINEL,
@@ -111,7 +182,7 @@ export async function POST(req: NextRequest) {
       paymentFlow: STRIPE_PAYMENT_FLOW,
     });
 
-    return NextResponse.json({ received: true, entitled: buyerRef });
+    return NextResponse.json({ received: true, entitled: buyerPubkey });
   } catch (error) {
     return NextResponse.json(
       { error: getErrorMessage(error) },

@@ -21,7 +21,16 @@ export function buildDownloadRawMessage(
   listingAddress: string | null | undefined,
   timestamp: number
 ): string {
-  return `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${listingAddress ?? "x402-usdc-direct"}\nTimestamp: ${timestamp}`;
+  return `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillId}\nListing: ${
+    listingAddress ?? "x402-usdc-direct"
+  }\nTimestamp: ${timestamp}`;
+}
+
+export function buildStripeCheckoutMessage(
+  skillId: string,
+  timestamp: number
+): string {
+  return `AgentVouch Stripe Checkout\nAction: stripe-checkout\nSkill id: ${skillId}\nTimestamp: ${timestamp}`;
 }
 
 export async function createSignedDownloadAuthPayload(input: {
