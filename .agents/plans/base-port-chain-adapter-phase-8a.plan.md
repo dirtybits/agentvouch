@@ -1,5 +1,5 @@
 ---
-name: base-port-chain-adapter-phase-8
+name: base-port-chain-adapter-phase-8a
 overview: "Flip the default AgentVouch experience to Base Sepolia behind an explicit rollback switch, without enabling Base mainnet or deleting Solana fallback paths."
 todos:
   - id: classify-default-chain-surfaces
@@ -23,14 +23,15 @@ todos:
 isProject: false
 ---
 
-# Phase 8 - Base Sepolia Default
+# Phase 8a - Base Sepolia Default
 
 ## Goal
 
 Make Base Sepolia (`eip155:84532`) the default **new-user writable path** for AgentVouch while
 keeping Solana selectable and preserving all legacy Solana fallbacks. This is Phase 8a only:
-flagged, reversible, Sepolia-only. Base mainnet (`eip155:8453`) stays blocked until a later 8b gate
-after mainnet contract/RPC/USDC/paymaster/security prerequisites exist.
+flagged, reversible, Sepolia-only. Base mainnet (`eip155:8453`) stays blocked behind the separate
+Phase 8b gate plan (`.agents/plans/base-port-chain-adapter-phase-8b.plan.md`) until its
+contract/RPC/USDC/paymaster/security prerequisites exist.
 
 ## Context
 

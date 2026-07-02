@@ -24,7 +24,7 @@ todos:
     content: "Phase 7 DONE 2026-07-02 via PR #73. Chain-aware address helpers, explorer links, EVM buyer API boundaries, storage/display normalization split, behavioral tests, import guards, and browser smoke for one Solana + one Base listing surface all landed. See .agents/plans/base-port-chain-adapter-phase-7.plan.md."
     status: completed
   - id: make-base-canonical
-    content: "Phase 8. Dedicated plan drafted in .agents/plans/base-port-chain-adapter-phase-8.plan.md. 8a only: default new-user writable path -> Base SEPOLIA (eip155:84532) behind an explicit Solana rollback switch; Solana remains selectable and legacy trust/default row fallbacks stay Solana. 8b mainnet remains blocked until Phase 9 v1 trust/security gates pass."
+    content: "Phase 8. Split into two plans: .agents/plans/base-port-chain-adapter-phase-8a.plan.md (default new-user writable path -> Base SEPOLIA eip155:84532 behind an explicit Solana rollback switch; Solana remains selectable and legacy trust/default row fallbacks stay Solana) and .agents/plans/base-port-chain-adapter-phase-8b.plan.md (BLOCKED mainnet cutover gate; stays blocked until Phase 9 v1 trust/security gates pass)."
     status: pending
   - id: verify-e2e
     content: "Phase 9. Dedicated plan drafted in .agents/plans/base-port-chain-adapter-phase-9.plan.md. Prove Base Sepolia default E2E (passkey register/list/buy/raw download + agent x402 + Solana regression if selectable), then scope/implement minimal Base v1 trust layer and security/ownership gates before any 8b mainnet cutover."
@@ -511,7 +511,9 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-7.plan.md`](./base-port-chai
 
 ### Phase 8 — `make-base-canonical` [pending]
 
-Dedicated sub-plan: [`base-port-chain-adapter-phase-8.plan.md`](./base-port-chain-adapter-phase-8.plan.md).
+Dedicated sub-plans: [`base-port-chain-adapter-phase-8a.plan.md`](./base-port-chain-adapter-phase-8a.plan.md)
+(Sepolia default) and [`base-port-chain-adapter-phase-8b.plan.md`](./base-port-chain-adapter-phase-8b.plan.md)
+(blocked mainnet cutover gate).
 
 Two explicit gates (PR #58 review 2026-06-29): the adapter/config today support Base **Sepolia**
 only, and `getAdapter()` deliberately **rejects mainnet** (`eip155:8453`) until mainnet
@@ -525,7 +527,8 @@ RPC/contract/USDC/paymaster config exists — so do NOT flip the default to gene
 - **8b — Base mainnet cutover [LATER gate — blocked]:** only after a mainnet `AgentVouchEvm` deploy
   + mainnet RPC + mainnet USDC + a CDP mainnet paymaster exist, a v1 trust/payment contract has
   passed security review, and `getAdapter()` accepts `eip155:8453`. Flip the default to mainnet then.
-  Do NOT ask a follow-on agent to do this until those exist.
+  Do NOT ask a follow-on agent to do this until those exist. Full gate checklist lives in the 8b
+  sub-plan.
 
 ### Phase 9 — `verify-e2e` [pending]
 
