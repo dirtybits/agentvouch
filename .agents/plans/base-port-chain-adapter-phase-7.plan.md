@@ -18,7 +18,7 @@ todos:
     content: "DONE 2026-07-01: phase2-circleback family guard extended with @/lib/onchain and @/lib/agentvouchUsdc markers (Base files verified clean); phase7-chain-boundaries.test.ts locks the API boundary wiring and asserts formatChainAddressForDisplay is never used at storage boundaries (usdcPurchases, db, the three routes)."
     status: completed
   - id: verify-phase7
-    content: "DONE 2026-07-01 (local gates): format:check, web lint, typecheck, vitest 86 files / 511 tests (18 behavioral chainAddress + 5 phase-7 boundary + extended family guards), next build --webpack all pass. Browser smoke-render of one Solana and one Base listing surface remains an operator step before merge. Env note: use Node 24 (.nvmrc) — Node 20.17 fails vitest with ERR_REQUIRE_ESM through the worktree symlinked node_modules."
+    content: "DONE 2026-07-01/02: format:check, web lint, typecheck, vitest 86 files / 512 tests, and next build --webpack passed. Browser smoke-render completed before merge: one Solana listing rendered with Solana Explorer PDA link; one Base listing rendered with Base Sepolia Basescan tx link plus display-only EVM author. Env note: use Node 24 (.nvmrc) — Node 20.17 fails vitest with ERR_REQUIRE_ESM through the worktree symlinked node_modules."
     status: completed
 isProject: false
 ---
