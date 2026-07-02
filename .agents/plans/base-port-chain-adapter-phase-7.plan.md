@@ -3,23 +3,23 @@ name: base-port-chain-adapter-phase-7
 overview: "Replace cross-chain UI/API assumptions that treat every wallet, listing, tx, and explorer URL as Solana-shaped with chain-tagged address helpers, while leaving explicitly Solana-only protocol code behind its adapter/wallet seams."
 todos:
   - id: classify-address-surface
-    content: Audit and classify remaining `@solana/kit` Address/isAddress imports, inline address shorteners, and hard-coded explorer links into cross-chain surfaces vs explicitly Solana-only protocol modules.
-    status: pending
+    content: "DONE 2026-07-01: verified the plan's inventory live with rg. Cross-chain boundaries: skills/hydrate/dashboard-purchases routes (Solana isAddress on buyers), 6/4 shorteners in SkillPreviewCard/SkillDetailClient/author page. Bespoke non-address truncation kept local: 4/4 wallet pill, 12/6 identity panel, 8/8 tx sig. Everything else classified explicit Solana protocol."
+    status: completed
   - id: add-chain-address-helpers
-    content: Add small server-safe chain address/explorer helpers that validate, split storage-vs-display normalization, shorten, classify EVM-shaped values, and link addresses/txs by CAIP-2 chain context using the existing adapter registry where appropriate.
-    status: pending
+    content: "DONE 2026-07-01: web/lib/chainAddress.ts — isValidChainAddress, normalizeChainAddressForStorage (EVM lowercase / Solana case-preserved, Phase 6 invariant), formatChainAddressForDisplay (checksum), shortenChainAddress (adapter-delegated 6/4 with safe generic fallback), chainExplorerAddressUrl/TxUrl (null-degrading adapter resolution — Base mainnet degrades instead of throwing), isEvmShapedAddress (named Phase 6 heuristic with caveat). 18 behavioral tests using real deployed addresses."
+    status: completed
   - id: repoint-ui-formatting
-    content: Repoint chain-agnostic UI surfaces to the helper/adapters for author, wallet, listing, tx, and explorer rendering without changing intentionally bespoke non-address truncation.
-    status: pending
+    content: "DONE 2026-07-01: SkillPreviewCard author display uses shortenChainAddress with the row's chain_context; SkillDetailClient and author-page local shortAddr delegate to the shared helper (generic path — 6/4 output unchanged). ClientWalletButton 4/4, AgentIdentityPanel 12/6, tx-signature 8/8, and authorDisplay compact 4/4 intentionally stay bespoke. No EVM actor navigation added (deferred per plan)."
+    status: completed
   - id: repoint-api-boundaries
-    content: Repoint API route buyer/listing/author validation at mixed-chain boundaries so EVM buyers/listings are not rejected by Solana `isAddress` checks and Solana-only paths remain explicit.
-    status: pending
+    content: "DONE 2026-07-01: /api/skills browse and /api/skills/hydrate accept buyerChainContext and resolve EVM buyers via normalizeChainAddressForStorage + hasChainUsdcPurchaseEntitlement (mirroring the [id] route pattern); Solana buyers keep the untouched preflight path. /api/dashboard/purchases returns empty purchases/listings for EVM-shaped buyers instead of a 400 (the view enumerates Solana PDAs, which EVM buyers cannot have). Raw access / purchase verification untouched."
+    status: completed
   - id: preserve-solana-modules
-    content: Leave PDA/ATA/instruction/x402 Solana protocol modules explicitly Solana-only, with tests or comments proving they are not imported by Base paths.
-    status: pending
+    content: "DONE 2026-07-01: phase2-circleback family guard extended with @/lib/onchain and @/lib/agentvouchUsdc markers (Base files verified clean); phase7-chain-boundaries.test.ts locks the API boundary wiring and asserts formatChainAddressForDisplay is never used at storage boundaries (usdcPurchases, db, the three routes)."
+    status: completed
   - id: verify-phase7
-    content: Run behavioral chainAddress unit tests, focused source import guards, format, lint, typecheck, vitest, and webpack build; smoke-render one Solana listing and one Base listing/address surface if a dev server/browser is available.
-    status: pending
+    content: "DONE 2026-07-01 (local gates): format:check, web lint, typecheck, vitest 86 files / 511 tests (18 behavioral chainAddress + 5 phase-7 boundary + extended family guards), next build --webpack all pass. Browser smoke-render of one Solana and one Base listing surface remains an operator step before merge. Env note: use Node 24 (.nvmrc) — Node 20.17 fails vitest with ERR_REQUIRE_ESM through the worktree symlinked node_modules."
+    status: completed
 isProject: false
 ---
 
