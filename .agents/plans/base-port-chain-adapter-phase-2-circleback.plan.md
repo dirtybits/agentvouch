@@ -1,0 +1,189 @@
+---
+name: base-port-chain-adapter-phase-2-circleback
+overview: "Finish the deferred Phase 2 Solana adapter/wallet seam after Phase 6: add a behavior-preserving Solana ChainWallet, repoint the safest Solana callers through adapter/wallet seams, and keep x402/Solana-specific code explicitly isolated before Phase 7/8."
+todos:
+  - id: scope-current-surface
+    content: "DONE 2026-07-01: audited current Phase 2 state after Phase 6 merge. useChainWallet/Base ChainWallet exist, but Solana still returns chainWallet=null; Solana write callers remain split across useReputationOracle/useMarketplaceOracle; server routes still import lib/onchain directly in several places."
+    status: completed
+  - id: extract-solana-write-helpers
+    content: Extract shared Solana write helpers for registerAgent, createSkillListing, and purchaseSkill from useReputationOracle/useMarketplaceOracle without changing behavior, so both legacy hooks and the Solana ChainWallet can call the same implementation.
+    status: pending
+  - id: add-solana-chain-wallet
+    content: Add a client-only Solana ChainWallet factory/hook and expose it only to write-heavy surfaces; do not make the header wallet status path import the full Solana oracle surface.
+    status: pending
+  - id: repoint-primary-write-callers
+    content: Repoint SkillDetailClient Solana list/purchase paths and the marketplace quick-purchase path to the Solana ChainWallet, preserving current signed-auth/download behavior and existing UI copy.
+    status: pending
+  - id: repoint-safe-read-callers
+    content: Repoint safe Solana read/price call sites through getAdapter(configuredSolanaContext) where SkillListingView carries enough data; leave raw Solana-specific endpoints on explicit Solana modules until the adapter interface intentionally expands.
+    status: pending
+  - id: isolate-x402-seams
+    content: Move Solana browser x402/protocol bridge access behind a named Solana seam or family guard so Base paths never import Solana PDA/ATA/x402 bridge code by accident; keep unsupported ChainWallet.buildX402Payment rejections honest where no human-wallet path exists.
+    status: pending
+  - id: verify-phase2-circleback
+    content: Run focused source/unit tests, web lint/typecheck/vitest, production build, and a browser wallet smoke for Solana connect/sign/list/purchase plus Base wallet regression before marking Phase 2 complete.
+    status: pending
+isProject: false
+---
+
+# Phase 2 Circle-Back - Solana Adapter Cleanup
+
+## Goal
+
+Complete the deferred Phase 2 work now that Phase 6 DB hardening has landed: route Solana reads and
+the primary Solana write flows through the chain adapter/wallet seams without changing the live
+Solana UX. This is a live-app refactor, so implementation should be incremental and behavior-first.
+
+Branch setup for this pass: `feat/base-port-phase-2-circleback` was cut from `origin/main` after
+Phase 6 merged as `a4dd3ea` on 2026-07-01. The first branch commit is
+`b52c129 docs: record phase 6 db gate completion`.
+
+## Current State
+
+- `ChainAdapter` and `ChainWallet` interfaces already exist in `web/lib/adapters/types.ts`.
+- `SolanaAdapter` implements server-safe Solana reads/formatting in `web/lib/adapters/solana.ts`,
+  but no live callers were repointed in Phase 2a.
+- `BaseAdapter` reads and Base passkey `ChainWallet` writes are already live from Phases 3-5.
+- `WalletContextProvider.tsx` exports `useChainWallet()`, but when Solana is connected it currently
+  returns `chainWallet: null`; Base returns `createBasePasskeyChainWallet(...)`.
+- Solana writes still live in two large hooks:
+  - `web/hooks/useReputationOracle.ts`: register agent, create/update/remove/close listing, bonds,
+    vouches, disputes, and a Solana purchase path.
+  - `web/hooks/useMarketplaceOracle.ts`: marketplace listing reads and Solana purchase path with
+    sponsored checkout fallback.
+- Primary UI callers:
+  - `web/app/skills/[id]/SkillDetailClient.tsx`: already uses Base `activeChainWallet` for Base
+    list/purchase, but still falls back to `useReputationOracle` for Solana list/purchase and direct
+    signed-download auth.
+  - `web/app/skills/MarketplaceClient.tsx`: still uses `useMarketplaceOracle().purchaseSkill`.
+  - `web/app/skills/publish/page.tsx`, `web/app/dashboard/page.tsx`, and
+    `web/app/author/[pubkey]/page.tsx`: still use `useReputationOracle` directly.
+- Server/read call sites still importing `web/lib/onchain.ts` directly include
+  `web/app/api/skills/route.ts`, `web/app/api/skills/[id]/route.ts`,
+  `web/app/api/skills/[id]/install/route.ts`, `web/app/api/skills/[id]/raw/route.ts`,
+  `web/app/api/skills/[id]/purchase/verify/route.ts`, `web/app/api/skills/[id]/update/route.ts`,
+  `web/lib/skillRawAccess.ts`, `web/lib/metadataData.ts`, `web/lib/platformMetrics.ts`,
+  `web/lib/x402ProtocolBridge.ts`, and `web/lib/sponsoredPurchase.ts`.
+
+## Scope
+
+In scope:
+
+- A behavior-preserving Solana `ChainWallet` for the interface methods that already exist:
+  `registerAgent`, `createSkillListing`, `purchaseSkill`, `disconnect`, and an honest
+  `buildX402Payment` unsupported/rejected path until Phase 2d defines a real payment object.
+- Shared Solana write helpers so legacy hooks and the new Solana wallet facade do not drift.
+- Carefully selected caller repoints where the adapter/wallet interface already carries enough data.
+- Source tests that prevent Solana from staying `chainWallet: null` and prevent Base paths from
+  importing Solana PDA/ATA code.
+
+Out of scope:
+
+- Expanding `ChainWallet` to cover every Solana protocol operation. Dashboard-only actions such as
+  vouching, disputes, bonds, listing removal/update/close, refund mechanics, and migrations should
+  stay on `useReputationOracle` unless a later phase intentionally expands the interface.
+- Phase 7 address-type sweep. Do not chase every `@solana/kit` import in this phase; only touch the
+  ones needed for adapter/wallet seams.
+- Base default-chain flip, Base mainnet, and any destructive DB schema changes.
+
+## Implementation Plan
+
+1. Extract Solana write helpers behind a client-only module.
+   - Candidate files: `web/lib/adapters/solanaWallet.ts` plus smaller helper modules if needed.
+   - Lift the existing logic for the three `ChainWallet` methods from
+     `useReputationOracle`/`useMarketplaceOracle` into reusable functions.
+   - Keep the legacy hooks calling those helpers first, then expose the helpers through the new
+     Solana `ChainWallet`. This avoids a big-bang caller migration.
+   - Preserve sponsored checkout behavior, preflight errors, `assertUsdcAccountReady`, transaction
+     summaries, confirmation waiting, existing `alreadyPurchased` handling, and current network
+     mismatch messages.
+   - Watch the `CreateSkillListingInput.priceUsdcMicros` type: the interface uses `bigint`, while
+     legacy `createSkillListing` takes a `number`. Convert only after an explicit safe-integer guard.
+
+2. Add a Solana `ChainWallet` without bloating the header wallet path.
+   - Do not import `useReputationOracle` or `useMarketplaceOracle` inside
+     `WalletContextProvider.tsx`; the provider is already the base wallet/status boundary and the
+     header `ClientWalletButton` uses it.
+   - Prefer a write-focused hook such as `web/hooks/useWritableChainWallet.ts` or a similarly named
+     hook that composes the lightweight wallet context with the extracted Solana write helpers.
+   - Existing `useChainWallet()` from `WalletContextProvider.tsx` can remain the status/session
+     hook, or be renamed/re-exported deliberately in the implementation. Avoid accidental circular
+     imports from provider -> oracle -> provider.
+   - Base should continue returning the existing `createBasePasskeyChainWallet(...)`.
+
+3. Repoint the primary write callers in small commits.
+   - `SkillDetailClient.tsx`: use the active/writable `ChainWallet` for both Base and Solana list
+     and purchase branches where possible. Keep `signMessage` for repo publish auth and raw download
+     authorization; that is not replaced by `ChainWallet`.
+   - `MarketplaceClient.tsx`: route quick Solana purchase through the Solana `ChainWallet` after the
+     facade preserves `alreadyPurchased` and transaction display semantics.
+   - `skills/publish/page.tsx`: only repoint the listing create path if the Solana `ChainWallet`
+     exposes the same author-auth/PATCH flow cleanly. Leave repo publish auth on `signMessage`.
+   - `dashboard/page.tsx` and `author/[pubkey]/page.tsx`: keep advanced Solana-only protocol actions
+     on `useReputationOracle`; optionally repoint only `registerAgent` once the facade is proven.
+
+4. Repoint safe read/price callers.
+   - Start with `web/app/api/skills/route.ts` chain listing enumeration and any call sites that only
+     need `SkillListingView.priceUsdcMicros`, `active`, `author`, `uri`, or `revision`.
+   - Use `getAdapter(getConfiguredSolanaChainContext())` for Solana rows. Preserve existing behavior
+     for legacy aliases and configured Solana chain context.
+   - Do not blindly replace call sites that need raw Solana-generated account fields such as
+     settlements, vaults, or purchase PDA derivations. Either leave them explicitly Solana-specific
+     or expand `ChainAdapter` in a separate, reviewed interface change that Base can implement too.
+
+5. Isolate x402 seams.
+   - `web/lib/browserX402.ts` and `web/lib/x402ProtocolBridge.ts` are Solana/SVM-specific today.
+   - Add a named Solana x402 seam or explicit family guard so Base raw-access and Base x402 paths do
+     not import Solana PDA/ATA/bridge code.
+   - Mirror the Base passkey wallet’s honest unsupported behavior for `buildX402Payment` until there
+     is a real browser/agent `X402Payment` abstraction behind `ChainWallet`.
+
+## Verification
+
+Minimum source/unit checks:
+
+- Add focused tests under `web/__tests__/lib` or source-level tests where the harness lacks wallet
+  providers:
+  - Solana connected sessions no longer leave the writable wallet facade absent on write-heavy
+    surfaces.
+  - Base `createBasePasskeyChainWallet` behavior is untouched.
+  - Solana `buildX402Payment` unsupported behavior is explicit until Phase 2d implements it.
+  - Server read routes that move to `getAdapter(...)` still preserve Solana price/listing semantics.
+
+Required commands before PR:
+
+```bash
+npm run format:check
+npm run lint --workspace @agentvouch/web
+npm run typecheck --workspace @agentvouch/web
+npm test --workspace @agentvouch/web
+npm run build --workspace @agentvouch/web
+```
+
+Browser smoke before marking Phase 2 complete:
+
+- Solana Phantom extension connect/restore/disconnect still works.
+- Solana repo skill listing creation still links `on_chain_address` and preserves signed author auth.
+- Solana paid skill purchase still works, including sponsored checkout fallback and entitlement
+  verification.
+- Signed raw download still works after purchase.
+- Base passkey connect/restore/list/purchase paths still render and do not regress.
+
+## Rollback
+
+- If a write-caller repoint regresses, revert that caller to the legacy hook while keeping the shared
+  helper extraction if tests prove helper behavior is equivalent.
+- If the Solana `ChainWallet` facade causes bundle/circular-import issues, keep Base `useChainWallet`
+  behavior as-is and move Solana writes behind a separate `useSolanaChainWallet` hook until the
+  provider boundary is redesigned.
+- If server read repointing exposes missing fields in `SkillListingView`, revert those read call
+  sites to `lib/onchain.ts` and add the missing interface explicitly in a follow-up.
+
+## Blockers And Judgment Calls
+
+- A real wallet browser smoke is required before calling Phase 2 complete; source tests alone are not
+  enough for this refactor.
+- `useReputationOracle` is still the owner of many Solana-only protocol actions. Keep those explicit
+  instead of pretending the current `ChainWallet` covers the whole protocol.
+- Avoid changing UI address shortening in this phase. Existing call sites have mixed truncation
+  lengths; Phase 7 can handle global address rendering.
