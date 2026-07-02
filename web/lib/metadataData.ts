@@ -1,7 +1,7 @@
 import { sql } from "@/lib/db";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { resolveAuthorTrust } from "@/lib/trust";
-import { fetchOnChainSkillListing } from "@/lib/onchain";
+import { getAdapter } from "@/lib/adapters";
 import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import { truncateDescription } from "@/lib/site";
@@ -16,33 +16,34 @@ const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
 export async function getSkillMetadataSummary(id: string) {
   if (id.startsWith(CHAIN_PREFIX)) {
+    // Phase 2 circle-back: cached-read metadata only needs SkillListingView fields, so this
+    // goes through the chain adapter seam. Money paths keep explicit cache-bypass reads.
     const onChainAddr = id.slice(CHAIN_PREFIX.length);
-    const listing = await fetchOnChainSkillListing(onChainAddr);
+    const listing = await getAdapter(
+      configuredSolanaChainContext
+    ).fetchSkillListing(onChainAddr);
     if (!listing) return null;
 
-    const trust = await resolveAuthorTrust(String(listing.data.author));
-    const identity = await resolveAgentIdentityByWallet(
-      String(listing.data.author),
-      {
-        hasAgentProfile: trust.isRegistered,
-      }
-    ).catch(() => null);
+    const trust = await resolveAuthorTrust(listing.author);
+    const identity = await resolveAgentIdentityByWallet(listing.author, {
+      hasAgentProfile: trust.isRegistered,
+    }).catch(() => null);
     const trustSummary = buildAgentTrustSummary({
-      walletPubkey: String(listing.data.author),
+      walletPubkey: listing.author,
       trust,
       identity,
     });
 
     return {
-      id: `${CHAIN_PREFIX}${listing.publicKey}`,
-      name: listing.data.name,
+      id: `${CHAIN_PREFIX}${listing.listingId}`,
+      name: listing.name,
       description:
-        listing.data.description ||
+        listing.description ||
         "View on-chain trust signals, stake-backed endorsements, and dispute history before installing this agent skill.",
-      authorPubkey: String(listing.data.author),
+      authorPubkey: listing.author,
       authorHandle: null,
       chainContext: configuredSolanaChainContext,
-      priceUsdcMicros: String(listing.data.priceUsdcMicros),
+      priceUsdcMicros: String(listing.priceUsdcMicros),
       trustSummary,
     };
   }

@@ -1,3 +1,6 @@
+// SOLANA/SVM-ONLY x402 seam (Phase 2 circle-back). This module signs SVM x402 payments
+// with a Solana TransactionSigner. Base/EVM x402 lives in lib/baseX402*.ts and must never
+// import this file; the family guard is enforced by __tests__/lib/phase2-circleback.test.ts.
 import type { TransactionSigner } from "@solana/kit";
 import {
   decodePaymentResponseHeader,

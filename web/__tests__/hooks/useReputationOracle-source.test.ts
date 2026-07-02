@@ -2,64 +2,82 @@ import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
 
+// Phase 2 circle-back: the register/list/purchase write paths (and their guards) moved to
+// lib/solanaWrites.ts so the legacy hooks and the Solana ChainWallet share one implementation.
+// The invariants below are asserted against whichever file owns the behavior now.
+const hookSource = fs.readFileSync(
+  path.join(process.cwd(), "hooks/useReputationOracle.ts"),
+  "utf8"
+);
+const writesSource = fs.readFileSync(
+  path.join(process.cwd(), "lib/solanaWrites.ts"),
+  "utf8"
+);
+
 describe("useReputationOracle source", () => {
   it("memoizes the returned API object", () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), "hooks/useReputationOracle.ts"),
-      "utf8"
-    );
-
-    expect(source).toContain("return useMemo(");
-    expect(source).toContain("connected: !!connected");
-    expect(source).toContain("getPurchasedSkillListingKeys");
+    expect(hookSource).toContain("return useMemo(");
+    expect(hookSource).toContain("connected: !!connected");
+    expect(hookSource).toContain("getPurchasedSkillListingKeys");
   });
 
-  it("re-checks the purchase PDA after a failed purchase send", () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), "hooks/useReputationOracle.ts"),
-      "utf8"
+  it("routes register/list/purchase writes through the shared solanaWrites module", () => {
+    expect(hookSource).toContain("registerSolanaAgent(");
+    expect(hookSource).toContain("createSolanaSkillListing(writeSession");
+    expect(hookSource).toContain("purchaseSolanaSkill(writeSession");
+    expect(hookSource).toContain(
+      "sendSolanaInstructions({ signer, walletAddress }"
     );
+  });
 
-    expect(source).toContain("const existingPurchaseAfterFailure");
-    expect(source).toContain("if (existingPurchaseAfterFailure?.exists)");
-    expect(source).toContain("alreadyPurchased: true");
+  it("guards the legacy number-priced listing path before bigint conversion", () => {
+    expect(hookSource).toContain("Number.isSafeInteger(priceUsdcMicros)");
+    expect(hookSource).toContain("priceUsdcMicros: BigInt(priceUsdcMicros)");
+  });
+
+  it("runs remaining Solana-only cluster guards in the hook", () => {
+    expect(hookSource).toContain(
+      "await assertResolveAuthorDisputeClusterReady({"
+    );
+    expect(hookSource).toContain("await assertOpenAuthorDisputeClusterReady({");
+  });
+});
+
+describe("solanaWrites source (moved write-path invariants)", () => {
+  it("re-checks the purchase PDA after a failed purchase send", () => {
+    expect(writesSource).toContain("const existingPurchaseAfterFailure");
+    expect(writesSource).toContain("if (existingPurchaseAfterFailure?.exists)");
+    expect(writesSource).toContain("alreadyPurchased: true");
   });
 
   it("runs the shared purchase preflight before sending a paid purchase", () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), "hooks/useReputationOracle.ts"),
-      "utf8"
-    );
-
-    expect(source).toContain("estimatePurchasePreflight");
-    expect(source).toContain('"authorPayoutRentBlocked"');
-    expect(source).toContain("buildPurchaseBalanceError");
+    expect(writesSource).toContain("estimatePurchasePreflight");
+    expect(writesSource).toContain('"authorPayoutRentBlocked"');
+    expect(writesSource).toContain("buildPurchaseBalanceError");
   });
 
   it("preserves per-account signer metadata when sending instructions", () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), "hooks/useReputationOracle.ts"),
-      "utf8"
+    expect(writesSource).toContain(
+      "export function normalizeInstructionForSend"
     );
-
-    expect(source).toContain("export function normalizeInstructionForSend");
-    expect(source).toContain("export function buildTransactionSendRequest");
-    expect(source).toContain("signer?: TransactionSigner");
-    expect(source).toContain('"signer" in acc && acc.signer');
-    expect(source).toContain("authority: signer");
+    expect(writesSource).toContain(
+      "export function buildTransactionSendRequest"
+    );
+    expect(writesSource).toContain("signer?: TransactionSigner");
+    expect(writesSource).toContain('"signer" in acc && acc.signer');
+    expect(writesSource).toContain("authority: signer");
   });
 
-  it("runs cluster guards before other wallet-driven mutations", () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), "hooks/useReputationOracle.ts"),
-      "utf8"
-    );
-
-    expect(source).toContain(
+  it("runs cluster guards before register and listing writes", () => {
+    expect(writesSource).toContain(
       "await assertRegisterAgentClusterReady(walletAddress)"
     );
-    expect(source).toContain("await assertResolveAuthorDisputeClusterReady({");
-    expect(source).toContain("await assertOpenAuthorDisputeClusterReady({");
-    expect(source).toContain("await assertSkillListingClusterReady({");
+    expect(writesSource).toContain("await assertSkillListingClusterReady({");
+  });
+
+  it("keeps free-listing authorBond semantics on the bigint path", () => {
+    expect(writesSource).toContain(
+      "authorBond: priceUsdcMicros === 0n ? authorBond : undefined"
+    );
   });
 });

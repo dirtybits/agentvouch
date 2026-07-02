@@ -37,6 +37,7 @@ import {
 } from "@/components/WalletContextProvider";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
+import { useWritableChainWallet } from "@/hooks/useWritableChainWallet";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { address, type Address } from "@solana/kit";
@@ -313,7 +314,9 @@ export default function SkillDetailPage({
     connected && walletName === PHANTOM_EMBEDDED_WALLET_NAME;
   const oracle = useReputationOracle();
   const chainWalletSession = useChainWallet();
-  const activeChainWallet = chainWalletSession.chainWallet;
+  // Writable wallet facade: the provider's Base passkey ChainWallet when Base is connected,
+  // or the Solana ChainWallet composed from the connected session (Phase 2 circle-back).
+  const activeChainWallet = useWritableChainWallet();
   const activeChainContext = chainWalletSession.chainContext;
   const activeWalletAddress = chainWalletSession.account ?? walletAddress;
 
@@ -895,25 +898,32 @@ export default function SkillDetailPage({
           });
           return;
         }
-        if (!protocolTransactionSigner) {
+        if (!activeChainWallet) {
           setInstallResult({
             success: false,
             message: "This wallet cannot send the USDC purchase transaction.",
           });
           return;
         }
+        if (!skill.price_usdc_micros || BigInt(skill.price_usdc_micros) <= 0n) {
+          setInstallResult({
+            success: false,
+            message: "This listing is missing its USDC price.",
+          });
+          return;
+        }
 
-        const purchaseResult = await oracle.purchaseSkill(
-          address(skill.on_chain_address),
-          address(skill.author_pubkey)
-        );
+        const purchaseResult = await activeChainWallet.purchaseSkill({
+          listingId: skill.on_chain_address,
+          expectedPriceUsdcMicros: BigInt(skill.price_usdc_micros),
+        });
 
-        if (purchaseResult.tx) {
+        if (!purchaseResult.alreadyPurchased) {
           const verifyRes = await fetch(`/api/skills/${id}/purchase/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              signature: purchaseResult.tx,
+              signature: purchaseResult.ref,
               buyer: walletAddress,
               listingAddress: skill.on_chain_address,
             }),
@@ -927,10 +937,8 @@ export default function SkillDetailPage({
                 "Purchase confirmed, but entitlement verification failed"
             );
           }
-          setUsdcPurchaseTx(purchaseResult.tx);
-          setUsdcPurchaseExplorerUrl(
-            getConfiguredSolanaExplorerTxUrl(purchaseResult.tx)
-          );
+          setUsdcPurchaseTx(purchaseResult.ref);
+          setUsdcPurchaseExplorerUrl(purchaseResult.explorerUrl);
         }
 
         const fullTree = await downloadEntitledSkill();
@@ -941,7 +949,7 @@ export default function SkillDetailPage({
         );
         setInstallResult({
           success: true,
-          message: purchaseResult.tx
+          message: !purchaseResult.alreadyPurchased
             ? `USDC purchase confirmed and verified. Downloaded ${downloaded}.`
             : `USDC entitlement already active. Downloaded ${downloaded}.`,
         });
