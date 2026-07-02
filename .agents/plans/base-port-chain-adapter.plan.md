@@ -487,6 +487,8 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chai
 
 ### Phase 7 — `address-type-sweep` [pending]
 
+Dedicated sub-plan: [`base-port-chain-adapter-phase-7.plan.md`](./base-port-chain-adapter-phase-7.plan.md).
+
 - **Goal:** stop assuming Solana base58/PDA addresses app-wide.
 - **Files:** a chain-tagged address type + `explorerTxUrl`/`explorerAddressUrl` helpers (already on
   the adapter); replace `@solana/kit` `Address`/`isAddress` assumptions across the touched files.

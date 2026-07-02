@@ -1,0 +1,255 @@
+---
+name: base-port-chain-adapter-phase-7
+overview: "Replace cross-chain UI/API assumptions that treat every wallet, listing, tx, and explorer URL as Solana-shaped with chain-tagged address helpers, while leaving explicitly Solana-only protocol code behind its adapter/wallet seams."
+todos:
+  - id: classify-address-surface
+    content: Audit and classify remaining `@solana/kit` Address/isAddress imports, inline address shorteners, and hard-coded explorer links into cross-chain surfaces vs explicitly Solana-only protocol modules.
+    status: pending
+  - id: add-chain-address-helpers
+    content: Add small server-safe chain address/explorer helpers that validate, normalize, shorten, and link addresses/txs by CAIP-2 chain context using the existing adapter registry where appropriate.
+    status: pending
+  - id: repoint-ui-formatting
+    content: Repoint chain-agnostic UI surfaces to the helper/adapters for author, wallet, listing, tx, and explorer rendering without changing intentionally bespoke non-address truncation.
+    status: pending
+  - id: repoint-api-boundaries
+    content: Repoint API route buyer/listing/author validation at mixed-chain boundaries so EVM buyers/listings are not rejected by Solana `isAddress` checks and Solana-only paths remain explicit.
+    status: pending
+  - id: preserve-solana-modules
+    content: Leave PDA/ATA/instruction/x402 Solana protocol modules explicitly Solana-only, with tests or comments proving they are not imported by Base paths.
+    status: pending
+  - id: verify-phase7
+    content: Run focused source tests plus format, lint, typecheck, vitest, and webpack build; smoke-render one Solana listing and one Base listing/address surface if a dev server/browser is available.
+    status: pending
+isProject: false
+---
+
+# Phase 7 - Chain Address And Explorer Sweep
+
+## Goal
+
+Make address validation, shortening, and explorer-link rendering chain-aware before the Base default
+flip. Phase 7 should remove Solana-shaped assumptions from mixed-chain UI/API boundaries while
+preserving explicit Solana protocol modules. This is mostly mechanical, but it is easy to overreach:
+do not try to eliminate every `@solana/kit` import in modules that still derive PDAs, build Solana
+instructions, read Solana accounts, or settle Solana x402.
+
+## Context
+
+- Umbrella plan: `.agents/plans/base-port-chain-adapter.plan.md`.
+- Branch: `feat/base-port-phase-7`, cut from `origin/main` after Phase 2 circle-back merged
+  (2026-07-01).
+- Completed prerequisites:
+  - Phase 2 circle-back completed the Solana write facade and Solana/SVM x402 seam isolation.
+  - Phase 5 merged Base passkey `ChainWallet` writes, Base listing/purchase verification, and Base
+    x402 settlement.
+  - Phase 6 hardened chain-qualified DB semantics and raw-access separation.
+- Canonical chain labels are CAIP-2 strings from `web/lib/chains.ts`: Solana devnet is
+  `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; Base Sepolia is `eip155:84532`.
+
+## Scope
+
+In scope:
+
+- Mixed-chain UI formatting for author/wallet/listing/transaction identifiers.
+- Mixed-chain API route validation where the request includes `chain_context`, `buyerChainContext`,
+  `buyer`, `author`, `on_chain_address`, or EVM listing ids.
+- Explorer URL generation for both Solana and Base through existing `ChainAdapter` helpers or a thin
+  helper that delegates to them.
+- Source-level tests preventing future Solana-only validation from leaking back into Base surfaces.
+
+Out of scope:
+
+- Removing `@solana/kit` from explicitly Solana-only protocol modules:
+  - `web/lib/onchain.ts`
+  - `web/lib/agentvouchUsdc.ts`
+  - `web/lib/solanaWrites.ts`
+  - `web/lib/sponsoredPurchase.ts`
+  - `web/lib/sponsoredRegisterAgent.ts`
+  - `web/lib/browserX402.ts`
+  - `web/lib/x402ProtocolBridge.ts`
+  - `web/hooks/useReputationOracle.ts`
+  - `web/hooks/useMarketplaceOracle.ts`
+- Base default flip (Phase 8).
+- Base mainnet support (`eip155:8453` still requires mainnet RPC/contract/USDC/paymaster config).
+- UI redesign, route renames, or destructive DB schema changes.
+
+## Current Address Surface
+
+Verified 2026-07-01 with `rg`:
+
+Primary cross-chain candidates:
+
+- `web/app/api/skills/route.ts`: imports Solana `address/isAddress`; validates `buyer` for browse and
+  hydration. Must accept EVM buyers when `buyerChainContext=eip155:84532`.
+- `web/app/api/skills/[id]/route.ts`: already has both Solana and viem validation; review for
+  remaining Solana-first checks around author and buyer status.
+- `web/app/api/skills/hydrate/route.ts`: imports Solana `address/isAddress`; buyer/listing hydration
+  must be chain-aware.
+- `web/app/api/dashboard/purchases/route.ts`: imports Solana `address/isAddress`; dashboard purchase
+  filters must not reject EVM buyers.
+- `web/components/ClientWalletButton.tsx`: mixes `shortenEvmAddress` and an inline 4/4 Solana
+  truncation.
+- `web/components/SkillPreviewCard.tsx`: has local `shortChainAddress` for author display.
+- `web/components/AgentIdentityPanel.tsx`: uses bespoke 12/6 truncation for identity details.
+- `web/app/skills/[id]/SkillDetailClient.tsx`: local `shortAddress`, tx truncation, Solana casts,
+  and mixed Base/Solana author comparisons.
+- `web/app/author/[pubkey]/page.tsx`: local `shortAddress`.
+- `web/app/skills/MarketplaceClient.tsx`: uses `shortWalletAddress` for transaction and wallet
+  display.
+- `web/lib/authorDisplay.ts`: `shortWalletAddress` assumes generic 4/4 slicing.
+- `web/lib/chains.ts`: Solana explorer helpers exist; consider adding chain-generic wrappers here or
+  a sibling helper instead of creating a `web/lib/chains/` directory.
+- `web/lib/adapters/{base,solana}.ts`: already expose `shortenAddress`, `explorerTxUrl`, and
+  `explorerAddressUrl`.
+
+Explicitly Solana-only candidates to preserve:
+
+- `web/lib/onchain.ts`, `web/lib/agentvouchUsdc.ts`, `web/lib/solanaWrites.ts`,
+  `web/lib/purchasePreflight.ts`, `web/lib/skillRawAccess.ts` Solana purchase/read sections,
+  `web/hooks/useReputationOracle.ts`, `web/hooks/useMarketplaceOracle.ts`, and Solana x402/sponsor
+  modules. Keep their Solana `Address` types local to those modules unless a mixed-chain caller is
+  currently importing them.
+
+## Proposed Design
+
+Add one small server-safe helper module, preferably `web/lib/chainAddress.ts`:
+
+```ts
+export type ChainAddressRef = {
+  chainContext: string | null | undefined;
+  value: string | null | undefined;
+};
+
+export function isValidChainAddress(ref: ChainAddressRef): boolean;
+export function normalizeChainAddress(ref: ChainAddressRef): string | null;
+export function shortenChainAddress(ref: ChainAddressRef, opts?: { fallback?: string }): string;
+export function chainExplorerAddressUrl(ref: ChainAddressRef): string | null;
+export function chainExplorerTxUrl(input: {
+  chainContext: string | null | undefined;
+  tx: string | null | undefined;
+}): string | null;
+```
+
+Implementation guidance:
+
+- Use `normalizeInputChainContext` / `normalizePersistedChainContext` from `web/lib/chains.ts`.
+- Delegate validation/shortening/explorer links to `getAdapter(normalizedContext)` when possible.
+- Return `null` rather than throwing for unknown/missing chain contexts on display helpers; throwing is
+  fine only in explicit validation helpers used by API write paths.
+- For EVM normalization, use `viem` only inside functions that need checksum normalization, or keep it
+  in Base-specific modules if adding a top-level `viem` import would affect client/server bundles.
+  If imported, ensure `web/lib/chainAddress.ts` remains safe for both server and client call sites.
+- Do not create `web/lib/chains/index.ts` or any `web/lib/chains/` directory; the repo already has
+  `web/lib/chains.ts`, and the umbrella plan explicitly warns against sibling import ambiguity.
+
+## Implementation Steps
+
+1. Classify before editing.
+   - Produce a local checklist from:
+     - `rg -l "@solana/kit" web/app web/components web/hooks web/lib -g '!web/generated/**'`
+     - `rg -n "explorer\\.solana|basescan|shorten.*Address|slice\\(0, [0-9]+\\).*slice\\(-" web/app web/components web/hooks web/lib`
+   - Mark each file as one of:
+     - `cross-chain display/API boundary`
+     - `explicit Solana protocol`
+     - `non-address truncation` (hashes, CIDs, commit SHAs; leave alone)
+
+2. Add the chain-address helper.
+   - Add `web/lib/chainAddress.ts` or an equivalent single file.
+   - Add tests under `web/__tests__/lib/chainAddress.test.ts` or fold into the existing phase/source
+     tests if that is the local pattern.
+   - Test Solana devnet, Base Sepolia, legacy aliases, invalid addresses, missing chain contexts,
+     explorer URL construction, and the fallback behavior for display helpers.
+
+3. Repoint chain-agnostic display surfaces.
+   - Prefer `shortenChainAddress({ chainContext, value })` where the row/skill already carries
+     `chain_context`.
+   - Keep bespoke formatting only when it is intentionally not an address abstraction:
+     transaction sigs on settlement links, CID/hash truncation, commit SHAs, file tree hashes.
+   - Candidate UI files:
+     - `web/components/SkillPreviewCard.tsx`
+     - `web/components/ClientWalletButton.tsx`
+     - `web/components/AgentIdentityPanel.tsx`
+     - `web/app/skills/[id]/SkillDetailClient.tsx`
+     - `web/app/author/[pubkey]/page.tsx`
+     - `web/app/skills/MarketplaceClient.tsx`
+     - `web/lib/authorDisplay.ts`
+
+4. Repoint mixed-chain API validation.
+   - `web/app/api/skills/route.ts`: when `buyerChainContext` is EVM, validate the buyer as EVM, not
+     Solana; keep Solana `address(...)` conversion only for Solana purchase/status paths.
+   - `web/app/api/skills/[id]/route.ts`: verify no Solana `isAddress` branch prevents EVM buyer or
+     EVM author status checks.
+   - `web/app/api/skills/hydrate/route.ts`: make buyer validation and hydration chain-aware.
+   - `web/app/api/dashboard/purchases/route.ts`: make wallet filters chain-aware; if dashboard still
+     has Solana-only live PDA enrichment, gate that enrichment on Solana chain context.
+   - Avoid changing raw access or purchase verification semantics unless a failing test proves the
+     boundary still rejects EVM inputs.
+
+5. Guard Solana-only modules.
+   - Add or update source tests to assert Base-facing files do not import:
+     - `@solana/kit`
+     - `web/lib/onchain`
+     - `web/lib/agentvouchUsdc`
+     - `web/lib/solanaWrites`
+     - `web/lib/browserX402`
+     - `web/lib/x402ProtocolBridge`
+   - Keep comments in Solana-only modules clear: these imports are intentional protocol code, not
+     Phase 7 misses.
+
+6. Update plan status as work proceeds.
+   - Per the `plan-writing` skill, move each todo to `in_progress` when starting and `completed` only
+     after verification for that slice passes.
+
+## Verification
+
+Required local commands before PR:
+
+```bash
+npm run format:check
+npm run lint --workspace @agentvouch/web
+npm run typecheck --workspace @agentvouch/web
+npm test --workspace @agentvouch/web
+npm exec --workspace @agentvouch/web next -- build --webpack
+```
+
+Focused checks to add or run:
+
+- Unit/source tests proving:
+  - Base Sepolia EVM address validates under `eip155:84532`.
+  - The same EVM address does not get rejected by Solana `isAddress` at `/api/skills` buyer
+    boundaries.
+  - Solana devnet address still validates and receives Solana Explorer URLs with the configured
+    cluster.
+  - Base Explorer URLs use `https://sepolia.basescan.org`.
+  - Base-facing adapter/API/x402 files do not import Solana-only modules.
+- If a dev server/browser is available, render:
+  - one Solana listing detail page and confirm author/listing/tx links still point to Solana Explorer.
+  - one Base listing detail page and confirm author/listing/tx links point to Base Sepolia/Basescan
+    or intentionally have no link when the field is an EVM listing id rather than an address.
+
+## Rollout
+
+- This should be one PR from `feat/base-port-phase-7`.
+- It is safe to merge before Phase 8 because it should not change default chain selection.
+- Do not require live Base purchase smoke for Phase 7; that belongs to Phase 5/9. Phase 7 should only
+  prove that display/API address handling no longer blocks Base-shaped values.
+
+## Rollback
+
+- If a UI display repoint regresses formatting, revert that call site to its previous local
+  shortener while keeping the helper and tests.
+- If an API validation repoint changes purchase/raw-access behavior, revert only that route and add a
+  follow-up test describing the missing chain-context semantics.
+- If bundle/type issues appear from the helper, split EVM checksum normalization behind a dynamic
+  import or move chain-specific normalization into the adapters.
+
+## Blockers And Open Questions
+
+- The sweep should not proceed by blindly removing all Solana imports. Many remaining imports are
+  correct because Solana remains selectable and owns PDA/ATA/protocol instructions.
+- Decide during implementation whether `shortenChainAddress` should support optional length styles
+  (`4/4`, `6/4`, `12/6`) or whether call sites with intentional bespoke lengths should remain local.
+  Default should be the adapter format (`6/4`) unless changing a compact control would visibly
+  regress layout.
+- Base mainnet is still out of scope. Do not add `eip155:8453` acceptance to `BaseAdapter` until the
+  Phase 8b mainnet config exists.
