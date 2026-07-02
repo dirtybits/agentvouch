@@ -88,7 +88,7 @@ export function getConfiguredSolanaChainContext(): string {
 // let SSR render one default while the client hydrates another (a #418-class mismatch, see PR #65).
 // Rollback to Solana: set NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana and redeploy
 // (NEXT_PUBLIC_* is build-time inlined). Base mainnet (eip155:8453) stays refused here until
-// Phase 8b.
+// Phase 10 (the blocked mainnet cutover gate plan, formerly 8b).
 let warnedDefaultChainContext = false;
 
 function warnDefaultChainContextOnce(message: string): void {
@@ -117,10 +117,10 @@ export function getDefaultChainContext(): string {
   if (normalized.startsWith("solana:")) return normalized;
 
   // Fail closed for eip155:8453 and any other non-writable context: never default to Base
-  // mainnet before the Phase 8b gate; fall back to the configured Solana context instead.
+  // mainnet before the Phase 10 gate; fall back to the configured Solana context instead.
   warnDefaultChainContextOnce(
     `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}" is not a supported default in ` +
-      "Phase 8a (Base mainnet stays blocked until Phase 8b); falling back to the configured Solana context."
+      "Phase 8a (Base mainnet stays blocked until Phase 10); falling back to the configured Solana context."
   );
   return getConfiguredSolanaChainContext();
 }
