@@ -24,6 +24,28 @@ describe("phase 7: mixed-chain API boundaries accept EVM buyers", () => {
     expect(source).toContain("hasChainUsdcPurchaseEntitlement");
   });
 
+  it("an explicit EVM buyer context is exclusive — no Solana fallback on invalid values", () => {
+    // If buyerChainContext says eip155:* but the buyer value fails EVM validation, the
+    // request must get NO buyer status rather than silently running the Solana path.
+    for (const file of [
+      "app/api/skills/route.ts",
+      "app/api/skills/hydrate/route.ts",
+    ]) {
+      const source = read(file);
+      expect(source, `${file} should gate EVM exclusively`).toContain(
+        "wantsEvmBuyer"
+      );
+      expect(
+        source,
+        `${file} Solana buyer parse must be gated on !wantsEvmBuyer`
+      ).toContain("!wantsEvmBuyer");
+      expect(
+        source,
+        `${file} must not fall back to Solana when EVM normalization returns null`
+      ).not.toMatch(/!evmBuyer(Address)?\s*&&.*isAddress/s);
+    }
+  });
+
   it("dashboard purchases returns empty for EVM buyers instead of rejecting them", () => {
     const source = read("app/api/dashboard/purchases/route.ts");
     expect(source).toContain("isEvmShapedAddress");

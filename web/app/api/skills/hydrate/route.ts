@@ -365,14 +365,17 @@ export async function POST(request: NextRequest) {
     const buyerChainContext = normalizeInputChainContext(
       typeof body.buyerChainContext === "string" ? body.buyerChainContext : null
     );
-    const evmBuyer = buyerChainContext?.startsWith("eip155:")
+    // An explicit EVM buyer context is EXCLUSIVE: an invalid EVM buyer value yields no
+    // buyer status instead of falling through to Solana handling (Phase 7 boundary rule).
+    const wantsEvmBuyer = Boolean(buyerChainContext?.startsWith("eip155:"));
+    const evmBuyer = wantsEvmBuyer
       ? normalizeChainAddressForStorage({
           chainContext: buyerChainContext,
           value: typeof body.buyer === "string" ? body.buyer : null,
         })
       : null;
     const buyer =
-      !evmBuyer && typeof body.buyer === "string" && isAddress(body.buyer)
+      !wantsEvmBuyer && typeof body.buyer === "string" && isAddress(body.buyer)
         ? body.buyer
         : null;
     const includeBuyerStatus = body.includeBuyerStatus === true;

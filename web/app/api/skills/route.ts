@@ -578,15 +578,20 @@ export async function GET(request: NextRequest) {
       searchParams.get("buyerChainContext") ??
         searchParams.get("buyer_chain_context")
     );
-    const evmBuyerAddress =
+    // An explicit EVM buyer context is EXCLUSIVE: if the buyer value fails EVM validation,
+    // the request gets no buyer status rather than falling through to Solana handling
+    // (Phase 7 chain-tagged boundary rule).
+    const wantsEvmBuyer = Boolean(
       includeBuyerStatus && buyerChainContext?.startsWith("eip155:")
-        ? normalizeChainAddressForStorage({
-            chainContext: buyerChainContext,
-            value: buyer,
-          })
-        : null;
+    );
+    const evmBuyerAddress = wantsEvmBuyer
+      ? normalizeChainAddressForStorage({
+          chainContext: buyerChainContext,
+          value: buyer,
+        })
+      : null;
     const buyerAddress =
-      includeBuyerStatus && !evmBuyerAddress && buyer && isAddress(buyer)
+      includeBuyerStatus && !wantsEvmBuyer && buyer && isAddress(buyer)
         ? address(buyer)
         : null;
     const responseSkills = fastMode
