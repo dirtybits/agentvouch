@@ -707,6 +707,18 @@ async function runCoreSchemaDdl() {
       AND on_chain_program_id IS NOT NULL
   `;
 
+  // EVM addresses that feed indexes are stored lowercase at the write boundary; checksum
+  // formatting is a display concern. Data normalization of existing rows and the UNIQUE
+  // variant of this index both live in the standalone Phase 6 migration
+  // (web/scripts/phase6-chain-identity-migration.ts) — only additive, race-tolerant DDL
+  // belongs in this request-time initializer.
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_skills_evm_listing
+    ON skills(chain_context, evm_contract_address, evm_listing_id)
+    WHERE evm_listing_id IS NOT NULL
+      AND evm_contract_address IS NOT NULL
+  `;
+
   await db`
     CREATE TABLE IF NOT EXISTS usdc_purchase_receipts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

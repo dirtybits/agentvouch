@@ -142,6 +142,8 @@ type ActivityRepoListing = {
 type ActivityUsdcPurchase = {
   payment_tx_signature: string;
   buyer_pubkey: string;
+  buyer_chain_context: string | null;
+  buyer_address: string | null;
   currency_mint: string;
   amount_micros: string;
   verified_at: string;
@@ -442,8 +444,9 @@ export default function MarketplaceClient({
         (purchase) => ({
           id: `usdc-${purchase.payment_tx_signature}`,
           type: "purchase",
-          actor: purchase.buyer_pubkey,
-          actorChainContext: purchase.chain_context,
+          actor: purchase.buyer_address ?? purchase.buyer_pubkey,
+          actorChainContext:
+            purchase.buyer_chain_context ?? purchase.chain_context,
           skillListing: purchase.on_chain_address,
           skillName: purchase.skill_name,
           skillRepoId: purchase.skill_db_id,
