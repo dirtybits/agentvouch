@@ -554,6 +554,9 @@ export function createBasePasskeyChainWallet(
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     address: account.address,
     disconnect,
+    // ERC-1271/6492-verifiable smart-account signature, checked server-side
+    // via publicClient.verifyMessage (web/lib/evmAuth.ts).
+    signMessage: (message) => account.signMessage({ message }),
     registerAgent: (metadataUri) => registerBaseAgent(account, metadataUri),
     createSkillListing: (input) => createBaseSkillListing(account, input),
     purchaseSkill: (input) => purchaseBaseSkill(account, input),

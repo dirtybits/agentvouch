@@ -8,6 +8,15 @@
       "port": 3000
     },
     {
+      "name": "Next.js Web App (Solana rollback)",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana npm run dev"
+      ],
+      "port": 3000
+    },
+    {
       "name": "Base POC UI",
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd contracts/base-poc/ui && npm run dev"],

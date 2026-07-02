@@ -13,6 +13,7 @@ import {
   BASE_PASSKEY_WALLET_NAME,
   shortenEvmAddress,
 } from "@/lib/adapters/baseWalletConfig";
+import { isBaseSepoliaDefaultEnabled } from "@/lib/chains";
 import { useMounted } from "@/hooks/useMounted";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import { PHANTOM_LEGACY_WALLET_NAME } from "@/lib/phantomLegacyWalletStandard";
@@ -22,6 +23,8 @@ import {
 } from "@/lib/buttonStyles";
 
 const PHANTOM_ICON = "https://phantom.com/_web_platform_assets/favicon.svg";
+// Phase 8a: connect affordances follow the default chain (env-static).
+const baseSepoliaDefault = isBaseSepoliaDefaultEnabled();
 const walletTriggerClass = navButtonPrimaryInlineClass;
 const walletMenuButtonClass = `w-full ${navButtonSecondaryInlineClass} justify-start`;
 
@@ -119,7 +122,12 @@ export function ClientWalletButton() {
     );
   }
 
-  if (wallet.status !== "connected" && baseWallet.account) {
+  // While a dual restore resolves, both chains can be connected for a render;
+  // the pill shown follows the default chain, matching useChainWallet().
+  if (
+    baseWallet.account &&
+    (baseSepoliaDefault || wallet.status !== "connected")
+  ) {
     const handleDisconnect = async () => {
       await baseWallet.disconnect().catch(() => {});
       setShowMenu(false);
@@ -184,6 +192,46 @@ export function ClientWalletButton() {
     );
   }
 
+  // Ordered first when Base Sepolia is the default chain; under the Solana
+  // rollback env it stays selectable but moves below the Solana options.
+  const baseSection = (
+    <div
+      className={`px-4 py-2.5 ${
+        baseSepoliaDefault
+          ? "border-b border-gray-100 dark:border-gray-800"
+          : "border-t border-gray-100 dark:border-gray-800"
+      }`}
+    >
+      <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1.5">
+        Base Sepolia
+      </p>
+      <button
+        onClick={() => {
+          void baseWallet
+            .connect()
+            .then(() => setShowMenu(false))
+            .catch((error) => {
+              console.error("Failed to connect Base passkey:", error);
+            });
+        }}
+        disabled={baseWallet.status === "connecting" || !baseWallet.configured}
+        className={`${walletMenuButtonClass} flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed`}
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[11px] font-normal text-[var(--sea-accent-strong)]">
+          B
+        </span>
+        {baseWallet.status === "connecting"
+          ? "Opening passkey..."
+          : BASE_PASSKEY_WALLET_NAME}
+      </button>
+      {baseWallet.error ? (
+        <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">
+          {baseWallet.error}
+        </p>
+      ) : null}
+    </div>
+  );
+
   const socialSection = phantomConfigured ? (
     <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
       <p className="text-xs font-normal text-gray-700 dark:text-gray-300 mb-2">
@@ -205,7 +253,6 @@ export function ClientWalletButton() {
       </button>
       {showMenu && (
         <div className="absolute right-0 mt-2 w-72 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50 py-1">
-          {socialSection}
           {!socialSection && (
             <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
               <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -213,38 +260,8 @@ export function ClientWalletButton() {
               </p>
             </div>
           )}
-
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-            <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1.5">
-              Base Sepolia
-            </p>
-            <button
-              onClick={() => {
-                void baseWallet
-                  .connect()
-                  .then(() => setShowMenu(false))
-                  .catch((error) => {
-                    console.error("Failed to connect Base passkey:", error);
-                  });
-              }}
-              disabled={
-                baseWallet.status === "connecting" || !baseWallet.configured
-              }
-              className={`${walletMenuButtonClass} flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed`}
-            >
-              <span className="flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[11px] font-normal text-[var(--sea-accent-strong)]">
-                B
-              </span>
-              {baseWallet.status === "connecting"
-                ? "Opening passkey..."
-                : BASE_PASSKEY_WALLET_NAME}
-            </button>
-            {baseWallet.error ? (
-              <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">
-                {baseWallet.error}
-              </p>
-            ) : null}
-          </div>
+          {baseSepoliaDefault && baseSection}
+          {socialSection}
 
           {(wallet.phantomInstalled || extensionConnectors.length > 0) && (
             <div className="px-4 py-2.5">
@@ -368,6 +385,8 @@ export function ClientWalletButton() {
               </div>
             </div>
           )}
+
+          {!baseSepoliaDefault && baseSection}
         </div>
       )}
     </div>

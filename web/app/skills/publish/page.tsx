@@ -4,7 +4,12 @@ import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
-import { useAgentVouchWallet } from "@/components/WalletContextProvider";
+import {
+  useAgentVouchWallet,
+  useChainWallet,
+} from "@/components/WalletContextProvider";
+import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
+import type { ChainWallet } from "@/lib/adapters/types";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { encodeBase64 } from "@/lib/base64";
@@ -175,11 +180,55 @@ export default function PublishSkillPage() {
   );
 }
 
+// Phase 8a: Base publisher helpers. Registration is required by the Base
+// contract before createSkillListing, and the paid POST gate checks it
+// server-side, so ensure it (and wait for it to become readable — the server
+// trust read is cached ~30s) before publishing.
+async function isBaseAuthorRegistered(address: string): Promise<boolean> {
+  const res = await fetch(
+    `/api/author/${address}?chainContext=${encodeURIComponent(
+      BASE_SEPOLIA_CHAIN_CONTEXT
+    )}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) return false;
+  const data = (await res.json().catch(() => null)) as {
+    author_trust?: { isRegistered?: boolean };
+  } | null;
+  return Boolean(data?.author_trust?.isRegistered);
+}
+
+async function ensureBaseAuthorRegistered(
+  chainWallet: ChainWallet,
+  address: string
+): Promise<void> {
+  if (await isBaseAuthorRegistered(address)) return;
+  await chainWallet.registerAgent("");
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    if (await isBaseAuthorRegistered(address)) return;
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  throw new Error(
+    "Base registration confirmed on-chain but is not readable yet. Try publishing again in a moment."
+  );
+}
+
 function PublishSkillPageInner() {
   const { status, account } = useAgentVouchWallet();
   const { signMessage } = useAgentVouchTransactionSigner();
   const connected = status === "connected" && !!account;
   const publicKey = account ?? null;
+  const chainWalletSession = useChainWallet();
+  const baseChainWallet =
+    chainWalletSession.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT
+      ? chainWalletSession.chainWallet
+      : null;
+  const baseWalletAddress =
+    baseChainWallet && chainWalletSession.account
+      ? chainWalletSession.account
+      : null;
+  const baseWalletActive = Boolean(baseChainWallet && baseWalletAddress);
   const router = useRouter();
   const searchParams = useSearchParams();
   const oracle = useReputationOracle();
@@ -198,9 +247,9 @@ function PublishSkillPageInner() {
   const [usdcPrice, setUsdcPrice] = useState("0");
   const [showPreview, setShowPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [publishStep, setPublishStep] = useState<"idle" | "repo" | "chain">(
-    "idle"
-  );
+  const [publishStep, setPublishStep] = useState<
+    "idle" | "register" | "repo" | "chain"
+  >("idle");
   const [result, setResult] = useState<{
     success: boolean;
     message: string;
@@ -234,7 +283,7 @@ function PublishSkillPageInner() {
   const isPaidPublish = Boolean(parsedUsdcPriceMicros);
   const githubUser = githubSession?.user ?? null;
   const githubConnected = Boolean(githubSession?.authenticated && githubUser);
-  const hasPublisherAuth = connected || githubConnected;
+  const hasPublisherAuth = connected || githubConnected || baseWalletActive;
   const showInlineResult =
     !!result &&
     !(
@@ -340,7 +389,11 @@ function PublishSkillPageInner() {
       return;
     }
 
-    if (usdcPriceMicros && (!connected || !publicKey || !signMessage)) {
+    if (
+      usdcPriceMicros &&
+      !baseWalletActive &&
+      (!connected || !publicKey || !signMessage)
+    ) {
       setResult({
         success: false,
         message: "Connect a wallet to publish a paid marketplace listing.",
@@ -348,8 +401,11 @@ function PublishSkillPageInner() {
       return;
     }
 
+    // The Solana AgentProfile gate does not apply to Base publishes; Base
+    // registration is ensured inline below (Phase 8a).
     if (
       usdcPriceMicros &&
+      !baseWalletActive &&
       !skipProfileCheck &&
       (!profileChecked || profileLoading)
     ) {
@@ -357,7 +413,12 @@ function PublishSkillPageInner() {
       return;
     }
 
-    if (usdcPriceMicros && !skipProfileCheck && !agentProfile) {
+    if (
+      usdcPriceMicros &&
+      !baseWalletActive &&
+      !skipProfileCheck &&
+      !agentProfile
+    ) {
       setPendingPublishAfterRegister(true);
       setShowProfileGate(true);
       setResult(null);
@@ -369,6 +430,20 @@ function PublishSkillPageInner() {
     setResult(null);
 
     try {
+      // Base paid publishes must be registered on-chain before the repo POST
+      // (the server checks it) and before createSkillListing (the contract
+      // requires it).
+      if (
+        usdcPriceMicros &&
+        baseWalletActive &&
+        baseChainWallet &&
+        baseWalletAddress
+      ) {
+        setPublishStep("register");
+        await ensureBaseAuthorRegistered(baseChainWallet, baseWalletAddress);
+        setPublishStep("repo");
+      }
+
       let auth:
         | {
             pubkey: string;
@@ -377,7 +452,16 @@ function PublishSkillPageInner() {
             timestamp: number;
           }
         | undefined;
-      if (connected && publicKey && signMessage) {
+      if (
+        baseWalletActive &&
+        baseChainWallet?.signMessage &&
+        baseWalletAddress
+      ) {
+        const timestamp = Date.now();
+        const message = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${timestamp}`;
+        const signature = await baseChainWallet.signMessage(message);
+        auth = { pubkey: baseWalletAddress, signature, message, timestamp };
+      } else if (connected && publicKey && signMessage) {
         const timestamp = Date.now();
         const message = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${timestamp}`;
         const messageBytes = new TextEncoder().encode(message);
@@ -450,48 +534,81 @@ function PublishSkillPageInner() {
       }
 
       setPublishStep("chain");
-      const paidAuthorPubkey = publicKey!;
-      const paidSignMessage = signMessage!;
       try {
-        await oracle.createSkillListing(
-          cleanId,
-          skillUri,
-          cleanName,
-          cleanDescription,
-          onChainPriceUsdcMicros
-        );
+        if (baseWalletActive && baseChainWallet && baseWalletAddress) {
+          // Phase 8a default paid path: Base Sepolia through the ChainWallet
+          // seam, linked via the chain-verified baseListing PATCH.
+          const listingResult = await baseChainWallet.createSkillListing({
+            skillId: cleanId,
+            uri: skillUri,
+            name: cleanName,
+            description: cleanDescription,
+            priceUsdcMicros: BigInt(onChainPriceUsdcMicros),
+          });
 
-        const onChainAddress = await oracle.getSkillListingPDA(
-          paidAuthorPubkey as Address,
-          cleanId
-        );
+          const patchRes = await fetch(`/api/skills/${skillDbId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              baseListing: {
+                txHash: listingResult.ref,
+                authorAddress: baseWalletAddress,
+                chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+                expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
+              },
+            }),
+          });
 
-        const patchTimestamp = Date.now();
-        const patchMessage = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${patchTimestamp}`;
-        const patchMsgBytes = new TextEncoder().encode(patchMessage);
-        const patchSigBytes = await paidSignMessage(patchMsgBytes);
-        const patchSignature = encodeBase64(patchSigBytes);
-
-        const patchRes = await fetch(`/api/skills/${skillDbId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            auth: {
-              pubkey: paidAuthorPubkey,
-              signature: patchSignature,
-              message: patchMessage,
-              timestamp: patchTimestamp,
-            },
-            on_chain_address: onChainAddress,
-          }),
-        });
-
-        if (!patchRes.ok) {
-          const patchData = await patchRes.json().catch(() => null);
-          throw new Error(
-            patchData?.error ||
-              "Skill saved, but failed to link the on-chain listing"
+          if (!patchRes.ok) {
+            const patchData = await patchRes.json().catch(() => null);
+            throw new Error(
+              patchData?.error ||
+                "Skill saved, but failed to link the on-chain listing"
+            );
+          }
+        } else {
+          const paidAuthorPubkey = publicKey!;
+          const paidSignMessage = signMessage!;
+          await oracle.createSkillListing(
+            cleanId,
+            skillUri,
+            cleanName,
+            cleanDescription,
+            onChainPriceUsdcMicros
           );
+
+          const onChainAddress = await oracle.getSkillListingPDA(
+            paidAuthorPubkey as Address,
+            cleanId
+          );
+
+          const patchTimestamp = Date.now();
+          const patchMessage = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${patchTimestamp}`;
+          const patchMsgBytes = new TextEncoder().encode(patchMessage);
+          const patchSigBytes = await paidSignMessage(patchMsgBytes);
+          const patchSignature = encodeBase64(patchSigBytes);
+
+          const patchRes = await fetch(`/api/skills/${skillDbId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              auth: {
+                pubkey: paidAuthorPubkey,
+                signature: patchSignature,
+                message: patchMessage,
+                timestamp: patchTimestamp,
+              },
+              on_chain_address: onChainAddress,
+            }),
+          });
+
+          if (!patchRes.ok) {
+            const patchData = await patchRes.json().catch(() => null);
+            throw new Error(
+              patchData?.error ||
+                "Skill saved, but failed to link the on-chain listing"
+            );
+          }
         }
       } catch (error: unknown) {
         setResult({
@@ -1167,13 +1284,15 @@ function PublishSkillPageInner() {
 
           <div className="flex items-center justify-between gap-4">
             <PublishReadiness
-              connected={connected}
+              connected={connected || baseWalletActive}
               githubConnected={githubConnected}
               isPaidPublish={isPaidPublish}
               profileLoading={
-                isPaidPublish && (profileLoading || !profileChecked)
+                isPaidPublish &&
+                !baseWalletActive &&
+                (profileLoading || !profileChecked)
               }
-              hasProfile={!!agentProfile}
+              hasProfile={baseWalletActive ? true : !!agentProfile}
               hasContent={!!content}
               hasName={!!name}
               hasSkillId={!!skillId}
@@ -1189,6 +1308,7 @@ function PublishSkillPageInner() {
                 githubLoading ||
                 !hasPublisherAuth ||
                 (isPaidPublish &&
+                  !baseWalletActive &&
                   (!connected || !profileChecked || profileLoading))
               }
               className={`${navButtonPrimaryInlineClass} shrink-0`}
@@ -1198,6 +1318,8 @@ function PublishSkillPageInner() {
                   <FiLoader className="w-4 h-4 animate-spin" />
                   {publishStep === "chain"
                     ? "Creating on-chain listing…"
+                    : publishStep === "register"
+                    ? "Registering Base author…"
                     : "Saving to repo…"}
                 </>
               ) : (

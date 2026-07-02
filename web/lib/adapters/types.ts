@@ -86,6 +86,11 @@ export interface ChainWallet {
 
   disconnect(): Promise<void>;
 
+  // Optional chain-native message signing for API publisher auth. Base passkey
+  // wallets sign via the smart account (ERC-1271/6492-verifiable hex); Solana
+  // wallets leave this undefined — their Ed25519 signer flows already exist.
+  signMessage?(message: string): Promise<string>;
+
   registerAgent(metadataUri: string): Promise<RegisterAgentResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
   purchaseSkill(input: PurchaseSkillInput): Promise<PurchaseSkillResult>;

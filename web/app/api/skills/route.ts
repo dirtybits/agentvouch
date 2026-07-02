@@ -10,6 +10,9 @@ import {
   type AuthorTrust,
 } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
+import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 import { pinSkillContent } from "@/lib/ipfs";
 import {
   ensureAgentIdentitySchema,
@@ -18,6 +21,7 @@ import {
   upsertLocalAgentIdentity,
 } from "@/lib/agentIdentity";
 import {
+  BASE_SEPOLIA_CHAIN_CONTEXT,
   getConfiguredSolanaChainContext,
   normalizeInputChainContext,
 } from "@/lib/chains";
@@ -124,6 +128,10 @@ type PublisherAuth =
       identityKey: string;
       tier: "unverified" | "registered";
       isRegistered: boolean;
+      // The chain the wallet signature proves control on: the configured
+      // Solana context for Ed25519 publishers, Base Sepolia for EVM
+      // publishers (Phase 8a). Drives the row's default chain_context.
+      walletChainContext: string;
     }
   | {
       kind: "github";
@@ -399,6 +407,52 @@ async function resolvePublisherAuth(input: {
   | { ok: true; publisher: PublisherAuth }
   | { ok: false; status: number; error: string }
 > {
+  if (input.auth && isEvmAddress(input.auth.pubkey)) {
+    // Phase 8a: Base passkey publisher. The signature is ERC-1271/6492-verified
+    // against Base Sepolia; the paid gate is Base on-chain registration (the
+    // contract refuses createSkillListing from unregistered authors), not the
+    // Solana AgentProfile.
+    const verification = await verifyEvmWalletSignature(input.auth);
+    if (!verification.valid || !verification.pubkey) {
+      return {
+        ok: false,
+        status: 401,
+        error: verification.error || "Invalid signature",
+      };
+    }
+
+    // resolveBaseAuthorTrust never throws — an RPC failure reads as an
+    // unregistered default (cached briefly), which fails closed for paid.
+    const trust = await resolveBaseAuthorTrust(
+      getEvmAddress(verification.pubkey)
+    );
+    const isRegistered = trust.isRegistered;
+
+    if (input.requiresWallet && !isRegistered) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Paid marketplace listings require a registered Base author. Register your Base author profile, or publish for free.",
+      };
+    }
+
+    return {
+      ok: true,
+      publisher: {
+        kind: "wallet",
+        authorPubkey: verification.pubkey,
+        externalId: null,
+        handle: null,
+        displayName: null,
+        identityKey: `wallet:${verification.pubkey}`,
+        tier: isRegistered ? "registered" : "unverified",
+        isRegistered,
+        walletChainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+      },
+    };
+  }
+
   if (input.auth) {
     const verification = verifyWalletSignature(input.auth);
     if (!verification.valid || !verification.pubkey) {
@@ -444,6 +498,7 @@ async function resolvePublisherAuth(input: {
         identityKey: `wallet:${verification.pubkey}`,
         tier: isRegistered ? "registered" : "unverified",
         isRegistered,
+        walletChainContext: getConfiguredSolanaChainContext(),
       },
     };
   }
@@ -715,9 +770,9 @@ export async function POST(request: NextRequest) {
       : "";
     const normalizedContact = contact ? normalizeSkillContact(contact) : "";
     const normalizedTags = normalizeSkillTags(tags);
-    const normalizedChainContext = chain_context
+    const explicitChainContext = chain_context
       ? normalizeInputChainContext(chain_context)
-      : configuredSolanaChainContext;
+      : null;
     let normalizedPriceUsdcMicros: string | null = null;
     let normalizedCurrencyMint: string | null = null;
     try {
@@ -753,11 +808,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (chain_context && !normalizedChainContext) {
+    if (chain_context && !explicitChainContext) {
       return NextResponse.json(
         {
           error:
             "Invalid chain_context. Use a supported CAIP-2 value or known alias.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Row chain context follows the publisher's wallet chain when not explicit
+    // (Phase 8a): EVM publishers stamp Base Sepolia; Solana publishers and
+    // wallet-less GitHub publishes keep the configured Solana context — the
+    // global Base default must not relabel free skills with no signing wallet.
+    const normalizedChainContext =
+      explicitChainContext ??
+      (publisher.kind === "wallet"
+        ? publisher.walletChainContext
+        : configuredSolanaChainContext);
+    if (
+      publisher.kind === "wallet" &&
+      publisher.walletChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+      normalizedChainContext !== BASE_SEPOLIA_CHAIN_CONTEXT
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Base-authored skills must use the Base Sepolia chain context.",
         },
         { status: 400 }
       );
@@ -779,6 +857,8 @@ export async function POST(request: NextRequest) {
     const tree = await putSkillTree(upload.files);
     const pinResult = await pinSkillContent(content, skill_id, 1);
     try {
+      // Chain-qualified local identity: EVM publishers upsert under the Base
+      // Sepolia context (the author API resolves them the same way).
       if (publisher.kind === "wallet") {
         await upsertLocalAgentIdentity({
           walletPubkey: publisher.authorPubkey,

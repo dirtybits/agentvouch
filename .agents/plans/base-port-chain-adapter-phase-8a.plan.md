@@ -4,22 +4,22 @@ overview: "Flip the default AgentVouch experience to Base Sepolia behind an expl
 todos:
   - id: classify-default-chain-surfaces
     content: Audit every current default-chain surface and classify it as new-user default, legacy Solana fallback, Solana-only protocol, or explicit Base Sepolia path before editing.
-    status: pending
+    status: completed
   - id: add-default-chain-seam
     content: Add a getDefaultChainContext-style seam that defaults to Base Sepolia, supports an env rollback to configured Solana, and refuses Base mainnet until Phase 8b.
-    status: pending
+    status: completed
   - id: wire-wallet-default
     content: Repoint wallet/default-selection behavior so fresh users are guided to Base Sepolia first while Solana remains selectable and the Strict Mode restore race stays deterministic.
-    status: pending
+    status: completed
   - id: wire-paid-publish-default
     content: Repoint paid publish/listing creation through ChainWallet.createSkillListing and existing Base/Solana link verification so Base Sepolia is the default paid listing path.
-    status: pending
+    status: completed
   - id: protect-trust-and-legacy-fallbacks
     content: Keep Solana trust snapshots, legacy null chain_context rows, Solana-only protocol modules, and trust sorting honest; do not synthesize Base trust.
-    status: pending
+    status: completed
   - id: verify-phase8a
-    content: Run source/behavior tests plus format, lint, typecheck, vitest, webpack build, and browser smokes proving Base Sepolia default + Solana rollback.
-    status: pending
+    content: "DONE 2026-07-02: format:check, web lint, typecheck, vitest 88 files / 535 tests (13 chains + 5 evmAuth + 11 phase-8a source), next build --webpack all pass. Browser smokes: default-on shows Base Sepolia first in connect menu, Base listing renders Basescan Sepolia tx link + Connect-Base-wallet copy + Review (not Trusted) verdict, Solana listing renders devnet Explorer PDA link; rollback env shows Solana first with Base still selectable. Live Base passkey connect not smoked — Base wallet env unconfigured locally (see Blockers)."
+    status: completed
 isProject: false
 ---
 
@@ -164,6 +164,24 @@ Out of scope:
    - `explicit Solana protocol`: stays Solana.
    - `explicit Base Sepolia`: stays Base Sepolia.
 
+   **Classification result (2026-07-02):**
+   - `new-user default` (the only surfaces that move): `WalletContextProvider.tsx` dual-restore
+     precedence, `ClientWalletButton.tsx` connect-menu ordering, `web/app/skills/publish/page.tsx`
+     paid listing path. `useWritableChainWallet` already prefers the Base ChainWallet when
+     connected; provider-level precedence governs it.
+   - `legacy Solana fallback` (unchanged): `normalizePersistedChainContext(null)`, the
+     `configuredSolanaChainContext` legacy-row/trust joins in `db.ts`, `marketplaceBrowse.ts`,
+     `skillDetailSnapshot.ts`, `trustSnapshots.ts`, `metadataData.ts`, and the
+     `?? getAgentVouchChainContext()` fallbacks in `skillRawAccess.ts`/`directPurchaseVerification.ts`.
+   - `explicit Solana protocol` (unchanged): `site.ts` `SITE_CHAIN_CONTEXT`,
+     `protocolMetadata.ts` `getAgentVouchChainContext()` (Solana protocol metadata by definition),
+     sponsored purchase/register, Solana x402, `solanaAgentRegistry`, `agentIdentity`,
+     `agentDiscovery`, `platformMetrics`, `reputation8004`, `mirror/sync`, seed route.
+   - `explicit Base Sepolia` (unchanged): x402 settle/verify/supported routes, `base*` libs,
+     `adapters/baseWallet*`, EVM author inference in `/api/author/[pubkey]`, and the existing
+     Base listing-link path in `SkillDetailClient.tsx` (lines ~596-641) — which is the pattern the
+     publish page repoint mirrors.
+
 2. Add the default-chain seam.
 
    - Add `getDefaultChainContext()` in `web/lib/chains.ts`.
@@ -279,6 +297,32 @@ Browser smokes:
   and tests if they are sound.
 - If dual wallet restore regresses, temporarily restore Solana priority under rollback env and leave a
   dated note in this plan.
+
+## Implementation Notes (2026-07-02)
+
+Divergences and additions relative to the original plan body:
+
+- **EVM publisher auth was required, not just a UI repoint.** `POST /api/skills` only accepted
+  Ed25519 (Solana) signature auth, and `PATCH baseListing` requires the row to already carry the
+  EVM `author_pubkey` + Base Sepolia `chain_context`. Added `web/lib/evmAuth.ts`
+  (`verifyEvmWalletSignature` via viem `publicClient.verifyMessage`, which covers EOA ecrecover
+  plus ERC-1271/6492 smart-account signatures), an optional `ChainWallet.signMessage` seam
+  (implemented by the Base passkey wallet), and an EVM publisher branch in
+  `resolvePublisherAuth` that stamps `walletChainContext = eip155:84532`. GitHub/free publishes
+  keep the configured Solana context.
+- **Base registration is ensured inline, not via a modal.** The paid Base path polls
+  `/api/author/{address}?chainContext=eip155:84532` and calls `chainWallet.registerAgent("")`
+  when unregistered (publish button shows "Registering Base author…"). The server paid gate
+  mirrors Solana parity: unregistered Base authors get a 403 with register-first copy. Note the
+  server trust read caches ~30s, so the client polls up to 60s after registering.
+- **Connect menu: ordering only, no "Recommended" label** (open question resolved toward minimal
+  UI change). Dual-restore precedence and `useChainWallet()` selection follow
+  `isBaseSepoliaDefaultEnabled()`; deliberate cross-connects cannot collide because the connect
+  menu only renders when neither chain is connected.
+- **`Base Sepoliaaddress` copy**: the literal string does not exist in source (likely a rendered
+  concatenation observed in the Phase 7 smoke); left untouched.
+- `.claude/launch.json` gained a "Next.js Web App (Solana rollback)" config that starts the dev
+  server with both rollback envs set, used for the rollback browser smoke.
 
 ## Blockers And Open Questions
 
