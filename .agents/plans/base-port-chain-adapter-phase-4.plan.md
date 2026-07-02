@@ -63,7 +63,7 @@ client-only hook such as `web/hooks/useChainWallet.ts`.
 
 ### D2 - Base Sepolia only
 
-Use `eip155:84532` for this phase. The parent plan's Phase 8b mainnet cutover is blocked until
+Use `eip155:84532` for this phase. The parent plan's Phase 10 mainnet cutover is blocked until
 mainnet contract, RPC, USDC, and paymaster configuration exist. Do not accept or silently map
 `eip155:8453` to the Sepolia adapter.
 

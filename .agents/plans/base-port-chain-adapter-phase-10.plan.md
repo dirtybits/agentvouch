@@ -1,12 +1,12 @@
 ---
-name: base-port-chain-adapter-phase-8b
+name: base-port-chain-adapter-phase-10
 overview: "BLOCKED gate plan: cut the AgentVouch default over to Base mainnet (eip155:8453) only after the Phase 9 v1 trust/security gates and mainnet contract/RPC/USDC/paymaster prerequisites all exist."
 todos:
-  - id: confirm-8b-prerequisites
+  - id: confirm-phase10-prerequisites
     content: Confirm every prerequisite in the gate checklist (Phase 9 v1 contract + security review, mainnet deploy, RPC/USDC/paymaster env, custody policy, runbook) with recorded evidence before any code change.
     status: pending
   - id: parameterize-base-chain-modules
-    content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the ~13 Sepolia-pinned Base modules — chain context/id literals, the viem baseSepolia chain object, contract/USDC/RPC/explorer constants, evmAuth verification RPC, and the x402 routes — so Base Sepolia vs mainnet is env-selected, not hardcoded. This is the bulk of the 8b code work.
+    content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the ~13 Sepolia-pinned Base modules — chain context/id literals, the viem baseSepolia chain object, contract/USDC/RPC/explorer constants, evmAuth verification RPC, and the x402 routes — so Base Sepolia vs mainnet is env-selected, not hardcoded. This is the bulk of the Phase 10 code work.
     status: pending
   - id: enable-mainnet-adapter
     content: Extend getAdapter()/chain config to accept eip155:8453 with mainnet contract/RPC/USDC/paymaster values, removing the Phase 8a mainnet rejection with explicit tests.
@@ -14,20 +14,21 @@ todos:
   - id: flip-mainnet-default
     content: Flip getDefaultChainContext() default from Base Sepolia to Base mainnet behind the same env rollback seam, keeping Solana and Sepolia selectable as configured.
     status: pending
-  - id: verify-phase8b
+  - id: verify-phase10
     content: Run the full local gate suite plus a mainnet smoke (register/list/buy/raw download with real funds policy approved by the human) and record evidence before rollout.
     status: pending
 isProject: false
 ---
 
-# Phase 8b - Base Mainnet Cutover [BLOCKED]
+# Phase 10 - Base Mainnet Cutover [BLOCKED]
 
 ## Status
 
 **BLOCKED.** Do not start this plan until every item in the gate checklist below has recorded
 evidence. Any code that enables `eip155:8453` before then is a stop-the-line bug (see the Phase 8a
-plan). This file exists so 8a and 8b cannot be conflated: 8a is the reversible Base **Sepolia**
-default; 8b is the mainnet cutover, a separate decision with its own prerequisites.
+plan). This file used to be drafted as "Phase 8b," but was renamed on 2026-07-02 so the roadmap
+reads in dependency order: Phase 8a (Base Sepolia default), Phase 9 (Base E2E + trust/security),
+then Phase 10 (mainnet cutover).
 
 ## Goal
 
@@ -95,7 +96,7 @@ Record evidence (PR links, tx hashes, doc versions) next to each item when check
   reachable via the env seam. Rollback stays the single client-inlined var from the Phase 8a P2
   fix — `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` (`solana` or `base-sepolia`), then
   redeploy. The seam's fail-closed branch must be updated deliberately: today any non-Sepolia,
-  non-Solana value falls back to Solana; after 8b the mainnet context is the no-env default.
+  non-Solana value falls back to Solana; after Phase 10 the mainnet context is the no-env default.
 - DB: no schema migration expected. Phase 6 chain-qualified rows key everything by chain context,
   so `eip155:8453` rows coexist with `eip155:84532` and Solana rows; apply the Sepolia-row
   display/purchase policy from the gate checklist at the read/UI layer.

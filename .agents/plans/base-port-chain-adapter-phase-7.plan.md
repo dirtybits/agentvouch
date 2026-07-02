@@ -300,4 +300,4 @@ Focused checks to add or run:
   links; keep EVM actors unlinked in generic actor rows or link only to Basescan in explicit explorer
   contexts, then revisit internal author routing during the Base-default UX pass.
 - Base mainnet is still out of scope. Do not add `eip155:8453` acceptance to `BaseAdapter` until the
-  Phase 8b mainnet config exists.
+  Phase 10 mainnet config exists.

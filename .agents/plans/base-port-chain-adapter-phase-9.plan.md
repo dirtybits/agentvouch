@@ -18,7 +18,7 @@ todos:
     content: Specify the Base v1 contract/web delta for minimal trust: vouch/revoke, author bond, founder-resolved disputes/reports, trust reads/snapshots, and mainnet-safe ownership.
     status: pending
   - id: implement-and-audit-base-v1
-    content: Implement the approved v1 trust/payment contract delta and web trust surfaces, then complete forge/web tests and an external security review before any 8b mainnet default.
+    content: Implement the approved v1 trust/payment contract delta and web trust surfaces, then complete forge/web tests and an external security review before any Phase 10 mainnet default.
     status: pending
 isProject: false
 ---
@@ -34,7 +34,7 @@ defensible AgentVouch moat is stake-backed trust. Phase 9 therefore has two gate
 1. Base Sepolia E2E proof: human passkey purchase, agent x402 purchase, raw download, and targeted
    Solana regression while Solana remains selectable.
 2. Base v1 trust/mainnet readiness: minimal trust layer plus ownership/security review before any
-   Phase 8b Base mainnet cutover.
+   Phase 10 Base mainnet cutover.
 
 ## Context
 
@@ -72,7 +72,7 @@ In scope:
 
 Out of scope:
 
-- Base mainnet default flip. That is still Phase 8b and remains blocked until this plan's v1/security
+- Base mainnet default flip. That is still Phase 10 and remains blocked until this plan's v1/security
   gates pass.
 - Full Solana-equivalent voucher slashing machinery unless explicitly re-approved. MVP bias is
   founder-resolved disputes/reports first.
@@ -152,7 +152,7 @@ If Solana remains selectable in Phase 8:
 Phase 8a can be Sepolia-only and reversible, but mainnet cannot launch as only a paid skill
 marketplace. AgentVouch's defensible product is stake-backed trust: vouches, author backing,
 reports/disputes, and visible stake-at-risk. Base rows currently render with incomplete trust and no
-cached marketplace trust path. This must be closed before 8b.
+cached marketplace trust path. This must be closed before Phase 10.
 
 ## Contract Scope
 
@@ -199,7 +199,7 @@ Before mainnet:
 - Decide immutable fresh deploy vs upgradeable. Recommendation: fresh non-upgradeable v1 unless a
   proxy is required by a concrete ops need.
 - Run internal security review and one external security pass.
-- Produce a deployment/runbook update before 8b.
+- Produce a deployment/runbook update before Phase 10.
 
 ## Web Scope
 
@@ -291,7 +291,7 @@ Security/mainnet gate evidence:
   - 9a: E2E smoke harness and evidence on Base Sepolia default.
   - 9b: v1 contract/trust-layer implementation.
   - 9c: security/runbook/mainnet-readiness closeout.
-- Keep 8b blocked until all 9b/9c gates pass.
+- Keep Phase 10 blocked until all 9b/9c gates pass.
 - Do not force-push or rewrite Phase 8 history; open new branches per implementation slice.
 
 ## Rollback
@@ -310,7 +310,7 @@ Security/mainnet gate evidence:
 - Is the Base v1 contract a fresh non-upgradeable deploy or a proxy? Current recommendation: fresh
   non-upgradeable v1 unless ops requirements force upgradeability.
 - What is the mainnet admin custody target: multisig, hardware-wallet EOA plus timelock, or another
-  policy? This must be decided before 8b.
+  policy? This must be decided before Phase 10.
 - Should Base trust snapshots be cached in `author_trust_snapshots` or served live with short TTL?
   Marketplace scalability probably needs snapshots, but live reads are acceptable for early Sepolia
   smoke.

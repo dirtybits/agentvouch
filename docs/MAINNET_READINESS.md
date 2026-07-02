@@ -5,7 +5,7 @@
 > **Update (2026-07-02): the mainnet target is now Base, not Solana.** After the Base port
 > (phases 2–7) and the Phase 8a default flip (PR #74: Base Sepolia is the default new-user
 > writable path behind a Solana rollback env), the launch vehicle is **Base mainnet
-> (`eip155:8453`)**, gated by `.agents/plans/base-port-chain-adapter-phase-8b.plan.md`. See
+> (`eip155:8453`)**, gated by `.agents/plans/base-port-chain-adapter-phase-10.plan.md`. See
 > [Base Mainnet Track](#base-mainnet-track-2026-07-02) below. The Solana-specific material in
 > the rest of this document remains the readiness record for the **Solana track**, which stays
 > selectable as the rollback/fallback chain — it is no longer the near-term launch path, and
@@ -41,7 +41,7 @@ The next milestone should be framed as **Mainnet Release Candidate**, not final 
 ## Base Mainnet Track (2026-07-02)
 
 The authoritative gate checklist lives in
-`.agents/plans/base-port-chain-adapter-phase-8b.plan.md` (kept there, not duplicated here, so it
+`.agents/plans/base-port-chain-adapter-phase-10.plan.md` (kept there, not duplicated here, so it
 cannot drift). Summary of where the Base track stands and what blocks mainnet:
 
 **Shipped (Base Sepolia, testnet):**
@@ -53,9 +53,9 @@ cannot drift). Summary of where the Base track stands and what blocks mainnet:
 - Phase 8a (PR #74): Base Sepolia is the default new-user writable path behind the
   single-var rollback (`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`), EVM publisher
   auth (ERC-1271/6492), Base paid publish through the `ChainWallet` seam. `eip155:8453` is
-  explicitly rejected in code — enabling it before the 8b gates pass is a stop-the-line bug.
+  explicitly rejected in code — enabling it before the Phase 10 gates pass is a stop-the-line bug.
 
-**Blocking Base mainnet (Phase 9 + 8b gates — see the 8b plan for the full checklist):**
+**Blocking Base mainnet (Phase 9 + Phase 10 gates — see the Phase 10 plan for the full checklist):**
 
 1. The deployed contract is the **`base-poc-v0` spike** (`contracts/base-poc/`), EOA-deployed
    and unaudited. It must not ship to mainnet. Phase 9 owns the v1 contract with the minimal
@@ -70,7 +70,7 @@ cannot drift). Summary of where the Base track stands and what blocks mainnet:
 4. Mainnet infra: contract deploy + deployment state doc, archive-capable RPC, native USDC
    config, CDP mainnet paymaster/bundler with funded gas policy and spend limits.
 5. Base-chain parameterization sweep: ~13 modules are Sepolia-pinned by constant and must move
-   behind a configured-Base-chain seam before `eip155:8453` can be enabled (detailed in the 8b
+   behind a configured-Base-chain seam before `eip155:8453` can be enabled (detailed in the Phase 10
    plan scope).
 6. Sepolia-row policy: decide how existing `eip155:84532` listings/entitlements render once
    mainnet is the default (display/purchase policy only — Phase 6 chain-qualified rows need no
@@ -80,7 +80,7 @@ The [Authority Policy](#authority-policy), [Monitoring](#monitoring),
 [Incident Response](#incident-response), and [Security Review](#security-review) sections below
 were written for the Solana program but state chain-agnostic expectations — apply them to the
 Base v1 contract and its operational keys (admin roles, relayer, paymaster) when executing
-Phase 9/8b.
+Phase 9 and Phase 10.
 
 ## Code Audit Findings (2026-05-30)
 
@@ -156,7 +156,7 @@ These findings are now reflected in `.agents/plans/a2-dispute-governance-v1.plan
 - If Kora sponsorship is enabled for external demo or release-candidate use: Phantom warning noise from partial Kora signing should be reduced by the prepare-time Kora signature path for sponsored purchase and registration. Before calling it release-candidate ready, smoke-test that Phantom receives the sponsor-pre-signed transaction, submit skips duplicate Kora signing, and wallet-signing blockhash expiry is refreshed cleanly.
 - Kora scope must be explicit in release notes and UI copy. The 2026-06-24 spike covers `register_agent` and `purchase_skill` only; `create_skill_listing`, `initialize_listing_settlement`, `deposit_author_bond`, `vouch`, `link_vouch_to_listing`, `open_author_dispute`, and `claim_purchase_refund` still need separate `rent_payer: Signer` interfaces plus sponsored API routes before those paths can be called no-SOL/user-gas-free.
 - If the x402 bridge is enabled: `/api/x402/supported` advertises the protocol-listed bridge only after a live devnet smoke proves settlement into the protocol vault, `settle_x402_purchase`, purchase PDA creation, entitlement recording, and paid raw download all work from a fresh buyer.
-- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7. _(2026-07-02: that separate Base launch plan has now been adopted — the framing inverted. Base mainnet via the Phase 8b gate plan is the launch path, and this Solana RC gate list applies only if the Solana track is revisited. See [Base Mainnet Track](#base-mainnet-track-2026-07-02).)_
+- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7. _(2026-07-02: that separate Base launch plan has now been adopted — the framing inverted. Base mainnet via the Phase 10 gate plan is the launch path, and this Solana RC gate list applies only if the Solana track is revisited. See [Base Mainnet Track](#base-mainnet-track-2026-07-02).)_
 - Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
 - If Kora sponsorship is enabled: Kora endpoint, auth mode, fee token, signer backend, payer account, validation allowlists, spend caps, and emergency disable env are frozen and recorded in the production runbook.
 - If the x402 bridge is enabled: facilitator endpoint, accepted network/mint, settlement vault, settlement authority, payment-ref/memo policy, idempotency/reconciliation procedure, monitoring, and emergency disable env are frozen and recorded in the production runbook.
@@ -285,7 +285,7 @@ Review at least these user-facing protocol flows end to end:
 Mainnet launch should wait until every release candidate gate is green and the remaining risks are written down with explicit owners.
 
 _(2026-07-02: the go/no-go lists below are the Solana-track record. For the active Base track,
-the go/no-go is the Phase 8b gate checklist; its Base-equivalent hard no-gos are: the deployed
+the go/no-go is the Phase 10 gate checklist; its Base-equivalent hard no-gos are: the deployed
 contract is still `base-poc-v0`, the v1 trust layer (Phase 9) is absent, no external security
 pass on the v1 contract, admin/relayer/paymaster custody is a single hot key, or any env
 enables `eip155:8453` before the gates pass.)_

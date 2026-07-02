@@ -6,7 +6,7 @@ todos:
     content: Audit every current default-chain surface and classify it as new-user default, legacy Solana fallback, Solana-only protocol, or explicit Base Sepolia path before editing.
     status: completed
   - id: add-default-chain-seam
-    content: Add a getDefaultChainContext-style seam that defaults to Base Sepolia, supports an env rollback to configured Solana, and refuses Base mainnet until Phase 8b.
+    content: Add a getDefaultChainContext-style seam that defaults to Base Sepolia, supports an env rollback to configured Solana, and refuses Base mainnet until Phase 10.
     status: completed
   - id: wire-wallet-default
     content: Repoint wallet/default-selection behavior so fresh users are guided to Base Sepolia first while Solana remains selectable and the Strict Mode restore race stays deterministic.
@@ -30,7 +30,7 @@ isProject: false
 Make Base Sepolia (`eip155:84532`) the default **new-user writable path** for AgentVouch while
 keeping Solana selectable and preserving all legacy Solana fallbacks. This is Phase 8a only:
 flagged, reversible, Sepolia-only. Base mainnet (`eip155:8453`) stays blocked behind the separate
-Phase 8b gate plan (`.agents/plans/base-port-chain-adapter-phase-8b.plan.md`) until its
+Phase 10 gate plan (`.agents/plans/base-port-chain-adapter-phase-10.plan.md`) until its
 contract/RPC/USDC/paymaster/security prerequisites exist.
 
 ## Context
