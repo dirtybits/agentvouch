@@ -18,7 +18,7 @@ todos:
     content: Keep Solana trust snapshots, legacy null chain_context rows, Solana-only protocol modules, and trust sorting honest; do not synthesize Base trust.
     status: completed
   - id: verify-phase8a
-    content: "DONE 2026-07-02: format:check, web lint, typecheck, vitest 88 files / 535 tests (13 chains + 5 evmAuth + 11 phase-8a source), next build --webpack all pass. Browser smokes: default-on shows Base Sepolia first in connect menu, Base listing renders Basescan Sepolia tx link + Connect-Base-wallet copy + Review (not Trusted) verdict, Solana listing renders devnet Explorer PDA link; rollback env shows Solana first with Base still selectable. Live Base passkey connect not smoked — Base wallet env unconfigured locally (see Blockers)."
+    content: "DONE 2026-07-02 (updated after PR #74 P1/P2 fixes): format:check, web lint, typecheck, vitest 89 files / 541 tests (15 chains incl. one-sided-env P2 cases, 5 evmAuth, 12 phase-8a source incl. Base null-mint P1, 3 baseListing-currency), next build --webpack all pass. Browser smokes: default-on shows Base Sepolia first in connect menu, Base listing renders Basescan Sepolia tx link + Connect-Base-wallet copy + Review (not Trusted) verdict, Solana listing renders devnet Explorer PDA link; rollback env shows Solana first with Base still selectable. Live Base passkey connect not smoked — Base wallet env unconfigured locally (see Blockers)."
     status: completed
 isProject: false
 ---
@@ -75,12 +75,12 @@ export function isBaseSepoliaDefaultEnabled(): boolean;
 
 - Env-controlled rollback:
   - Default with no env: `BASE_SEPOLIA_CHAIN_CONTEXT` (`eip155:84532`).
-  - Rollback value: configured Solana context via `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` and
-    `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`.
-  - The server and client env values must be set or unset **together**. If they disagree, SSR
-    renders one default and the client hydrates the other — the same #418-class hydration
-    mismatch PR #65 fixed for dates. Add a test/assertion that both resolve identically, or have
-    the seam read a single source per runtime with an agreement check.
+  - Rollback value: configured Solana context via `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`.
+  - **Single render source (PR #74 P2, fixed 2026-07-02):** the seam reads ONLY
+    `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` — the one var inlined identically at SSR and
+    hydration — so a one-sided env can never split SSR vs client (#418 class, cf. PR #65). A
+    server-only `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` is intentionally ignored for anything that
+    renders; do not reintroduce a `serverValue || clientValue` fallback here.
   - Accept exact CAIP-2 values and existing aliases (`base-sepolia`, `solana:devnet`).
   - Reject or ignore `eip155:8453` in Phase 8a with an explicit test.
 - Wallet/provider defaults in `web/components/WalletContextProvider.tsx` and
@@ -131,7 +131,7 @@ Out of scope:
 }
 ```
 
-  - Keep the existing Solana patch path for Solana wallets/rollback.
+- Keep the existing Solana patch path for Solana wallets/rollback.
 - `web/app/api/skills/route.ts`
   - For unauthenticated free GitHub publishes, be careful: not every free skill should become a Base
     wallet skill. Use explicit publisher context, not the global default, when no wallet exists.
@@ -159,12 +159,14 @@ Out of scope:
    ```
 
    Classify each hit:
+
    - `new-user default`: should move to `getDefaultChainContext()`.
    - `legacy Solana fallback`: should stay Solana, and comments/tests should say why.
    - `explicit Solana protocol`: stays Solana.
    - `explicit Base Sepolia`: stays Base Sepolia.
 
    **Classification result (2026-07-02):**
+
    - `new-user default` (the only surfaces that move): `WalletContextProvider.tsx` dual-restore
      precedence, `ClientWalletButton.tsx` connect-menu ordering, `web/app/skills/publish/page.tsx`
      paid listing path. `useWritableChainWallet` already prefers the Base ChainWallet when
@@ -186,8 +188,9 @@ Out of scope:
 
    - Add `getDefaultChainContext()` in `web/lib/chains.ts`.
    - Default to `BASE_SEPOLIA_CHAIN_CONTEXT`.
-   - Support env rollback through both server and client-visible env names:
-     `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` and `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT`.
+   - Support env rollback through the client-visible name ONLY:
+     `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` (PR #74 P2 — render-affecting, so the private
+     `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` is ignored here to keep SSR and hydration identical).
    - Normalize aliases with existing `normalizeChainContext`, passing
      `{ defaultLegacySolanaChainContext: getConfiguredSolanaChainContext() }`. A bare
      `normalizeChainContext("solana")` returns `null` (the alias only resolves through that
@@ -284,15 +287,14 @@ Browser smokes:
 - Deploy preview with Base Sepolia default enabled.
 - Production rollout should set or omit the default env intentionally:
   - default/no env: Base Sepolia.
-  - rollback: set both `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` and
-    `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, then redeploy.
+  - rollback: set `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, then redeploy.
 - Do not set `eip155:8453` in any env for Phase 8a.
 
 ## Rollback
 
-- Set `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` and
-  `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, **then redeploy** — `NEXT_PUBLIC_*`
-  values are inlined at build time, so setting the env alone is not a runtime switch.
+- Set `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, **then redeploy** — `NEXT_PUBLIC_*`
+  values are inlined at build time, so setting the env alone is not a runtime switch. (Single var
+  as of the PR #74 P2 fix; the private `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` no longer affects render.)
 - If paid publish regresses, revert only the publish-page repoint while keeping the default-chain seam
   and tests if they are sound.
 - If dual wallet restore regresses, temporarily restore Solana priority under rollback env and leave a
