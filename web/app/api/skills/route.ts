@@ -774,11 +774,13 @@ export async function POST(request: NextRequest) {
       ? normalizeInputChainContext(chain_context)
       : null;
     let normalizedPriceUsdcMicros: string | null = null;
-    let normalizedCurrencyMint: string | null = null;
+    // Validate an explicitly-provided currency_mint here (Solana-mint shaped), but defer the
+    // DEFAULT selection until the row's chain context is known — the default is chain-specific.
+    let explicitCurrencyMint: string | null = null;
     try {
       normalizedPriceUsdcMicros = normalizePriceUsdcMicros(price_usdc_micros);
-      normalizedCurrencyMint = normalizedPriceUsdcMicros
-        ? normalizeCurrencyMint(currency_mint) ?? getConfiguredUsdcMint()
+      explicitCurrencyMint = normalizedPriceUsdcMicros
+        ? normalizeCurrencyMint(currency_mint)
         : null;
     } catch (error: unknown) {
       return NextResponse.json(
@@ -840,6 +842,17 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Currency-mint default is chain-specific. Solana rows default to the configured SPL USDC
+    // mint; Base Sepolia rows leave it NULL so the baseListing PATCH's verifyBaseSkillListing
+    // can stamp the native EVM USDC — a Solana mint here would fail getExpectedBaseCurrency's
+    // EVM validation and orphan the on-chain listing (PR #74 P1).
+    const normalizedCurrencyMint = normalizedPriceUsdcMicros
+      ? explicitCurrencyMint ??
+        (normalizedChainContext === BASE_SEPOLIA_CHAIN_CONTEXT
+          ? null
+          : getConfiguredUsdcMint())
+      : null;
 
     await initializeDatabase();
     const skillDbId = randomUUID();

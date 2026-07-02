@@ -108,6 +108,23 @@ describe("chains", () => {
       expect(isBaseSepoliaDefaultEnabled()).toBe(false);
     });
 
+    it("ignores a server-only default var so SSR and hydration agree (PR #74 P2)", () => {
+      // Only the non-public var is set. The render default is client-inlined only, so this
+      // must NOT change the default — otherwise SSR renders Solana while the client (which
+      // never sees this var) hydrates Base: a #418-class mismatch.
+      process.env.AGENTVOUCH_DEFAULT_CHAIN_CONTEXT = "solana";
+      delete process.env.NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT;
+      expect(getDefaultChainContext()).toBe(BASE_SEPOLIA_CHAIN_CONTEXT);
+      expect(isBaseSepoliaDefaultEnabled()).toBe(true);
+    });
+
+    it("honors a client-only NEXT_PUBLIC default var (the single render source)", () => {
+      delete process.env.AGENTVOUCH_DEFAULT_CHAIN_CONTEXT;
+      process.env.NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT = "solana";
+      expect(getDefaultChainContext()).toBe(SOLANA_DEVNET_CHAIN_CONTEXT);
+      expect(isBaseSepoliaDefaultEnabled()).toBe(false);
+    });
+
     it("follows the configured Solana cluster on rollback", () => {
       process.env.SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
       process.env.AGENTVOUCH_DEFAULT_CHAIN_CONTEXT = "solana";

@@ -73,6 +73,21 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
     expect(source).toContain("configuredSolanaChainContext);");
     expect(source).not.toContain("getDefaultChainContext()");
   });
+
+  it("Base paid rows default currency_mint to null, not the Solana mint (PR #74 P1)", () => {
+    const source = read("app/api/skills/route.ts");
+    // The currency-mint default must be chosen AFTER the chain context is known, and Base
+    // rows must not fall back to getConfiguredUsdcMint() (a Solana mint) — that would make
+    // the baseListing PATCH's getExpectedBaseCurrency throw and orphan the on-chain listing.
+    expect(source).toContain("explicitCurrencyMint");
+    expect(source).toContain(
+      "normalizedChainContext === BASE_SEPOLIA_CHAIN_CONTEXT\n          ? null"
+    );
+    // The old unconditional default must be gone.
+    expect(source).not.toContain(
+      "normalizeCurrencyMint(currency_mint) ?? getConfiguredUsdcMint()"
+    );
+  });
 });
 
 describe("phase 8a: EVM publisher auth", () => {

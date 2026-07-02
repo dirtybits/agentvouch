@@ -81,11 +81,14 @@ export function getConfiguredSolanaChainContext(): string {
 }
 
 // Phase 8a default-chain seam (.agents/plans/base-port-chain-adapter-phase-8a.plan.md):
-// Base Sepolia is the default new-user writable path. The env rollback restores the configured
-// Solana context; set AGENTVOUCH_DEFAULT_CHAIN_CONTEXT and
-// NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT together (then redeploy — NEXT_PUBLIC_* is
-// build-time inlined) or SSR and hydration render different defaults. Base mainnet
-// (eip155:8453) stays refused here until Phase 8b.
+// Base Sepolia is the default new-user writable path. This value affects rendered wallet/default
+// UI, so it is driven SOLELY by the client-inlined NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT —
+// the only env var visible identically on the server (SSR) and in the browser (hydration). A
+// server-only AGENTVOUCH_DEFAULT_CHAIN_CONTEXT is intentionally ignored here: honoring it would
+// let SSR render one default while the client hydrates another (a #418-class mismatch, see PR #65).
+// Rollback to Solana: set NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana and redeploy
+// (NEXT_PUBLIC_* is build-time inlined). Base mainnet (eip155:8453) stays refused here until
+// Phase 8b.
 let warnedDefaultChainContext = false;
 
 function warnDefaultChainContextOnce(message: string): void {
@@ -95,26 +98,7 @@ function warnDefaultChainContextOnce(message: string): void {
 }
 
 export function getDefaultChainContext(): string {
-  const serverValue = process.env.AGENTVOUCH_DEFAULT_CHAIN_CONTEXT;
-  const clientValue = process.env.NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT;
-
-  // Agreement check: on the server both values are visible; in the browser only the
-  // NEXT_PUBLIC_ value is inlined, so a disagreement here becomes a hydration mismatch.
-  if (
-    typeof window === "undefined" &&
-    (serverValue || clientValue) &&
-    serverValue !== clientValue
-  ) {
-    warnDefaultChainContextOnce(
-      "AGENTVOUCH_DEFAULT_CHAIN_CONTEXT and NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT " +
-        `disagree ("${serverValue ?? ""}" vs "${
-          clientValue ?? ""
-        }"). Set both together or ` +
-        "SSR and the client will render different default chains."
-    );
-  }
-
-  const configured = serverValue || clientValue;
+  const configured = process.env.NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT;
   if (!configured) return BASE_SEPOLIA_CHAIN_CONTEXT;
 
   const normalized = normalizeChainContext(configured, {
@@ -123,7 +107,7 @@ export function getDefaultChainContext(): string {
 
   if (!normalized) {
     warnDefaultChainContextOnce(
-      `Ignoring invalid AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}"; ` +
+      `Ignoring invalid NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}"; ` +
         `defaulting to ${BASE_SEPOLIA_CHAIN_CONTEXT}.`
     );
     return BASE_SEPOLIA_CHAIN_CONTEXT;
@@ -135,8 +119,8 @@ export function getDefaultChainContext(): string {
   // Fail closed for eip155:8453 and any other non-writable context: never default to Base
   // mainnet before the Phase 8b gate; fall back to the configured Solana context instead.
   warnDefaultChainContextOnce(
-    `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}" is not a supported default in Phase 8a ` +
-      "(Base mainnet stays blocked until Phase 8b); falling back to the configured Solana context."
+    `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}" is not a supported default in ` +
+      "Phase 8a (Base mainnet stays blocked until Phase 8b); falling back to the configured Solana context."
   );
   return getConfiguredSolanaChainContext();
 }
