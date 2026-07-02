@@ -6,7 +6,7 @@ todos:
     content: "DONE 2026-07-01: audited current Phase 2 state after Phase 6 merge. useChainWallet/Base ChainWallet exist, but Solana still returns chainWallet=null; Solana write callers remain split across useReputationOracle/useMarketplaceOracle; server routes still import lib/onchain directly in several places."
     status: completed
   - id: extract-solana-write-helpers
-    content: Extract shared Solana write helpers for registerAgent, createSkillListing, and purchaseSkill from useReputationOracle/useMarketplaceOracle without changing behavior, so both legacy hooks and the Solana ChainWallet can call the same implementation.
+    content: Extract shared Solana write helpers for registerAgent, createSkillListing, and purchaseSkill from useReputationOracle/useMarketplaceOracle without changing behavior, including explicit PurchaseResult/alreadyPurchased and registerAgent result-shape decisions.
     status: pending
   - id: add-solana-chain-wallet
     content: Add a client-only Solana ChainWallet factory/hook and expose it only to write-heavy surfaces; do not make the header wallet status path import the full Solana oracle surface.
@@ -15,7 +15,7 @@ todos:
     content: Repoint SkillDetailClient Solana list/purchase paths and the marketplace quick-purchase path to the Solana ChainWallet, preserving current signed-auth/download behavior and existing UI copy.
     status: pending
   - id: repoint-safe-read-callers
-    content: Repoint safe Solana read/price call sites through getAdapter(configuredSolanaContext) where SkillListingView carries enough data; leave raw Solana-specific endpoints on explicit Solana modules until the adapter interface intentionally expands.
+    content: Repoint safe Solana read/price call sites through getAdapter(configuredSolanaContext) only where SkillListingView carries enough data and cached reads are acceptable; leave raw Solana-specific or cache-bypass money paths on explicit Solana modules until the adapter interface intentionally expands.
     status: pending
   - id: isolate-x402-seams
     content: Move Solana browser x402/protocol bridge access behind a named Solana seam or family guard so Base paths never import Solana PDA/ATA/x402 bridge code by accident; keep unsupported ChainWallet.buildX402Payment rejections honest where no human-wallet path exists.
@@ -97,8 +97,17 @@ Out of scope:
    - Preserve sponsored checkout behavior, preflight errors, `assertUsdcAccountReady`, transaction
      summaries, confirmation waiting, existing `alreadyPurchased` handling, and current network
      mismatch messages.
+   - Make the purchase result type decision before moving callers. `ChainWallet.purchaseSkill`
+     currently returns `TxResult`, which cannot express the existing `{ tx, alreadyPurchased }`
+     Solana no-op path. Either add an explicit `PurchaseResult extends TxResult` return type for
+     `purchaseSkill` or add an optional `alreadyPurchased?: boolean` field in a reviewed interface
+     change. Do not route marketplace quick purchase through a side channel or drop the friendly
+     already-owned short-circuit.
    - Watch the `CreateSkillListingInput.priceUsdcMicros` type: the interface uses `bigint`, while
      legacy `createSkillListing` takes a `number`. Convert only after an explicit safe-integer guard.
+     Preserve free-listing semantics deliberately: the legacy branch checks
+     `priceUsdcMicros === 0` before `BigInt(...)`; a bigint helper must use `priceUsdcMicros === 0n`
+     so the free-listing `authorBond` account is still included.
 
 2. Add a Solana `ChainWallet` without bloating the header wallet path.
    - Do not import `useReputationOracle` or `useMarketplaceOracle` inside
@@ -121,6 +130,11 @@ Out of scope:
      exposes the same author-auth/PATCH flow cleanly. Leave repo publish auth on `signMessage`.
    - `dashboard/page.tsx` and `author/[pubkey]/page.tsx`: keep advanced Solana-only protocol actions
      on `useReputationOracle`; optionally repoint only `registerAgent` once the facade is proven.
+     Before repointing any `registerAgent` caller, audit whether it consumes the legacy
+     `{ tx, agentProfile }` return shape. If a caller needs `agentProfile`, make that an explicit
+     result-type extension (for example `RegisterAgentResult extends TxResult`) rather than hiding
+     the PDA through a facade side channel. Sponsored registration can map naturally to
+     `paidGas: false`.
 
 4. Repoint safe read/price callers.
    - Start with `web/app/api/skills/route.ts` chain listing enumeration and any call sites that only
@@ -130,6 +144,12 @@ Out of scope:
    - Do not blindly replace call sites that need raw Solana-generated account fields such as
      settlements, vaults, or purchase PDA derivations. Either leave them explicitly Solana-specific
      or expand `ChainAdapter` in a separate, reviewed interface change that Base can implement too.
+   - Treat cache semantics as load-bearing, not just return-field shape. Money paths that currently
+     call `getOnChainUsdcPrice(addr, { useCache: false })` require a fresh chain read and must stay
+     on explicit Solana helpers unless `ChainAdapter.fetchSkillListing` first grows reviewed fetch
+     options such as `{ useCache?: boolean }`. Examples to avoid repointing blindly:
+     `web/lib/skillRawAccess.ts`, `web/lib/sponsoredPurchase.ts`, `web/lib/x402ProtocolBridge.ts`,
+     and `web/app/api/skills/[id]/route.ts`.
 
 5. Isolate x402 seams.
    - `web/lib/browserX402.ts` and `web/lib/x402ProtocolBridge.ts` are Solana/SVM-specific today.
@@ -157,8 +177,12 @@ npm run format:check
 npm run lint --workspace @agentvouch/web
 npm run typecheck --workspace @agentvouch/web
 npm test --workspace @agentvouch/web
-npm run build --workspace @agentvouch/web
+npm exec --workspace @agentvouch/web next -- build --webpack
 ```
+
+Use the explicit webpack build as the production-parity gate for this branch, matching Phase 6 and
+the current repo guidance. Do not silently swap back to plain `npm run build --workspace
+@agentvouch/web` unless the repo intentionally changes its production bundler gate first.
 
 Browser smoke before marking Phase 2 complete:
 
@@ -187,3 +211,9 @@ Browser smoke before marking Phase 2 complete:
   instead of pretending the current `ChainWallet` covers the whole protocol.
 - Avoid changing UI address shortening in this phase. Existing call sites have mixed truncation
   lengths; Phase 7 can handle global address rendering.
+- Result-type changes (`PurchaseResult`, `RegisterAgentResult`, or optional fields on `TxResult`)
+  are part of the plan, not implementation improvisations. Update `web/lib/adapters/types.ts`,
+  Base/Solana wallet implementations, and source tests together when making that interface change.
+- Fresh-price reads are security-sensitive. If the adapter does not expose a cache-bypass option, do
+  not use it for purchase verification, sponsored checkout validation, raw-access price checks, or
+  x402 bridge settlement validation.
