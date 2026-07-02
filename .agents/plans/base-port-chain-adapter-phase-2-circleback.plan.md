@@ -15,14 +15,14 @@ todos:
     content: "DONE 2026-07-01: SkillDetailClient Solana purchase and MarketplaceClient quick-purchase now use the writable ChainWallet (alreadyPurchased short-circuit, verify POST with ref, explorer URL from result, UI copy preserved). MarketplaceClient falls back to the legacy oracle path when no price quote is displayed (the facade requires a quote by design). Solana LISTING creation intentionally stays on useReputationOracle: the flow needs getSkillListingPDA after creation, which TxResult cannot express — extending the listing result type cross-chain is a future reviewed interface change. signMessage repo-publish/download auth untouched per plan."
     status: completed
   - id: repoint-safe-read-callers
-    content: Repoint safe Solana read/price call sites through getAdapter(configuredSolanaContext) only where SkillListingView carries enough data and cached reads are acceptable; leave raw Solana-specific or cache-bypass money paths on explicit Solana modules until the adapter interface intentionally expands.
-    status: pending
+    content: "DONE 2026-07-01: audit found ONE call site meeting both criteria (view fields only + cached reads acceptable): lib/metadataData.ts chain-skill metadata, now via getAdapter().fetchSkillListing. The skills-route enumeration and platformMetrics need totalDownloads/totalRevenue/timestamps that SkillListingView does not carry — per the plan's own rule they stay on lib/onchain until a reviewed view expansion; cache-bypass money paths untouched and guarded by test."
+    status: completed
   - id: isolate-x402-seams
-    content: Move Solana browser x402/protocol bridge access behind a named Solana seam or family guard so Base paths never import Solana PDA/ATA/x402 bridge code by accident; keep unsupported ChainWallet.buildX402Payment rejections honest where no human-wallet path exists.
-    status: pending
+    content: "DONE 2026-07-01: browserX402.ts and x402ProtocolBridge.ts carry explicit SOLANA/SVM-ONLY seam headers; __tests__/lib/phase2-circleback.test.ts enforces the family guard (Base x402/verification/adapters never reference browserX402/x402ProtocolBridge/solanaWrites/@solana/kit/@x402/svm) plus provider bundle isolation; Solana ChainWallet.buildX402Payment rejects honestly until Phase 2d."
+    status: completed
   - id: verify-phase2-circleback
-    content: Run focused source/unit tests, web lint/typecheck/vitest, production build, and a browser wallet smoke for Solana connect/sign/list/purchase plus Base wallet regression before marking Phase 2 complete.
-    status: pending
+    content: "IN PROGRESS 2026-07-01: local gates ALL PASS — format:check, web lint, typecheck, vitest (84 files / 488 tests incl. 11 new phase-2 seam guards), next build --webpack. REMAINING: the required browser wallet smoke (Phantom connect/restore/disconnect, Solana list+purchase incl. sponsored fallback, signed raw download, Base passkey regression) needs a human-driven wallet session — source tests alone do not close this todo per the plan."
+    status: in_progress
 isProject: false
 ---
 

@@ -1,3 +1,6 @@
+// SOLANA/SVM-ONLY x402 protocol bridge seam (Phase 2 circle-back). Derives Solana PDAs and
+// settles through the Solana program. Base/EVM x402 lives in lib/baseX402*.ts and must never
+// import this file; the family guard is enforced by __tests__/lib/phase2-circleback.test.ts.
 import { createHash, randomBytes } from "crypto";
 import { address, createSolanaRpc, type Address } from "@solana/kit";
 import {
