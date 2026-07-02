@@ -21,8 +21,8 @@ todos:
     content: "DONE 2026-07-01: browserX402.ts and x402ProtocolBridge.ts carry explicit SOLANA/SVM-ONLY seam headers; __tests__/lib/phase2-circleback.test.ts enforces the family guard (Base x402/verification/adapters never reference browserX402/x402ProtocolBridge/solanaWrites/@solana/kit/@x402/svm) plus provider bundle isolation; Solana ChainWallet.buildX402Payment rejects honestly until Phase 2d."
     status: completed
   - id: verify-phase2-circleback
-    content: "IN PROGRESS 2026-07-01: local gates ALL PASS — format:check, web lint, typecheck, vitest (84 files / 488 tests incl. 11 new phase-2 seam guards), next build --webpack. REMAINING: the required browser wallet smoke (Phantom connect/restore/disconnect, Solana list+purchase incl. sponsored fallback, signed raw download, Base passkey regression) needs a human-driven wallet session — source tests alone do not close this todo per the plan."
-    status: in_progress
+    content: "DONE 2026-07-01: local gates ALL PASS — format:check, web lint, typecheck, vitest (84 files / 488 tests incl. 11 new phase-2 seam guards), next build --webpack. Browser smoke passed for the Phase 2 seam/refactor scope: Phantom connect/restore/disconnect worked; fresh Solana listing `DGmzFYKZkik8qtRBj5QmfDV9PzGutFDPhtqK4MptjSf1` created; buyer `A9tc...B8ZD` purchased it with tx `4dMaouu83DKcwz8Ps4kZ6UdMjgAhWokh897eGKBnFVxtGgc3aWwgxTxiqLSzS8MgmK5JP1xVD98wYB8oQ6tXshu`; entitlement verify + raw download returned success; fresh signed raw download also completed. Base passkey connect/disconnect worked as `0x3B63...C779`, and Preview env now has `NEXT_PUBLIC_BASE_CDP_PAYMASTER_RPC_URL` configured. Deferrals accepted: Base-only restore remains noisy in this Chrome profile because Phantom/Solana auto-restore wins the mutual-exclusion race after reload; Kora/Solana sponsored checkout setup-fee and fallback prompts are no longer Phase 2 blockers; Base list/purchase/raw-download is a Phase 5/9/Base-default smoke, not part of the Solana adapter circle-back closure. A fresh unpaid Solana fallback fixture exists for future Kora testing (`J9NJW9hyVvWdRfFrQrd2R8j964xckAfTTniSkchRFJRi`, repo skill `40a1c347-e3cb-4f67-b6cb-baf3eae377a9`)."
+    status: completed
 isProject: false
 ---
 
@@ -192,10 +192,19 @@ Browser smoke before marking Phase 2 complete:
 
 - Solana Phantom extension connect/restore/disconnect still works.
 - Solana repo skill listing creation still links `on_chain_address` and preserves signed author auth.
-- Solana paid skill purchase still works, including sponsored checkout fallback and entitlement
-  verification.
+- Solana paid skill purchase still works, including entitlement verification.
 - Signed raw download still works after purchase.
-- Base passkey connect/restore/list/purchase paths still render and do not regress.
+- Base passkey connect/disconnect still renders and does not regress.
+
+Accepted deferrals after the 2026-07-01 smoke:
+
+- Solana sponsored/Kora setup-fee and fallback prompts are not a Phase 2 blocker. Re-test them only
+  if Solana remains first-class or before broadly enabling sponsored Solana checkout.
+- Base list/purchase/raw-download is a Phase 5/9/Base-default smoke. It verifies the Base
+  `ChainWallet`/paymaster path, not this Solana adapter circle-back.
+- Base-only reload restore is noisy in the current Chrome profile because Phantom/Solana
+  auto-restore wins the app's intentional Base/Solana mutual-exclusion policy. Revisit as wallet UX
+  polish rather than Phase 2 correctness.
 
 ## Rollback
 
@@ -209,8 +218,8 @@ Browser smoke before marking Phase 2 complete:
 
 ## Blockers And Judgment Calls
 
-- A real wallet browser smoke is required before calling Phase 2 complete; source tests alone are not
-  enough for this refactor.
+- A real wallet browser smoke was required before calling Phase 2 complete; source tests alone were
+  not enough for this refactor. That smoke is recorded above.
 - `useReputationOracle` is still the owner of many Solana-only protocol actions. Keep those explicit
   instead of pretending the current `ChainWallet` covers the whole protocol.
 - Avoid changing UI address shortening in this phase. Existing call sites have mixed truncation

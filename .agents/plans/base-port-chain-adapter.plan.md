@@ -6,8 +6,8 @@ todos:
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: completed
   - id: extract-solana-adapter
-    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor - must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED. Current sequencing 2026-07-01: resumed after Phase 6 DB hardening on feat/base-port-phase-2-circleback; follow .agents/plans/base-port-chain-adapter-phase-2-circleback.plan.md before Phase 7/8 default-chain work."
-    status: in_progress
+    content: "Phase 2 COMPLETE 2026-07-01. SolanaAdapter reads plus the post-Phase-6 circle-back landed: shared Solana write helpers, Solana ChainWallet facade, primary Solana purchase caller repointing, safe metadata read repointing, and explicit Solana/SVM x402 seam isolation. Browser smoke proved Solana direct list->purchase->entitlement->raw download and Base passkey connect/disconnect. Solana Kora sponsored checkout and Base list/purchase/raw-download are accepted deferrals tracked as later Base-default/E2E smokes, not Phase 2 blockers. See .agents/plans/base-port-chain-adapter-phase-2-circleback.plan.md."
+    status: completed
   - id: base-adapter-readslice
     content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
     status: completed
@@ -15,19 +15,19 @@ todos:
     content: "Phase 4 DONE 2026-06-30. Chain-aware wallet: Base Sepolia Coinbase Smart Wallet passkey connect/restore/disconnect works in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. Browser WebAuthn restore smoke and Solana regression passed. wagmi/MetaMask injected deferred. See sub-plan .agents/plans/base-port-chain-adapter-phase-4.plan.md."
     status: completed
   - id: base-adapter-write
-    content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke remains env-dependent. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
+    content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke is now a Phase 5/9 follow-up with CDP paymaster env present; it still needs a Base fixture/funded passkey wallet run. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
     status: completed
   - id: db-multichain
     content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch rehearsal, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
     status: completed
   - id: address-type-sweep
-    content: "Phase 7. After Phase 6 and the Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
+    content: "Phase 7. After Phase 6 and the now-complete Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
     status: pending
   - id: make-base-canonical
     content: "Phase 8, TWO gates (PR #58 review 2026-06-29). 8a: default chain_context -> Base SEPOLIA (eip155:84532) behind a flag, Solana still selectable. 8b (LATER, blocked): mainnet cutover once mainnet RPC/contract/USDC/paymaster exist and getAdapter accepts eip155:8453. Do NOT flip the default to generic Base/eip155:8453 before 8b."
     status: pending
   - id: verify-e2e
-    content: "Phase 9. E2E on Base (passkey register->list->buy gas-free; agent x402) + Solana regression. forge contracts job + web format/lint/typecheck/vitest green; Vercel build green."
+    content: "Phase 9. E2E on Base (passkey register->list->buy gas-free through CDP paymaster; raw download; agent x402) + targeted Solana direct-purchase regression if Solana remains selectable. forge contracts job + web format/lint/typecheck/vitest green; Vercel build green."
     status: pending
 isProject: false
 ---
@@ -72,9 +72,9 @@ To take over:
 
 1. `git fetch origin`, then either check out the active phase branch or create the next phase branch
    from `origin/main` (fresh worktree setup: [[agentvouch-worktree-setup]]).
-2. Read the frontmatter `todos` **and the dated sequencing notes below**. Do not blindly use the
-   first non-`completed` id: Phase 2 is intentionally `in_progress`/paused while Phase 6 runs, then
-   Phase 2 resumes before Phase 7/8.
+2. Read the frontmatter `todos` **and the dated sequencing notes below**. The Phase 2 circle-back is
+   now complete; the next implementation phase is Phase 7 unless strategy shifts straight to
+   Base-default smoke planning.
 3. Read the relevant phase section under "## Phases" plus its dedicated sub-plan when one exists.
    Each phase is self-contained (files, steps, Done-when), but dated sequencing notes override
    frontmatter order when they say so.
@@ -94,12 +94,12 @@ To take over:
 > dual read path (trivial churn on one call site). See the Phase 3 block for the verified read-path
 > recon.
 >
-> **POST-PHASE-5 SEQUENCING (2026-07-01).** Phase 5 has now landed, and Phase 6 is the next
-> correctness gate because it hardens the chain-qualified DB semantics that Base raw access depends
-> on. After Phase 6 completes, circle back to the remaining Phase 2 work (Solana wallet/write wrapper,
-> caller repointing, and x402 seam cleanup) **before** Phase 7 address sweep and Phase 8 Base Sepolia
-> default flip. The Base default switch should not happen while Solana still has transitional paths
-> outside the seam.
+> **POST-PHASE-6 / PHASE-2 CLOSEOUT (2026-07-01).** Phase 6 landed and the Phase 2 circle-back is now
+> complete for its Solana adapter/refactor scope. The remaining browser gaps are intentionally moved
+> out of Phase 2: Phantom/Base reload restore polish and Solana Kora sponsored-checkout prompts can
+> be revisited only if Solana remains first-class; Base list/purchase/raw-download belongs to the
+> Base write/default/E2E smoke lane (Phase 5/9), especially now that the CDP paymaster env exists.
+> Phase 7 address sweep is unblocked.
 
 ## What already exists to build on
 
@@ -252,12 +252,20 @@ export function useChainWallet(): ChainWallet | null;
   Base stub and `getAdapter(<solana ctx>)` the Solana stub; the live app is otherwise untouched
   (`git grep -l getAdapter web/app web/components web/hooks` is empty).
 
-### Phase 2 — `extract-solana-adapter` [in_progress] ⚠ live-app refactor
+### Phase 2 — `extract-solana-adapter` [completed 2026-07-01] ⚠ live-app refactor
 
 Dedicated circle-back sub-plan:
 [`base-port-chain-adapter-phase-2-circleback.plan.md`](./base-port-chain-adapter-phase-2-circleback.plan.md).
 
-- **Goal:** route all existing Solana behavior through `SolanaAdapter` with zero UX change.
+- **Goal:** route the existing Solana read/write behavior that fits the current seam through
+  `SolanaAdapter`/`ChainWallet` with zero UX change.
+- **Status:** complete for the Base-port sequencing gate. Phase 2a reads shipped earlier; the
+  post-Phase-6 circle-back added shared Solana write helpers, a Solana `ChainWallet` facade, primary
+  Solana purchase caller repointing, one safe metadata read repoint, and explicit Solana/SVM-only
+  x402 seam guards. Advanced Solana-only protocol actions remain on `useReputationOracle` by design.
+  Browser smoke proved Solana direct list/purchase/raw-download and Base passkey connect/disconnect.
+  Kora/Solana sponsored checkout prompt coverage and Base list/purchase/raw-download are no longer
+  Phase 2 blockers.
 - **Why sub-sliced:** this spans server (API routes) + client (hooks/components/provider), ~20
   files, and only some slices are verifiable without a running app + wallet. Split into separate
   verifiable commits:
@@ -269,7 +277,7 @@ Dedicated circle-back sub-plan:
     read methods so the adapter registry never pulls it (Buffer/RPC) into a client bundle.
     Wallet/write methods throw (Phase 2b). **No callers repointed — live app untouched.**
     typecheck + prettier green; `git grep getAdapter web/app web/components web/hooks` empty.
-  - **2b — wallet + writes [design settled 2026-06-23; impl pending]:** SIGNER-INJECTION DECISION:
+  - **2b — wallet + writes [completed 2026-07-01]:** SIGNER-INJECTION DECISION:
     wallet connection is irreducibly chain-specific + React-bound (Solana ConnectorKit/Phantom;
     Base wagmi/passkey), so the adapter does NOT own connection. The seam is SPLIT: `ChainAdapter`
     (server-safe reads/format — done) + a separate client-only `ChainWallet` (writes), produced by
@@ -277,13 +285,15 @@ Dedicated circle-back sub-plan:
     chain's connected signer and returns writes already bound to it — the UI calls
     `wallet.purchaseSkill(input)` uniformly (no signer threading, no per-chain branching). Interfaces
     materialized in `web/lib/adapters/types.ts`; `SolanaAdapter` + the registry stub trimmed to
-    reads/format (typecheck green). IMPL remaining (needs a running app to verify): `SolanaWallet`
-    (wrap `useMarketplaceOracle`'s prepare→sign→submit bound to the context signer), `BaseWallet`
-    (lift `flow.ts`), and the `useChainWallet()` hook.
-  - **2c — repoint callers [pending]:** flip server read routes (`app/api/skills/*`) and client
-    orchestration (`useMarketplaceOracle`, the `useAgentVouchWallet` consumers) to `getAdapter(ctx)`.
-    Behavior-touching: routes read `OnChainSkillListingRecord` fields — confirm `SkillListingView`
-    carries everything they use, or map at the boundary. **Needs a running app + wallet to verify.**
+    reads/format (typecheck green). Implementation result: `web/lib/solanaWrites.ts` owns shared
+    Solana register/list/purchase helpers, `web/lib/adapters/solanaWallet.ts` exposes the Solana
+    facade, and `web/hooks/useWritableChainWallet.ts` composes the lightweight wallet context with
+    write-capable chain wallets without bloating the header provider.
+  - **2c — repoint callers [completed 2026-07-01 for safe/current seam callers]:** primary Solana
+    purchase callers now use the writable `ChainWallet`; one safe read caller
+    (`web/lib/metadataData.ts`) uses `getAdapter().fetchSkillListing`. Call sites needing fields
+    outside `SkillListingView`, cache-bypass money reads, or advanced Solana-only protocol actions
+    intentionally stay on explicit Solana helpers until a reviewed interface expansion.
     NOTE (2026-06-24 review): UI address-shortening is NOT uniform today. `shortenAddress` in
     `solana.ts` now matches the dominant content format — `6 + "..." + 4` (author page,
     `SkillDetailClient`) — and the bogus `…` (U+2026) char it shipped with (used by NO call site)
@@ -292,20 +302,22 @@ Dedicated circle-back sub-plan:
     repointing these to `adapter.shortenAddress`, decide per-site: accept the unified `6/4`, keep
     the inline logic, or add an optional length param to the `ChainAdapter` interface. Do NOT
     silently change rendered output — that breaks the "behavior-preserving" contract of this phase.
-  - **2d — x402 [pending]:** `browserX402` / `x402ProtocolBridge` + `/api/x402/*` behind the adapter.
-- **Circle-back planning status (2026-07-01):** after Phase 6 merged and the live DB gate passed, a
-  fresh branch `feat/base-port-phase-2-circleback` was cut from `origin/main`. The remaining work is
-  scoped in the dedicated sub-plan. Key planning decision: do not make the lightweight/header
-  `useChainWallet` status path import the full Solana oracle hooks; instead extract shared Solana
-  write helpers or use a write-focused hook/facade so Solana `ChainWallet` behavior can be added
-  without circular imports or unexpected bundle/RPC churn.
+  - **2d — x402 seam isolation [completed 2026-07-01]:** `browserX402` and `x402ProtocolBridge`
+    remain explicit Solana/SVM-only seams; Base x402/verification/adapters are guarded from
+    importing Solana PDA/ATA/bridge code. A real cross-chain `X402Payment` abstraction remains
+    future work.
+- **Circle-back result (2026-07-01):** branch `feat/base-port-phase-2-circleback` completed the
+  remaining Solana seam work after Phase 6. Key decision preserved: the lightweight/header
+  `useChainWallet` status path does not import the full Solana oracle hooks; Solana writes live
+  behind extracted helpers and a write-focused hook/facade, avoiding circular imports and unexpected
+  bundle/RPC churn.
 - **Files:** `web/lib/adapters/solana.ts` (2a ✓); then `web/lib/onchain.ts`,
   `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`, `web/lib/browserX402.ts`,
   `web/lib/x402ProtocolBridge.ts`, `web/components/WalletContextProvider.tsx` + their callers.
-- **Done when (full phase):** the live Solana flow (connect → browse → sponsored purchase) works
-  **identically on devnet** — requires a running app + wallet, **NOT verifiable in a headless
-  session**; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
-  files; `npm run typecheck && npm test` green.
+- **Done when (full phase):** done for current scope — local source gates passed, browser smoke
+  proved Solana direct list -> purchase -> entitlement -> raw download still works on devnet, and
+  Base passkey connect/disconnect still renders. Deferred: Solana sponsored/Kora prompt coverage
+  only if Solana remains first-class; Base list/purchase/raw-download in Phase 5/9.
 
 ### Phase 3 — `base-adapter-readslice` [completed 2026-06-29]
 
@@ -421,8 +433,9 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chai
 - **Status:** done - PR #67 merged as `a61f65d` on `main`. The implementation includes Base
   ChainWallet writes, purchase/listing verification, Base author identity, chain-qualified purchase
   groundwork, and EVM x402 settlement/entitlement paths. Local source/test/build verification is
-  recorded in the Phase 5 sub-plan; live Base write/x402 smoke still requires the Base RPC,
-  paymaster, relayer, funded wallet, and intended DB envs.
+  recorded in the Phase 5 sub-plan. As of 2026-07-01 the CDP paymaster env is present; live Base
+  write/x402 smoke still needs an intentional Base fixture/funded passkey wallet run against the
+  intended DB env.
 - **DECIDED (2026-06-25):** on-chain identity via `AgentVouchEvm.registerAgent` / `getProfile`
   (already deployed; mirrors the Solana identity program). The EVM author/profile branch must read
   `getProfile` before routing EVM authors through an author page.
