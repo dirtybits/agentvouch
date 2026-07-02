@@ -18,8 +18,8 @@ todos:
     content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke remains env-dependent. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
     status: completed
   - id: db-multichain
-    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana after the Phase 5 groundwork: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, and activity/dashboard reads that prefer buyer_chain_context + buyer_address over bare buyer_pubkey. Keep the legacy (skill_db_id, buyer_pubkey) entitlement PK until a later multi-EVM phase; do not overload Solana on_chain_address for Base. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
-    status: pending
+    content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch rehearsal, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
+    status: completed
   - id: address-type-sweep
     content: "Phase 7. After Phase 6 and the Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
     status: pending
@@ -432,7 +432,7 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chai
 - **Verification:** Base browser write proof, EVM x402 settlement proof, Solana write regression,
   and web typecheck, lint, vitest, and `npm run build --workspace @agentvouch/web`.
 
-### Phase 6 — `db-multichain` [pending]
+### Phase 6 — `db-multichain` [completed]
 
 Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chain-adapter-phase-6.plan.md).
 
@@ -450,6 +450,18 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chai
   chain-qualified, and dashboards/activity render without treating EVM rows as Solana PDAs; existing
   Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project). After this phase,
   return to Phase 2 before Phase 7/8.
+- **Pre-prod DB gate:** before running `db:phase6-chain-identity migrate` against the live Neon
+  project, rehearse the exact `migrate` command on a disposable Neon branch/database copied from the
+  intended production project. Capture the target host/database, `EXPECTED_DATABASE_HOST` guard,
+  preflight output, index creation success, and a post-run constraint/index check. This rehearsal is
+  not for finding duplicates (live read-only preflight already does that); it proves the guarded
+  migration script and SQL order execute end-to-end before production DDL.
+- **Post-merge result (2026-07-01):** `neonctl` context was fixed to the Vercel-managed
+  `agentvouch-postgres` project (`calm-meadow-36819154`), the disposable branch rehearsal passed on
+  `br-young-feather-af5t7y1c`, live `db:phase6-chain-identity migrate` passed on main
+  (`ep-morning-firefly-afjzu0sp.c-2.us-west-2.aws.neon.tech/neondb`), both Phase 6 unique indexes
+  were verified in `pg_indexes`, and production API smoke returned 200 for `/api/skills?mode=fast`,
+  `/api/skills/activity`, and `/api/x402/supported`.
 
 ### Phase 7 — `address-type-sweep` [pending]
 

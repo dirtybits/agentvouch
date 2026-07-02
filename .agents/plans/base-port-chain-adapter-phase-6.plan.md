@@ -18,7 +18,7 @@ todos:
     content: "DONE 2026-07-01: web/__tests__/lib/phase6-chain-identity.test.ts (16 tests) — source assertions for runtime-vs-migration DDL split, D3 receipt guard, chain-scoped trust joins, EVM-author trust-pipeline exclusion, activity chain fields, raw-access ordering (Base branch before ATA derivation); behavioral tests for getSkillPaymentFlow with evmListingId."
     status: completed
   - id: verify-phase6
-    content: "DONE 2026-07-01: format:check, web lint, typecheck (next typegen + tsc), vitest (82 files / 469 tests), and next build --webpack all pass locally. Live Neon migration/smoke SKIPPED per D5 — no DATABASE_URL or Base envs in this worktree; run scripts/phase6-chain-identity-migration.ts preflight+migrate against the live Neon project before or at deploy."
+    content: "DONE 2026-07-01: format:check, web lint, typecheck (next typegen + tsc), vitest (82 files / 469 tests), and next build --webpack all pass locally. Post-merge DB gate also passed: disposable Neon branch rehearsal succeeded, live guarded migrate created both Phase 6 unique indexes on agentvouch-postgres main, and production API smoke returned 200."
     status: completed
 isProject: false
 ---
@@ -113,6 +113,23 @@ swap is deferred until there is a real multi-EVM collision risk.
   skill, 17 entitlements (all Solana-context, 0 EVM). `migrate` therefore reduces to creating the
   two partial unique indexes. DDL was NOT run — production DDL requires an explicit operator run
   of `db:phase6-chain-identity migrate` (or an explicitly approved session).
+- 2026-07-01 post-merge DB gate: fixed local `neonctl` context to the Vercel-managed org
+  `org-nameless-dawn-22327511` and project `agentvouch-postgres` (`calm-meadow-36819154`), with
+  main branch `br-quiet-base-afn4qzxf`. Created disposable child branch
+  `phase6-preprod-gate-codex-20260701` (`br-young-feather-af5t7y1c`, expires 2026-07-04) from main
+  and ran the exact guarded `db:phase6-chain-identity migrate` command there. The rehearsal target
+  was `ep-steep-waterfall-afa74v2q.c-2.us-west-2.aws.neon.tech/neondb`; duplicate checks were clean,
+  all lowercase normalization updates touched 0 rows, both partial unique indexes were created, and
+  a post-run `pg_indexes` check found `uidx_skills_evm_listing_identity` and
+  `uidx_usdc_purchase_entitlements_chain_buyer`.
+- 2026-07-01 live DB gate: ran the guarded `db:phase6-chain-identity migrate` against live
+  `agentvouch-postgres` main (`ep-morning-firefly-afjzu0sp.c-2.us-west-2.aws.neon.tech/neondb`).
+  Duplicate checks were clean, all lowercase normalization updates touched 0 rows, both partial
+  unique indexes were created, and an independent live `pg_indexes` check found
+  `uidx_skills_evm_listing_identity` and `uidx_usdc_purchase_entitlements_chain_buyer`. Production
+  smoke after migration returned 200 for `/api/skills?mode=fast`, `/api/skills/activity`, and
+  `/api/x402/supported`; the first `/api/skills?mode=fast` request was cold/slow at 9.78s, and a
+  warm repeat returned 200 in 0.54s.
 - 2026-07-01 implementation discovery: the author-trust snapshot pipeline
   (`lib/trustSnapshots.ts`) persisted every skill author under the configured _Solana_ chain
   context — including `0x…` Base authors, which would have attached bogus Solana-context trust to
