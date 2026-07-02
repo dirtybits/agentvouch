@@ -5,6 +5,9 @@ todos:
   - id: confirm-8b-prerequisites
     content: Confirm every prerequisite in the gate checklist (Phase 9 v1 contract + security review, mainnet deploy, RPC/USDC/paymaster env, custody policy, runbook) with recorded evidence before any code change.
     status: pending
+  - id: parameterize-base-chain-modules
+    content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the ~13 Sepolia-pinned Base modules — chain context/id literals, the viem baseSepolia chain object, contract/USDC/RPC/explorer constants, evmAuth verification RPC, and the x402 routes — so Base Sepolia vs mainnet is env-selected, not hardcoded. This is the bulk of the 8b code work.
+    status: pending
   - id: enable-mainnet-adapter
     content: Extend getAdapter()/chain config to accept eip155:8453 with mainnet contract/RPC/USDC/paymaster values, removing the Phase 8a mainnet rejection with explicit tests.
     status: pending
@@ -61,17 +64,41 @@ Record evidence (PR links, tx hashes, doc versions) next to each item when check
 - [ ] Mainnet RPC env (server + client names) provisioned and archive-capable where reads need it.
 - [ ] Base mainnet native USDC address configured and verified.
 - [ ] CDP mainnet paymaster/bundler exists with a funded gas policy and recorded spend limits.
+- [ ] Mainnet x402 relayer EOA provisioned: `BASE_X402_RELAYER_PRIVATE_KEY` (settlement fails
+      closed without it — PR #67), dedicated low-privilege key (NOT the deployer, per the PR #67
+      review), custody documented, ETH gas funding + top-up policy, spend monitoring/alerting.
 - [ ] `getAdapter()` accepts `eip155:8453` behind tests (currently it deliberately rejects it).
+- [ ] Sepolia-row policy decided: what `/skills` does with existing `eip155:84532` listings and
+      entitlements once mainnet is the default (hide, badge as testnet, or keep purchasable).
+      Phase 6's chain-qualified rows mean mainnet and Sepolia data coexist without migration —
+      the decision is display/purchase policy, not schema.
 - [ ] Mainnet deploy/cutover runbook drafted and `docs/MAINNET_READINESS.md` updated.
 
 ## Scope (once unblocked)
 
+- **Base chain parameterization (the bulk of the work — verified 2026-07-02):** the Base stack is
+  currently Sepolia-pinned in ~13 modules, not just `getAdapter()`. Hardcoded surfaces include
+  `BASE_SEPOLIA_CHAIN_CONTEXT`/`BASE_SEPOLIA_CHAIN_ID` literals, the viem `baseSepolia` chain
+  object, and contract/USDC/RPC/explorer constants across `lib/adapters/baseConstants.ts`,
+  `baseConfig.ts`, `baseWalletConfig.ts`, `baseWallet.ts`, `base.ts`, plus
+  `lib/baseListingVerification.ts`, `basePurchaseVerification.ts`, `baseX402.ts`,
+  `baseX402Api.ts`, `baseAuthorTrust.ts`, `lib/evmAuth.ts` (signature verification RPC must
+  follow the wallet's chain), and the three `app/api/x402/*` routes. Introduce a configured-Base-
+  chain seam (analogous to `getConfiguredSolanaChainContext`) rather than sed-swapping constants,
+  so Sepolia remains selectable after the flip and the family-guard/source tests keep passing.
 - Chain config: accept `eip155:8453` in `getAdapter()`/`web/lib/adapters/*` with mainnet
   contract/RPC/USDC/paymaster values; remove the Phase 8a mainnet rejection and replace the
-  "mainnet-blocked" tests with "mainnet-enabled" equivalents.
+  "mainnet-blocked" tests with "mainnet-enabled" equivalents (including the Phase 7
+  `chainAddress` tests that assert eip155:8453 explorer/shorten degradation — those flip from
+  "degrades" to "resolves").
 - Default flip: `getDefaultChainContext()` defaults to `eip155:8453`; Sepolia and Solana remain
-  reachable via the existing env seam. The Phase 8a rollback env (set both server and client
-  values, then redeploy) stays the emergency switch.
+  reachable via the env seam. Rollback stays the single client-inlined var from the Phase 8a P2
+  fix — `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` (`solana` or `base-sepolia`), then
+  redeploy. The seam's fail-closed branch must be updated deliberately: today any non-Sepolia,
+  non-Solana value falls back to Solana; after 8b the mainnet context is the no-env default.
+- DB: no schema migration expected. Phase 6 chain-qualified rows key everything by chain context,
+  so `eip155:8453` rows coexist with `eip155:84532` and Solana rows; apply the Sepolia-row
+  display/purchase policy from the gate checklist at the read/UI layer.
 - Trust surfaces: mainnet Base authors flow through the Phase 9 trust reads/snapshots; no
   synthesized trust.
 - Docs: update `docs/MAINNET_READINESS.md`, deployment state doc, and `web/public/skill.md` for
@@ -93,7 +120,20 @@ Out of scope:
 
 ## Rollback
 
-- Set the Phase 8a rollback envs to the previous default (Sepolia or Solana) and redeploy —
-  `NEXT_PUBLIC_*` values are build-time inlined, so an env change alone is not a runtime switch.
+- Set `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=base-sepolia` (or `solana`) and redeploy —
+  single var per the Phase 8a P2 fix; `NEXT_PUBLIC_*` values are build-time inlined, so an env
+  change alone is not a runtime switch.
 - If the mainnet contract itself is the problem, `setPaused(true)` under PAUSE_ROLE per the v1
-  ownership policy, then follow the incident runbook.
+  ownership policy, then follow the incident runbook. Note the pause stops writes but not reads:
+  already-listed mainnet skills keep rendering, so the incident runbook should also cover the
+  display policy while paused.
+
+## Open Questions
+
+- Sepolia-row policy (gate checklist item): recommended default is badge-as-testnet + exclude from
+  the default browse sort, keep detail pages renderable. Decide before implementation.
+- Whether `evmAuth` should verify ERC-1271/6492 signatures against the wallet's own chain (mainnet
+  wallets verify on mainnet RPC) or pin to the default chain — smart-account signatures are
+  chain-dependent, so this must be explicit in the parameterization sweep.
+- Whether the mainnet flip ships dark first (mainnet enabled + Sepolia still default for one
+  deploy) to smoke the parameterized stack in production before changing the default.
