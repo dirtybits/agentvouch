@@ -67,6 +67,30 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
     expect(source).toContain("registerAgent");
   });
 
+  it("Base inline registration uses a non-empty author metadata URI", () => {
+    const publishSource = read("app/skills/publish/page.tsx");
+    const metadataSource = read("lib/adapters/baseAgentMetadata.ts");
+
+    expect(publishSource).toContain("buildBaseAgentMetadataUri(address)");
+    expect(publishSource).toContain("chainWallet.registerAgent(metadataUri)");
+    expect(publishSource).toContain("isBaseAlreadyRegisteredError");
+    expect(publishSource).toContain('includes("AlreadyRegistered")');
+    expect(metadataSource).toContain("/api/author/");
+    expect(metadataSource).toContain("BASE_SEPOLIA_CHAIN_CONTEXT");
+  });
+
+  it("Base publish retries link verification and detail repair relinks existing listings", () => {
+    const publishSource = read("app/skills/publish/page.tsx");
+    const detailSource = read("app/skills/[id]/SkillDetailClient.tsx");
+    const routeSource = read("app/api/skills/[id]/route.ts");
+
+    expect(publishSource).toContain("patchBaseListingWithRetry");
+    expect(publishSource).toContain("isRetryableBaseListingLinkError");
+    expect(detailSource).toContain("isBaseListingExistsError");
+    expect(detailSource).toContain("relinkExisting: true");
+    expect(routeSource).toContain("relinkExisting");
+  });
+
   it("free GitHub publishing stays wallet-optional and un-stamped", () => {
     const source = read("app/api/skills/route.ts");
     // GitHub publishers keep the configured Solana context, not the global default.

@@ -8,8 +8,9 @@ import {
   useAgentVouchWallet,
   useChainWallet,
 } from "@/components/WalletContextProvider";
-import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
+import { buildBaseAgentMetadataUri } from "@/lib/adapters/baseAgentMetadata";
 import type { ChainWallet } from "@/lib/adapters/types";
+import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { encodeBase64 } from "@/lib/base64";
@@ -198,12 +199,11 @@ async function isBaseAuthorRegistered(address: string): Promise<boolean> {
   return Boolean(data?.author_trust?.isRegistered);
 }
 
-async function ensureBaseAuthorRegistered(
-  chainWallet: ChainWallet,
-  address: string
-): Promise<void> {
-  if (await isBaseAuthorRegistered(address)) return;
-  await chainWallet.registerAgent("");
+function isBaseAlreadyRegisteredError(error: unknown): boolean {
+  return getErrorMessage(error, "").includes("AlreadyRegistered");
+}
+
+async function waitForBaseAuthorRegistration(address: string): Promise<void> {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (await isBaseAuthorRegistered(address)) return;
@@ -212,6 +212,61 @@ async function ensureBaseAuthorRegistered(
   throw new Error(
     "Base registration confirmed on-chain but is not readable yet. Try publishing again in a moment."
   );
+}
+
+async function ensureBaseAuthorRegistered(
+  chainWallet: ChainWallet,
+  address: string
+): Promise<void> {
+  if (await isBaseAuthorRegistered(address)) return;
+  const metadataUri = buildBaseAgentMetadataUri(address);
+  try {
+    await chainWallet.registerAgent(metadataUri);
+  } catch (error) {
+    if (!isBaseAlreadyRegisteredError(error)) {
+      throw error;
+    }
+  }
+  await waitForBaseAuthorRegistration(address);
+}
+
+type BaseListingPatchPayload = {
+  txHash: string;
+  authorAddress: string;
+  chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+  expectedPriceUsdcMicros: string;
+};
+
+function isRetryableBaseListingLinkError(status: number, message: string) {
+  if (status >= 500) return true;
+  return /not found|not emit|receipt|block|on-chain/i.test(message);
+}
+
+async function patchBaseListingWithRetry(
+  skillDbId: string,
+  baseListing: BaseListingPatchPayload,
+  attempts = 5
+): Promise<void> {
+  let lastMessage = "Skill saved, but failed to link the on-chain listing";
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const patchRes = await fetch(`/api/skills/${skillDbId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ baseListing }),
+    });
+
+    if (patchRes.ok) return;
+
+    const patchData = await patchRes.json().catch(() => null);
+    lastMessage = patchData?.error || lastMessage;
+    const shouldRetry =
+      attempt < attempts - 1 &&
+      isRetryableBaseListingLinkError(patchRes.status, lastMessage);
+    if (!shouldRetry) break;
+    await sleep(1_500 * (attempt + 1));
+  }
+
+  throw new Error(lastMessage);
 }
 
 function PublishSkillPageInner() {
@@ -543,26 +598,12 @@ function PublishSkillPageInner() {
             priceUsdcMicros: BigInt(onChainPriceUsdcMicros),
           });
 
-          const patchRes = await fetch(`/api/skills/${skillDbId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              baseListing: {
-                txHash: listingResult.ref,
-                authorAddress: baseWalletAddress,
-                chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-                expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
-              },
-            }),
+          await patchBaseListingWithRetry(skillDbId, {
+            txHash: listingResult.ref,
+            authorAddress: baseWalletAddress,
+            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+            expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
           });
-
-          if (!patchRes.ok) {
-            const patchData = await patchRes.json().catch(() => null);
-            throw new Error(
-              patchData?.error ||
-                "Skill saved, but failed to link the on-chain listing"
-            );
-          }
         } else {
           const paidAuthorPubkey = publicKey!;
           const paidSignMessage = signMessage!;

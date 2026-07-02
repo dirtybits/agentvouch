@@ -313,10 +313,21 @@ Divergences and additions relative to the original plan body:
   `resolvePublisherAuth` that stamps `walletChainContext = eip155:84532`. GitHub/free publishes
   keep the configured Solana context.
 - **Base registration is ensured inline, not via a modal.** The paid Base path polls
-  `/api/author/{address}?chainContext=eip155:84532` and calls `chainWallet.registerAgent("")`
-  when unregistered (publish button shows "Registering Base author…"). The server paid gate
-  mirrors Solana parity: unregistered Base authors get a 403 with register-first copy. Note the
-  server trust read caches ~30s, so the client polls up to 60s after registering.
+  `/api/author/{address}?chainContext=eip155:84532` and, when unregistered, calls
+  `chainWallet.registerAgent(buildBaseAgentMetadataUri(address))` with a non-empty metadata URI
+  pointing at that chain-qualified author JSON route. If that write reverts with
+  `AlreadyRegistered()` because the cached trust read lagged the chain, the ensure step treats it as
+  idempotent success and keeps polling. The server paid gate mirrors Solana parity: unregistered
+  Base authors get a 403 with register-first copy. Note the server trust read caches ~30s, so the
+  client polls up to 60s after registering.
+- **Base listing linkage is now retried and repairable.** The paid publish path retries the
+  `baseListing` PATCH after short chain/RPC indexing lag, so a just-mined `createSkillListing`
+  transaction does not strand a repo-only paid row. If a paid Base row is already stranded, the
+  detail-page author action tries `baseListing.relinkExisting=true` before any wallet write; the
+  server derives the listing ID from `(author, skill_id)`, verifies the live Base listing against the
+  repo row, and links the DB row without submitting another transaction. If the relink read confirms
+  no live listing exists yet, the UI falls back to `createSkillListing`; a later `ListingExists()`
+  revert is also treated as a relink signal.
 - **Connect menu: ordering only, no "Recommended" label** (open question resolved toward minimal
   UI change). Dual-restore precedence and `useChainWallet()` selection follow
   `isBaseSepoliaDefaultEnabled()`; deliberate cross-connects cannot collide because the connect

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getAddress } from "viem";
+import { decodeErrorResult, getAddress, parseAbi } from "viem";
 
+import { AGENTVOUCH_EVM_READ_ABI } from "@/lib/adapters/agentVouchEvmAbi";
+import { buildBaseAgentMetadataUri } from "@/lib/adapters/baseAgentMetadata";
 import {
   baseUsdcMicros,
   computeListingId,
@@ -28,5 +30,27 @@ describe("Base wallet listing ids", () => {
     expect(computeListingId(author, skillIdHash)).toBe(
       "0x9a06da52dc8297f03a7dd570a72bcffaefea565f98d4c09fec9451410dc49cda"
     );
+  });
+});
+
+describe("Base wallet registration metadata", () => {
+  it("builds a non-empty chain-qualified author metadata URI", () => {
+    const author = getAddress("0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854");
+    const uri = buildBaseAgentMetadataUri(author);
+
+    expect(uri).toContain(`/api/author/${author}`);
+    expect(uri).toContain("chainContext=eip155%3A84532");
+    expect(uri).not.toBe("");
+  });
+});
+
+describe("AgentVouchEvm custom errors", () => {
+  it("decodes EmptyMetadata reverts from Base writes", () => {
+    const decoded = decodeErrorResult({
+      abi: parseAbi([...AGENTVOUCH_EVM_READ_ABI]),
+      data: "0xae921357",
+    });
+
+    expect(decoded.errorName).toBe("EmptyMetadata");
   });
 });

@@ -104,7 +104,10 @@ Record the exact env names, not secret values, in the plan closeout.
 Use a fresh browser profile/localStorage if possible:
 
 1. Connect Base passkey wallet.
-2. Register author if needed.
+2. Register author if needed, confirming the registration uses the Phase 8a non-empty Base author
+   metadata URI, that duplicate `AlreadyRegistered()` registration attempts do not abort the
+   ensure-registered publish step, and that any contract revert is decoded by the shared
+   AgentVouchEvm custom-error ABI.
 3. Publish/list a paid skill on Base Sepolia through Phase 8's default paid-publish path.
 4. Confirm DB row:
    - `chain_context = eip155:84532`

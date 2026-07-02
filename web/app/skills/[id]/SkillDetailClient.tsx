@@ -102,6 +102,22 @@ interface ContentVerification {
   status: "verified" | "drift_detected" | "unverified";
 }
 
+function isBaseListingExistsError(error: unknown): boolean {
+  return getErrorMessage(error, "").includes("ListingExists");
+}
+
+function isBaseListingMissingError(error: unknown): boolean {
+  return /not found on-chain|was not found/i.test(getErrorMessage(error, ""));
+}
+
+function hasPositiveStoredUsdcPrice(value: string | null | undefined): boolean {
+  try {
+    return BigInt(value ?? "0") > 0n;
+  } catch {
+    return false;
+  }
+}
+
 interface SkillDetail {
   id: string;
   skill_id: string;
@@ -609,39 +625,100 @@ export default function SkillDetailPage({
           return;
         }
 
-        const listingResult = await activeChainWallet.createSkillListing({
-          skillId: skill.skill_id,
-          uri: skillUri,
-          name: skill.name,
-          description: skill.description ?? "",
-          priceUsdcMicros: BigInt(priceUsdcMicros),
-        });
+        const patchBaseListing = async (
+          baseListing:
+            | {
+                txHash: string;
+                authorAddress: string;
+                chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+                expectedPriceUsdcMicros: string;
+              }
+            | {
+                relinkExisting: true;
+                authorAddress: string;
+                chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+              }
+        ) => {
+          const patchRes = await fetch(`/api/skills/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baseListing }),
+          });
+          if (!patchRes.ok) {
+            const patchBody = (await patchRes.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              patchBody?.error || "Base listing was created but not linked"
+            );
+          }
+          return (await patchRes.json()) as SkillDetail;
+        };
 
-        const patchRes = await fetch(`/api/skills/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            baseListing: {
-              txHash: listingResult.ref,
-              authorAddress: activeWalletAddress,
-              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-              expectedPriceUsdcMicros: String(priceUsdcMicros),
-            },
-          }),
-        });
-        if (!patchRes.ok) {
-          const patchBody = (await patchRes.json().catch(() => null)) as {
-            error?: string;
-          } | null;
-          throw new Error(
-            patchBody?.error || "Base listing was created but not linked"
-          );
+        const existingListingPatch = {
+          relinkExisting: true,
+          authorAddress: activeWalletAddress,
+          chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+        } as const;
+
+        if (hasPositiveStoredUsdcPrice(skill.price_usdc_micros)) {
+          try {
+            const updated = await patchBaseListing(existingListingPatch);
+            setSkill(updated);
+            setListResult({
+              success: true,
+              message: "Linked existing Base marketplace listing successfully!",
+            });
+            await refreshSkill();
+            return;
+          } catch (error) {
+            if (!isBaseListingMissingError(error)) {
+              throw error;
+            }
+          }
         }
-        const updated = (await patchRes.json()) as SkillDetail;
+
+        let baseListing:
+          | {
+              txHash: string;
+              authorAddress: string;
+              chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+              expectedPriceUsdcMicros: string;
+            }
+          | {
+              relinkExisting: true;
+              authorAddress: string;
+              chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+            };
+
+        try {
+          const listingResult = await activeChainWallet.createSkillListing({
+            skillId: skill.skill_id,
+            uri: skillUri,
+            name: skill.name,
+            description: skill.description ?? "",
+            priceUsdcMicros: BigInt(priceUsdcMicros),
+          });
+          baseListing = {
+            txHash: listingResult.ref,
+            authorAddress: activeWalletAddress,
+            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+            expectedPriceUsdcMicros: String(priceUsdcMicros),
+          };
+        } catch (error) {
+          if (!isBaseListingExistsError(error)) {
+            throw error;
+          }
+          baseListing = existingListingPatch;
+        }
+        const updated = await patchBaseListing(baseListing);
         setSkill(updated);
         setListResult({
           success: true,
-          message: "Listed on Base marketplace successfully!",
+          message:
+            "relinkExisting" in baseListing
+              ? "Linked existing Base marketplace listing successfully!"
+              : "Listed on Base marketplace successfully!",
         });
         await refreshSkill();
         return;

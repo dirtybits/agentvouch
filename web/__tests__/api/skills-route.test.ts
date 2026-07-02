@@ -487,6 +487,78 @@ describe("PATCH /api/skills/[id]", () => {
     expect(dbQuery).toHaveBeenCalledTimes(2);
   });
 
+  it("relinks an existing Base listing without requiring the original tx hash", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    const updated = {
+      ...baseSkill,
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_tx_hash: null,
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListing.mockResolvedValueOnce({
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      txHash: null,
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      skillIdHash:
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      priceUsdcMicros: "10000",
+      currencyMint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      protocolVersion: "base-poc-v0",
+      onChainProgramId: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      chainContext: "eip155:84532",
+      listingRevision: "1",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
+      skill: baseSkill,
+      txHash: null,
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      expectedPriceUsdcMicros: null,
+      expectedUri: "http://localhost/api/skills/uuid-skill-1/raw",
+    });
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects Base listing persistence for non-Base skill rows", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
