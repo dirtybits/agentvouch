@@ -266,7 +266,8 @@ Browser smokes:
 - Deploy preview with Base Sepolia default enabled.
 - Production rollout should set or omit the default env intentionally:
   - default/no env: Base Sepolia.
-  - rollback: `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`.
+  - rollback: set both `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` and
+    `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, then redeploy.
 - Do not set `eip155:8453` in any env for Phase 8a.
 
 ## Rollback
