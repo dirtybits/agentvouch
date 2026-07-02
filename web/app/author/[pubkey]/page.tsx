@@ -26,6 +26,7 @@ import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransaction
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
 import { encodeBase64 } from "@/lib/base64";
 import { getConfiguredSolanaFmTxUrl } from "@/lib/chains";
+import { shortenChainAddress } from "@/lib/chainAddress";
 import { getErrorMessage } from "@/lib/errors";
 import {
   countsTowardAuthorWideReportSnapshot,
@@ -64,7 +65,8 @@ function getSolanaFmTxUrl(tx: string): string {
 }
 
 function shortAddr(addr: string): string {
-  return addr.slice(0, 6) + "..." + addr.slice(-4);
+  // Chain-independent 6/4 short form via the shared Phase 7 helper (generic path).
+  return shortenChainAddress({ chainContext: null, value: addr });
 }
 
 const REWARD_INDEX_SCALE = 1_000_000_000_000n;

@@ -45,7 +45,11 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { listOnChainSkillListings } from "@/lib/onchain";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
-import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import {
+  hasChainUsdcPurchaseEntitlement,
+  hasUsdcPurchaseEntitlement,
+} from "@/lib/usdcPurchases";
+import { normalizeChainAddressForStorage } from "@/lib/chainAddress";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
 import { getConfiguredUsdcMint } from "@/lib/x402";
@@ -196,6 +200,31 @@ function normalizeCurrencyMint(value: unknown): string | null {
   }
 
   return normalized;
+}
+
+// EVM buyers have no Solana purchase preflight; their purchase status comes from the
+// chain-qualified entitlements written by Base purchase verification (Phase 6 semantics).
+async function addEvmBuyerStatus(input: {
+  skills: EnrichedSkillRow[];
+  buyerChainContext: string;
+  buyerAddress: string;
+  timing: RouteTiming;
+}) {
+  return input.timing.measure("buyer-status", () =>
+    Promise.all(
+      input.skills.map(async (skill) => {
+        const priced = normalizeUsdcMicros(skill.price_usdc_micros);
+        const buyerHasPurchased =
+          Boolean(priced) && skill.source === "repo"
+            ? await hasChainUsdcPurchaseEntitlement(skill.id, {
+                buyerChainContext: input.buyerChainContext,
+                buyerAddress: input.buyerAddress,
+              }).catch(() => false)
+            : false;
+        return { ...skill, buyerHasPurchased };
+      })
+    )
+  );
 }
 
 async function resolveLiveSkillTrust(input: {
@@ -545,10 +574,35 @@ export async function GET(request: NextRequest) {
     const total = enriched.length;
     const offset = (page - 1) * pageSize;
     const paged = enriched.slice(offset, offset + pageSize);
+    const buyerChainContext = normalizeInputChainContext(
+      searchParams.get("buyerChainContext") ??
+        searchParams.get("buyer_chain_context")
+    );
+    // An explicit EVM buyer context is EXCLUSIVE: if the buyer value fails EVM validation,
+    // the request gets no buyer status rather than falling through to Solana handling
+    // (Phase 7 chain-tagged boundary rule).
+    const wantsEvmBuyer = Boolean(
+      includeBuyerStatus && buyerChainContext?.startsWith("eip155:")
+    );
+    const evmBuyerAddress = wantsEvmBuyer
+      ? normalizeChainAddressForStorage({
+          chainContext: buyerChainContext,
+          value: buyer,
+        })
+      : null;
     const buyerAddress =
-      includeBuyerStatus && buyer && isAddress(buyer) ? address(buyer) : null;
+      includeBuyerStatus && !wantsEvmBuyer && buyer && isAddress(buyer)
+        ? address(buyer)
+        : null;
     const responseSkills = fastMode
       ? paged
+      : evmBuyerAddress && buyerChainContext
+      ? await addEvmBuyerStatus({
+          skills: paged,
+          buyerChainContext,
+          buyerAddress: evmBuyerAddress,
+          timing,
+        })
       : await addPurchasePreflightAndBuyerStatus({
           skills: paged,
           buyerAddress,
@@ -569,9 +623,7 @@ export async function GET(request: NextRequest) {
         headers: getSkillResponseHeaders({
           buyerAddress: fastMode
             ? null
-            : buyerAddress
-            ? String(buyerAddress)
-            : null,
+            : evmBuyerAddress ?? (buyerAddress ? String(buyerAddress) : null),
           mode: fastMode ? "fast" : "full",
           timing,
         }),

@@ -17,6 +17,7 @@ import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
 import { getChainDisplayLabel } from "@/lib/chains";
+import { shortenChainAddress } from "@/lib/chainAddress";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
@@ -103,11 +104,6 @@ function truncateAtWord(value: string, maxChars: number): string {
       : candidate.slice(0, maxChars);
 
   return `${trimmed.trimEnd()}...`;
-}
-
-function shortChainAddress(value: string): string {
-  if (value.length <= 13) return value;
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 // Mirrors the server-side getRecommendedAction, with one intentional softening:
@@ -314,7 +310,10 @@ export default function SkillPreviewCard({
     : null;
   const walletAuthorLabel = skill.author_pubkey
     ? isReadOnlyEvmListing
-      ? shortChainAddress(skill.author_pubkey)
+      ? shortenChainAddress({
+          chainContext: skill.chain_context,
+          value: skill.author_pubkey,
+        })
       : formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
     : null;
   const linkedGithubProfile =

@@ -78,6 +78,9 @@ describe("phase 2: x402 family separation", () => {
     "solanaWrites",
     "@solana/kit",
     "@x402/svm",
+    // Phase 7: Solana protocol modules stay out of Base paths too.
+    "@/lib/onchain",
+    "@/lib/agentvouchUsdc",
   ];
   const baseFiles = [
     "lib/baseX402.ts",

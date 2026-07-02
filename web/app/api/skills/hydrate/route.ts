@@ -11,6 +11,7 @@ import {
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import {
   getConfiguredSolanaChainContext,
+  normalizeInputChainContext,
   normalizePersistedChainContext,
 } from "@/lib/chains";
 import { initializeDatabase, sql } from "@/lib/db";
@@ -45,7 +46,11 @@ import {
   partitionAuthorsByTrustFreshness,
   scheduleBackgroundTrustRefresh,
 } from "@/lib/authorTrustView";
-import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import {
+  hasChainUsdcPurchaseEntitlement,
+  hasUsdcPurchaseEntitlement,
+} from "@/lib/usdcPurchases";
+import { normalizeChainAddressForStorage } from "@/lib/chainAddress";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 
 const MAX_HYDRATE_SKILLS = 24;
@@ -57,6 +62,7 @@ const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 type HydrateRequestBody = {
   skillIds?: unknown;
   buyer?: unknown;
+  buyerChainContext?: unknown;
   includeBuyerStatus?: unknown;
 };
 
@@ -356,8 +362,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ skills: {} });
     }
 
+    const buyerChainContext = normalizeInputChainContext(
+      typeof body.buyerChainContext === "string" ? body.buyerChainContext : null
+    );
+    // An explicit EVM buyer context is EXCLUSIVE: an invalid EVM buyer value yields no
+    // buyer status instead of falling through to Solana handling (Phase 7 boundary rule).
+    const wantsEvmBuyer = Boolean(buyerChainContext?.startsWith("eip155:"));
+    const evmBuyer = wantsEvmBuyer
+      ? normalizeChainAddressForStorage({
+          chainContext: buyerChainContext,
+          value: typeof body.buyer === "string" ? body.buyer : null,
+        })
+      : null;
     const buyer =
-      typeof body.buyer === "string" && isAddress(body.buyer)
+      !wantsEvmBuyer && typeof body.buyer === "string" && isAddress(body.buyer)
         ? body.buyer
         : null;
     const includeBuyerStatus = body.includeBuyerStatus === true;
@@ -397,7 +415,20 @@ export async function POST(request: NextRequest) {
       identityMap,
     });
     const hydrated =
-      includeBuyerStatus && buyer
+      includeBuyerStatus && evmBuyer && buyerChainContext
+        ? await Promise.all(
+            baseHydrated.map(async (skill) => ({
+              ...skill,
+              // EVM buyers: chain-qualified entitlement lookup (no Solana preflight).
+              buyerHasPurchased: normalizeUsdcMicros(skill.price_usdc_micros)
+                ? await hasChainUsdcPurchaseEntitlement(skill.id, {
+                    buyerChainContext,
+                    buyerAddress: evmBuyer,
+                  }).catch(() => false)
+                : false,
+            }))
+          )
+        : includeBuyerStatus && buyer
         ? await addPurchasePreflightAndBuyerStatus({
             skills: baseHydrated,
             buyerAddress: address(buyer),
@@ -410,9 +441,10 @@ export async function POST(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": buyer
-            ? PRIVATE_NO_STORE_CACHE_CONTROL
-            : "public, s-maxage=30, stale-while-revalidate=120",
+          "Cache-Control":
+            buyer ?? evmBuyer
+              ? PRIVATE_NO_STORE_CACHE_CONTROL
+              : "public, s-maxage=30, stale-while-revalidate=120",
         },
       }
     );
