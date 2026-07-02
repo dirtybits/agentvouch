@@ -17,6 +17,10 @@ vi.mock("@/lib/auth", () => ({
   verifyWalletSignature: vi.fn(),
 }));
 
+vi.mock("@/lib/evmAuth", () => ({
+  verifyEvmWalletSignature: vi.fn(),
+}));
+
 vi.mock("@/lib/ipfs", () => ({
   pinSkillContent: vi.fn(),
 }));
@@ -32,6 +36,7 @@ vi.mock("@vercel/blob", () => ({
 
 import { POST } from "@/app/api/skills/[id]/versions/route";
 import { verifyWalletSignature } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { sql } from "@/lib/db";
 import { pinSkillContent } from "@/lib/ipfs";
 import { MAX_SKILL_UPLOAD_BYTES } from "@/lib/skillDraft";
@@ -39,6 +44,8 @@ import { MAX_SKILL_UPLOAD_BYTES } from "@/lib/skillDraft";
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockVerifyEvmWalletSignature =
+  verifyEvmWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockPinSkillContent = pinSkillContent as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -209,5 +216,56 @@ describe("POST /api/skills/[id]/versions", () => {
         cid: "bafy-new-version",
       },
     });
+  });
+
+  it("accepts Base author signatures for repo version publishes", async () => {
+    const authorAddress = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill",
+          skill_id: "base-calendar-agent",
+          author_pubkey: authorAddress,
+          chain_context: "eip155:84532",
+          current_version: 4,
+          ipfs_cid: "bafy-existing",
+        },
+      ])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifyEvmWalletSignature.mockResolvedValue({
+      valid: true,
+      pubkey: authorAddress.toLowerCase(),
+    });
+    mockPinSkillContent.mockResolvedValue({
+      success: true,
+      cid: "bafy-base-new-version",
+    });
+
+    const res = await POST(
+      makeRequest({
+        auth: {
+          pubkey: authorAddress,
+          signature: "0xdeadbeef",
+          message: "msg",
+          timestamp: Date.now(),
+        },
+        content: "# Base updated\n",
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockVerifyEvmWalletSignature).toHaveBeenCalledWith(
+      expect.objectContaining({ pubkey: authorAddress })
+    );
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).toHaveBeenCalledWith(
+      "# Base updated\n",
+      "base-calendar-agent",
+      5
+    );
   });
 });

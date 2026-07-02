@@ -1048,6 +1048,27 @@ export default function SkillDetailPage({
     }
   };
 
+  const isEvmAuthor = Boolean(
+    skill?.author_pubkey && skill.chain_context?.startsWith("eip155:")
+  );
+  const evmAuthorChainLabel = isEvmAuthor
+    ? getChainDisplayLabel(skill?.chain_context)
+    : null;
+  const isSolanaAuthor =
+    !!skill &&
+    !isEvmAuthor &&
+    !!walletAddress &&
+    walletAddress === skill.author_pubkey;
+  const isBaseAuthor =
+    !!skill &&
+    isEvmAuthor &&
+    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    !!activeWalletAddress &&
+    !!skill.author_pubkey &&
+    activeWalletAddress.toLowerCase() === skill.author_pubkey.toLowerCase();
+  const isAuthor = isSolanaAuthor || isBaseAuthor;
+
   const startEditing = useCallback(() => {
     if (!skill) return;
     const canonicalUri =
@@ -1122,7 +1143,14 @@ export default function SkillDetailPage({
 
   const handlePublishVersion = async () => {
     if (!skill || skill.source === "chain") return;
-    if (!connected || !walletAddress || !signMessage) {
+    if (
+      !(
+        (isBaseAuthor &&
+          activeChainWallet?.signMessage &&
+          activeWalletAddress) ||
+        (isSolanaAuthor && walletAddress && signMessage)
+      )
+    ) {
       setVersionResult({
         success: false,
         message: "Connect your wallet to publish a new version.",
@@ -1142,15 +1170,42 @@ export default function SkillDetailPage({
     try {
       const timestamp = Date.now();
       const message = buildSignMessage("publish-skill", timestamp);
-      const signatureBytes = await signMessage(
-        new TextEncoder().encode(message)
-      );
-      const signature = encodeBase64(signatureBytes);
+      let auth: {
+        pubkey: string;
+        signature: string;
+        message: string;
+        timestamp: number;
+      } | null = null;
+
+      if (
+        isBaseAuthor &&
+        activeChainWallet?.signMessage &&
+        activeWalletAddress
+      ) {
+        auth = {
+          pubkey: activeWalletAddress,
+          signature: await activeChainWallet.signMessage(message),
+          message,
+          timestamp,
+        };
+      } else if (isSolanaAuthor && walletAddress && signMessage) {
+        const signatureBytes = await signMessage(
+          new TextEncoder().encode(message)
+        );
+        auth = {
+          pubkey: walletAddress,
+          signature: encodeBase64(signatureBytes),
+          message,
+          timestamp,
+        };
+      }
+      if (!auth)
+        throw new Error("Connect your wallet to publish a new version.");
       const response = await fetch(`/api/skills/${skill.id}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: { pubkey: walletAddress, signature, message, timestamp },
+          auth,
           content: versionDraft,
           changelog: versionChangelog.trim() || undefined,
         }),
@@ -1182,26 +1237,6 @@ export default function SkillDetailPage({
   const isSynced = !isMirror && Boolean(skill?.synced_repo_url);
   const visibleTags =
     skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
-  const isEvmAuthor = Boolean(
-    skill?.author_pubkey && skill.chain_context?.startsWith("eip155:")
-  );
-  const evmAuthorChainLabel = isEvmAuthor
-    ? getChainDisplayLabel(skill?.chain_context)
-    : null;
-  const isSolanaAuthor =
-    !!skill &&
-    !isEvmAuthor &&
-    !!walletAddress &&
-    walletAddress === skill.author_pubkey;
-  const isBaseAuthor =
-    !!skill &&
-    isEvmAuthor &&
-    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
-    activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
-    !!activeWalletAddress &&
-    !!skill.author_pubkey &&
-    activeWalletAddress.toLowerCase() === skill.author_pubkey.toLowerCase();
-  const isAuthor = isSolanaAuthor || isBaseAuthor;
   const authorLabel =
     isMirror && skill?.author_handle
       ? `Mirrored from @${skill.author_handle}`
@@ -1229,7 +1264,7 @@ export default function SkillDetailPage({
     : "Unverified publisher identity";
 
   useEffect(() => {
-    if (!skill || !isSolanaAuthor) {
+    if (!skill || !isAuthor) {
       handledAuthorActionRef.current = null;
       return;
     }
@@ -1240,7 +1275,11 @@ export default function SkillDetailPage({
       return;
     }
 
-    if (requestedAuthorAction === "edit-listing" && skill.on_chain_address) {
+    if (
+      requestedAuthorAction === "edit-listing" &&
+      isSolanaAuthor &&
+      skill.on_chain_address
+    ) {
       startEditing();
       handledAuthorActionRef.current = requestedAuthorAction;
       return;
@@ -1260,6 +1299,7 @@ export default function SkillDetailPage({
     requestedAuthorAction,
     skill,
     startEditing,
+    isAuthor,
     isSolanaAuthor,
   ]);
 
@@ -1852,8 +1892,7 @@ export default function SkillDetailPage({
               </div>
             </details>
             {/* Version History */}
-            {(skill.versions?.length > 0 ||
-              (isSolanaAuthor && !isChainOnly)) && (
+            {(skill.versions?.length > 0 || (isAuthor && !isChainOnly)) && (
               <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-6">
                 <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-2">
@@ -1862,7 +1901,7 @@ export default function SkillDetailPage({
                       Version History
                     </span>
                   </div>
-                  {isSolanaAuthor && !isChainOnly && !versionComposerOpen && (
+                  {isAuthor && !isChainOnly && !versionComposerOpen && (
                     <button
                       onClick={openVersionComposer}
                       className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium`}
@@ -1872,7 +1911,7 @@ export default function SkillDetailPage({
                     </button>
                   )}
                 </div>
-                {isSolanaAuthor && !isChainOnly && versionComposerOpen && (
+                {isAuthor && !isChainOnly && versionComposerOpen && (
                   <div className="mb-4 p-4 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)]">
                     <div className="flex items-center justify-between gap-4 mb-3">
                       <div>
@@ -1987,7 +2026,7 @@ export default function SkillDetailPage({
                     ))}
                   </div>
                 ) : (
-                  isSolanaAuthor &&
+                  isAuthor &&
                   !isChainOnly && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Publish the first repo-backed version update for this

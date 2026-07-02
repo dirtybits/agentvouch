@@ -88,6 +88,14 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
       "normalizeCurrencyMint(currency_mint) ?? getConfiguredUsdcMint()"
     );
   });
+
+  it("Base paid listings use the canonical raw URI even when IPFS pinning is unavailable", () => {
+    const source = read("app/skills/publish/page.tsx");
+    expect(source).toContain(
+      "const skillUri = `${window.location.origin}/api/skills/${skillDbId}/raw`;"
+    );
+    expect(source).not.toMatch(/const skillUri = ipfsCid[\s\S]+: ""/);
+  });
 });
 
 describe("phase 8a: EVM publisher auth", () => {
@@ -101,6 +109,26 @@ describe("phase 8a: EVM publisher auth", () => {
   it("Base passkey ChainWallet exposes signMessage for publisher auth", () => {
     const source = read("lib/adapters/baseWallet.ts");
     expect(source).toMatch(/signMessage: \(message\) =>/);
+  });
+
+  it("version publishing accepts Base author signatures through EVM auth", () => {
+    const route = read("app/api/skills/[id]/versions/route.ts");
+    expect(route).toContain("verifyEvmWalletSignature");
+    expect(route).toContain("verifyVersionPublisherAuth");
+    expect(route).toMatch(
+      /chainContext === BASE_SEPOLIA_CHAIN_CONTEXT[\s\S]+verifyEvmWalletSignature\(auth\)/
+    );
+
+    const detail = read("app/skills/[id]/SkillDetailClient.tsx");
+    expect(detail).toMatch(
+      /isBaseAuthor[\s\S]+activeChainWallet\?\.signMessage[\s\S]+activeChainWallet\.signMessage\(message\)/
+    );
+    expect(detail).toContain(
+      "{isAuthor && !isChainOnly && !versionComposerOpen &&"
+    );
+    expect(detail).not.toContain(
+      "{isSolanaAuthor && !isChainOnly && !versionComposerOpen &&"
+    );
   });
 });
 

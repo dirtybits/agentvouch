@@ -517,10 +517,7 @@ function PublishSkillPageInner() {
 
       const skillDbId: string = data.id;
       const publicSkillPath = getPublicSkillPath(data);
-      const ipfsCid: string | null = data.ipfs_cid;
-      const skillUri = ipfsCid
-        ? `${window.location.origin}/api/skills/${skillDbId}/raw`
-        : "";
+      const skillUri = `${window.location.origin}/api/skills/${skillDbId}/raw`;
 
       if (!usdcPriceMicros) {
         setResult({
