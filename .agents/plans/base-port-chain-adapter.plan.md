@@ -6,7 +6,7 @@ todos:
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: completed
   - id: extract-solana-adapter
-    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor - must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED. Current sequencing 2026-07-01: circle back immediately after Phase 6 DB hardening and before Phase 7/8 default-chain work."
+    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor - must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED. Current sequencing 2026-07-01: resumed after Phase 6 DB hardening on feat/base-port-phase-2-circleback; follow .agents/plans/base-port-chain-adapter-phase-2-circleback.plan.md before Phase 7/8 default-chain work."
     status: in_progress
   - id: base-adapter-readslice
     content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
@@ -254,6 +254,9 @@ export function useChainWallet(): ChainWallet | null;
 
 ### Phase 2 — `extract-solana-adapter` [in_progress] ⚠ live-app refactor
 
+Dedicated circle-back sub-plan:
+[`base-port-chain-adapter-phase-2-circleback.plan.md`](./base-port-chain-adapter-phase-2-circleback.plan.md).
+
 - **Goal:** route all existing Solana behavior through `SolanaAdapter` with zero UX change.
 - **Why sub-sliced:** this spans server (API routes) + client (hooks/components/provider), ~20
   files, and only some slices are verifiable without a running app + wallet. Split into separate
@@ -290,6 +293,12 @@ export function useChainWallet(): ChainWallet | null;
     the inline logic, or add an optional length param to the `ChainAdapter` interface. Do NOT
     silently change rendered output — that breaks the "behavior-preserving" contract of this phase.
   - **2d — x402 [pending]:** `browserX402` / `x402ProtocolBridge` + `/api/x402/*` behind the adapter.
+- **Circle-back planning status (2026-07-01):** after Phase 6 merged and the live DB gate passed, a
+  fresh branch `feat/base-port-phase-2-circleback` was cut from `origin/main`. The remaining work is
+  scoped in the dedicated sub-plan. Key planning decision: do not make the lightweight/header
+  `useChainWallet` status path import the full Solana oracle hooks; instead extract shared Solana
+  write helpers or use a write-focused hook/facade so Solana `ChainWallet` behavior can be added
+  without circular imports or unexpected bundle/RPC churn.
 - **Files:** `web/lib/adapters/solana.ts` (2a ✓); then `web/lib/onchain.ts`,
   `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`, `web/lib/browserX402.ts`,
   `web/lib/x402ProtocolBridge.ts`, `web/components/WalletContextProvider.tsx` + their callers.
