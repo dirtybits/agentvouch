@@ -30,6 +30,20 @@ export interface TxResult {
   paidGas: boolean; // false when sponsored (4337 / x402)
 }
 
+// purchaseSkill result. `alreadyPurchased` is set when the buyer already owns the current
+// revision and no transaction was sent — callers short-circuit to the entitled UX instead of
+// re-paying; `ref` then carries the existing purchase reference (Solana purchase PDA) rather
+// than a transaction.
+export interface PurchaseSkillResult extends TxResult {
+  alreadyPurchased?: boolean;
+}
+
+// registerAgent result. `agentProfile` carries the chain-native profile reference on chains
+// that have one (Solana AgentProfile PDA); callers must not assume it is present cross-chain.
+export interface RegisterAgentResult extends TxResult {
+  agentProfile?: string;
+}
+
 export interface CreateSkillListingInput {
   skillId: string;
   uri: string;
@@ -72,9 +86,9 @@ export interface ChainWallet {
 
   disconnect(): Promise<void>;
 
-  registerAgent(metadataUri: string): Promise<TxResult>;
+  registerAgent(metadataUri: string): Promise<RegisterAgentResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
-  purchaseSkill(input: PurchaseSkillInput): Promise<TxResult>;
+  purchaseSkill(input: PurchaseSkillInput): Promise<PurchaseSkillResult>;
 
   // agent x402 (server-verifiable payment authorization)
   buildX402Payment(listingId: string): Promise<X402Payment>;

@@ -89,6 +89,7 @@ Out of scope:
 ## Implementation Plan
 
 1. Extract Solana write helpers behind a client-only module.
+
    - Candidate files: `web/lib/adapters/solanaWallet.ts` plus smaller helper modules if needed.
    - Lift the existing logic for the three `ChainWallet` methods from
      `useReputationOracle`/`useMarketplaceOracle` into reusable functions.
@@ -110,6 +111,7 @@ Out of scope:
      so the free-listing `authorBond` account is still included.
 
 2. Add a Solana `ChainWallet` without bloating the header wallet path.
+
    - Do not import `useReputationOracle` or `useMarketplaceOracle` inside
      `WalletContextProvider.tsx`; the provider is already the base wallet/status boundary and the
      header `ClientWalletButton` uses it.
@@ -121,6 +123,7 @@ Out of scope:
    - Base should continue returning the existing `createBasePasskeyChainWallet(...)`.
 
 3. Repoint the primary write callers in small commits.
+
    - `SkillDetailClient.tsx`: use the active/writable `ChainWallet` for both Base and Solana list
      and purchase branches where possible. Keep `signMessage` for repo publish auth and raw download
      authorization; that is not replaced by `ChainWallet`.
@@ -137,6 +140,7 @@ Out of scope:
      `paidGas: false`.
 
 4. Repoint safe read/price callers.
+
    - Start with `web/app/api/skills/route.ts` chain listing enumeration and any call sites that only
      need `SkillListingView.priceUsdcMicros`, `active`, `author`, `uri`, or `revision`.
    - Use `getAdapter(getConfiguredSolanaChainContext())` for Solana rows. Preserve existing behavior
