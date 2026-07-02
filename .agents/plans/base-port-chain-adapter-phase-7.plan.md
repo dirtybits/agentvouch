@@ -122,9 +122,16 @@ export type ChainAddressRef = {
 };
 
 export function isValidChainAddress(ref: ChainAddressRef): boolean;
-export function normalizeChainAddressForStorage(ref: ChainAddressRef): string | null;
-export function formatChainAddressForDisplay(ref: ChainAddressRef): string | null;
-export function shortenChainAddress(ref: ChainAddressRef, opts?: { fallback?: string }): string;
+export function normalizeChainAddressForStorage(
+  ref: ChainAddressRef
+): string | null;
+export function formatChainAddressForDisplay(
+  ref: ChainAddressRef
+): string | null;
+export function shortenChainAddress(
+  ref: ChainAddressRef,
+  opts?: { fallback?: string }
+): string;
 export function chainExplorerAddressUrl(ref: ChainAddressRef): string | null;
 export function chainExplorerTxUrl(input: {
   chainContext: string | null | undefined;
@@ -162,6 +169,7 @@ Implementation guidance:
 ## Implementation Steps
 
 1. Classify before editing.
+
    - Produce a local checklist from:
      - `rg -l "@solana/kit" web/app web/components web/hooks web/lib -g '!web/generated/**'`
      - `rg -n "explorer\\.solana|basescan|shorten.*Address|slice\\(0, [0-9]+\\).*slice\\(-" web/app web/components web/hooks web/lib`
@@ -171,6 +179,7 @@ Implementation guidance:
      - `non-address truncation` (hashes, CIDs, commit SHAs; leave alone)
 
 2. Add the chain-address helper.
+
    - Add `web/lib/chainAddress.ts` or an equivalent single file.
    - Add real behavioral tests under `web/__tests__/lib/chainAddress.test.ts`. Do not satisfy this
      helper coverage with source-text assertions; the helper is pure and should be tested by passing
@@ -183,6 +192,7 @@ Implementation guidance:
    - Prove `formatChainAddressForDisplay` is not used at API/DB storage boundaries.
 
 3. Repoint chain-agnostic display surfaces.
+
    - Prefer `shortenChainAddress({ chainContext, value })` where the row/skill already carries
      `chain_context`.
    - Keep Phase 7 EVM actor navigation display-only: do not introduce internal `/author/0x...`
@@ -201,6 +211,7 @@ Implementation guidance:
      - `web/lib/authorDisplay.ts`
 
 4. Repoint mixed-chain API validation.
+
    - `web/app/api/skills/route.ts`: when `buyerChainContext` is EVM, validate the buyer as EVM, not
      Solana; keep Solana `address(...)` conversion only for Solana purchase/status paths.
    - `web/app/api/skills/[id]/route.ts`: verify no Solana `isAddress` branch prevents EVM buyer or
@@ -214,6 +225,7 @@ Implementation guidance:
      boundary still rejects EVM inputs.
 
 5. Guard Solana-only modules.
+
    - Add or update source tests to assert Base-facing files do not import:
      - `@solana/kit`
      - `web/lib/onchain`

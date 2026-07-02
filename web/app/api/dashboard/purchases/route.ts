@@ -13,6 +13,8 @@ import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import { decodeBase64 } from "@/lib/base64";
 import { getErrorMessage } from "@/lib/errors";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
+import { isEvmShapedAddress } from "@/lib/chainAddress";
+import { normalizeInputChainContext } from "@/lib/chains";
 
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const asBase64 = (bytes: Uint8Array) =>
@@ -68,6 +70,22 @@ function serializeSkillListingAccount(account: SkillListing) {
 export async function GET(request: NextRequest) {
   try {
     const buyer = request.nextUrl.searchParams.get("buyer");
+    const buyerChainContext = normalizeInputChainContext(
+      request.nextUrl.searchParams.get("buyerChainContext") ??
+        request.nextUrl.searchParams.get("buyer_chain_context")
+    );
+    // This dashboard view enumerates Solana purchase PDAs from the program. EVM buyers have
+    // none by definition, so return an empty result instead of rejecting the wallet (Phase 7);
+    // Base purchase history is served from chain-qualified DB entitlements elsewhere.
+    if (
+      buyer &&
+      (buyerChainContext?.startsWith("eip155:") || isEvmShapedAddress(buyer))
+    ) {
+      return NextResponse.json(
+        { purchases: [], listings: [] },
+        { headers: { "Cache-Control": PRIVATE_NO_STORE_CACHE_CONTROL } }
+      );
+    }
     if (!buyer || !isAddress(buyer)) {
       return NextResponse.json(
         { error: "buyer must be a valid Solana address" },
