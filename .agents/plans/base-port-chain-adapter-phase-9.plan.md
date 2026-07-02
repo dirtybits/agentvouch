@@ -87,8 +87,10 @@ Verify these before running live smokes:
 
 - `BASE_SEPOLIA_RPC_URL` / `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` points at a reliable archive-capable
   Base Sepolia endpoint.
-- `BASE_AGENTVOUCH_CONTRACT_ADDRESS` points at the expected F-1-fixed/POC contract.
-- `BASE_USDC_ADDRESS` / native USDC config matches Base Sepolia USDC.
+- `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` (read as the `BASE_AGENTVOUCH_CONTRACT_ADDRESS` constant in
+  `web/lib/adapters/baseConfig.ts`) points at the expected F-1-fixed/POC contract.
+- `NEXT_PUBLIC_BASE_USDC_ADDRESS` (read as the `BASE_USDC_ADDRESS` constant, defaulting to the
+  Base Sepolia USDC in `baseConstants.ts`) matches Base Sepolia native USDC.
 - CDP paymaster/bundler endpoint is present for UserOps.
 - Relayer/x402 settlement env is present and has permission to submit settlement txs.
 - A passkey buyer and author can be funded with Base Sepolia USDC.
@@ -162,12 +164,12 @@ v1 spec should include:
   - `registerAgent`
   - `createSkillListing`
   - `purchaseSkill`
-  - `receiveWithAuthorization` x402 settlement
+  - `settleX402Purchase` x402 settlement (consumes USDC `receiveWithAuthorization` internally)
   - `depositAuthorBond`
   - `withdrawAuthorBond`
   - `vouch`
   - `revokeVouch`
-  - pause
+  - `setPaused(bool)` under `PAUSE_ROLE`
 - Add or finalize:
   - explicit protocol version getter/event (not `base-poc-v0`)
   - founder/admin-resolved author report/dispute object

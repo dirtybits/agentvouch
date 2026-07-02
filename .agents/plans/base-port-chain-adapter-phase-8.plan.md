@@ -76,6 +76,10 @@ export function isBaseSepoliaDefaultEnabled(): boolean;
   - Default with no env: `BASE_SEPOLIA_CHAIN_CONTEXT` (`eip155:84532`).
   - Rollback value: configured Solana context via `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` and
     `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`.
+  - The server and client env values must be set or unset **together**. If they disagree, SSR
+    renders one default and the client hydrates the other — the same #418-class hydration
+    mismatch PR #65 fixed for dates. Add a test/assertion that both resolve identically, or have
+    the seam read a single source per runtime with an agreement check.
   - Accept exact CAIP-2 values and existing aliases (`base-sepolia`, `solana:devnet`).
   - Reject or ignore `eip155:8453` in Phase 8a with an explicit test.
 - Wallet/provider defaults in `web/components/WalletContextProvider.tsx` and
@@ -165,7 +169,11 @@ Out of scope:
    - Default to `BASE_SEPOLIA_CHAIN_CONTEXT`.
    - Support env rollback through both server and client-visible env names:
      `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` and `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT`.
-   - Normalize aliases with existing `normalizeChainContext`.
+   - Normalize aliases with existing `normalizeChainContext`, passing
+     `{ defaultLegacySolanaChainContext: getConfiguredSolanaChainContext() }`. A bare
+     `normalizeChainContext("solana")` returns `null` (the alias only resolves through that
+     option), so the canonical rollback value `solana` would silently fall through to the Base
+     default — a no-op rollback.
    - If configured value normalizes to `BASE_CHAIN_CONTEXT` (`eip155:8453`), return Solana or throw in
      tests? Prefer fail-closed with a visible console/server warning and Solana fallback; do not
      silently default to mainnet.
@@ -263,7 +271,8 @@ Browser smokes:
 ## Rollback
 
 - Set `AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` and
-  `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana` if needed.
+  `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, **then redeploy** — `NEXT_PUBLIC_*`
+  values are inlined at build time, so setting the env alone is not a runtime switch.
 - If paid publish regresses, revert only the publish-page repoint while keeping the default-chain seam
   and tests if they are sound.
 - If dual wallet restore regresses, temporarily restore Solana priority under rollback env and leave a
