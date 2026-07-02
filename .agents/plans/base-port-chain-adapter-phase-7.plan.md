@@ -6,7 +6,7 @@ todos:
     content: Audit and classify remaining `@solana/kit` Address/isAddress imports, inline address shorteners, and hard-coded explorer links into cross-chain surfaces vs explicitly Solana-only protocol modules.
     status: pending
   - id: add-chain-address-helpers
-    content: Add small server-safe chain address/explorer helpers that validate, normalize, shorten, and link addresses/txs by CAIP-2 chain context using the existing adapter registry where appropriate.
+    content: Add small server-safe chain address/explorer helpers that validate, split storage-vs-display normalization, shorten, classify EVM-shaped values, and link addresses/txs by CAIP-2 chain context using the existing adapter registry where appropriate.
     status: pending
   - id: repoint-ui-formatting
     content: Repoint chain-agnostic UI surfaces to the helper/adapters for author, wallet, listing, tx, and explorer rendering without changing intentionally bespoke non-address truncation.
@@ -18,7 +18,7 @@ todos:
     content: Leave PDA/ATA/instruction/x402 Solana protocol modules explicitly Solana-only, with tests or comments proving they are not imported by Base paths.
     status: pending
   - id: verify-phase7
-    content: Run focused source tests plus format, lint, typecheck, vitest, and webpack build; smoke-render one Solana listing and one Base listing/address surface if a dev server/browser is available.
+    content: Run behavioral chainAddress unit tests, focused source import guards, format, lint, typecheck, vitest, and webpack build; smoke-render one Solana listing and one Base listing/address surface if a dev server/browser is available.
     status: pending
 isProject: false
 ---
@@ -55,7 +55,8 @@ In scope:
   `buyer`, `author`, `on_chain_address`, or EVM listing ids.
 - Explorer URL generation for both Solana and Base through existing `ChainAdapter` helpers or a thin
   helper that delegates to them.
-- Source-level tests preventing future Solana-only validation from leaking back into Base surfaces.
+- Behavioral unit tests for the pure chain-address helper, plus source-level import guards preventing
+  future Solana-only validation from leaking back into Base surfaces.
 
 Out of scope:
 
@@ -121,24 +122,40 @@ export type ChainAddressRef = {
 };
 
 export function isValidChainAddress(ref: ChainAddressRef): boolean;
-export function normalizeChainAddress(ref: ChainAddressRef): string | null;
+export function normalizeChainAddressForStorage(ref: ChainAddressRef): string | null;
+export function formatChainAddressForDisplay(ref: ChainAddressRef): string | null;
 export function shortenChainAddress(ref: ChainAddressRef, opts?: { fallback?: string }): string;
 export function chainExplorerAddressUrl(ref: ChainAddressRef): string | null;
 export function chainExplorerTxUrl(input: {
   chainContext: string | null | undefined;
   tx: string | null | undefined;
 }): string | null;
+export function isEvmShapedAddress(value: string | null | undefined): boolean;
 ```
 
 Implementation guidance:
 
 - Use `normalizeInputChainContext` / `normalizePersistedChainContext` from `web/lib/chains.ts`.
 - Delegate validation/shortening/explorer links to `getAdapter(normalizedContext)` when possible.
+- Preserve the Phase 6 normalization invariant: storage and lookup boundaries use
+  `normalizeChainAddressForStorage` (`eip155:*` addresses lowercased, Solana case-preserved);
+  display boundaries use `formatChainAddressForDisplay` and may checksum EVM addresses.
 - Return `null` rather than throwing for unknown/missing chain contexts on display helpers; throwing is
   fine only in explicit validation helpers used by API write paths.
-- For EVM normalization, use `viem` only inside functions that need checksum normalization, or keep it
-  in Base-specific modules if adding a top-level `viem` import would affect client/server bundles.
-  If imported, ensure `web/lib/chainAddress.ts` remains safe for both server and client call sites.
+- Do not export a generic `normalizeChainAddress` name from the new module; `web/lib/usdcPurchases.ts`
+  already has a private Phase 6 helper with storage semantics. During implementation, either have
+  `usdcPurchases.ts` delegate to `normalizeChainAddressForStorage` or keep the private helper only
+  until the shared helper is proven equivalent by tests.
+- For EVM display formatting, use `viem` only inside functions that need checksum normalization, or
+  keep it in Base-specific modules if adding a top-level `viem` import would affect client/server
+  bundles. If imported, ensure `web/lib/chainAddress.ts` remains safe for both server and client call
+  sites.
+- Make `isEvmShapedAddress` the named home for the temporary Phase 6 `0x`-shape heuristic. Add a
+  short comment explaining that this is sound only while supported non-Solana chains are EVM chains
+  with `0x` addresses; a future non-EVM chain or an EVM-like namespace would require chain-context
+  discrimination instead. Prefer this helper over scattered `startsWith("0x")` checks in TypeScript
+  call sites. SQL filters such as trust snapshot cron queries may remain literal but should reference
+  the same caveat in nearby comments if touched.
 - Do not create `web/lib/chains/index.ts` or any `web/lib/chains/` directory; the repo already has
   `web/lib/chains.ts`, and the umbrella plan explicitly warns against sibling import ambiguity.
 
@@ -155,14 +172,23 @@ Implementation guidance:
 
 2. Add the chain-address helper.
    - Add `web/lib/chainAddress.ts` or an equivalent single file.
-   - Add tests under `web/__tests__/lib/chainAddress.test.ts` or fold into the existing phase/source
-     tests if that is the local pattern.
+   - Add real behavioral tests under `web/__tests__/lib/chainAddress.test.ts`. Do not satisfy this
+     helper coverage with source-text assertions; the helper is pure and should be tested by passing
+     real Solana/Base/invalid values in and asserting normalized values, display values, short forms,
+     explorer URLs, and `null` fallbacks out.
    - Test Solana devnet, Base Sepolia, legacy aliases, invalid addresses, missing chain contexts,
      explorer URL construction, and the fallback behavior for display helpers.
+   - Prove `normalizeChainAddressForStorage` lowercases EVM addresses, leaves Solana addresses
+     case-preserved, and matches the Phase 6 `usdcPurchases` storage/lookup invariant.
+   - Prove `formatChainAddressForDisplay` is not used at API/DB storage boundaries.
 
 3. Repoint chain-agnostic display surfaces.
    - Prefer `shortenChainAddress({ chainContext, value })` where the row/skill already carries
      `chain_context`.
+   - Keep Phase 7 EVM actor navigation display-only: do not introduce internal `/author/0x...`
+     links in `ActorLink` yet. EVM actor rows may remain unlinked, while explicit explorer affordances
+     can point to Basescan through `chainExplorerAddressUrl`. Defer internal Base author-page
+     navigation policy to the Base-default UX pass.
    - Keep bespoke formatting only when it is intentionally not an address abstraction:
      transaction sigs on settlement links, CID/hash truncation, commit SHAs, file tree hashes.
    - Candidate UI files:
@@ -182,6 +208,8 @@ Implementation guidance:
    - `web/app/api/skills/hydrate/route.ts`: make buyer validation and hydration chain-aware.
    - `web/app/api/dashboard/purchases/route.ts`: make wallet filters chain-aware; if dashboard still
      has Solana-only live PDA enrichment, gate that enrichment on Solana chain context.
+   - At every API/DB write or lookup boundary, use `normalizeChainAddressForStorage`, not
+     `formatChainAddressForDisplay`.
    - Avoid changing raw access or purchase verification semantics unless a failing test proves the
      boundary still rejects EVM inputs.
 
@@ -214,13 +242,18 @@ npm exec --workspace @agentvouch/web next -- build --webpack
 
 Focused checks to add or run:
 
-- Unit/source tests proving:
+- Behavioral unit tests proving:
   - Base Sepolia EVM address validates under `eip155:84532`.
+  - EVM storage normalization lowercases addresses and display formatting may checksum them.
+  - Solana storage/display normalization preserves the address string.
+  - `isEvmShapedAddress` covers the accepted `0x` syntax heuristic and rejects obvious Solana-shaped
+    / garbage values.
   - The same EVM address does not get rejected by Solana `isAddress` at `/api/skills` buyer
     boundaries.
   - Solana devnet address still validates and receives Solana Explorer URLs with the configured
     cluster.
   - Base Explorer URLs use `https://sepolia.basescan.org`.
+- Source/import-guard tests proving:
   - Base-facing adapter/API/x402 files do not import Solana-only modules.
 - If a dev server/browser is available, render:
   - one Solana listing detail page and confirm author/listing/tx links still point to Solana Explorer.
@@ -251,5 +284,8 @@ Focused checks to add or run:
   (`4/4`, `6/4`, `12/6`) or whether call sites with intentional bespoke lengths should remain local.
   Default should be the adapter format (`6/4`) unless changing a compact control would visibly
   regress layout.
+- EVM actor navigation is intentionally deferred. Phase 7 should not invent internal `/author/0x...`
+  links; keep EVM actors unlinked in generic actor rows or link only to Basescan in explicit explorer
+  contexts, then revisit internal author routing during the Base-default UX pass.
 - Base mainnet is still out of scope. Do not add `eip155:8453` acceptance to `BaseAdapter` until the
   Phase 8b mainnet config exists.

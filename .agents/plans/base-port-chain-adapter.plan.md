@@ -21,7 +21,7 @@ todos:
     content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch rehearsal, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
     status: completed
   - id: address-type-sweep
-    content: "Phase 7. After Phase 6 and the now-complete Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
+    content: "Phase 7. After Phase 6 and the now-complete Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with chain-aware address helpers + per-chain explorer helpers across the touched files. Preserve Phase 6's storage/display normalization split: EVM storage lowercase, display may checksum."
     status: pending
   - id: make-base-canonical
     content: "Phase 8, TWO gates (PR #58 review 2026-06-29). 8a: default chain_context -> Base SEPOLIA (eip155:84532) behind a flag, Solana still selectable. 8b (LATER, blocked): mainnet cutover once mainnet RPC/contract/USDC/paymaster exist and getAdapter accepts eip155:8453. Do NOT flip the default to generic Base/eip155:8453 before 8b."
@@ -489,11 +489,14 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chai
 
 Dedicated sub-plan: [`base-port-chain-adapter-phase-7.plan.md`](./base-port-chain-adapter-phase-7.plan.md).
 
-- **Goal:** stop assuming Solana base58/PDA addresses app-wide.
+- **Goal:** stop assuming Solana base58/PDA addresses app-wide while preserving the Phase 6
+  storage/display invariant: EVM storage and lookup values are lowercase; display may checksum.
 - **Files:** a chain-tagged address type + `explorerTxUrl`/`explorerAddressUrl` helpers (already on
   the adapter); replace `@solana/kit` `Address`/`isAddress` assumptions across the touched files.
+  Keep generic EVM actors display-only in Phase 7; do not invent internal `/author/0x...` navigation
+  until the Base-default UX pass.
 - **Done when:** addresses + explorer links render correctly for both a Base and a Solana listing;
-  `npm run typecheck` green.
+  behavioral `chainAddress` unit tests and import guards pass; `npm run typecheck` green.
 
 ### Phase 8 — `make-base-canonical` [pending]
 
