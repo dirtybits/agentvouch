@@ -690,6 +690,9 @@ export type PurchaseSolanaSkillInput = {
   // Defaults to the live listing's author; legacy hook callers pass it explicitly.
   authorKey?: Address;
   resolveUsdcMint?: () => Promise<Address>;
+  // When set (ChainWallet facade), the live listing price must equal this quote —
+  // mirroring the Base wallet's price-changed guard. Legacy hook callers omit it.
+  expectedPriceUsdcMicros?: bigint;
 };
 
 export type PurchaseSolanaSkillResult =
@@ -712,6 +715,18 @@ export async function purchaseSolanaSkill(
   const listing = await fetchMaybeSkillListing(rpc, skillListingKey);
   if (!listing.exists) throw new Error("Skill listing not found");
   const authorKey = input.authorKey ?? listing.data.author;
+  if (
+    input.expectedPriceUsdcMicros !== undefined &&
+    BigInt(listing.data.priceUsdcMicros) !== input.expectedPriceUsdcMicros
+  ) {
+    throw new Error(
+      `Listing price changed from ${formatUsdcMicrosValue(
+        input.expectedPriceUsdcMicros
+      )} USDC to ${formatUsdcMicrosValue(
+        BigInt(listing.data.priceUsdcMicros)
+      )} USDC. Refresh before purchasing.`
+    );
+  }
   const purchasePda = await getPurchasePDA(
     walletAddress,
     skillListingKey,

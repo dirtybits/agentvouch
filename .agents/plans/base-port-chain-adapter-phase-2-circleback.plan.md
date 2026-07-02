@@ -6,14 +6,14 @@ todos:
     content: "DONE 2026-07-01: audited current Phase 2 state after Phase 6 merge. useChainWallet/Base ChainWallet exist, but Solana still returns chainWallet=null; Solana write callers remain split across useReputationOracle/useMarketplaceOracle; server routes still import lib/onchain directly in several places."
     status: completed
   - id: extract-solana-write-helpers
-    content: Extract shared Solana write helpers for registerAgent, createSkillListing, and purchaseSkill from useReputationOracle/useMarketplaceOracle without changing behavior, including explicit PurchaseResult/alreadyPurchased and registerAgent result-shape decisions.
-    status: pending
+    content: "DONE 2026-07-01: lib/solanaWrites.ts owns register/list/purchase, moved verbatim from the two hooks (near-duplicates that had already drifted in USDC-mint sourcing and error copy). PurchaseSkillResult/RegisterAgentResult extend TxResult in adapters/types.ts. Legacy hooks are thin wrappers with unchanged signatures (Number.isSafeInteger guard before BigInt; authorBond === 0n). Hooks shrank 2615→1940 / 690→300 lines; source tests re-pointed at the module."
+    status: completed
   - id: add-solana-chain-wallet
-    content: Add a client-only Solana ChainWallet factory/hook and expose it only to write-heavy surfaces; do not make the header wallet status path import the full Solana oracle surface.
-    status: pending
+    content: "DONE 2026-07-01: lib/adapters/solanaWallet.ts createSolanaChainWallet (facade over solanaWrites; paidGas derived from summary.feePayer; alreadyPurchased maps ref to the purchase PDA; buildX402Payment honestly rejects until Phase 2d) + hooks/useWritableChainWallet.ts (Base passkey wallet passthrough, Solana composed from useChainWallet + useAgentVouchTransactionSigner). WalletContextProvider untouched — header path stays lightweight. purchaseSolanaSkill gained optional expectedPriceUsdcMicros for Base-parity price-changed guard (facade-only; legacy callers unaffected)."
+    status: completed
   - id: repoint-primary-write-callers
-    content: Repoint SkillDetailClient Solana list/purchase paths and the marketplace quick-purchase path to the Solana ChainWallet, preserving current signed-auth/download behavior and existing UI copy.
-    status: pending
+    content: "DONE 2026-07-01: SkillDetailClient Solana purchase and MarketplaceClient quick-purchase now use the writable ChainWallet (alreadyPurchased short-circuit, verify POST with ref, explorer URL from result, UI copy preserved). MarketplaceClient falls back to the legacy oracle path when no price quote is displayed (the facade requires a quote by design). Solana LISTING creation intentionally stays on useReputationOracle: the flow needs getSkillListingPDA after creation, which TxResult cannot express — extending the listing result type cross-chain is a future reviewed interface change. signMessage repo-publish/download auth untouched per plan."
+    status: completed
   - id: repoint-safe-read-callers
     content: Repoint safe Solana read/price call sites through getAdapter(configuredSolanaContext) only where SkillListingView carries enough data and cached reads are acceptable; leave raw Solana-specific or cache-bypass money paths on explicit Solana modules until the adapter interface intentionally expands.
     status: pending
