@@ -19,6 +19,9 @@ purchase state.
 - `AGENTVOUCH_PUBLIC_BASE_URL` points at the preview or local tunnel that Stripe
   redirects back to.
 - Checkout is disabled unless both Stripe secrets are present.
+- The Stripe webhook endpoint is subscribed to `checkout.session.completed`,
+  `checkout.session.async_payment_succeeded`, `charge.refunded`, and
+  `charge.dispute.created`.
 - Operators can access Stripe Dashboard test events and Vercel/API logs for the
   checkout and webhook routes.
 
@@ -52,6 +55,11 @@ purchase state.
 - Checkout for a price below $0.50 returns 400 before any Stripe call.
 - Checkout for a Base protocol listing returns 409 (card entitlements are not
   redeemable on the Base download gate yet).
+- Refunding the test payment in the Stripe Dashboard revokes the entitlement:
+  `Sign & Download` stops working and `usdc_purchase_entitlements.revoked_at`
+  is set with `revoked_reason = 'stripe-refund'`.
+- A replayed `checkout.session.completed` for the refunded payment does not
+  restore access; paying again with a new checkout session does.
 - Cancelled checkout returns to the skill page without entitlement.
 
 ## Reconciliation Checks
@@ -78,7 +86,7 @@ AgentVouch wallet, not a Base-native protocol purchase.
 
 ## Production Blockers
 
-- Refund and chargeback webhook handling.
+- Partial-refund and dispute-won reconciliation (full-refund/dispute revocation is handled).
 - Entitlement suspension/revocation status fields.
 - Operator reconciliation queue for paid-but-not-entitled and
   refunded-but-still-entitled cases.

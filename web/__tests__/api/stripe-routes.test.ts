@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   verifyAndParseWebhook: vi.fn(),
   verifyWalletSignature: vi.fn(),
   recordUsdcPurchaseReceipt: vi.fn(),
-  hasUsdcPurchaseEntitlement: vi.fn(),
+  getUsdcPurchaseEntitlementStatus: vi.fn(),
+  hasUsdcPurchaseReceiptForPaymentRef: vi.fn(),
+  revokeUsdcEntitlementsByPaymentRef: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -40,8 +42,12 @@ vi.mock("@/lib/auth", async (importOriginal) => {
 vi.mock("@/lib/usdcPurchases", () => ({
   recordUsdcPurchaseReceipt: (...args: unknown[]) =>
     mocks.recordUsdcPurchaseReceipt(...args),
-  hasUsdcPurchaseEntitlement: (...args: unknown[]) =>
-    mocks.hasUsdcPurchaseEntitlement(...args),
+  getUsdcPurchaseEntitlementStatus: (...args: unknown[]) =>
+    mocks.getUsdcPurchaseEntitlementStatus(...args),
+  hasUsdcPurchaseReceiptForPaymentRef: (...args: unknown[]) =>
+    mocks.hasUsdcPurchaseReceiptForPaymentRef(...args),
+  revokeUsdcEntitlementsByPaymentRef: (...args: unknown[]) =>
+    mocks.revokeUsdcEntitlementsByPaymentRef(...args),
 }));
 
 import { POST as checkoutPOST } from "@/app/api/stripe/checkout/route";
@@ -143,7 +149,12 @@ describe("Stripe checkout and webhook routes", () => {
       valid: true,
       pubkey: buyerPubkey,
     });
-    mocks.hasUsdcPurchaseEntitlement.mockResolvedValue(false);
+    mocks.getUsdcPurchaseEntitlementStatus.mockResolvedValue({
+      exists: false,
+      revoked: false,
+    });
+    mocks.hasUsdcPurchaseReceiptForPaymentRef.mockResolvedValue(false);
+    mocks.revokeUsdcEntitlementsByPaymentRef.mockResolvedValue([]);
     mockSkillRow();
   });
 
@@ -290,7 +301,10 @@ describe("Stripe checkout and webhook routes", () => {
 
   it("does not overwrite an existing entitlement on duplicate or late webhooks", async () => {
     mockSql.mockReturnValue(vi.fn().mockResolvedValue([{ id: skillId }]));
-    mocks.hasUsdcPurchaseEntitlement.mockResolvedValue(true);
+    mocks.getUsdcPurchaseEntitlementStatus.mockResolvedValue({
+      exists: true,
+      revoked: false,
+    });
     mocks.verifyAndParseWebhook.mockReturnValue(paidSessionEvent());
 
     const res = await webhookPOST(webhookRequest({}));
@@ -299,5 +313,107 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(200);
     expect(body.alreadyEntitled).toBe(true);
     expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+  });
+
+  it("revokes the entitlement on a full charge refund", async () => {
+    mocks.revokeUsdcEntitlementsByPaymentRef.mockResolvedValue([
+      { skill_db_id: skillId, buyer_pubkey: buyerPubkey },
+    ]);
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_2",
+      type: "charge.refunded",
+      data: {
+        object: {
+          id: "ch_test_1",
+          payment_intent: "pi_test_123",
+          refunded: true,
+          amount_refunded: 100,
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.revoked).toBe(1);
+    expect(mocks.revokeUsdcEntitlementsByPaymentRef).toHaveBeenCalledWith(
+      "stripe:pi_test_123",
+      "stripe-refund"
+    );
+  });
+
+  it("revokes the entitlement when a dispute is opened", async () => {
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_3",
+      type: "charge.dispute.created",
+      data: {
+        object: { id: "dp_test_1", payment_intent: "pi_test_123" },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.revokeUsdcEntitlementsByPaymentRef).toHaveBeenCalledWith(
+      "stripe:pi_test_123",
+      "stripe-dispute"
+    );
+  });
+
+  it("keeps the entitlement on a partial refund", async () => {
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_4",
+      type: "charge.refunded",
+      data: {
+        object: {
+          id: "ch_test_1",
+          payment_intent: "pi_test_123",
+          refunded: false,
+          amount_refunded: 40,
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toBe("partial refund");
+    expect(mocks.revokeUsdcEntitlementsByPaymentRef).not.toHaveBeenCalled();
+  });
+
+  it("does not re-mint when a revoked payment's webhook is replayed", async () => {
+    mockSql.mockReturnValue(vi.fn().mockResolvedValue([{ id: skillId }]));
+    mocks.getUsdcPurchaseEntitlementStatus.mockResolvedValue({
+      exists: true,
+      revoked: true,
+    });
+    mocks.hasUsdcPurchaseReceiptForPaymentRef.mockResolvedValue(true);
+    mocks.verifyAndParseWebhook.mockReturnValue(paidSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toContain("stays revoked");
+    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+  });
+
+  it("re-mints a revoked entitlement for a genuinely new payment", async () => {
+    mockSql.mockReturnValue(vi.fn().mockResolvedValue([{ id: skillId }]));
+    mocks.getUsdcPurchaseEntitlementStatus.mockResolvedValue({
+      exists: true,
+      revoked: true,
+    });
+    mocks.hasUsdcPurchaseReceiptForPaymentRef.mockResolvedValue(false);
+    mocks.verifyAndParseWebhook.mockReturnValue(paidSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.entitled).toBe(buyerPubkey);
+    expect(mocks.recordUsdcPurchaseReceipt).toHaveBeenCalled();
   });
 });

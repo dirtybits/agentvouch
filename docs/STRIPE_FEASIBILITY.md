@@ -126,8 +126,11 @@ Does **not** (deliberately out of scope — these are the Tier 2/3 hard parts):
 - No email-only buyer identity. Buyers still need a wallet signature so the
   off-chain Stripe entitlement can be redeemed through the existing download
   auth path — see Obstacle 1.
-- No refund / chargeback handling, no reconciliation, no idempotency beyond
-  the receipt table's `UNIQUE(payment_tx_signature)`.
+- Minimal refund / chargeback handling only: `charge.refunded` (full) and
+  `charge.dispute.created` revoke the wallet-bound entitlement
+  (`usdc_purchase_entitlements.revoked_at`), partial refunds are logged, and a
+  genuinely new payment re-mints. No automated reconciliation beyond logs and
+  the receipt table's `UNIQUE(payment_tx_signature)` idempotency.
 
 ## The hard parts (Tier 2 / Tier 3)
 

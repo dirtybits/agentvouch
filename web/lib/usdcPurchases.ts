@@ -395,6 +395,20 @@ export async function ensureUsdcPurchaseSchema() {
       ADD COLUMN IF NOT EXISTS legacy_refund_eligible BOOLEAN DEFAULT FALSE
     `;
 
+    // Off-chain revocation (e.g. Stripe refund/chargeback): a revoked
+    // entitlement no longer grants downloads. A genuinely new receipt for the
+    // same buyer+skill reinstates it (see the upsert in
+    // recordUsdcPurchaseReceipt).
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS revoked_reason TEXT
+    `;
+
     await db`
       UPDATE usdc_purchase_entitlements
       SET
@@ -726,6 +740,7 @@ export async function hasUsdcPurchaseEntitlement(
       FROM usdc_purchase_entitlements
       WHERE skill_db_id = ${skillDbId}::uuid
         AND buyer_pubkey = ${buyerPubkey}
+        AND revoked_at IS NULL
     ) AS has_entitlement
   `;
 
@@ -756,10 +771,73 @@ export async function hasChainUsdcPurchaseEntitlement(
       WHERE skill_db_id = ${skillDbId}::uuid
         AND buyer_chain_context = ${buyerChainContext}
         AND buyer_address = ${buyerAddress}
+        AND revoked_at IS NULL
     ) AS has_entitlement
   `;
 
   return rows[0]?.has_entitlement ?? false;
+}
+
+export async function getUsdcPurchaseEntitlementStatus(
+  skillDbId: string,
+  buyerPubkey: string
+): Promise<{ exists: boolean; revoked: boolean }> {
+  await ensureUsdcPurchaseSchema();
+
+  const rows = await sql()<{
+    revoked_at: string | null;
+  }>`
+    SELECT revoked_at::text
+    FROM usdc_purchase_entitlements
+    WHERE skill_db_id = ${skillDbId}::uuid
+      AND buyer_pubkey = ${buyerPubkey}
+    LIMIT 1
+  `;
+
+  const row = rows[0];
+  if (!row) return { exists: false, revoked: false };
+  return { exists: true, revoked: row.revoked_at !== null };
+}
+
+export async function hasUsdcPurchaseReceiptForPaymentRef(
+  paymentTxSignature: string
+): Promise<boolean> {
+  await ensureUsdcPurchaseSchema();
+
+  const rows = await sql()<{ has_receipt: boolean }>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM usdc_purchase_receipts
+      WHERE payment_tx_signature = ${paymentTxSignature}
+    ) AS has_receipt
+  `;
+
+  return rows[0]?.has_receipt ?? false;
+}
+
+// Revokes entitlements whose CURRENT backing receipt is this payment (e.g. a
+// Stripe refund or chargeback). If the buyer has since re-purchased through
+// any rail, the entitlement's payment_tx_signature no longer matches and it
+// is deliberately left untouched.
+export async function revokeUsdcEntitlementsByPaymentRef(
+  paymentTxSignature: string,
+  reason: string
+): Promise<Array<{ skill_db_id: string; buyer_pubkey: string }>> {
+  await ensureUsdcPurchaseSchema();
+
+  return await sql()<{
+    skill_db_id: string;
+    buyer_pubkey: string;
+  }>`
+    UPDATE usdc_purchase_entitlements
+    SET
+      revoked_at = NOW(),
+      revoked_reason = ${reason},
+      updated_at = NOW()
+    WHERE payment_tx_signature = ${paymentTxSignature}
+      AND revoked_at IS NULL
+    RETURNING skill_db_id::text AS skill_db_id, buyer_pubkey
+  `;
 }
 
 export async function getX402SettlementEntitlement(
@@ -1380,6 +1458,16 @@ export async function recordUsdcPurchaseReceipt(input: {
         WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
           THEN EXCLUDED.legacy_refund_eligible
         ELSE usdc_purchase_entitlements.legacy_refund_eligible
+      END,
+      revoked_at = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN NULL
+        ELSE usdc_purchase_entitlements.revoked_at
+      END,
+      revoked_reason = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN NULL
+        ELSE usdc_purchase_entitlements.revoked_reason
       END,
       first_verified_at = LEAST(
         usdc_purchase_entitlements.first_verified_at,

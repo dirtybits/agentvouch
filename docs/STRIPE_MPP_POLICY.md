@@ -70,10 +70,14 @@ Solana refund pool exists.
 
 Minimum handling before production:
 
-- Listen for `charge.refunded`, `charge.dispute.created`, and relevant Checkout
-  or PaymentIntent failure events.
-- Mark affected entitlements as suspended or revoked once entitlement status
-  fields exist.
+- `charge.refunded` (full refund) and `charge.dispute.created` are handled:
+  they set `revoked_at` / `revoked_reason` on the matching wallet-bound
+  entitlement, and revoked entitlements no longer grant downloads. Partial
+  refunds are logged for manual reconciliation. The Stripe webhook endpoint
+  must be subscribed to these event types.
+- A replayed webhook for a refunded payment stays revoked; a genuinely new
+  payment (new payment intent) re-mints the entitlement. Winning a dispute
+  requires manual reinstatement (clear `revoked_at`) for now.
 - Maintain an operator reconciliation queue for paid-but-not-entitled and
   refunded-but-still-entitled cases.
 - Make support copy explicit that card refunds are handled by the marketplace
@@ -111,8 +115,8 @@ Before broad production rollout, choose exactly one Stripe model:
 
 Before treating Stripe MPP as production-ready, resolve:
 
-- Refund and chargeback webhook handling.
-- Entitlement suspension/revocation schema and UI copy.
+- Refund and chargeback webhook handling. (Shipped: full-refund and dispute revocation; partial refunds and dispute-won reinstatement remain manual.)
+- Entitlement revocation schema (shipped: `revoked_at`/`revoked_reason`) and UI copy for revoked buyers.
 - Author payout process, including tax/KYC responsibilities.
 - Operator reconciliation dashboard or runbook.
 - Rate limits and abuse monitoring on checkout/session creation.

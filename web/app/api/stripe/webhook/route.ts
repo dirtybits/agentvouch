@@ -11,8 +11,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import {
-  hasUsdcPurchaseEntitlement,
+  getUsdcPurchaseEntitlementStatus,
+  hasUsdcPurchaseReceiptForPaymentRef,
   recordUsdcPurchaseReceipt,
+  revokeUsdcEntitlementsByPaymentRef,
 } from "@/lib/usdcPurchases";
 import {
   STRIPE_CURRENCY_SENTINEL,
@@ -36,6 +38,19 @@ type SessionObject = {
   payment_status?: string | null;
   metadata?: Record<string, string> | null;
 };
+
+// `charge.refunded` carries a Charge; `charge.dispute.created` carries a
+// Dispute. Both reference the payment intent our receipts are keyed on.
+type RefundOrDisputeObject = {
+  id: string;
+  payment_intent?: string | null;
+  refunded?: boolean | null;
+  amount_refunded?: number | null;
+};
+
+function stripePaymentRef(paymentIntent: string | null | undefined) {
+  return paymentIntent ? `stripe:${paymentIntent}`.slice(0, 128) : null;
+}
 
 function metadataString(
   metadata: Record<string, string> | null | undefined,
@@ -79,6 +94,56 @@ export async function POST(req: NextRequest) {
       { error: `Webhook verification failed: ${getErrorMessage(error)}` },
       { status: 400 }
     );
+  }
+
+  // Refunds and chargebacks revoke the wallet-bound entitlement the payment
+  // minted. Partial refunds are logged but do not revoke.
+  if (
+    event.type === "charge.refunded" ||
+    event.type === "charge.dispute.created"
+  ) {
+    const object = event.data.object as RefundOrDisputeObject;
+    const paymentRef = stripePaymentRef(object.payment_intent);
+    if (!paymentRef) {
+      return ackUnprocessable(
+        object.id,
+        `${event.type} without payment_intent`
+      );
+    }
+    if (event.type === "charge.refunded" && object.refunded !== true) {
+      console.warn(
+        `Stripe partial refund on ${paymentRef} (amount_refunded=${
+          object.amount_refunded ?? "?"
+        }); entitlement kept — reconcile manually.`
+      );
+      return NextResponse.json({ received: true, ignored: "partial refund" });
+    }
+
+    try {
+      await initializeDatabase();
+      const reason =
+        event.type === "charge.refunded" ? "stripe-refund" : "stripe-dispute";
+      const revoked = await revokeUsdcEntitlementsByPaymentRef(
+        paymentRef,
+        reason
+      );
+      for (const row of revoked) {
+        console.warn(
+          `Stripe ${reason}: revoked entitlement skill=${row.skill_db_id} buyer=${row.buyer_pubkey} ref=${paymentRef}`
+        );
+      }
+      if (revoked.length === 0) {
+        console.warn(
+          `Stripe ${reason} on ${paymentRef}: no live entitlement matched (already revoked, superseded by a newer purchase, or never minted) — reconcile manually.`
+        );
+      }
+      return NextResponse.json({ received: true, revoked: revoked.length });
+    } catch (error) {
+      return NextResponse.json(
+        { error: getErrorMessage(error) },
+        { status: 500 }
+      );
+    }
   }
 
   // Only successful payment-mode checkouts grant entitlement; ack everything else.
@@ -165,24 +230,39 @@ export async function POST(req: NextRequest) {
       return ackUnprocessable(session.id, "skill no longer exists");
     }
 
-    // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
-    // through for a buyer who already holds an entitlement (e.g. a real
-    // on-chain purchase, or a duplicate delivery) would null out its
-    // purchase_pda / chain-context provenance. Ack without writing instead.
-    if (await hasUsdcPurchaseEntitlement(skillDbId, buyerPubkey)) {
-      return NextResponse.json({
-        received: true,
-        entitled: buyerPubkey,
-        alreadyEntitled: true,
-      });
-    }
-
     // Stripe payment reference + wallet buyer identity from checkout metadata.
     // `payment_tx_signature` is UNIQUE, giving us idempotency on retries.
     const paymentRef = `stripe:${session.payment_intent || session.id}`.slice(
       0,
       128
     );
+
+    // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
+    // through for a buyer who already holds a live entitlement (e.g. a real
+    // on-chain purchase, or a duplicate delivery) would null out its
+    // purchase_pda / chain-context provenance. Ack without writing instead.
+    // A REVOKED entitlement (refund/chargeback) stays revoked for replays of
+    // the same payment; only a genuinely new payment re-mints.
+    const entitlement = await getUsdcPurchaseEntitlementStatus(
+      skillDbId,
+      buyerPubkey
+    );
+    if (entitlement.exists && !entitlement.revoked) {
+      return NextResponse.json({
+        received: true,
+        entitled: buyerPubkey,
+        alreadyEntitled: true,
+      });
+    }
+    if (
+      entitlement.revoked &&
+      (await hasUsdcPurchaseReceiptForPaymentRef(paymentRef))
+    ) {
+      return ackUnprocessable(
+        session.id,
+        "payment was refunded or disputed; entitlement stays revoked"
+      );
+    }
 
     await recordUsdcPurchaseReceipt({
       skillDbId,
