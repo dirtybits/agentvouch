@@ -183,6 +183,14 @@ new SEO/content copy:
 > unrelated to these edits):** add `ai` to `package-lock.json` and resolve the `@solana/kit` TS2305
 > errors in `generated/**` for a clean full `next build`/`npm run typecheck`; run Google Rich
 > Results Test on the pillar URL after deploy.
+>
+> **CI FIX 2026-07-03 (PR #75):** the full `npm test` caught two misses the targeted
+> guardrail test alone did not: (1) `__tests__/lib/site.test.ts` asserted the old "trust
+> layer" positioning — updated to the new "agent reputation system" wording; (2) the Vercel
+> build failed prerendering `/.well-known/agent-skills/index.json`, which `readFileSync`'d the
+> now-deleted `public/llms.txt` — the route now hashes `buildLlmsTxt()` output instead. Full web
+> suite 513/513 green; agent-skills route re-rendered 200. **Lesson: run the full suite + a build
+> parity check, not just the targeted guardrail test.**
 
 - Use **Node 24** (`.nvmrc`) — the phase-7 plan notes Node 20 breaks vitest with `ERR_REQUIRE_ESM`.
 - `npm run format:check` (root) and `npm run lint:web`.

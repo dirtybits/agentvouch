@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getCanonicalUrl } from "@/lib/site";
+import { buildLlmsTxt } from "@/lib/llms";
 
 export const dynamic = "force-static";
 
@@ -14,10 +15,12 @@ type SkillEntry = {
   sha256: string;
 };
 
-function hashPublicFile(relPath: string): string {
-  const filePath = path.join(process.cwd(), "public", relPath);
-  const bytes = readFileSync(filePath);
+function sha256(bytes: Buffer | string): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function hashPublicFile(relPath: string): string {
+  return sha256(readFileSync(path.join(process.cwd(), "public", relPath)));
 }
 
 export function GET() {
@@ -26,6 +29,9 @@ export function GET() {
     type: string;
     description: string;
     publicPath: string;
+    // Dynamic sources (served by an app route, not a public/ file) supply their
+    // body here so the sha256 is computed from generated content, not disk.
+    content?: () => string;
   }> = [
     {
       name: "skill.md",
@@ -40,6 +46,7 @@ export function GET() {
       description:
         "Concise index of AgentVouch docs, APIs, and discovery endpoints for LLMs.",
       publicPath: "llms.txt",
+      content: buildLlmsTxt,
     },
     {
       name: "llms-full.txt",
@@ -68,7 +75,9 @@ export function GET() {
     type: entry.type,
     description: entry.description,
     url: getCanonicalUrl(`/${entry.publicPath}`),
-    sha256: hashPublicFile(entry.publicPath),
+    sha256: entry.content
+      ? sha256(entry.content())
+      : hashPublicFile(entry.publicPath),
   }));
 
   const body = {
