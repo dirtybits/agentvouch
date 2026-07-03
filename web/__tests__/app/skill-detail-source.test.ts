@@ -76,6 +76,18 @@ describe("skill detail source", () => {
     expect(source).toContain("Listing edits stay on the on-chain");
   });
 
+  it("labels Base orphan repair as sync, not duplicate listing", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("needsBaseListingSync");
+    expect(source).toContain("Sync Base Listing");
+    expect(source).toContain("Sync Now");
+    expect(source).toContain("Base listing linked");
+  });
+
   it("passes the skill title into the multi-file tree", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),

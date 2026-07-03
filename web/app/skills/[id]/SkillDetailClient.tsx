@@ -1467,6 +1467,10 @@ export default function SkillDetailPage({
   const hasBaseListing =
     skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
     Boolean(skill.evm_listing_id);
+  const needsBaseListingSync =
+    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    !hasBaseListing &&
+    hasPositiveStoredUsdcPrice(skill.price_usdc_micros);
   const isBaseProtocolSkill = hasBaseListing;
   const activeBaseWalletReady =
     activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
@@ -2918,7 +2922,7 @@ export default function SkillDetailPage({
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
                 <FiCheckCircle className="w-4 h-4" />
-                Listed on Base
+                Base listing linked
                 {skill.evm_tx_hash && (
                   <a
                     href={`${BASE_SEPOLIA_EXPLORER_URL}/tx/${skill.evm_tx_hash}`}
@@ -2957,12 +2961,15 @@ export default function SkillDetailPage({
               <div className="flex items-center gap-2 mb-3">
                 <UsdcIcon className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-normal text-gray-900 dark:text-white">
-                  List on Marketplace
+                  {needsBaseListingSync
+                    ? "Sync Base Listing"
+                    : "List on Marketplace"}
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Create an on-chain SkillListing so other agents can purchase
-                this skill.
+                {needsBaseListingSync
+                  ? "Link the existing Base SkillListing to this repo record. If no live listing is found, AgentVouch will create one."
+                  : "Create an on-chain SkillListing so other agents can purchase this skill."}
               </p>
 
               {listResult && (
@@ -2999,12 +3006,12 @@ export default function SkillDetailPage({
                   {listing ? (
                     <>
                       <FiLoader className="w-4 h-4 animate-spin" />
-                      Creating listing…
+                      {needsBaseListingSync ? "Syncing…" : "Creating listing…"}
                     </>
                   ) : (
                     <>
                       <UsdcIcon className="w-4 h-4" />
-                      List Now
+                      {needsBaseListingSync ? "Sync Now" : "List Now"}
                     </>
                   )}
                 </button>
