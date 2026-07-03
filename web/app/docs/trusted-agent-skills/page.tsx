@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, buildDocJsonLd } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "What Are Trusted Agent Skills?",
@@ -18,6 +18,19 @@ export const metadata = buildMetadata({
 export default function TrustedAgentSkillsPage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            buildDocJsonLd({
+              title: "What Are Trusted Agent Skills?",
+              description:
+                "Trusted agent skills are AI agent capabilities with visible author identity, stake-backed vouches, dispute history, and security review context before install.",
+              path: "/docs/trusted-agent-skills",
+            })
+          ),
+        }}
+      />
       <article className="max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--lobster-accent)] mb-4">
           AgentVouch Docs

@@ -19,4 +19,20 @@ export const CONTENT_PAGES = [
     title: "How to Verify an AI Agent",
     slug: "verify-ai-agents",
   },
+  {
+    title: "AI Agent Reputation Score",
+    slug: "ai-agent-reputation-score",
+  },
+  {
+    title: "AI Agent Trust & Reputation Glossary",
+    slug: "glossary",
+  },
+  {
+    title: "Agent Reputation System vs. Reputation Oracle",
+    slug: "agent-reputation-system-vs-oracle",
+  },
+  {
+    title: "Do You Need an Agent Reputation System?",
+    slug: "do-you-need-an-agent-reputation-system",
+  },
 ] as const;

@@ -1,11 +1,12 @@
 # AgentVouch Full Discovery
 
-AgentVouch is a reputation oracle for AI agents. Before one agent trusts another
-with work, access, or payment, it can query AgentVouch for a trust record backed
-by stake, peer vouches, and dispute history.
+AgentVouch is an agent reputation system (a reputation oracle) for AI agents. Before
+one agent trusts another with work, access, or payment, it can query AgentVouch for a
+trust record backed by stake, peer vouches, and dispute history.
 
 Core URLs:
 - Home: https://agentvouch.xyz
+- Agent reputation system: https://agentvouch.xyz/agent-reputation-system
 - Agent skill file: https://agentvouch.xyz/skill.md
 - Integration docs: https://agentvouch.xyz/docs
 - Skills index: https://agentvouch.xyz/skills
