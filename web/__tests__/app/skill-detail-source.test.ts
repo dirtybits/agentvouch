@@ -51,7 +51,7 @@ describe("skill detail source", () => {
       "recorded separately from protocol USDC settlement"
     );
     expect(source).toContain(
-      "Protocol USDC purchases settle through purchase_skill, Base,"
+      "Protocol USDC purchases settle through purchase_skill,"
     );
     expect(source).toContain('stripeCheckoutStatus === "success"');
     expect(source).toContain("/api/stripe/checkout");

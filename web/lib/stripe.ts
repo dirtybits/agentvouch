@@ -51,11 +51,9 @@ export function usdcMicrosToUsdCents(micros: bigint): number {
   return Number((micros + 5000n) / 10000n);
 }
 
-function formEncode(params: Record<string, string>): string {
-  return Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join("&");
-}
+// Stripe rejects one-time USD payments below $0.50; sub-cent prices would even
+// round to a 0-amount session. Checkout must refuse prices below this floor.
+export const STRIPE_MIN_CHARGE_USD_CENTS = 50;
 
 export type CreateCheckoutSessionInput = {
   skillDbId: string;
@@ -106,7 +104,7 @@ export async function createCheckoutSession(
       Authorization: `Bearer ${config.secretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: formEncode(params),
+    body: new URLSearchParams(params).toString(),
   });
 
   if (!res.ok) {

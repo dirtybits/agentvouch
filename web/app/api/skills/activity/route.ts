@@ -92,6 +92,7 @@ export async function GET() {
         FROM usdc_purchase_receipts r
         INNER JOIN skills s
           ON s.id = r.skill_db_id
+        WHERE r.payment_flow IS DISTINCT FROM 'stripe-mpp-offchain'
         ORDER BY r.verified_at DESC
         LIMIT 20
       `,

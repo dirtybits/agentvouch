@@ -1009,27 +1009,37 @@ export async function recordUsdcPurchaseReceipt(input: {
   const onChainProgramId = input.onChainProgramId ?? null;
   const chainContext = normalizeChainContextForStorage(input.chainContext);
   const onChainAddress = input.onChainAddress ?? null;
+  // Chain-qualified address columns are only meaningful alongside a chain
+  // context: chain-aware lookups require both, and off-chain rails (e.g.
+  // Stripe) would otherwise leak sentinels like "USD" / "stripe-offchain"
+  // into address columns that chain-aware grouping and explorers consume.
   const buyerChainContext = normalizeChainContextForStorage(
     input.buyerChainContext ?? chainContext
   );
-  const buyerAddress = normalizeChainAddress(
-    buyerChainContext,
-    input.buyerAddress ?? input.buyerPubkey
-  );
+  const buyerAddress = buyerChainContext
+    ? normalizeChainAddress(
+        buyerChainContext,
+        input.buyerAddress ?? input.buyerPubkey
+      )
+    : null;
   const recipientChainContext = normalizeChainContextForStorage(
     input.recipientChainContext ?? chainContext
   );
-  const recipientAddress = normalizeChainAddress(
-    recipientChainContext,
-    input.recipientAddress ?? input.recipientAta
-  );
+  const recipientAddress = recipientChainContext
+    ? normalizeChainAddress(
+        recipientChainContext,
+        input.recipientAddress ?? input.recipientAta
+      )
+    : null;
   const assetChainContext = normalizeChainContextForStorage(
     input.assetChainContext ?? chainContext
   );
-  const assetAddress = normalizeChainAddress(
-    assetChainContext,
-    input.assetAddress ?? input.currencyMint
-  );
+  const assetAddress = assetChainContext
+    ? normalizeChainAddress(
+        assetChainContext,
+        input.assetAddress ?? input.currencyMint
+      )
+    : null;
   const evmListingId = input.evmListingId ?? null;
   const evmPurchaseId = input.evmPurchaseId ?? null;
   const purchasePda = input.purchasePda ?? null;

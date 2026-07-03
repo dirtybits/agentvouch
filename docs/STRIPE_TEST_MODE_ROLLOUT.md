@@ -42,9 +42,16 @@ purchase state.
 - Checkout without wallet auth returns 401.
 - Checkout auth signed for a different skill is rejected.
 - Webhook with an invalid Stripe signature is rejected.
-- Webhook with non-USD currency is rejected.
-- Webhook with amount mismatch is rejected and does not grant entitlement.
-- Duplicate webhook delivery is idempotent and does not create duplicate access.
+- Webhook with non-USD currency is acked with an `ignored` reason and does not
+  grant entitlement.
+- Webhook with amount mismatch is acked with an `ignored` reason (so Stripe
+  stops retrying) and does not grant entitlement; the reason is logged for the
+  reconciliation queue.
+- Duplicate webhook delivery is idempotent, acks `alreadyEntitled`, and does
+  not create duplicate access or overwrite an existing entitlement.
+- Checkout for a price below $0.50 returns 400 before any Stripe call.
+- Checkout for a Base protocol listing returns 409 (card entitlements are not
+  redeemable on the Base download gate yet).
 - Cancelled checkout returns to the skill page without entitlement.
 
 ## Reconciliation Checks

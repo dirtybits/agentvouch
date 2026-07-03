@@ -415,13 +415,21 @@ export async function GET(
             : null,
       })
     );
+    // On-chain-listed skills can also carry an off-chain entitlement (e.g. a
+    // Stripe card purchase), so the DB entitlement is checked either way —
+    // otherwise a card buyer keeps seeing purchase buttons for a skill they
+    // already paid for.
     const buyerHasPurchased = buyerAddress
       ? priceUsdcMicros
         ? skillSnapshot.on_chain_address
-          ? await hasOnChainPurchase(
+          ? (await hasOnChainPurchase(
               String(buyerAddress),
               String(skillSnapshot.on_chain_address)
-            ).catch(() => false)
+            ).catch(() => false)) ||
+            (await hasUsdcPurchaseEntitlement(
+              skillDbId,
+              String(buyerAddress)
+            ).catch(() => false))
           : await hasUsdcPurchaseEntitlement(
               skillDbId,
               String(buyerAddress)

@@ -1,9 +1,19 @@
 // Tier 1 Stripe webhook — PROTOTYPE. See docs/STRIPE_FEASIBILITY.md.
 // On a verified `checkout.session.completed` event, mints an OFF-CHAIN
 // entitlement. Does NOT settle on-chain or fund author/voucher economics.
+//
+// Response policy: Stripe retries every non-2xx delivery with backoff for up
+// to ~3 days and can flag the endpoint as failing, delaying other buyers'
+// events. So permanently-unprocessable events (bad metadata, amount mismatch,
+// deleted skill) are ACKed with 200 plus a logged reason for the operator
+// reconciliation queue; non-2xx is reserved for signature failures (400) and
+// transient errors like DB outages (500), which retries can actually fix.
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
-import { recordUsdcPurchaseReceipt } from "@/lib/usdcPurchases";
+import {
+  hasUsdcPurchaseEntitlement,
+  recordUsdcPurchaseReceipt,
+} from "@/lib/usdcPurchases";
 import {
   STRIPE_CURRENCY_SENTINEL,
   STRIPE_PAYMENT_FLOW,
@@ -33,6 +43,17 @@ function metadataString(
 ) {
   const value = metadata?.[key]?.trim();
   return value || null;
+}
+
+// Terminal ack for events this endpoint will never be able to fulfill.
+// Logged so paid-but-not-entitled cases stay visible to reconciliation.
+function ackUnprocessable(sessionId: string | undefined, reason: string) {
+  console.error(
+    `Stripe webhook unprocessable (session ${
+      sessionId ?? "unknown"
+    }): ${reason}`
+  );
+  return NextResponse.json({ received: true, ignored: reason });
 }
 
 export async function POST(req: NextRequest) {
@@ -79,46 +100,52 @@ export async function POST(req: NextRequest) {
   );
   const paymentFlow = metadataString(session.metadata, "payment_flow");
 
-  if (!skillDbId) {
-    return NextResponse.json(
-      { error: "Webhook missing skill_db_id" },
-      { status: 400 }
-    );
-  }
-  if (!buyerPubkey) {
-    return NextResponse.json(
-      { error: "Webhook missing buyer_pubkey" },
-      { status: 400 }
-    );
-  }
-  if (!checkoutPriceMicros) {
-    return NextResponse.json(
-      { error: "Webhook missing price_usdc_micros" },
-      { status: 400 }
-    );
-  }
   if (paymentFlow !== STRIPE_PAYMENT_FLOW) {
-    return NextResponse.json(
-      { error: "Webhook payment_flow is not an AgentVouch Stripe payment" },
-      { status: 400 }
+    // Not a session this app created (e.g. dashboard-created session on a
+    // shared Stripe account). Never fulfillable here.
+    return ackUnprocessable(
+      session.id,
+      "payment_flow is not an AgentVouch Stripe payment"
+    );
+  }
+  if (!skillDbId || !buyerPubkey || !checkoutPriceMicros) {
+    return ackUnprocessable(
+      session.id,
+      "missing skill_db_id, buyer_pubkey, or price_usdc_micros metadata"
     );
   }
   if (session.mode !== "payment") {
-    return NextResponse.json(
-      { error: "Stripe session is not a one-time payment" },
-      { status: 400 }
-    );
+    return ackUnprocessable(session.id, "session is not a one-time payment");
   }
   if (session.payment_status !== "paid") {
-    return NextResponse.json(
-      { error: "Stripe session is not paid" },
-      { status: 400 }
-    );
+    // Normal ordering for delayed payment methods: `completed` arrives with
+    // payment_status "unpaid", then `async_payment_succeeded` follows. Ack and
+    // wait for the paid event.
+    return NextResponse.json({
+      received: true,
+      ignored: "session not paid yet",
+    });
   }
   if ((session.currency ?? "").toLowerCase() !== "usd") {
-    return NextResponse.json(
-      { error: "Stripe session currency is not USD" },
-      { status: 400 }
+    return ackUnprocessable(session.id, "session currency is not USD");
+  }
+
+  let micros: bigint;
+  try {
+    micros = BigInt(checkoutPriceMicros);
+  } catch {
+    return ackUnprocessable(session.id, "price_usdc_micros is invalid");
+  }
+  if (micros <= 0n) {
+    return ackUnprocessable(session.id, "price_usdc_micros must be positive");
+  }
+  if (
+    typeof session.amount_total !== "number" ||
+    session.amount_total !== usdcMicrosToUsdCents(micros)
+  ) {
+    return ackUnprocessable(
+      session.id,
+      "charged amount does not match checkout metadata price"
     );
   }
 
@@ -134,35 +161,20 @@ export async function POST(req: NextRequest) {
       WHERE id = ${skillDbId}::uuid
       LIMIT 1
     `;
-    const skill = rows[0];
-    if (!skill) {
-      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    if (!rows[0]) {
+      return ackUnprocessable(session.id, "skill no longer exists");
     }
 
-    let micros: bigint;
-    try {
-      micros = BigInt(checkoutPriceMicros);
-    } catch {
-      return NextResponse.json(
-        { error: "Webhook price_usdc_micros is invalid" },
-        { status: 400 }
-      );
-    }
-    if (micros <= 0n) {
-      return NextResponse.json(
-        { error: "Webhook price_usdc_micros must be positive" },
-        { status: 400 }
-      );
-    }
-
-    if (
-      typeof session.amount_total !== "number" ||
-      session.amount_total !== usdcMicrosToUsdCents(micros)
-    ) {
-      return NextResponse.json(
-        { error: "Charged amount does not match listing price" },
-        { status: 409 }
-      );
+    // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
+    // through for a buyer who already holds an entitlement (e.g. a real
+    // on-chain purchase, or a duplicate delivery) would null out its
+    // purchase_pda / chain-context provenance. Ack without writing instead.
+    if (await hasUsdcPurchaseEntitlement(skillDbId, buyerPubkey)) {
+      return NextResponse.json({
+        received: true,
+        entitled: buyerPubkey,
+        alreadyEntitled: true,
+      });
     }
 
     // Stripe payment reference + wallet buyer identity from checkout metadata.

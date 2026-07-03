@@ -60,7 +60,7 @@ Run the Go/No-Go in `docs/MAINNET_READINESS.md`. Nothing here overrides it.
 ## Phase C: Post-Mainnet Protocol Direction
 
 - **Optimistic dispute resolution.** A challenger's proposed ruling stands after a contest window unless the author (or a voucher — they have stake at risk and are natural watchdogs) escalates; the multisig only adjudicates contested cases. The A2 two-phase resolution is the stepping stone.
-- **LLM-jury / optimistic-oracle adjudication** enters as *evidence input* to contested cases, not as the authority, until it has a track record.
+- **LLM-jury / optimistic-oracle adjudication** enters as _evidence input_ to contested cases, not as the authority, until it has a track record.
 - Carried protocol ideas (from `TODO.md`, revalidate before building): reputation decay, on-chain evidence hashing (IPFS pointers + content hash instead of bare URI strings).
 
 ## Phase D: Product Strategy
@@ -103,6 +103,16 @@ Current x402 bridge follow-up for the RC path:
 - Enable the protocol-listed x402 bridge on devnet (`AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`) and run an end-to-end UI/API smoke against a real paid listing.
 - Prove the full bridge path: buyer auth message, x402 requirement generation, facilitator verify/settle, settlement vault credit, backend `settle_x402_purchase`, purchase PDA creation, entitlement recording, and raw download.
 - Record the required env, settlement authority custody, facilitator config, monitoring, rollback, and any failure/reconciliation steps in the production runbook before treating x402 bridge as release-candidate-ready.
+
+### Payment rail sequencing — 2026-07-01
+
+Three commerce lanes, in priority order (details in `docs/BASE_X402_PAYMENT_RAIL_SPEC.md`, `docs/STRIPE_FEASIBILITY.md`, `docs/STRIPE_MPP_POLICY.md`):
+
+1. **Protocol-visible commerce** (preferred): direct Solana USDC `purchase_skill`, Base USDC purchases, and protocol-listed x402. Only these fund voucher rewards, author proceeds escrow, and dispute/refund state. With Base as the canonical-chain frontrunner, Base Lane B (EIP-3009 in-contract) is the preferred agent rail.
+2. **Card-funded early sales**: Stripe MPP mints a wallet-bound off-chain entitlement (`stripe-mpp-offchain`) so humans can buy now. Never counted as protocol settlement; excluded from purchase metrics, voucher yield, and refund state. Excluded on Base protocol listings until chain-qualified card entitlements exist.
+3. **Future smart-account UX**: Base smart-account/paymaster work carries the wallet-abstraction bet; it does not make Stripe a settlement ledger.
+
+Before Stripe Tier 2, choose the graduation model (card on-ramp to protocol settlement vs. parallel MPP marketplace vs. limited early-sales rail) — see the decision list in `docs/STRIPE_FEASIBILITY.md`.
 
 ### Base full-logic POC
 

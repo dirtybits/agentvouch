@@ -100,8 +100,21 @@ Does:
 - On a verified `checkout.session.completed` webhook, mints an off-chain
   entitlement via `recordUsdcPurchaseReceipt` with
   `payment_flow = "stripe-mpp-offchain"`.
-- Requires buyer wallet auth at checkout. This keeps the receipt redeemable by
-  the existing raw-download gate, which is still wallet-signature based.
+- Requires buyer wallet auth at checkout. The signed message binds the skill
+  id AND the exact USDC-micros amount, so a price change between page load and
+  checkout invalidates the auth instead of silently charging the new price.
+  This keeps the receipt redeemable by the existing raw-download gate, which
+  is still wallet-signature based.
+- Refuses checkout for prices below Stripe's $0.50 USD minimum charge, and for
+  Base protocol listings (their download gate only honors chain-qualified
+  purchase state, so the pubkey-keyed off-chain entitlement would be
+  unredeemable).
+- Webhook response policy: permanently-unprocessable events (bad metadata,
+  amount mismatch, deleted skill) are ACKed with 200 plus a logged reason so
+  Stripe stops retrying; non-2xx is reserved for signature failures and
+  transient errors. An existing entitlement is never overwritten — late or
+  duplicate Stripe webhooks ack `alreadyEntitled` instead of clobbering
+  on-chain purchase provenance in the entitlement upsert.
 - Is feature-flagged: every entry point no-ops with 501 unless both
   `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are set.
 
@@ -191,4 +204,4 @@ and settled on-chain. Worth an explicit product decision before Tier 2.
   without a fulfillment path.
 - `STRIPE_API_BASE` — optional, defaults to `https://api.stripe.com`.
 - `AGENTVOUCH_PUBLIC_BASE_URL` — optional, for checkout success/cancel URLs;
-  falls back to the request origin.
+  falls back to `NEXT_PUBLIC_APP_URL`, then the request origin.
