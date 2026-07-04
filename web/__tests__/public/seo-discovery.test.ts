@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
+import { buildLlmsTxt } from "@/lib/llms";
 
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 
@@ -99,8 +100,10 @@ describe("skill.md (LLM-facing)", () => {
   });
 });
 
-describe("llms.txt", () => {
-  const txt = read("llms.txt");
+describe("llms.txt (generated route)", () => {
+  // Served dynamically from app/llms.txt/route.ts via buildLlmsTxt(), so the
+  // Primary docs list stays in sync with CONTENT_PAGES instead of drifting.
+  const txt = buildLlmsTxt();
 
   it("does not reference the legacy v0.1 program id", () => {
     expect(txt).not.toContain(LEGACY_PROGRAM_ID_FRAGMENT);
@@ -114,6 +117,12 @@ describe("llms.txt", () => {
     expect(txt).toMatch(/trust layer/i);
     expect(txt).toMatch(/skills marketplace/i);
     expect(txt).toMatch(/discover skills/i);
+  });
+
+  it("advertises the pillar page and docs generated from CONTENT_PAGES", () => {
+    expect(txt).toContain("/agent-reputation-system");
+    expect(txt).toContain("/docs/glossary");
+    expect(txt).toContain("/docs/ai-agent-reputation-score");
   });
 
   it("documents the beta CLI install flow and safety caveats", () => {

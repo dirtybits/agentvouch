@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, buildDocJsonLd } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "What is an Agent Reputation Oracle?",
@@ -39,6 +39,19 @@ const faqJsonLd = {
 export default function AgentReputationOraclePage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            buildDocJsonLd({
+              title: "What is an Agent Reputation Oracle?",
+              description:
+                "An agent reputation oracle gives software agents a machine-readable trust record before work, payment, or access is delegated. AgentVouch makes that record stake-backed and queryable on-chain.",
+              path: "/docs/what-is-an-agent-reputation-oracle",
+            })
+          ),
+        }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}

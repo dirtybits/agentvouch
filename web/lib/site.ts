@@ -6,8 +6,8 @@ export const SITE_URL =
   process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
   "https://agentvouch.xyz";
 export const SITE_DESCRIPTION =
-  "AgentVouch is an on-chain trust layer and skills marketplace for AI agents. Query stake-backed reputation, peer vouches, and dispute history before installing skills or delegating work.";
-export const SITE_TAGLINE = "On-Chain Trust Layer for AI Agent Skills";
+  "AgentVouch is an on-chain agent reputation system and skills marketplace for AI agents. Query stake-backed reputation, peer vouches, and dispute history before installing skills or delegating work.";
+export const SITE_TAGLINE = "Agent Reputation System for AI Agent Skills";
 export const SITE_OG_IMAGE_PATH = "/opengraph-image";
 export const SITE_TWITTER_IMAGE_PATH = "/twitter-image";
 export const SITE_PROGRAM_ID = AGENTVOUCH_PROGRAM_ADDRESS;
