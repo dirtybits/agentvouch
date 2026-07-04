@@ -7,6 +7,8 @@ import {
   baseUsdcMicros,
   computeListingId,
   formatBaseUsdc,
+  isBaseDuplicatePurchaseError,
+  isBaseReceiptPendingError,
   skillIdHashFrom,
 } from "@/lib/adapters/baseWallet";
 import { BASE_USDC_DECIMALS } from "@/lib/adapters/baseWalletConfig";
@@ -41,6 +43,34 @@ describe("Base wallet registration metadata", () => {
     expect(uri).toContain(`/api/author/${author}`);
     expect(uri).toContain("chainContext=eip155%3A84532");
     expect(uri).not.toBe("");
+  });
+});
+
+describe("Base wallet transaction receipt polling", () => {
+  it("recognizes viem receipt-not-found races as pending confirmations", () => {
+    expect(
+      isBaseReceiptPendingError(
+        new Error(
+          'Transaction receipt with hash "0x1f6a3de5212bb0abfd3fc47fa7107380315a2930db9142a6e96cdfb68415a8fc" could not be found. The Transaction may not be processed on a block yet. Version: viem@2.47.6'
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("does not classify ordinary contract reverts as pending confirmations", () => {
+    expect(isBaseReceiptPendingError(new Error("AlreadyPurchased()"))).toBe(
+      false
+    );
+  });
+
+  it("recognizes DuplicatePurchase reverts as already-owned purchases", () => {
+    expect(
+      isBaseDuplicatePurchaseError(
+        new Error(
+          'The contract function "purchaseSkill" reverted. Error: DuplicatePurchase()'
+        )
+      )
+    ).toBe(true);
   });
 });
 

@@ -283,7 +283,7 @@ async function fetchSignedSkill({
 }: {
   id: string;
   walletAddress: string;
-  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array | string>;
   skill: SkillDetail;
   format: "raw" | "zip";
 }): Promise<Response> {
@@ -292,7 +292,8 @@ async function fetchSignedSkill({
       walletAddress,
       signMessage,
       skillId: skill.id,
-      listingAddress: skill.on_chain_address ?? undefined,
+      listingAddress:
+        skill.evm_listing_id ?? skill.on_chain_address ?? undefined,
     })
   );
   const res = await fetch(`/api/skills/${id}/${format}`, {
@@ -564,14 +565,22 @@ export default function SkillDetailPage({
   // multi-file skills, otherwise SKILL.md. Returns true when the archive was
   // delivered (used to phrase the success message).
   const downloadEntitledSkill = useCallback(async (): Promise<boolean> => {
-    if (!skill || !walletAddress || !signMessage) {
+    const downloadWalletAddress = activeWalletAddress ?? walletAddress;
+    const downloadSignMessage =
+      activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+      activeChainWallet?.signMessage
+        ? async (message: Uint8Array) =>
+            activeChainWallet.signMessage!(new TextDecoder().decode(message))
+        : signMessage;
+
+    if (!skill || !downloadWalletAddress || !downloadSignMessage) {
       throw new Error("Connect a wallet to download this skill.");
     }
     const isMultiFile = (skill.files?.length ?? 0) > 1;
     const res = await fetchSignedSkill({
       id,
-      walletAddress,
-      signMessage,
+      walletAddress: downloadWalletAddress,
+      signMessage: downloadSignMessage,
       skill,
       format: isMultiFile ? "zip" : "raw",
     });
@@ -586,8 +595,11 @@ export default function SkillDetailPage({
     return isMultiFile;
   }, [
     skill,
-    walletAddress,
+    activeChainContext,
+    activeChainWallet,
+    activeWalletAddress,
     signMessage,
+    walletAddress,
     id,
     triggerBrowserDownload,
     downloadSkillFile,
@@ -889,16 +901,24 @@ export default function SkillDetailPage({
           expectedPriceUsdcMicros: BigInt(skill.price_usdc_micros),
         });
 
+        const verifyBody = purchaseResult.alreadyPurchased
+          ? {
+              buyer: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              listingId: skill.evm_listing_id,
+              expectedPriceUsdcMicros: skill.price_usdc_micros,
+            }
+          : {
+              txHash: purchaseResult.ref,
+              buyer: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              listingId: skill.evm_listing_id,
+              expectedPriceUsdcMicros: skill.price_usdc_micros,
+            };
         const verifyRes = await fetch(`/api/skills/${id}/purchase/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            txHash: purchaseResult.ref,
-            buyer: activeWalletAddress,
-            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-            listingId: skill.evm_listing_id,
-            expectedPriceUsdcMicros: skill.price_usdc_micros,
-          }),
+          body: JSON.stringify(verifyBody),
         });
         if (!verifyRes.ok) {
           const verifyBody = (await verifyRes.json().catch(() => null)) as {
@@ -910,8 +930,12 @@ export default function SkillDetailPage({
           );
         }
 
-        setUsdcPurchaseTx(purchaseResult.ref);
-        setUsdcPurchaseExplorerUrl(purchaseResult.explorerUrl);
+        if (!purchaseResult.alreadyPurchased) {
+          setUsdcPurchaseTx(purchaseResult.ref);
+          setUsdcPurchaseExplorerUrl(purchaseResult.explorerUrl);
+        }
+        const fullTree = await downloadEntitledSkill();
+        const downloaded = fullTree ? "the full skill" : "SKILL.md";
         await refreshSkill({
           includeBuyer: true,
           buyerAddress: activeWalletAddress,
@@ -922,8 +946,9 @@ export default function SkillDetailPage({
         );
         setInstallResult({
           success: true,
-          message:
-            "Base USDC purchase confirmed and entitlement verified. Base signed downloads are still pending.",
+          message: purchaseResult.alreadyPurchased
+            ? `Base entitlement already active. Downloaded ${downloaded}.`
+            : `Base USDC purchase confirmed and verified. Downloaded ${downloaded}.`,
         });
       } catch (error: unknown) {
         setInstallResult({
@@ -1093,7 +1118,11 @@ export default function SkillDetailPage({
   };
 
   const handleSignedDownload = async () => {
-    if (!connected || !walletAddress || !signMessage || !skill) {
+    const canSignActiveDownload =
+      (activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+        Boolean(activeWalletAddress && activeChainWallet?.signMessage)) ||
+      Boolean(connected && walletAddress && signMessage);
+    if (!canSignActiveDownload || !skill) {
       return;
     }
 
@@ -1524,7 +1553,7 @@ export default function SkillDetailPage({
       ? walletCanAuthorizeDirectUsdc
       : walletCanAuthorizeBrowserX402);
   const signedRedownloadAvailable =
-    !isBaseProtocolSkill && (hasUsdcPrimary || Boolean(skill.on_chain_address));
+    hasUsdcPrimary || Boolean(skill.on_chain_address);
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
     isChainOnly && skill?.skill_uri
@@ -2144,9 +2173,17 @@ export default function SkillDetailPage({
                       </span>
                     )}
                   </div>
-                  <InfoTip label={`${purchaseTitle} details`} align="right">
-                    {purchaseDescription}
-                  </InfoTip>
+                  <div className="flex items-center gap-2">
+                    {isPaidSkill && buyerHasPurchased && !isAuthor && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-300">
+                        <FiCheckCircle className="h-3 w-3" />
+                        Purchased
+                      </span>
+                    )}
+                    <InfoTip label={`${purchaseTitle} details`} align="right">
+                      {purchaseDescription}
+                    </InfoTip>
+                  </div>
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-gray-500 dark:text-gray-400">
                   <span>

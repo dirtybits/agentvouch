@@ -13,6 +13,7 @@ import {
   normalizeProtocolNewlines,
   type AuthPayload,
 } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import {
   buildX402PaymentRequiredBody,
   decodeX402PaymentSignatureHeader,
@@ -61,6 +62,7 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import type { SkillFileManifestEntry } from "@/lib/skillStorage";
+import { isEvmShapedAddress } from "@/lib/chainAddress";
 
 const CHAIN_PREFIX = "chain-";
 const TOKEN_PROGRAM_ID = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -204,7 +206,7 @@ export async function recordInstallAndDownloadEvent(
   return totalInstalls;
 }
 
-export function getOptionalDownloadAuthPubkey(
+export async function getOptionalDownloadAuthPubkey(
   request: NextRequest,
   skillDbId: string,
   listingAddress?: string | null
@@ -212,7 +214,7 @@ export function getOptionalDownloadAuthPubkey(
   const authHeader = request.headers.get("x-agentvouch-auth");
   if (!authHeader) return null;
 
-  const authResult = validateDownloadAuth(
+  const authResult = await validateDownloadAuth(
     authHeader,
     skillDbId,
     listingAddress
@@ -398,11 +400,11 @@ async function buildBasePaymentRequiredBody(opts: {
   });
 }
 
-export function validateDownloadAuth(
+export async function validateDownloadAuth(
   authHeader: string,
   skillDbId: string,
   listingAddress?: string | null
-): { buyerPubkey: string } | { response: NextResponse } {
+): Promise<{ buyerPubkey: string } | { response: NextResponse }> {
   let auth: AuthPayload;
   try {
     auth = JSON.parse(authHeader);
@@ -415,7 +417,9 @@ export function validateDownloadAuth(
     };
   }
 
-  const verification = verifyWalletSignature(auth);
+  const verification = isEvmShapedAddress(auth.pubkey)
+    ? await verifyEvmWalletSignature(auth)
+    : verifyWalletSignature(auth);
   if (!verification.valid || !verification.pubkey) {
     return {
       response: NextResponse.json(
@@ -833,6 +837,26 @@ async function handleUsdcDirect(
   };
 
   if (isBaseProtocolListedUsdcSkill(skill, priceMicros)) {
+    const authHeader = request.headers.get("x-agentvouch-auth");
+    if (authHeader) {
+      const authResult = await validateDownloadAuth(
+        authHeader,
+        skillDbId,
+        skill.evm_listing_id
+      );
+      if ("response" in authResult) {
+        return accessDenied(authResult.response);
+      }
+
+      const entitled = await hasChainUsdcPurchaseEntitlement(skillDbId, {
+        buyerChainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+        buyerAddress: authResult.buyerPubkey,
+      }).catch(() => false);
+      if (entitled) {
+        return accessGranted(skill);
+      }
+    }
+
     return handleBaseX402Purchase({
       request,
       skillDbId,
@@ -855,7 +879,11 @@ async function handleUsdcDirect(
   if (!skill.on_chain_address) {
     const authHeader = request.headers.get("x-agentvouch-auth");
     if (authHeader) {
-      const authResult = validateDownloadAuth(authHeader, skillDbId, null);
+      const authResult = await validateDownloadAuth(
+        authHeader,
+        skillDbId,
+        null
+      );
       if ("response" in authResult) {
         return accessDenied(authResult.response);
       }
@@ -880,7 +908,7 @@ async function handleUsdcDirect(
     const authHeader = request.headers.get("x-agentvouch-auth");
     let buyerPubkey: string | null = null;
     if (authHeader) {
-      const authResult = validateDownloadAuth(
+      const authResult = await validateDownloadAuth(
         authHeader,
         skillDbId,
         skill.on_chain_address
@@ -970,7 +998,7 @@ async function handleUsdcDirect(
 
   const authHeader = request.headers.get("x-agentvouch-auth");
   if (authHeader) {
-    const authResult = validateDownloadAuth(
+    const authResult = await validateDownloadAuth(
       authHeader,
       skillDbId,
       skill.on_chain_address

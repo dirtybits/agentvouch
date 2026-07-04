@@ -42,6 +42,7 @@ import {
 import type {
   ChainWallet,
   CreateSkillListingInput,
+  PurchaseSkillResult,
   PurchaseSkillInput,
   TxResult,
 } from "./types";
@@ -96,10 +97,31 @@ type BaseUserOperationResult = TxResult & {
   txHash: Hex;
 };
 
-type BasePurchaseResult = BaseUserOperationResult & {
+type BasePurchaseResult = PurchaseSkillResult & {
+  userOpHash?: Hex;
+  txHash?: Hex;
   listingId: Hex;
-  purchaseId: Hex;
+  purchaseId?: Hex;
 };
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+export function isBaseReceiptPendingError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return (
+    /transaction receipt .*could not be found/i.test(message) ||
+    /not be processed on a block yet/i.test(message) ||
+    /waitfortransactionreceipttimeouterror/i.test(message) ||
+    /timed out while waiting for transaction/i.test(message)
+  );
+}
+
+export function isBaseDuplicatePurchaseError(error: unknown): boolean {
+  return /DuplicatePurchase/i.test(getErrorMessage(error));
+}
 
 function explorerTxUrl(txHash: string): string {
   return `${BASE_SEPOLIA_EXPLORER_URL}/tx/${txHash}`;
@@ -260,12 +282,47 @@ async function sendBaseUserOperation(
   };
 }
 
+async function waitForBaseTransactionReceipt(
+  publicClient: ReturnType<typeof createBasePublicClient>,
+  txHash: Hex,
+  label: string
+) {
+  try {
+    return await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+      pollingInterval: 1_000,
+      timeout: 60_000,
+    });
+  } catch (error) {
+    if (isBaseReceiptPendingError(error)) {
+      throw new Error(
+        `${label} was submitted, but Base Sepolia has not returned the transaction receipt yet. Wait a few seconds and refresh before signing again. Transaction: ${txHash}`
+      );
+    }
+    throw error;
+  }
+}
+
 export function baseUsdcMicros(amountUsdc: string): bigint {
   return parseUnits(amountUsdc, BASE_USDC_DECIMALS);
 }
 
 export function formatBaseUsdc(micros: bigint): string {
   return formatUnits(micros, BASE_USDC_DECIMALS);
+}
+
+export async function fetchBaseUsdcBalance(address: string): Promise<bigint> {
+  const walletAddress = requireBaseEvmAddress(address, "Base wallet address");
+  const usdcAddress = requireBaseEvmAddress(
+    BASE_USDC_ADDRESS,
+    "Base USDC address"
+  );
+  return createBasePublicClient().readContract({
+    address: usdcAddress,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [walletAddress],
+  });
 }
 
 function readStoredCredential(): StoredCredential | null {
@@ -376,6 +433,7 @@ export async function registerBaseAgent(
   metadataUri: string
 ): Promise<TxResult> {
   const config = requireBaseWriteConfig();
+  const publicClient = createBasePublicClient();
   const result = await sendBaseUserOperation(account, [
     {
       to: config.agentVouchAddress,
@@ -385,9 +443,11 @@ export async function registerBaseAgent(
     },
   ]);
 
-  const receipt = await createBasePublicClient().getTransactionReceipt({
-    hash: result.txHash,
-  });
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base agent registration"
+  );
   const event = findEvent(
     receipt.logs,
     config.agentVouchAddress,
@@ -405,6 +465,7 @@ export async function createBaseSkillListing(
   input: CreateSkillListingInput
 ): Promise<TxResult> {
   const config = requireBaseWriteConfig();
+  const publicClient = createBasePublicClient();
   const skillIdHash = skillIdHashFrom(input.skillId);
   const listingId = computeListingId(account.address, skillIdHash);
   const result = await sendBaseUserOperation(account, [
@@ -422,9 +483,11 @@ export async function createBaseSkillListing(
     },
   ]);
 
-  const receipt = await createBasePublicClient().getTransactionReceipt({
-    hash: result.txHash,
-  });
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base marketplace listing"
+  );
   const event = findEvent(
     receipt.logs,
     config.agentVouchAddress,
@@ -518,10 +581,26 @@ export async function purchaseBaseSkill(
     args: [listingId],
   });
 
-  const result = await sendBaseUserOperation(account, calls);
-  const receipt = await publicClient.getTransactionReceipt({
-    hash: result.txHash,
-  });
+  let result: BaseUserOperationResult;
+  try {
+    result = await sendBaseUserOperation(account, calls);
+  } catch (error) {
+    if (isBaseDuplicatePurchaseError(error)) {
+      return {
+        ref: listingId,
+        explorerUrl: `${BASE_SEPOLIA_EXPLORER_URL}/address/${config.agentVouchAddress}`,
+        paidGas: false,
+        alreadyPurchased: true,
+        listingId,
+      };
+    }
+    throw error;
+  }
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base USDC purchase"
+  );
   const event = findEvent(
     receipt.logs,
     config.agentVouchAddress,

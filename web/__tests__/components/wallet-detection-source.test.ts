@@ -69,4 +69,22 @@ describe("wallet detection source", () => {
     expect(buttonSource).toContain("dedupeConnectorsByName");
     expect(buttonSource).toContain("connector.name.toLowerCase()");
   });
+
+  it("shows a copyable full address in the connected wallet menu", () => {
+    expect(buttonSource).toContain("navigator.clipboard.writeText(address)");
+    expect(buttonSource).toContain('aria-label="Copy wallet address"');
+    expect(buttonSource).toContain("FiCopy");
+    expect(buttonSource).toContain("{address}");
+    expect(buttonSource).toContain("addressMenuSection");
+    expect(buttonSource).toContain("baseWallet.account");
+    expect(buttonSource).toContain("solanaUsdcBalance");
+  });
+
+  it("shows USDC balances in the connected wallet menu", () => {
+    expect(buttonSource).toContain("fetchBaseUsdcBalance(account)");
+    expect(buttonSource).toContain("formatBaseUsdc(balance)");
+    expect(buttonSource).toContain("fetchAssociatedTokenAccountState");
+    expect(buttonSource).toContain("formatUsdcMicrosValue");
+    expect(buttonSource).toContain("{balance.value} USDC");
+  });
 });

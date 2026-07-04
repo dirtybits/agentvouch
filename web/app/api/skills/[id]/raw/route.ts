@@ -74,7 +74,11 @@ async function handleChainOnlyRaw(request: NextRequest, id: string) {
 
   const authHeader = request.headers.get("x-agentvouch-auth");
   if (authHeader) {
-    const authResult = validateDownloadAuth(authHeader, id, listing.publicKey);
+    const authResult = await validateDownloadAuth(
+      authHeader,
+      id,
+      listing.publicKey
+    );
     if ("response" in authResult) {
       return authResult.response;
     }
@@ -145,10 +149,10 @@ export async function GET(
       kind: "raw",
       request,
       requestedPath,
-      walletPubkey: getOptionalDownloadAuthPubkey(
+      walletPubkey: await getOptionalDownloadAuthPubkey(
         request,
         id,
-        skill.on_chain_address
+        skill.evm_listing_id ?? skill.on_chain_address
       ),
       authPresent: Boolean(request.headers.get("x-agentvouch-auth")),
       skillVersionId: skill.version_id,

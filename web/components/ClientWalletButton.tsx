@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import Image, { type ImageLoader } from "next/image";
 import { useConnectWallet, useWalletConnectors } from "@solana/connector/react";
 import { ConnectButton } from "@phantom/react-sdk";
+import { FiCheck, FiCopy } from "react-icons/fi";
+import { address, createSolanaRpc } from "@solana/kit";
 import {
   useAgentVouchWallet,
   useChainWallet,
@@ -13,7 +15,16 @@ import {
   BASE_PASSKEY_WALLET_NAME,
   shortenEvmAddress,
 } from "@/lib/adapters/baseWalletConfig";
+import {
+  fetchBaseUsdcBalance,
+  formatBaseUsdc,
+} from "@/lib/adapters/baseWallet";
+import {
+  fetchAssociatedTokenAccountState,
+  formatUsdcMicrosValue,
+} from "@/lib/agentvouchUsdc";
 import { isBaseSepoliaDefaultEnabled } from "@/lib/chains";
+import { getConfiguredUsdcMint } from "@/lib/x402";
 import { useMounted } from "@/hooks/useMounted";
 import { PHANTOM_EMBEDDED_WALLET_NAME } from "@/lib/phantomEmbeddedWalletStandard";
 import { PHANTOM_LEGACY_WALLET_NAME } from "@/lib/phantomLegacyWalletStandard";
@@ -27,6 +38,16 @@ const PHANTOM_ICON = "https://phantom.com/_web_platform_assets/favicon.svg";
 const baseSepoliaDefault = isBaseSepoliaDefaultEnabled();
 const walletTriggerClass = navButtonPrimaryInlineClass;
 const walletMenuButtonClass = `w-full ${navButtonSecondaryInlineClass} justify-start`;
+const walletMenuActionClass =
+  "w-full px-4 py-3 text-left font-mono text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition";
+const SOLANA_CLIENT_RPC_URL =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+
+type UsdcBalanceState = {
+  account: string;
+  status: "loading" | "ready" | "error";
+  value: string | null;
+};
 
 const passthroughImageLoader: ImageLoader = ({ src }) => src;
 
@@ -86,6 +107,11 @@ export function ClientWalletButton() {
   const mounted = useMounted();
   const phantomConfigured = usePhantomConfigured();
   const [showMenu, setShowMenu] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [baseUsdcBalance, setBaseUsdcBalance] =
+    useState<UsdcBalanceState | null>(null);
+  const [solanaUsdcBalance, setSolanaUsdcBalance] =
+    useState<UsdcBalanceState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const wallet = useAgentVouchWallet();
@@ -111,6 +137,132 @@ export function ClientWalletButton() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    const account = baseWallet.account;
+    if (!account) {
+      setBaseUsdcBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    setBaseUsdcBalance({ account, status: "loading", value: null });
+    void fetchBaseUsdcBalance(account)
+      .then((balance) => {
+        if (cancelled) return;
+        setBaseUsdcBalance({
+          account,
+          status: "ready",
+          value: formatBaseUsdc(balance),
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to fetch Base USDC balance:", error);
+        if (cancelled) return;
+        setBaseUsdcBalance({ account, status: "error", value: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseWallet.account]);
+
+  useEffect(() => {
+    const account = wallet.status === "connected" ? wallet.account : null;
+    if (!account) {
+      setSolanaUsdcBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSolanaUsdcBalance({ account, status: "loading", value: null });
+    const rpc = createSolanaRpc(SOLANA_CLIENT_RPC_URL);
+    void fetchAssociatedTokenAccountState(
+      rpc,
+      address(account),
+      address(getConfiguredUsdcMint())
+    )
+      .then((state) => {
+        if (cancelled) return;
+        setSolanaUsdcBalance({
+          account,
+          status: "ready",
+          value: formatUsdcMicrosValue(state.exists ? state.amount : 0n),
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to fetch Solana USDC balance:", error);
+        if (cancelled) return;
+        setSolanaUsdcBalance({ account, status: "error", value: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet.account, wallet.status]);
+
+  const copyAddress = async (address: string) => {
+    await navigator.clipboard.writeText(address);
+    setCopiedAddress(address);
+    window.setTimeout(() => {
+      setCopiedAddress((current) => (current === address ? null : current));
+    }, 1500);
+  };
+
+  const addressMenuSection = (
+    address: string,
+    balance?: UsdcBalanceState | null
+  ) => (
+    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-normal text-gray-500 dark:text-gray-400">
+          Address
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            void copyAddress(address).catch((error) => {
+              console.error("Failed to copy wallet address:", error);
+            });
+          }}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+          title="Copy address"
+          aria-label="Copy wallet address"
+        >
+          {copiedAddress === address ? (
+            <FiCheck className="h-3.5 w-3.5" />
+          ) : (
+            <FiCopy className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          void copyAddress(address).catch((error) => {
+            console.error("Failed to copy wallet address:", error);
+          });
+        }}
+        className="mt-1 block w-full break-all rounded-sm text-left font-mono text-xs leading-relaxed text-gray-800 transition hover:text-[var(--sea-accent-strong)] dark:text-gray-200"
+      >
+        {address}
+      </button>
+      {balance?.account === address ? (
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3 text-xs dark:border-gray-800">
+          <span className="font-normal text-gray-500 dark:text-gray-400">
+            USDC
+          </span>
+          <span className="font-mono text-gray-800 dark:text-gray-200">
+            {balance.status === "loading"
+              ? "Loading..."
+              : balance.status === "ready"
+              ? `${balance.value} USDC`
+              : "Unavailable"}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
 
   if (!mounted) {
     return (
@@ -141,13 +293,14 @@ export function ClientWalletButton() {
           {shortenEvmAddress(baseWallet.account)}
         </button>
         {showMenu && (
-          <div className="absolute right-0 mt-2 w-56 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
+          <div className="absolute right-0 mt-2 w-80 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
             <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
               {baseWallet.chainLabel}
             </div>
+            {addressMenuSection(baseWallet.account, baseUsdcBalance)}
             <button
               onClick={handleDisconnect}
-              className={walletMenuButtonClass}
+              className={walletMenuActionClass}
             >
               Disconnect
             </button>
@@ -174,15 +327,16 @@ export function ClientWalletButton() {
           {short}
         </button>
         {showMenu && (
-          <div className="absolute right-0 mt-2 w-48 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
+          <div className="absolute right-0 mt-2 w-80 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
             {isEmbedded && (
               <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
                 Phantom Embedded
               </div>
             )}
+            {addressMenuSection(addr, solanaUsdcBalance)}
             <button
               onClick={handleDisconnect}
-              className={walletMenuButtonClass}
+              className={walletMenuActionClass}
             >
               Disconnect
             </button>

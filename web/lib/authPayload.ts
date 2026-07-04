@@ -23,7 +23,7 @@ export function buildDownloadRawMessage(
 
 export async function createSignedDownloadAuthPayload(input: {
   walletAddress: string;
-  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array | string>;
   skillId: string;
   listingAddress?: string | null;
   timestamp?: number;
@@ -34,13 +34,12 @@ export async function createSignedDownloadAuthPayload(input: {
     input.listingAddress,
     timestamp
   );
-  const signatureBytes = await input.signMessage(
-    new TextEncoder().encode(message)
-  );
+  const signature = await input.signMessage(new TextEncoder().encode(message));
 
   return {
     pubkey: input.walletAddress,
-    signature: encodeBase64(signatureBytes),
+    signature:
+      typeof signature === "string" ? signature : encodeBase64(signature),
     message,
     timestamp,
   };
