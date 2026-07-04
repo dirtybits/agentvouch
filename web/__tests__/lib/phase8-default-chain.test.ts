@@ -86,6 +86,8 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
 
     expect(publishSource).toContain("patchBaseListingWithRetry");
     expect(publishSource).toContain("isRetryableBaseListingLinkError");
+    expect(publishSource).toContain("isBaseListingExistsError");
+    expect(publishSource).toContain("relinkExisting: true");
     expect(detailSource).toContain("isBaseListingExistsError");
     expect(detailSource).toContain("relinkExisting: true");
     expect(routeSource).toContain("relinkExisting");
@@ -103,9 +105,11 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
     // The currency-mint default must be chosen AFTER the chain context is known, and Base
     // rows must not fall back to getConfiguredUsdcMint() (a Solana mint) — that would make
     // the baseListing PATCH's getExpectedBaseCurrency throw and orphan the on-chain listing.
-    expect(source).toContain("explicitCurrencyMint");
+    expect(source).toContain("normalizeCurrencyMintForChain");
+    expect(source).toContain("defaultCurrencyMintForChain");
+    expect(source).toContain("currency_mint must be a valid Base USDC address");
     expect(source).toContain(
-      "normalizedChainContext === BASE_SEPOLIA_CHAIN_CONTEXT\n          ? null"
+      "return input.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT"
     );
     // The old unconditional default must be gone.
     expect(source).not.toContain(
@@ -115,9 +119,8 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
 
   it("Base paid listings use the canonical raw URI even when IPFS pinning is unavailable", () => {
     const source = read("app/skills/publish/page.tsx");
-    expect(source).toContain(
-      "const skillUri = `${window.location.origin}/api/skills/${skillDbId}/raw`;"
-    );
+    expect(source).toContain("getCanonicalSkillRawUrl(skillDbId)");
+    expect(source).not.toContain("window.location.origin}/api/skills/");
     expect(source).not.toMatch(/const skillUri = ipfsCid[\s\S]+: ""/);
   });
 });

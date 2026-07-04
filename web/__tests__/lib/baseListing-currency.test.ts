@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getExpectedBaseCurrency } from "@/lib/adapters/baseListing";
 import { BASE_NATIVE_USDC_ADDRESS } from "@/lib/adapters/baseConfig";
+import { isSameSkillRawUri } from "@/lib/baseListingVerification";
 
 // Why Base paid rows must persist currency_mint = null rather than the configured Solana mint
 // (PR #74 P1). getExpectedBaseCurrency runs inside the baseListing PATCH's verifyBaseSkillListing;
@@ -44,5 +45,25 @@ describe("getExpectedBaseCurrency", () => {
         usage: "listings",
       })
     ).toThrow(/valid EVM address/i);
+  });
+});
+
+describe("isSameSkillRawUri", () => {
+  it("accepts the same raw skill path across hosts for relink repair", () => {
+    expect(
+      isSameSkillRawUri({
+        actual: "http://localhost:3001/api/skills/uuid-skill-1/raw",
+        expected: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      })
+    ).toBe(true);
+  });
+
+  it("rejects a raw URI for a different skill", () => {
+    expect(
+      isSameSkillRawUri({
+        actual: "http://localhost:3001/api/skills/uuid-skill-2/raw",
+        expected: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      })
+    ).toBe(false);
   });
 });

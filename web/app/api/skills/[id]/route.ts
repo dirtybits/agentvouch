@@ -44,6 +44,7 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
+import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
   loadSkillDetailSnapshot,
   type SkillDetailSnapshot,
@@ -553,7 +554,7 @@ export async function PATCH(
         expectedPriceUsdcMicros: relinkExisting
           ? null
           : baseListing.expectedPriceUsdcMicros ?? null,
-        expectedUri: `${request.nextUrl.origin}/api/skills/${id}/raw`,
+        expectedUri: getCanonicalSkillRawUrl(id),
       });
 
       const [updated] = await sql()<SkillRow>`

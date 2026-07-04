@@ -28,7 +28,7 @@ import {
   RESERVED_SKILL_TAGS,
   slugify,
 } from "@/lib/skillDraft";
-import { getPublicSkillPath } from "@/lib/skillUrls";
+import { getCanonicalSkillRawUrl, getPublicSkillPath } from "@/lib/skillUrls";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import { formatMinPrice, isValidListingPriceMicros } from "@/lib/pricing";
@@ -231,11 +231,21 @@ async function ensureBaseAuthorRegistered(
 }
 
 type BaseListingPatchPayload = {
-  txHash: string;
   authorAddress: string;
   chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
-  expectedPriceUsdcMicros: string;
-};
+} & (
+  | {
+      txHash: string;
+      expectedPriceUsdcMicros: string;
+    }
+  | {
+      relinkExisting: true;
+    }
+);
+
+function isBaseListingExistsError(error: unknown): boolean {
+  return getErrorMessage(error, "").includes("ListingExists");
+}
 
 function isRetryableBaseListingLinkError(status: number, message: string) {
   if (status >= 500) return true;
@@ -572,7 +582,7 @@ function PublishSkillPageInner() {
 
       const skillDbId: string = data.id;
       const publicSkillPath = getPublicSkillPath(data);
-      const skillUri = `${window.location.origin}/api/skills/${skillDbId}/raw`;
+      const skillUri = getCanonicalSkillRawUrl(skillDbId);
 
       if (!usdcPriceMicros) {
         setResult({
@@ -590,20 +600,31 @@ function PublishSkillPageInner() {
         if (baseWalletActive && baseChainWallet && baseWalletAddress) {
           // Phase 8a default paid path: Base Sepolia through the ChainWallet
           // seam, linked via the chain-verified baseListing PATCH.
-          const listingResult = await baseChainWallet.createSkillListing({
-            skillId: cleanId,
-            uri: skillUri,
-            name: cleanName,
-            description: cleanDescription,
-            priceUsdcMicros: BigInt(onChainPriceUsdcMicros),
-          });
+          try {
+            const listingResult = await baseChainWallet.createSkillListing({
+              skillId: cleanId,
+              uri: skillUri,
+              name: cleanName,
+              description: cleanDescription,
+              priceUsdcMicros: BigInt(onChainPriceUsdcMicros),
+            });
 
-          await patchBaseListingWithRetry(skillDbId, {
-            txHash: listingResult.ref,
-            authorAddress: baseWalletAddress,
-            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-            expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
-          });
+            await patchBaseListingWithRetry(skillDbId, {
+              txHash: listingResult.ref,
+              authorAddress: baseWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
+            });
+          } catch (error) {
+            if (!isBaseListingExistsError(error)) {
+              throw error;
+            }
+            await patchBaseListingWithRetry(skillDbId, {
+              relinkExisting: true,
+              authorAddress: baseWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+            });
+          }
         } else {
           const paidAuthorPubkey = publicKey!;
           const paidSignMessage = signMessage!;

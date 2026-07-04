@@ -116,6 +116,23 @@ function normalizeMicrosAllowZero(
   return BigInt(trimmed).toString();
 }
 
+export function isSameSkillRawUri(input: {
+  actual: string;
+  expected: string;
+}): boolean {
+  if (input.actual === input.expected) return true;
+  try {
+    const actualUrl = new URL(input.actual);
+    const expectedUrl = new URL(input.expected);
+    return (
+      actualUrl.pathname === expectedUrl.pathname &&
+      actualUrl.search === expectedUrl.search
+    );
+  } catch {
+    return false;
+  }
+}
+
 function createBasePublicClient() {
   return createPublicClient({
     chain: baseSepolia,
@@ -274,7 +291,13 @@ export async function verifyBaseSkillListing(
   if (listing.description !== (input.skill.description ?? "")) {
     throw new Error("Base listing description does not match this skill");
   }
-  if (input.expectedUri && listing.uri !== input.expectedUri) {
+  if (
+    input.expectedUri &&
+    !isSameSkillRawUri({
+      actual: listing.uri,
+      expected: input.expectedUri,
+    })
+  ) {
     throw new Error("Base listing URI does not match this skill");
   }
 

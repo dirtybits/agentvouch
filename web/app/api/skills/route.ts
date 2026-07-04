@@ -210,6 +210,39 @@ function normalizeCurrencyMint(value: unknown): string | null {
   return normalized;
 }
 
+function normalizeCurrencyMintForChain(input: {
+  value: unknown;
+  chainContext: string;
+  hasPrice: boolean;
+}): string | null {
+  if (!input.hasPrice) return null;
+  if (input.value === undefined || input.value === null || input.value === "") {
+    return null;
+  }
+
+  const normalized = String(input.value).trim();
+  if (!normalized) return null;
+
+  if (input.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT) {
+    if (!isEvmAddress(normalized)) {
+      throw new Error("currency_mint must be a valid Base USDC address");
+    }
+    return getEvmAddress(normalized);
+  }
+
+  return normalizeCurrencyMint(normalized);
+}
+
+function defaultCurrencyMintForChain(input: {
+  chainContext: string;
+  hasPrice: boolean;
+}): string | null {
+  if (!input.hasPrice) return null;
+  return input.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT
+    ? null
+    : getConfiguredUsdcMint();
+}
+
 // EVM buyers have no Solana purchase preflight; their purchase status comes from the
 // chain-qualified entitlements written by Base purchase verification (Phase 6 semantics).
 async function addEvmBuyerStatus(input: {
@@ -774,14 +807,8 @@ export async function POST(request: NextRequest) {
       ? normalizeInputChainContext(chain_context)
       : null;
     let normalizedPriceUsdcMicros: string | null = null;
-    // Validate an explicitly-provided currency_mint here (Solana-mint shaped), but defer the
-    // DEFAULT selection until the row's chain context is known — the default is chain-specific.
-    let explicitCurrencyMint: string | null = null;
     try {
       normalizedPriceUsdcMicros = normalizePriceUsdcMicros(price_usdc_micros);
-      explicitCurrencyMint = normalizedPriceUsdcMicros
-        ? normalizeCurrencyMint(currency_mint)
-        : null;
     } catch (error: unknown) {
       return NextResponse.json(
         { error: getErrorMessage(error) },
@@ -847,12 +874,24 @@ export async function POST(request: NextRequest) {
     // mint; Base Sepolia rows leave it NULL so the baseListing PATCH's verifyBaseSkillListing
     // can stamp the native EVM USDC — a Solana mint here would fail getExpectedBaseCurrency's
     // EVM validation and orphan the on-chain listing (PR #74 P1).
-    const normalizedCurrencyMint = normalizedPriceUsdcMicros
-      ? explicitCurrencyMint ??
-        (normalizedChainContext === BASE_SEPOLIA_CHAIN_CONTEXT
-          ? null
-          : getConfiguredUsdcMint())
-      : null;
+    let normalizedCurrencyMint: string | null = null;
+    try {
+      normalizedCurrencyMint =
+        normalizeCurrencyMintForChain({
+          value: currency_mint,
+          chainContext: normalizedChainContext,
+          hasPrice: Boolean(normalizedPriceUsdcMicros),
+        }) ??
+        defaultCurrencyMintForChain({
+          chainContext: normalizedChainContext,
+          hasPrice: Boolean(normalizedPriceUsdcMicros),
+        });
+    } catch (error: unknown) {
+      return NextResponse.json(
+        { error: getErrorMessage(error) },
+        { status: 400 }
+      );
+    }
 
     await initializeDatabase();
     const skillDbId = randomUUID();

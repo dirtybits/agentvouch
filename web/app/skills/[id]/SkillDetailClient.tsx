@@ -66,6 +66,7 @@ import {
 } from "@/lib/chains";
 import { BASE_SEPOLIA_EXPLORER_URL } from "@/lib/adapters/baseWalletConfig";
 import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
+import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
   FiAlertTriangle,
   FiInfo,
@@ -111,11 +112,25 @@ function isBaseListingMissingError(error: unknown): boolean {
 }
 
 function hasPositiveStoredUsdcPrice(value: string | null | undefined): boolean {
+  return getPositiveStoredUsdcMicros(value) !== null;
+}
+
+function getPositiveStoredUsdcMicros(
+  value: string | null | undefined
+): bigint | null {
   try {
-    return BigInt(value ?? "0") > 0n;
+    const micros = BigInt(value ?? "0");
+    return micros > 0n ? micros : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function getPositiveStoredUsdcMicrosNumber(
+  value: string | null | undefined
+): number | null {
+  const micros = getPositiveStoredUsdcMicros(value);
+  return micros === null ? null : Number(micros);
 }
 
 interface SkillDetail {
@@ -204,10 +219,7 @@ function isBlockingPurchaseStatus(
 }
 
 function buildCanonicalSkillUri(skillId: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return `${window.location.origin}/api/skills/${skillId}/raw`;
+  return getCanonicalSkillRawUrl(skillId);
 }
 
 function stripMarkdown(value: string): string {
@@ -534,6 +546,18 @@ export default function SkillDetailPage({
     });
   }, [activeChainContext, activeWalletAddress, refreshSkill, loadedSkillId]);
 
+  useEffect(() => {
+    if (
+      skill?.price_usdc_micros &&
+      hasPositiveStoredUsdcPrice(skill.price_usdc_micros)
+    ) {
+      const formatted = formatUsdcMicros(skill.price_usdc_micros);
+      if (formatted) {
+        setListPrice(formatted);
+      }
+    }
+  }, [skill?.id, skill?.price_usdc_micros]);
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
@@ -610,7 +634,11 @@ export default function SkillDetailPage({
     setListing(true);
     setListResult(null);
     try {
-      const priceUsdcMicros = toUsdcMicros(parseFloat(listPrice || "0"));
+      const storedPriceUsdcMicros = getPositiveStoredUsdcMicrosNumber(
+        skill.price_usdc_micros
+      );
+      const priceUsdcMicros =
+        storedPriceUsdcMicros ?? toUsdcMicros(parseFloat(listPrice || "0"));
       if (!isValidListingPriceLamports(priceUsdcMicros)) {
         setListResult({
           success: false,
@@ -619,7 +647,7 @@ export default function SkillDetailPage({
         setListing(false);
         return;
       }
-      const skillUri = `${window.location.origin}/api/skills/${id}/raw`;
+      const skillUri = buildCanonicalSkillUri(id);
       const isBaseListingAuthor =
         skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
         activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
