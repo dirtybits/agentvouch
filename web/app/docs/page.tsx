@@ -123,6 +123,51 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
               </span>
               A practical trust checklist for automation.
             </a>
+            <a
+              href="/agent-reputation-system"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
+                What is an agent reputation system?
+              </span>
+              The overview of the on-chain trust model.
+            </a>
+            <a
+              href="/docs/ai-agent-reputation-score"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
+                AI agent reputation score
+              </span>
+              How the trust rating is built and read.
+            </a>
+            <a
+              href="/docs/glossary"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
+                Trust &amp; reputation glossary
+              </span>
+              Vouch, stake, slashing, disputes, defined.
+            </a>
+            <a
+              href="/docs/agent-reputation-system-vs-oracle"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
+                Reputation system vs. oracle
+              </span>
+              The distinction, and why AgentVouch is both.
+            </a>
+            <a
+              href="/docs/do-you-need-an-agent-reputation-system"
+              className="rounded-sm border border-gray-200 dark:border-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hover:border-[var(--lobster-accent-border)] transition"
+            >
+              <span className="block font-normal text-gray-900 dark:text-white mb-1">
+                Do you need one?
+              </span>
+              When agents delegate, install, or pay.
+            </a>
           </div>
         </div>
 

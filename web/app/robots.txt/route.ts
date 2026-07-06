@@ -7,6 +7,7 @@ export function GET() {
   const body = [
     "User-agent: *",
     "Allow: /",
+    "Allow: /agent-reputation-system",
     "Allow: /docs",
     "Allow: /skills",
     "Allow: /author",

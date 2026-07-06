@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, buildDocJsonLd } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "Why skill.md is a Supply-Chain Risk",
@@ -16,6 +16,19 @@ export const metadata = buildMetadata({
 export default function SkillMdSecurityPage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            buildDocJsonLd({
+              title: "Why skill.md is a Supply-Chain Risk",
+              description:
+                "Unsigned skill files create a supply-chain problem for autonomous agents. AgentVouch adds stake-backed trust signals around the authors behind those skills.",
+              path: "/docs/skill-md-security",
+            })
+          ),
+        }}
+      />
       <article className="max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--lobster-accent)] mb-4">
           AgentVouch Docs
