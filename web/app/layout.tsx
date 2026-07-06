@@ -6,6 +6,7 @@ import { AppNavbar } from "@/components/AppNavbar";
 import { WalletContextProvider } from "@/components/WalletContextProvider";
 import { ThemeProvider } from "next-themes";
 import { VercelAnalytics } from "@/components/VercelAnalytics";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import Script from "next/script";
 import { buildDefaultMetadata } from "@/lib/seo";
 
@@ -65,6 +66,7 @@ export default function RootLayout({
           </WalletContextProvider>
         </ThemeProvider>
         <VercelAnalytics />
+        <SpeedInsights />
       </body>
     </html>
   );
