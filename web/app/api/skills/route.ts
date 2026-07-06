@@ -672,13 +672,19 @@ export async function GET(request: NextRequest) {
       scheduleBackgroundTrustRefresh(stale);
     }
 
+    // resolveSkillAuthorIdentities only covers Solana-shaped authors; merge it OVER the live
+    // map (which resolveLiveSkillTrust filled for ALL missing authors, EVM included) so Base
+    // author identities are not discarded. Solana overlaps keep the page-wide resolution.
     const identityMap = fastMode
       ? live.identityMap
-      : await resolveSkillAuthorIdentities({
-          skills: allSkills,
-          trustMap: live.trustMap,
-          timing,
-        });
+      : new Map([
+          ...live.identityMap,
+          ...(await resolveSkillAuthorIdentities({
+            skills: allSkills,
+            trustMap: live.trustMap,
+            timing,
+          })),
+        ]);
 
     const enriched = buildEnrichedSkillRows({
       skills: allSkills,

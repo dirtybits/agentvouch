@@ -126,6 +126,17 @@ describe("phase 8a: paid publish goes through the ChainWallet seam", () => {
 });
 
 describe("phase 8a: EVM publisher auth", () => {
+  it("browse merges EVM author identities instead of discarding them (Bugbot #78)", () => {
+    const source = read("app/api/skills/route.ts");
+    // resolveSkillAuthorIdentities only covers Solana-shaped authors; its result must be
+    // merged over live.identityMap (which includes EVM authors), never replace it.
+    expect(source).toContain("...live.identityMap,");
+    expect(source).toContain("...(await resolveSkillAuthorIdentities({");
+    expect(source).not.toMatch(
+      /const identityMap = fastMode\s*\? live\.identityMap\s*: await resolveSkillAuthorIdentities/
+    );
+  });
+
   it("skills POST verifies EVM publishers via ERC-1271/6492 and stamps Base Sepolia", () => {
     const source = read("app/api/skills/route.ts");
     expect(source).toContain("verifyEvmWalletSignature");
