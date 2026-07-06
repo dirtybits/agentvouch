@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { mockRefreshFor } = vi.hoisted(() => ({ mockRefreshFor: vi.fn() }));
 
 vi.mock("next/server", () => ({ after: (cb: () => unknown) => void cb() }));
-vi.mock("@solana/kit", () => ({ isAddress: () => true }));
+vi.mock("@solana/kit", () => ({
+  isAddress: (value: string) => !value.startsWith("0x") && value !== "Invalid",
+}));
 vi.mock("@/lib/trustSnapshots", () => ({
   refreshAuthorTrustSnapshotsFor: mockRefreshFor,
 }));
@@ -73,6 +75,17 @@ describe("partitionAuthorsByTrustFreshness", () => {
     ]);
     expect(missing).toEqual([]);
     expect(stale).toEqual([]);
+  });
+
+  it("includes valid EVM-shaped authors and skips invalid addresses", () => {
+    const evmAuthor = "0x1111111111111111111111111111111111111111";
+    const { missing } = partitionAuthorsByTrustFreshness([
+      repoRow({ author_pubkey: evmAuthor, cached_author_trust: null }),
+      repoRow({ author_pubkey: "0xnot-valid", cached_author_trust: null }),
+      repoRow({ author_pubkey: "Invalid", cached_author_trust: null }),
+    ]);
+
+    expect(missing).toEqual([evmAuthor]);
   });
 });
 

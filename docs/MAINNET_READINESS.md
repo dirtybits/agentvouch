@@ -61,6 +61,14 @@ cannot drift). Summary of where the Base track stands and what blocks mainnet:
    and unaudited. It must not ship to mainnet. Phase 9 owns the v1 contract with the minimal
    trust layer (vouch/revoke, author bond, founder-resolved reports) — without it, Base is a
    paid marketplace without the stake-backed reputation differentiator.
+   - **Local implementation note (2026-07-06):** `contracts/base-poc/src/AgentVouchEvm.sol`
+     now declares `PROTOCOL_VERSION = "base-v1-candidate"` and includes the Phase 9 MVP
+     author-report primitive: registered reporters bond USDC to open an author-wide report,
+     `RESOLVER_ROLE` resolves it as Upheld or Dismissed, dismissed reports may optionally
+     forfeit the reporter bond to the author as an anti-griefing penalty, upheld reports slash at
+     most one dispute bond from the author's posted bond, and Base trust reads expose
+     open/upheld/dismissed counters. This is not deployment evidence, not an external audit, and not a Phase 10
+     mainnet green light.
 2. Internal + external security review of the v1 contract (the [Security Review](#security-review)
    expectations apply to every USDC-moving function, translated to the EVM surface: EIP-3009
    authorization binding, reentrancy, split accounting, pause semantics).

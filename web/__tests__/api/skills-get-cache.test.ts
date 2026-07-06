@@ -11,6 +11,10 @@ vi.mock("@/lib/trust", () => ({
   resolveMultipleAuthorTrust: vi.fn(),
 }));
 
+vi.mock("@/lib/baseAuthorTrust", () => ({
+  resolveBaseAuthorTrust: vi.fn(),
+}));
+
 vi.mock("@/lib/auth", () => ({
   verifyWalletSignature: vi.fn(),
 }));
@@ -38,6 +42,7 @@ vi.mock("@/lib/purchasePreflight", () => ({
 
 import { GET } from "@/app/api/skills/route";
 import { resolveManyAgentIdentitiesByWallet } from "@/lib/agentIdentity";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { sql } from "@/lib/db";
 import { listOnChainSkillListings } from "@/lib/onchain";
 import {
@@ -50,6 +55,8 @@ import { resolveMultipleAuthorTrust } from "@/lib/trust";
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockResolveMultipleAuthorTrust =
   resolveMultipleAuthorTrust as unknown as ReturnType<typeof vi.fn>;
+const mockResolveBaseAuthorTrust =
+  resolveBaseAuthorTrust as unknown as ReturnType<typeof vi.fn>;
 const mockResolveManyAgentIdentitiesByWallet =
   resolveManyAgentIdentitiesByWallet as unknown as ReturnType<typeof vi.fn>;
 const mockListOnChainSkillListings =
@@ -70,6 +77,18 @@ describe("GET /api/skills cache headers", () => {
     vi.clearAllMocks();
     mockSql.mockReturnValue(vi.fn().mockResolvedValue([]));
     mockResolveMultipleAuthorTrust.mockResolvedValue(new Map());
+    mockResolveBaseAuthorTrust.mockResolvedValue({
+      reputationScore: 0,
+      totalVouchesReceived: 0,
+      totalStakedFor: 0,
+      authorBondUsdcMicros: 0,
+      totalStakeAtRisk: 0,
+      disputesAgainstAuthor: 0,
+      disputesUpheldAgainstAuthor: 0,
+      activeDisputesAgainstAuthor: 0,
+      registeredAt: 0,
+      isRegistered: false,
+    });
     mockResolveManyAgentIdentitiesByWallet.mockResolvedValue(new Map());
     mockListOnChainSkillListings.mockResolvedValue([]);
     mockCreatePurchasePreflightContext.mockResolvedValue({
@@ -201,6 +220,52 @@ describe("GET /api/skills cache headers", () => {
         persistDerived: false,
       }
     );
+  });
+
+  it("resolves missing Base author trust through the Base contract reader", async () => {
+    const author = "0x1111111111111111111111111111111111111111";
+    mockResolveBaseAuthorTrust.mockResolvedValue({
+      reputationScore: 0,
+      totalVouchesReceived: 2,
+      totalStakedFor: 3_000_000,
+      authorBondUsdcMicros: 5_000_000,
+      totalStakeAtRisk: 8_000_000,
+      disputesAgainstAuthor: 1,
+      disputesUpheldAgainstAuthor: 1,
+      activeDisputesAgainstAuthor: 0,
+      registeredAt: 1,
+      isRegistered: true,
+    });
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          skill_id: "base-skill",
+          author_pubkey: author,
+          name: "Base Skill",
+          description: null,
+          tags: [],
+          current_version: 1,
+          ipfs_cid: null,
+          on_chain_address: null,
+          chain_context: "eip155:84532",
+          total_installs: 0,
+          cached_author_trust: null,
+          cached_trust_refreshed_at: null,
+          created_at: "2026-05-11T00:00:00.000Z",
+          updated_at: "2026-05-11T00:00:00.000Z",
+        },
+      ])
+    );
+
+    const res = await GET(makeRequest("?sort=trusted&page=1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockResolveBaseAuthorTrust).toHaveBeenCalledWith(author);
+    expect(mockResolveMultipleAuthorTrust).not.toHaveBeenCalled();
+    expect(body.skills[0].author_trust.totalStakeAtRisk).toBe(8_000_000);
+    expect(body.skills[0].author_trust.disputesUpheldAgainstAuthor).toBe(1);
   });
 
   it("orders searched skills by search rank before sort tie-breakers", async () => {

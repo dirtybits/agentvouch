@@ -417,28 +417,55 @@ export async function verifyBaseExistingPurchase(
     throw new Error("Live Base listing price does not match this skill");
   }
 
+  // On-chain purchases are revision-scoped (purchaseId(buyer, listingId, revision)), and a
+  // listing revision bump must not strand buyers who own a valid older receipt (Bugbot #78).
+  // Scan from the current revision downward (bounded) and trust the found purchase struct —
+  // the contract already validated price and split at purchase time, and an older revision's
+  // recorded price may legitimately differ from today's listing price.
   const publicClient = createBasePublicClient();
-  const purchaseId = (await publicClient.readContract({
-    address: contract,
-    abi: AGENTVOUCH_EVM_PURCHASE_ABI,
-    functionName: "purchaseId",
-    args: [buyer, listingId, listing.currentRevision],
-  })) as Hex;
-  const purchase = (await publicClient.readContract({
-    address: contract,
-    abi: AGENTVOUCH_EVM_PURCHASE_ABI,
-    functionName: "getPurchase",
-    args: [purchaseId],
-  })) as unknown;
-  const normalizedPurchase = normalizeBasePurchaseTuple(purchase);
+  const MAX_REVISION_SCAN = 20n;
+  let purchaseId: Hex | null = null;
+  let normalizedPurchase: ReturnType<typeof normalizeBasePurchaseTuple> | null =
+    null;
+  for (
+    let revision = listing.currentRevision;
+    revision >= 1n && listing.currentRevision - revision < MAX_REVISION_SCAN;
+    revision -= 1n
+  ) {
+    const candidateId = (await publicClient.readContract({
+      address: contract,
+      abi: AGENTVOUCH_EVM_PURCHASE_ABI,
+      functionName: "purchaseId",
+      args: [buyer, listingId, revision],
+    })) as Hex;
+    const candidate = normalizeBasePurchaseTuple(
+      await publicClient.readContract({
+        address: contract,
+        abi: AGENTVOUCH_EVM_PURCHASE_ABI,
+        functionName: "getPurchase",
+        args: [candidateId],
+      })
+    );
+    if (candidate.exists) {
+      purchaseId = candidateId;
+      normalizedPurchase = candidate;
+      break;
+    }
+  }
 
-  if (!normalizedPurchase.exists) {
+  if (!purchaseId || !normalizedPurchase) {
     throw new Error("Base purchase receipt was not found on-chain");
   }
   if (
     getAddress(normalizedPurchase.buyer) !== buyer ||
-    normalizedPurchase.listingId !== listingId ||
-    normalizedPurchase.revision !== listing.currentRevision ||
+    normalizedPurchase.listingId !== listingId
+  ) {
+    throw new Error("Base purchase receipt does not match this skill");
+  }
+  // Current-revision purchases must still match today's price (DB-drift guard); older
+  // revisions keep the price the contract recorded when they were bought.
+  if (
+    normalizedPurchase.revision === listing.currentRevision &&
     normalizedPurchase.priceUsdcMicros !== expectedPrice
   ) {
     throw new Error("Base purchase receipt does not match this skill");
@@ -449,7 +476,7 @@ export async function verifyBaseExistingPurchase(
     txHash: `base-existing:${purchaseId}`,
     listingId,
     purchaseId,
-    amountMicros: expectedPriceMicros,
+    amountMicros: normalizedPurchase.priceUsdcMicros.toString(),
     currencyMint: currency,
     paymentFlow: DIRECT_PURCHASE_PAYMENT_FLOW,
     protocolVersion:

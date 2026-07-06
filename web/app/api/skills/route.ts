@@ -53,7 +53,10 @@ import {
   hasChainUsdcPurchaseEntitlement,
   hasUsdcPurchaseEntitlement,
 } from "@/lib/usdcPurchases";
-import { normalizeChainAddressForStorage } from "@/lib/chainAddress";
+import {
+  isEvmShapedAddress,
+  normalizeChainAddressForStorage,
+} from "@/lib/chainAddress";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
 import { getConfiguredUsdcMint } from "@/lib/x402";
@@ -276,12 +279,38 @@ async function resolveLiveSkillTrust(input: {
   identityMap: Map<string, AgentIdentitySummary>;
 }> {
   const authorPubkeys = input.authorPubkeys;
-  const trustMap =
-    authorPubkeys.length > 0
-      ? await input.timing.measure("trust", () =>
-          resolveMultipleAuthorTrust(authorPubkeys)
+  const evmAuthors = authorPubkeys.filter(
+    (authorPubkey) =>
+      isEvmShapedAddress(authorPubkey) && isEvmAddress(authorPubkey)
+  );
+  const solanaAuthors = authorPubkeys.filter(
+    (authorPubkey) => !isEvmShapedAddress(authorPubkey)
+  );
+  const trustMap = new Map<string, AuthorTrust>();
+  if (solanaAuthors.length > 0) {
+    const solanaTrust = await input.timing.measure("trust-solana", () =>
+      resolveMultipleAuthorTrust(solanaAuthors)
+    );
+    for (const [authorPubkey, trust] of solanaTrust.entries()) {
+      trustMap.set(authorPubkey, trust);
+    }
+  }
+  if (evmAuthors.length > 0) {
+    await input.timing.measure("trust-base", async () => {
+      const baseTrustEntries = await Promise.all(
+        evmAuthors.map(
+          async (authorPubkey) =>
+            [
+              authorPubkey,
+              await resolveBaseAuthorTrust(getEvmAddress(authorPubkey)),
+            ] as const
         )
-      : new Map<string, AuthorTrust>();
+      );
+      for (const [authorPubkey, trust] of baseTrustEntries) {
+        trustMap.set(authorPubkey, trust);
+      }
+    });
+  }
   let identityMap = new Map<string, AgentIdentitySummary>();
   if (authorPubkeys.length > 0) {
     try {
@@ -643,13 +672,19 @@ export async function GET(request: NextRequest) {
       scheduleBackgroundTrustRefresh(stale);
     }
 
+    // resolveSkillAuthorIdentities only covers Solana-shaped authors; merge it OVER the live
+    // map (which resolveLiveSkillTrust filled for ALL missing authors, EVM included) so Base
+    // author identities are not discarded. Solana overlaps keep the page-wide resolution.
     const identityMap = fastMode
       ? live.identityMap
-      : await resolveSkillAuthorIdentities({
-          skills: allSkills,
-          trustMap: live.trustMap,
-          timing,
-        });
+      : new Map([
+          ...live.identityMap,
+          ...(await resolveSkillAuthorIdentities({
+            skills: allSkills,
+            trustMap: live.trustMap,
+            timing,
+          })),
+        ]);
 
     const enriched = buildEnrichedSkillRows({
       skills: allSkills,
@@ -842,6 +877,21 @@ export async function POST(request: NextRequest) {
         {
           error:
             "Invalid chain_context. Use a supported CAIP-2 value or known alias.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // EVM chain contexts are wallet-proven only: a GitHub/wallet-less publish must not be
+    // able to label a row eip155:* via the request body (Bugbot #78 — Phase 8a rule).
+    if (
+      publisher.kind !== "wallet" &&
+      explicitChainContext?.startsWith("eip155:")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "EVM chain contexts require a wallet-signed publish; GitHub publishes keep the Solana context.",
         },
         { status: 400 }
       );

@@ -21,6 +21,11 @@ export const AGENTVOUCH_EVM_AGENT_PROFILE_TUPLE =
   "uint64 dismissedDisputes, uint256 rewardIndexUsdcMicrosX1e12, " +
   "uint256 unclaimedVoucherRevenueUsdcMicros, uint64 registeredAt)";
 
+export const AGENTVOUCH_EVM_AUTHOR_REPORT_TUPLE =
+  "(bool exists, address reporter, address author, string evidenceUri, " +
+  "uint256 bondUsdcMicros, uint256 forfeitedReporterBondUsdcMicros, uint256 slashedAuthorBondUsdcMicros, " +
+  "uint8 status, uint8 ruling, uint64 openedAt, uint64 resolvedAt)";
+
 export const AGENTVOUCH_EVM_ERROR_ABI: readonly string[] = [
   "error ZeroAddress()",
   "error AlreadyInitialized()",
@@ -57,16 +62,24 @@ export const AGENTVOUCH_EVM_ERROR_ABI: readonly string[] = [
   "error PaymentRefUsed()",
   "error SettlementTxUsed()",
   "error SettlementAmountMismatch()",
+  "error ReportNotFound()",
+  "error ReportNotOpen()",
+  "error InvalidAuthor()",
 ];
 
 export const AGENTVOUCH_EVM_READ_ABI: readonly string[] = [
   ...AGENTVOUCH_EVM_ERROR_ABI,
+  "function PROTOCOL_VERSION() view returns (string)",
   `function getListing(bytes32 id) view returns (${AGENTVOUCH_EVM_SKILL_LISTING_TUPLE})`,
   `function getProfile(address agent) view returns (${AGENTVOUCH_EVM_AGENT_PROFILE_TUPLE})`,
+  `function getAuthorReport(uint64 reportId) view returns (${AGENTVOUCH_EVM_AUTHOR_REPORT_TUPLE})`,
   // pure helper; lets a caller derive a listingId from (author, skillIdHash) for DB-driven reads.
   "function listingId(address author, bytes32 skillIdHash) pure returns (bytes32)",
+  "event ProtocolVersionDeclared(string version)",
   "event SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free)",
   "event SkillListingRemoved(bytes32 indexed listingId)",
+  "event AuthorReportOpened(uint64 indexed reportId, address indexed reporter, address indexed author, uint256 bond, string evidenceUri)",
+  "event AuthorReportResolved(uint64 indexed reportId, address indexed resolver, address indexed author, uint8 ruling, uint256 returnedReporterBond, uint256 forfeitedReporterBond, uint256 slashedAuthorBond)",
 ];
 
 // ListingStatus enum (AgentVouchTypes.sol): Active = 0, Suspended = 1, Removed = 2.

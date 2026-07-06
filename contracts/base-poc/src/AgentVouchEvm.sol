@@ -9,7 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20ReceiveWithAuthorization} from "./interfaces/IERC20ReceiveWithAuthorization.sol";
 import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
 
-/// @title AgentVouchEvm (Base POC)
+/// @title AgentVouchEvm (Base V1 candidate)
 /// @notice Spec-port of AgentVouch's USDC-native protocol to Base/EVM. Decision
 ///         instrument only; Solana (`programs/agentvouch`) remains canonical.
 /// @dev    No rent/ATA/PDA concepts: the contract custodies USDC and tracks every
@@ -22,6 +22,8 @@ import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
 ///         revoke_vouch, remove_listing, claim_voucher_revenue, refund claims.
 contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    string public constant PROTOCOL_VERSION = "base-v1-candidate";
 
     // Matches Solana REWARD_INDEX_SCALE (state/skill_listing.rs).
     uint256 internal constant REWARD_INDEX_SCALE = 1e12;
@@ -43,9 +45,12 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     mapping(bytes32 => AgentVouchTypes.SkillListing) internal listings; // keccak256(author, skillIdHash)
     mapping(bytes32 => mapping(uint64 => AgentVouchTypes.ListingSettlement)) internal settlements;
     mapping(bytes32 => AgentVouchTypes.Purchase) internal purchases; // keccak256(buyer, listingId, revision)
+    mapping(uint64 => AgentVouchTypes.AuthorReport) internal authorReports;
+    uint64 public nextAuthorReportId = 1;
     mapping(bytes32 => bool) public usedPaymentRefHash; // x402 payment-ref idempotency guard
     mapping(bytes32 => bool) public usedSettlementTxHash; // x402 settlement-tx idempotency guard
 
+    event ProtocolVersionDeclared(string version);
     event ConfigInitialized(address indexed usdc, string chainContext);
     event PausedSet(address indexed by, bool paused);
     event AgentRegistered(address indexed agent, string metadataUri, uint64 registeredAt);
@@ -72,6 +77,18 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         bytes32 settlementTxHash,
         address buyer,
         uint256 amount
+    );
+    event AuthorReportOpened(
+        uint64 indexed reportId, address indexed reporter, address indexed author, uint256 bond, string evidenceUri
+    );
+    event AuthorReportResolved(
+        uint64 indexed reportId,
+        address indexed resolver,
+        address indexed author,
+        AgentVouchTypes.Ruling ruling,
+        uint256 returnedReporterBond,
+        uint256 forfeitedReporterBond,
+        uint256 slashedAuthorBond
     );
 
     error ZeroAddress();
@@ -109,6 +126,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error PaymentRefUsed();
     error SettlementTxUsed();
     error SettlementAmountMismatch();
+    error ReportNotFound();
+    error ReportNotOpen();
+    error InvalidAuthor();
 
     /// @param usdc_ 6-decimal USDC token on the target Base network.
     /// @param admin holder of every role for the POC (a multisig/timelock in prod).
@@ -121,6 +141,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         _grantRole(TREASURY_ROLE, admin);
         _grantRole(SETTLEMENT_ROLE, admin);
         _grantRole(PAUSE_ROLE, admin);
+        emit ProtocolVersionDeclared(PROTOCOL_VERSION);
     }
 
     // --- Config & pause (initialize_config, set_paused) ---
@@ -388,6 +409,102 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         emit X402Settled(pId, paymentRefHash, settlementTxHash, buyer, amount);
     }
 
+    // --- Reports (Base v1 minimal trust layer) ---
+
+    /// @notice Opens an author-wide report. The reporter's bond is held until
+    ///         founder/admin resolution. Reports increment open exposure immediately,
+    ///         locking author bond exits and active vouch revocation while unresolved.
+    function openReport(address author, string calldata evidenceUri)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint64 reportId)
+    {
+        if (!configInitialized) revert NotInitialized();
+        if (author == address(0) || author == msg.sender) revert InvalidAuthor();
+        if (bytes(evidenceUri).length == 0) revert EmptyMetadata();
+        if (!profiles[msg.sender].registered || !profiles[author].registered) revert NotRegistered();
+
+        uint256 bond = config.disputeBondUsdcMicros;
+        if (bond == 0) revert ZeroAmount();
+
+        reportId = nextAuthorReportId++;
+        authorReports[reportId] = AgentVouchTypes.AuthorReport({
+            exists: true,
+            reporter: msg.sender,
+            author: author,
+            evidenceUri: evidenceUri,
+            bondUsdcMicros: bond,
+            forfeitedReporterBondUsdcMicros: 0,
+            slashedAuthorBondUsdcMicros: 0,
+            status: AgentVouchTypes.ReportStatus.Open,
+            ruling: AgentVouchTypes.Ruling.Dismissed,
+            openedAt: uint64(block.timestamp),
+            resolvedAt: 0
+        });
+
+        profiles[author].openDisputes += 1;
+        usdc.safeTransferFrom(msg.sender, address(this), bond);
+        emit AuthorReportOpened(reportId, msg.sender, author, bond, evidenceUri);
+    }
+
+    /// @notice Resolves a report. The resolver may forfeit a dismissed reporter's
+    ///         bond to the author, which gives the founder/admin path a bounded
+    ///         griefing deterrent without changing the public Dismissed ruling.
+    ///         Upheld reports return the reporter bond and slash up to one dispute
+    ///         bond from the author's posted bond as a bounded MVP penalty.
+    /// @dev Intentionally callable while paused so incident response can clear
+    ///      report locks without unpausing the market.
+    function resolveReport(uint64 reportId, AgentVouchTypes.Ruling ruling, bool forfeitReporterBond)
+        external
+        onlyRole(RESOLVER_ROLE)
+        nonReentrant
+        returns (uint256 returnedReporterBond, uint256 forfeitedReporterBond, uint256 slashedAuthorBond)
+    {
+        AgentVouchTypes.AuthorReport storage report = authorReports[reportId];
+        if (!report.exists) revert ReportNotFound();
+        if (report.status != AgentVouchTypes.ReportStatus.Open) revert ReportNotOpen();
+
+        AgentVouchTypes.AgentProfile storage authorProfile = profiles[report.author];
+        report.status = AgentVouchTypes.ReportStatus.Resolved;
+        report.ruling = ruling;
+        report.resolvedAt = uint64(block.timestamp);
+        authorProfile.openDisputes -= 1;
+
+        if (ruling == AgentVouchTypes.Ruling.Dismissed && forfeitReporterBond) {
+            forfeitedReporterBond = report.bondUsdcMicros;
+            report.forfeitedReporterBondUsdcMicros = forfeitedReporterBond;
+        } else {
+            returnedReporterBond = report.bondUsdcMicros;
+        }
+        report.bondUsdcMicros = 0;
+
+        if (ruling == AgentVouchTypes.Ruling.Upheld) {
+            authorProfile.upheldDisputes += 1;
+            slashedAuthorBond = authorProfile.authorBondUsdcMicros;
+            if (slashedAuthorBond > config.disputeBondUsdcMicros) {
+                slashedAuthorBond = config.disputeBondUsdcMicros;
+            }
+            if (slashedAuthorBond > 0) {
+                authorProfile.authorBondUsdcMicros -= slashedAuthorBond;
+                report.slashedAuthorBondUsdcMicros = slashedAuthorBond;
+            }
+        } else {
+            authorProfile.dismissedDisputes += 1;
+        }
+
+        uint256 reporterPayout = returnedReporterBond + slashedAuthorBond;
+        if (reporterPayout > 0) {
+            usdc.safeTransfer(report.reporter, reporterPayout);
+        }
+        if (forfeitedReporterBond > 0) {
+            usdc.safeTransfer(report.author, forfeitedReporterBond);
+        }
+        emit AuthorReportResolved(
+            reportId, msg.sender, report.author, ruling, returnedReporterBond, forfeitedReporterBond, slashedAuthorBond
+        );
+    }
+
     /// @dev Validates a listing is purchasable (exists, active, not dispute-locked, paid).
     function _purchasableListing(bytes32 id) internal view returns (AgentVouchTypes.SkillListing storage l) {
         l = listings[id];
@@ -562,5 +679,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     function getPurchase(bytes32 pId) external view returns (AgentVouchTypes.Purchase memory) {
         return purchases[pId];
+    }
+
+    function getAuthorReport(uint64 reportId) external view returns (AgentVouchTypes.AuthorReport memory) {
+        return authorReports[reportId];
     }
 }

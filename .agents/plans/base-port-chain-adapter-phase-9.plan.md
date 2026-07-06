@@ -15,11 +15,11 @@ todos:
     content: If Solana remains selectable after Phase 8, run a targeted Solana direct-purchase/raw-download regression and note sponsored-checkout status separately.
     status: pending
   - id: scope-base-v1-trust-layer
-    content: Specify the Base v1 contract/web delta for minimal trust: vouch/revoke, author bond, founder-resolved disputes/reports, trust reads/snapshots, and mainnet-safe ownership.
-    status: pending
+    content: "IN PROGRESS 2026-07-06 (a2a-loop slice, PR #78): the report/dispute primitive is scoped AND implemented — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE with a forfeitReporterBond anti-griefing lever (added after the a2a review-1 blocker: always-refunded dismissal made bond/exit-locking griefing free), upheld slash bounded to min(authorBond, reportBond). vouch/revoke + author bond preserved from the POC. STILL OPEN: ownership/custody policy, snapshot-vs-live Base trust decision, reporter-vs-treasury bounty routing decision."
+    status: in_progress
   - id: implement-and-audit-base-v1
-    content: Implement the approved v1 trust/payment contract delta and web trust surfaces, then complete forge/web tests and an external security review before any Phase 10 mainnet default.
-    status: pending
+    content: "IN PROGRESS 2026-07-06 (a2a-loop slice, PR #78): reports primitive + live Base trust on /skills implemented and gated — forge 75/75 (9-test Reports suite) and web 90 files/566 tests re-verified independently by Claude on 2026-07-06, matching the a2a run.log. STILL OPEN: report/vouch UI surfaces, Deploy.s.sol + ui/src/abi.ts sync, forge CI gate, internal + external security review (the audit half of this todo has not started)."
+    status: in_progress
 isProject: false
 ---
 
@@ -78,6 +78,24 @@ Out of scope:
   founder-resolved disputes/reports first.
 - Removing Solana.
 - Multi-EVM support beyond Base Sepolia/mainnet planning.
+
+## Progress Notes
+
+- 2026-07-06 (a2a-loop autonomous run, PR #78, branch `a2a/20260706-211053-898015`): shipped the
+  first 9b slice — Base v1 author reports in `AgentVouchEvm.sol` (`base-v1-candidate` version
+  constant, `openReport`/`resolveReport` + `getAuthorReport`, `ReportStatus`/`AuthorReport` types,
+  9-test Reports forge suite) and live chain-split Base trust on `/skills`
+  (`resolveLiveSkillTrust` resolves EVM authors via `resolveBaseAuthorTrust`; Base authors no
+  longer render trust-null; no Solana trust attaches to EVM authors). The loop's own review-1
+  caught a real mechanism gap — dismissed reports refunded the reporter's bond unconditionally,
+  making author-bond/voucher-exit lock griefing free — fixed in round 2 with the resolver's
+  `forfeitReporterBond` dismissal lever plus a balance-delta forge test. The run's sandbox was
+  read-only for `.agents/`, so this ledger update lands from a write-capable session (verified
+  against the diff, the a2a run.log, and an independent re-run of forge 75/75 + web 566/566).
+- Follow-ups carried from the a2a reviews: wire `forge test --root contracts/base-poc` into CI
+  before 9c closeout; decide reporter-bounty vs treasury routing for upheld slashes before
+  mainnet; close the snapshot-vs-live Base trust question before Phase 10 traffic (live per-author
+  RPC reads on `/skills` are plan-sanctioned for Sepolia only); Part A live smokes untouched.
 
 ## Part A - Base Sepolia E2E Proof
 
