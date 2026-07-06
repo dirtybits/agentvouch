@@ -17,6 +17,7 @@ import {
   getAgentVouchChainContext,
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
+import { normalizeInputChainContext } from "@/lib/chains";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -101,10 +102,17 @@ export async function POST(
   const skillEvmContractAddress =
     "evm_contract_address" in skill ? skill.evm_contract_address : null;
 
-  const isBasePurchase =
-    chainContext?.startsWith("eip155:") ||
-    Boolean(listingId) ||
-    Boolean(skillEvmListingId);
+  // The skill row's chain context decides the verification family (Phase 7 boundary rule);
+  // an explicit EVM request context is honored exclusively. The presence of listingId or a
+  // leftover evm_listing_id must NOT force Solana-context rows onto the Base path (Bugbot #78).
+  const skillChainContext = normalizeInputChainContext(
+    "chain_context" in skill ? skill.chain_context : null
+  );
+  const requestedChainContext = normalizeInputChainContext(chainContext);
+  const isBasePurchase = Boolean(
+    skillChainContext?.startsWith("eip155:") ||
+      requestedChainContext?.startsWith("eip155:")
+  );
   if (isBasePurchase) {
     if (id.startsWith(CHAIN_PREFIX)) {
       return NextResponse.json(

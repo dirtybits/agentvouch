@@ -255,14 +255,21 @@ function isRetryableBaseListingLinkError(status: number, message: string) {
 async function patchBaseListingWithRetry(
   skillDbId: string,
   baseListing: BaseListingPatchPayload,
+  signBaseAuth: (message: string) => Promise<string>,
+  authorAddress: string,
   attempts = 5
 ): Promise<void> {
   let lastMessage = "Skill saved, but failed to link the on-chain listing";
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    // Fresh auth per attempt: the payload is timestamp-bound (5 min window server-side).
+    const timestamp = Date.now();
+    const message = `AgentVouch Skill Repo\nAction: link-base-listing\nSkill id: ${skillDbId}\nTimestamp: ${timestamp}`;
+    const signature = await signBaseAuth(message);
+    const auth = { pubkey: authorAddress, signature, message, timestamp };
     const patchRes = await fetch(`/api/skills/${skillDbId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baseListing }),
+      body: JSON.stringify({ auth, baseListing }),
     });
 
     if (patchRes.ok) return;
@@ -597,9 +604,16 @@ function PublishSkillPageInner() {
 
       setPublishStep("chain");
       try {
-        if (baseWalletActive && baseChainWallet && baseWalletAddress) {
+        if (
+          baseWalletActive &&
+          baseChainWallet &&
+          baseChainWallet.signMessage &&
+          baseWalletAddress
+        ) {
           // Phase 8a default paid path: Base Sepolia through the ChainWallet
-          // seam, linked via the chain-verified baseListing PATCH.
+          // seam, linked via the chain-verified + author-signed baseListing PATCH.
+          const signBaseAuth =
+            baseChainWallet.signMessage.bind(baseChainWallet);
           try {
             const listingResult = await baseChainWallet.createSkillListing({
               skillId: cleanId,
@@ -609,21 +623,31 @@ function PublishSkillPageInner() {
               priceUsdcMicros: BigInt(onChainPriceUsdcMicros),
             });
 
-            await patchBaseListingWithRetry(skillDbId, {
-              txHash: listingResult.ref,
-              authorAddress: baseWalletAddress,
-              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-              expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
-            });
+            await patchBaseListingWithRetry(
+              skillDbId,
+              {
+                txHash: listingResult.ref,
+                authorAddress: baseWalletAddress,
+                chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+                expectedPriceUsdcMicros: String(onChainPriceUsdcMicros),
+              },
+              signBaseAuth,
+              baseWalletAddress
+            );
           } catch (error) {
             if (!isBaseListingExistsError(error)) {
               throw error;
             }
-            await patchBaseListingWithRetry(skillDbId, {
-              relinkExisting: true,
-              authorAddress: baseWalletAddress,
-              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-            });
+            await patchBaseListingWithRetry(
+              skillDbId,
+              {
+                relinkExisting: true,
+                authorAddress: baseWalletAddress,
+                chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              },
+              signBaseAuth,
+              baseWalletAddress
+            );
           }
         } else {
           const paidAuthorPubkey = publicKey!;

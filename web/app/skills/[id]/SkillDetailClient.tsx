@@ -665,6 +665,17 @@ export default function SkillDetailPage({
           return;
         }
 
+        if (!activeChainWallet.signMessage) {
+          setListResult({
+            success: false,
+            message:
+              "This Base wallet cannot sign the listing-link authorization message.",
+          });
+          return;
+        }
+        const signBaseAuth =
+          activeChainWallet.signMessage.bind(activeChainWallet);
+
         const patchBaseListing = async (
           baseListing:
             | {
@@ -679,10 +690,20 @@ export default function SkillDetailPage({
                 chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
               }
         ) => {
+          // Author-signed link auth (Bugbot #78 parity with the Solana PATCH path).
+          const timestamp = Date.now();
+          const message = `AgentVouch Skill Repo\nAction: link-base-listing\nSkill id: ${id}\nTimestamp: ${timestamp}`;
+          const signature = await signBaseAuth(message);
+          const auth = {
+            pubkey: activeWalletAddress,
+            signature,
+            message,
+            timestamp,
+          };
           const patchRes = await fetch(`/api/skills/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ baseListing }),
+            body: JSON.stringify({ auth, baseListing }),
           });
           if (!patchRes.ok) {
             const patchBody = (await patchRes.json().catch(() => null)) as {

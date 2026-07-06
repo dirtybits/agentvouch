@@ -882,6 +882,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // EVM chain contexts are wallet-proven only: a GitHub/wallet-less publish must not be
+    // able to label a row eip155:* via the request body (Bugbot #78 — Phase 8a rule).
+    if (
+      publisher.kind !== "wallet" &&
+      explicitChainContext?.startsWith("eip155:")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "EVM chain contexts require a wallet-signed publish; GitHub publishes keep the Solana context.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Row chain context follows the publisher's wallet chain when not explicit
     // (Phase 8a): EVM publishers stamp Base Sepolia; Solana publishers and
     // wallet-less GitHub publishes keep the configured Solana context — the

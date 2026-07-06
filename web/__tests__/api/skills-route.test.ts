@@ -597,6 +597,12 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: link-base-listing",
+            timestamp: Date.now(),
+          },
           baseListing: {
             txHash:
               "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -619,6 +625,43 @@ describe("PATCH /api/skills/[id]", () => {
       expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
     });
     expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a baseListing PATCH without wallet signature auth (Bugbot #78)", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "skill-one",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Skill One",
+      description: "desc",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    const dbQuery = vi.fn().mockResolvedValueOnce([baseSkill]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
   });
 
   it("relinks an existing Base listing without requiring the original tx hash", async () => {
@@ -672,6 +715,12 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: link-base-listing",
+            timestamp: Date.now(),
+          },
           baseListing: {
             relinkExisting: true,
             authorAddress: "0x1111111111111111111111111111111111111111",
@@ -717,6 +766,12 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: link-base-listing",
+            timestamp: Date.now(),
+          },
           baseListing: {
             txHash:
               "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

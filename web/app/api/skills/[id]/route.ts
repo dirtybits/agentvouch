@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAuthorTrust } from "@/lib/trust";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
@@ -523,6 +524,35 @@ export async function PATCH(
       const row = rows[0];
       if (!row) {
         return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+      }
+
+      // Parity with the Solana PATCH path (Bugbot #78): linking on-chain state to a repo row
+      // requires proof of wallet control, not just a public UUID + the stored author address.
+      // All written fields are still chain-verified below; this gates who can trigger the sync.
+      if (!auth) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing linking requires wallet signature auth (auth payload missing).",
+          },
+          { status: 401 }
+        );
+      }
+      const evmAuthVerification = await verifyEvmWalletSignature(auth);
+      if (!evmAuthVerification.valid || !evmAuthVerification.pubkey) {
+        return NextResponse.json(
+          { error: evmAuthVerification.error || "Invalid signature" },
+          { status: 401 }
+        );
+      }
+      if (
+        !row.author_pubkey ||
+        evmAuthVerification.pubkey !== row.author_pubkey.toLowerCase()
+      ) {
+        return NextResponse.json(
+          { error: "Only the Base skill author can link this listing" },
+          { status: 403 }
+        );
       }
       if (
         normalizeInputChainContext(row.chain_context) !==
