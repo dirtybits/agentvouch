@@ -1,7 +1,9 @@
 import { after } from "next/server";
 import { isAddress } from "@solana/kit";
+import { isAddress as isEvmAddress } from "viem";
 import type { AgentTrustSummary } from "@/lib/agentDiscovery";
 import { AUTHOR_TRUST_SNAPSHOT_STALE_MS } from "@/lib/cachePolicy";
+import { isEvmShapedAddress } from "@/lib/chainAddress";
 import type { AuthorTrust } from "@/lib/trust";
 import { refreshAuthorTrustSnapshotsFor } from "@/lib/trustSnapshots";
 
@@ -64,7 +66,13 @@ export function partitionAuthorsByTrustFreshness(
 
   for (const row of rows) {
     const author = row.author_pubkey;
-    if (!author || !isAddress(author)) continue;
+    if (
+      !author ||
+      (!isAddress(author) &&
+        !(isEvmShapedAddress(author) && isEvmAddress(author)))
+    ) {
+      continue;
+    }
     const hasCached = Boolean(getCachedTrust(row));
     const refreshedAt = row.cached_trust_refreshed_at ?? null;
     const existing = byAuthor.get(author);

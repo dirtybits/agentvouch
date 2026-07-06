@@ -53,7 +53,10 @@ import {
   hasChainUsdcPurchaseEntitlement,
   hasUsdcPurchaseEntitlement,
 } from "@/lib/usdcPurchases";
-import { normalizeChainAddressForStorage } from "@/lib/chainAddress";
+import {
+  isEvmShapedAddress,
+  normalizeChainAddressForStorage,
+} from "@/lib/chainAddress";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
 import { getConfiguredUsdcMint } from "@/lib/x402";
@@ -276,12 +279,38 @@ async function resolveLiveSkillTrust(input: {
   identityMap: Map<string, AgentIdentitySummary>;
 }> {
   const authorPubkeys = input.authorPubkeys;
-  const trustMap =
-    authorPubkeys.length > 0
-      ? await input.timing.measure("trust", () =>
-          resolveMultipleAuthorTrust(authorPubkeys)
+  const evmAuthors = authorPubkeys.filter(
+    (authorPubkey) =>
+      isEvmShapedAddress(authorPubkey) && isEvmAddress(authorPubkey)
+  );
+  const solanaAuthors = authorPubkeys.filter(
+    (authorPubkey) => !isEvmShapedAddress(authorPubkey)
+  );
+  const trustMap = new Map<string, AuthorTrust>();
+  if (solanaAuthors.length > 0) {
+    const solanaTrust = await input.timing.measure("trust-solana", () =>
+      resolveMultipleAuthorTrust(solanaAuthors)
+    );
+    for (const [authorPubkey, trust] of solanaTrust.entries()) {
+      trustMap.set(authorPubkey, trust);
+    }
+  }
+  if (evmAuthors.length > 0) {
+    await input.timing.measure("trust-base", async () => {
+      const baseTrustEntries = await Promise.all(
+        evmAuthors.map(
+          async (authorPubkey) =>
+            [
+              authorPubkey,
+              await resolveBaseAuthorTrust(getEvmAddress(authorPubkey)),
+            ] as const
         )
-      : new Map<string, AuthorTrust>();
+      );
+      for (const [authorPubkey, trust] of baseTrustEntries) {
+        trustMap.set(authorPubkey, trust);
+      }
+    });
+  }
   let identityMap = new Map<string, AgentIdentitySummary>();
   if (authorPubkeys.length > 0) {
     try {

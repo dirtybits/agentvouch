@@ -187,4 +187,21 @@ describe("phase 8a: trust stays chain-qualified and honest after the flip", () =
     // Solana authors, no synthesized boost.
     expect(browse).toContain("(b.author_trust?.reputationScore ?? 0)");
   });
+
+  it("Base v1 report counters stay readable through the EVM trust ABI", () => {
+    const abi = read("lib/adapters/agentVouchEvmAbi.ts");
+    expect(abi).toContain("function PROTOCOL_VERSION() view returns (string)");
+    expect(abi).toContain("AGENTVOUCH_EVM_AUTHOR_REPORT_TUPLE");
+    expect(abi).toContain("function getAuthorReport(uint64 reportId)");
+    expect(abi).toContain("event AuthorReportOpened");
+    expect(abi).toContain("event AuthorReportResolved");
+
+    const trust = read("lib/baseAuthorTrust.ts");
+    expect(trust).toContain("openDisputes: bigint");
+    expect(trust).toContain("upheldDisputes: bigint");
+    expect(trust).toContain("dismissedDisputes: bigint");
+    expect(trust).toContain(
+      "activeDisputesAgainstAuthor +\n      disputesUpheldAgainstAuthor +\n      dismissedDisputes"
+    );
+  });
 });

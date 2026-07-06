@@ -64,3 +64,5 @@ __pycache__/
 evals/skill-scan/results*.json
 evals/skill-scan/run.*.log
 .neon
+.a2a/
+a2a-logs/

@@ -216,11 +216,7 @@ contract Gasless4337Test is Test {
     }
 
     /// @dev Encode a two-call SimpleAccount.executeBatch (e.g. approve + protocol action).
-    function _batch2(address t0, bytes memory d0, address t1, bytes memory d1)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function _batch2(address t0, bytes memory d0, address t1, bytes memory d1) internal pure returns (bytes memory) {
         address[] memory dest = new address[](2);
         dest[0] = t0;
         dest[1] = t1;

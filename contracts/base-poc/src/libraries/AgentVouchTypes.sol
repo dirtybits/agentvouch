@@ -39,6 +39,11 @@ library AgentVouchTypes {
         Dismissed
     }
 
+    enum ReportStatus {
+        Open,
+        Resolved
+    }
+
     /// @dev Mirrors Solana `Config` (state/config.rs) minus the authority pubkeys
     ///      (now AccessControl roles) and the SPL token-program/vault pointers.
     struct Config {
@@ -140,5 +145,21 @@ library AgentVouchTypes {
         uint256 authorShareUsdcMicros;
         uint256 voucherPoolUsdcMicros;
         uint64 timestamp;
+    }
+
+    /// @dev Minimal Base v1 author report. This is intentionally author-wide:
+    ///      skill/listing-specific refund and voucher-slashing machinery stays deferred.
+    struct AuthorReport {
+        bool exists;
+        address reporter;
+        address author;
+        string evidenceUri;
+        uint256 bondUsdcMicros;
+        uint256 forfeitedReporterBondUsdcMicros;
+        uint256 slashedAuthorBondUsdcMicros;
+        ReportStatus status;
+        Ruling ruling;
+        uint64 openedAt;
+        uint64 resolvedAt;
     }
 }
