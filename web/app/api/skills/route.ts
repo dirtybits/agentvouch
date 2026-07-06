@@ -858,13 +858,12 @@ export async function POST(request: NextRequest) {
         : configuredSolanaChainContext);
     if (
       publisher.kind === "wallet" &&
-      publisher.walletChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
-      normalizedChainContext !== BASE_SEPOLIA_CHAIN_CONTEXT
+      normalizedChainContext !== publisher.walletChainContext
     ) {
       return NextResponse.json(
         {
           error:
-            "Base-authored skills must use the Base Sepolia chain context.",
+            "Wallet-authored skills must use the signing wallet chain context.",
         },
         { status: 400 }
       );

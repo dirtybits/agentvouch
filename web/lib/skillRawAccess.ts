@@ -1199,7 +1199,7 @@ export async function resolveSkillAccess(
 
   if (normalizeUsdcMicros(skill.price_usdc_micros)) {
     skill.currency_mint ??=
-      skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT && skill.evm_listing_id
+      skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT
         ? BASE_NATIVE_USDC_ADDRESS
         : getConfiguredUsdcMint();
     return handleUsdcDirect(request, id, skill);

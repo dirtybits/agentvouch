@@ -441,6 +441,37 @@ describe("POST /api/skills", () => {
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(dbQuery).not.toHaveBeenCalled();
   });
+
+  it("rejects a Solana-signed publish that tries to stamp a Base chain context", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: {
+          pubkey: "AuthorWallet1111111111111111111111111111111",
+          signature: "sig",
+          message: "msg",
+          timestamp: Date.now(),
+        },
+        skill_id: "base-stamped-by-solana",
+        name: "Base Stamped By Solana",
+        description: "Should fail before DB writes",
+        tags: [],
+        content: "# Base Stamped By Solana\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "Wallet-authored skills must use the signing wallet chain context.",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
 });
 
 describe("PATCH /api/skills/[id]", () => {
