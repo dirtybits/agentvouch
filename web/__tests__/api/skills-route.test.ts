@@ -18,6 +18,14 @@ vi.mock("@/lib/auth", () => ({
   verifyWalletSignature: vi.fn(),
 }));
 
+vi.mock("@/lib/evmAuth", () => ({
+  verifyEvmWalletSignature: vi.fn(),
+}));
+
+vi.mock("@/lib/baseAuthorTrust", () => ({
+  resolveBaseAuthorTrust: vi.fn(),
+}));
+
 vi.mock("@/lib/trust", () => ({
   verifyAuthorTrust: vi.fn(),
   resolveMultipleAuthorTrust: vi.fn(),
@@ -76,6 +84,8 @@ vi.mock("@/lib/skillRouteResolver", async (importOriginal) => {
 import { POST } from "@/app/api/skills/route";
 import { PATCH } from "@/app/api/skills/[id]/route";
 import { verifyWalletSignature } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { initializeDatabase, sql } from "@/lib/db";
 import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
@@ -93,6 +103,10 @@ const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockVerifyEvmWalletSignature =
+  verifyEvmWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockResolveBaseAuthorTrust =
+  resolveBaseAuthorTrust as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyAuthorTrust = verifyAuthorTrust as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -132,7 +146,12 @@ describe("POST /api/skills", () => {
       valid: true,
       pubkey: "AuthorWallet1111111111111111111111111111111",
     });
+    mockVerifyEvmWalletSignature.mockResolvedValue({
+      valid: true,
+      pubkey: "0x1111111111111111111111111111111111111111",
+    });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
+    mockResolveBaseAuthorTrust.mockResolvedValue({ isRegistered: true });
     mockGetGithubSessionFromRequest.mockReturnValue(null);
     mockPinSkillContent.mockResolvedValue({
       success: true,
@@ -338,6 +357,121 @@ describe("POST /api/skills", () => {
     // No DB write should have happened.
     expect(dbQuery).not.toHaveBeenCalled();
   });
+
+  it("accepts an explicit Base USDC currency mint on paid Base publishes", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-base-skill",
+          skill_id: "base-skill",
+          author_pubkey: "0x1111111111111111111111111111111111111111",
+          name: "Base Skill",
+          description: "Base paid skill",
+          tags: [],
+          current_version: 1,
+          ipfs_cid: "bafy-test-cid",
+          on_chain_address: null,
+          chain_context: "eip155:84532",
+          price_usdc_micros: "10000",
+          currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          total_installs: 0,
+          contact: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: {
+          pubkey: "0x1111111111111111111111111111111111111111",
+          signature: "sig",
+          message: "msg",
+          timestamp: Date.now(),
+        },
+        skill_id: "base-skill",
+        name: "Base Skill",
+        description: "Base paid skill",
+        tags: [],
+        content: "# Base Skill\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+        currency_mint: "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(dbQuery.mock.calls[0][17]).toBe("eip155:84532");
+    expect(dbQuery.mock.calls[0][18]).toBe("10000");
+    expect(dbQuery.mock.calls[0][19]).toBe(
+      "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    );
+  });
+
+  it("rejects a Solana currency mint on paid Base publishes", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: {
+          pubkey: "0x1111111111111111111111111111111111111111",
+          signature: "sig",
+          message: "msg",
+          timestamp: Date.now(),
+        },
+        skill_id: "base-skill",
+        name: "Base Skill",
+        description: "Base paid skill",
+        tags: [],
+        content: "# Base Skill\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+        currency_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "currency_mint must be a valid Base USDC address",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Solana-signed publish that tries to stamp a Base chain context", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: {
+          pubkey: "AuthorWallet1111111111111111111111111111111",
+          signature: "sig",
+          message: "msg",
+          timestamp: Date.now(),
+        },
+        skill_id: "base-stamped-by-solana",
+        name: "Base Stamped By Solana",
+        description: "Should fail before DB writes",
+        tags: [],
+        content: "# Base Stamped By Solana\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "Wallet-authored skills must use the signing wallet chain context.",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
 });
 
 describe("PATCH /api/skills/[id]", () => {
@@ -482,7 +616,79 @@ describe("PATCH /api/skills/[id]", () => {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       authorAddress: "0x1111111111111111111111111111111111111111",
       expectedPriceUsdcMicros: "10000",
-      expectedUri: "http://localhost/api/skills/uuid-skill-1/raw",
+      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+    });
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("relinks an existing Base listing without requiring the original tx hash", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    const updated = {
+      ...baseSkill,
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_tx_hash: null,
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListing.mockResolvedValueOnce({
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      txHash: null,
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      skillIdHash:
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      priceUsdcMicros: "10000",
+      currencyMint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      protocolVersion: "base-poc-v0",
+      onChainProgramId: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      chainContext: "eip155:84532",
+      listingRevision: "1",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
+      skill: baseSkill,
+      txHash: null,
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      expectedPriceUsdcMicros: null,
+      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
     });
     expect(dbQuery).toHaveBeenCalledTimes(2);
   });

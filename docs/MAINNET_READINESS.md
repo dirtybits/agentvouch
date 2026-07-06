@@ -2,6 +2,16 @@
 
 `v0.2.0` is a USDC-native devnet release. It is not mainnet-ready until the items below are complete and reviewed.
 
+> **Update (2026-07-02): the mainnet target is now Base, not Solana.** After the Base port
+> (phases 2–7) and the Phase 8a default flip (PR #74: Base Sepolia is the default new-user
+> writable path behind a Solana rollback env), the launch vehicle is **Base mainnet
+> (`eip155:8453`)**, gated by `.agents/plans/base-port-chain-adapter-phase-10.plan.md`. See
+> [Base Mainnet Track](#base-mainnet-track-2026-07-02) below. The Solana-specific material in
+> the rest of this document remains the readiness record for the **Solana track**, which stays
+> selectable as the rollback/fallback chain — it is no longer the near-term launch path, and
+> its remaining blockers (dispute governance/A2, authority custody, refund reserve) gate a
+> Solana mainnet launch only if that decision is revisited.
+
 ## Current Assessment
 
 AgentVouch is close to a mainnet release candidate, but should not be treated as mainnet-ready yet.
@@ -28,21 +38,65 @@ The next milestone should be framed as **Mainnet Release Candidate**, not final 
 
 > **Update (2026-06-17): A2 plan review found additional design-lock blockers.** The A2 branch should not move into Anchor implementation until the plan explicitly locks: A2 as a devnet clean break, cancellable pending resolutions, buyer-first paid refunds, program-computed refund pools, zero-refund paid dispute behavior, serialized author-bond exposure, residual/expired fund ownership, reserve-aware treasury sweep rules, and dispute-economic snapshots. See [A2 Extra Review Findings](#a2-extra-review-findings-2026-06-17).
 
+## Base Mainnet Track (2026-07-02)
+
+The authoritative gate checklist lives in
+`.agents/plans/base-port-chain-adapter-phase-10.plan.md` (kept there, not duplicated here, so it
+cannot drift). Summary of where the Base track stands and what blocks mainnet:
+
+**Shipped (Base Sepolia, testnet):**
+
+- Phases 2–7: chain adapter/wallet seams, Base passkey `ChainWallet` writes, Base
+  listing/purchase verification, EIP-3009 x402 settlement, chain-qualified DB semantics
+  (Phase 6 live migration applied to `agentvouch-postgres`), chain-aware address/explorer
+  boundaries.
+- Phase 8a (PR #74): Base Sepolia is the default new-user writable path behind the
+  single-var rollback (`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`), EVM publisher
+  auth (ERC-1271/6492), Base paid publish through the `ChainWallet` seam. `eip155:8453` is
+  explicitly rejected in code — enabling it before the Phase 10 gates pass is a stop-the-line bug.
+
+**Blocking Base mainnet (Phase 9 + Phase 10 gates — see the Phase 10 plan for the full checklist):**
+
+1. The deployed contract is the **`base-poc-v0` spike** (`contracts/base-poc/`), EOA-deployed
+   and unaudited. It must not ship to mainnet. Phase 9 owns the v1 contract with the minimal
+   trust layer (vouch/revoke, author bond, founder-resolved reports) — without it, Base is a
+   paid marketplace without the stake-backed reputation differentiator.
+2. Internal + external security review of the v1 contract (the [Security Review](#security-review)
+   expectations apply to every USDC-moving function, translated to the EVM surface: EIP-3009
+   authorization binding, reentrancy, split accounting, pause semantics).
+3. Authority custody: multisig (or documented alternative) for the v1 roles; the x402 relayer
+   must be a dedicated low-privilege funded EOA (never the deployer key), with custody, spend
+   limits, and monitoring — settlement fails closed without `BASE_X402_RELAYER_PRIVATE_KEY`.
+4. Mainnet infra: contract deploy + deployment state doc, archive-capable RPC, native USDC
+   config, CDP mainnet paymaster/bundler with funded gas policy and spend limits.
+5. Base-chain parameterization sweep: ~13 modules are Sepolia-pinned by constant and must move
+   behind a configured-Base-chain seam before `eip155:8453` can be enabled (detailed in the Phase 10
+   plan scope).
+6. Sepolia-row policy: decide how existing `eip155:84532` listings/entitlements render once
+   mainnet is the default (display/purchase policy only — Phase 6 chain-qualified rows need no
+   schema migration).
+
+The [Authority Policy](#authority-policy), [Monitoring](#monitoring),
+[Incident Response](#incident-response), and [Security Review](#security-review) sections below
+were written for the Solana program but state chain-agnostic expectations — apply them to the
+Base v1 contract and its operational keys (admin roles, relayer, paymaster) when executing
+Phase 9 and Phase 10.
+
 ## Code Audit Findings (2026-05-30)
 
 A direct review of `programs/agentvouch/src` and the test suites downgraded the assessment above. The escrow/accounting plumbing was solid (pinned PDA derivations re-checked in handlers, `transfer_checked` throughout, checked arithmetic, x402 replay guards via payment-ref + tx-sig PDAs, dispute locks that freeze paid-listing purchases/withdrawals). But the audit found one missing load-bearing mechanism and one centralized design choice, so part of the core product and trust model — not just release hardening — was still missing.
 
 ### P0 — blocking (product + trust correctness)
 
-1. **Voucher slashing was missing in the 2026-05-30 audit; fixed on devnet 2026-06-10.** At audit time, the `AuthorBondThenVouchers` liability scope was recorded, but no instruction slashed voucher stake: `resolve_author_dispute.rs` only called `slash_author_bond_if_present`; `author_dispute.voucher_slashed_usdc_micros` was set to `0` at open and never recomputed; `VouchStatus::Slashed` (`state/vouch.rs`) was never assigned; `AuthorDisputeVouchLink` (`state/author_dispute_vouch_link.rs`) was defined but never created. Net at the time: **vouching was reward-only with zero downside** — the stake-backed-reputation thesis was not enforced on-chain. *Fix:* implement voucher slashing (debit voucher vaults, set `VouchStatus::Slashed`) and keep the active-dispute lock on `revoke_vouch`.
+1. **Voucher slashing was missing in the 2026-05-30 audit; fixed on devnet 2026-06-10.** At audit time, the `AuthorBondThenVouchers` liability scope was recorded, but no instruction slashed voucher stake: `resolve_author_dispute.rs` only called `slash_author_bond_if_present`; `author_dispute.voucher_slashed_usdc_micros` was set to `0` at open and never recomputed; `VouchStatus::Slashed` (`state/vouch.rs`) was never assigned; `AuthorDisputeVouchLink` (`state/author_dispute_vouch_link.rs`) was defined but never created. Net at the time: **vouching was reward-only with zero downside** — the stake-backed-reputation thesis was not enforced on-chain. _Fix:_ implement voucher slashing (debit voucher vaults, set `VouchStatus::Slashed`) and keep the active-dispute lock on `revoke_vouch`.
 
    > **Status (2026-06-10): deployed and smoke-tested on devnet.** Voucher slashing is live in the devnet program: upheld paid disputes park in `SlashingVouchers` and a permissionless `slash_dispute_vouches` instruction settles linked positions in pages of ≤ 4 (5 remaining accounts per position; a 4-position page measured 31 accounts, inside the tx limit). Slashed funds are ring-fenced in `ListingSettlement.slashed_deposit_usdc_micros` and exit only through `create_refund_pool`. The same program ID was upgraded in slot `468574856`; the deployed binary matched local SHA-256 `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1`, and the on-chain IDL matched local/web IDLs. Full Anchor suite green (31 tests incl. slashing tests for multi-page crank, dodge/rotation blocks, double-crank, stale-position skip-settle, residual reclaim, ring-fence, slashed-only pool, reward-vault solvency, remove/close locks, and refund-pool paths). Remaining before mainnet: external review/soak and operational governance around resolver, refund, authority custody, and pause controls.
    >
    > **Design locked (2026-06-09, supersedes the earlier sketch):** full plan in `.agents/plans/a1-voucher-slashing.plan.md`. Decisions: (1) slash set = the disputed listing's `ListingVouchPosition`s, settled in **pages** (≤ `MAX_DISPUTE_POSITIONS_PER_TX` per tx) via a new permissionless `slash_dispute_vouches` instruction, with `resolve(Upheld)` parking the dispute in a new `SlashingVouchers` status and `open_author_disputes` decremented only on the final page — a single atomic resolve-time loop does not fit Solana tx account limits at 32 positions. (2) Slashed funds are **ring-fenced** in a new `ListingSettlement.slashed_deposit_usdc_micros`: refund-pool-only, excluded from author withdrawals and from the challenger-reward base (the earlier "deposit into withdrawable proceeds" sketch let the author reclaim voucher slash via a small refund pool, and inflated the collusion prize). (3) Partial slash at `slash_percentage`, but the vouch goes to `VouchStatus::Slashed` (dead position — stops backing and earning); the residual is reclaimable through `revoke_vouch` once the author has no open disputes. (4) `link_vouch_to_listing` **and** `unlink_vouch_from_listing` are blocked while the listing is dispute-locked — without the unlink lock, vouchers can exit the slash set mid-dispute (the revoke lock alone only freezes the money, not membership). The `AuthorDisputeVouchLink` PDA init per `(dispute, vouch)` is the double-slash guard.
    >
-   > **Review amendments (2026-06-09, plan review against source):** the freeze is enforced via a new `SkillListing.locked_by_dispute` mirror — checking the *current settlement's* lock alone is bypassable, because `update_skill_listing` can bump the revision mid-dispute and `initialize_listing_settlement` then mints a fresh **unlocked** settlement (this rotation also let authors keep selling mid-dispute, escaping the refund lock; the same guard closes both). Revision bumps and new-settlement init are blocked while the listing is dispute-locked. Additionally: `accrue_author_rewards` gets a non-live status guard so Slashed vouches stop accruing author-wide rewards on residual stake (otherwise the reward vault goes insolvent — the index denominator drops the full pre-slash stake while per-vouch accrual would continue on the residual). Full details: R1–R5 in the plan file.
+   > **Review amendments (2026-06-09, plan review against source):** the freeze is enforced via a new `SkillListing.locked_by_dispute` mirror — checking the _current settlement's_ lock alone is bypassable, because `update_skill_listing` can bump the revision mid-dispute and `initialize_listing_settlement` then mints a fresh **unlocked** settlement (this rotation also let authors keep selling mid-dispute, escaping the refund lock; the same guard closes both). Revision bumps and new-settlement init are blocked while the listing is dispute-locked. Additionally: `accrue_author_rewards` gets a non-live status guard so Slashed vouches stop accruing author-wide rewards on residual stake (otherwise the reward vault goes insolvent — the index denominator drops the full pre-slash stake while per-vouch accrual would continue on the residual). Full details: R1–R5 in the plan file.
 
-2. **Dispute adjudication is a single key.** `resolve_author_dispute` and `create_refund_pool` are gated only on `config.config_authority` (`require_keys_eq!(config.config_authority, authority.key())`). One ordinary pubkey unilaterally decides Upheld/Dismissed and sizes refunds — no multisig, timelock, quorum, or appeal; on-chain evidence is a URI string. Slashed author bond is paid **100% to the challenger** (`resolve_author_dispute.rs`), not to harmed buyers, so a compromised or colluding resolver + challenger can drain any author's bond. *Fix:* multisig + timelock on the resolver authority at minimum; route slashed funds to harmed buyers (or explicitly justify otherwise); longer term, the optimistic-oracle / LLM-jury adjudication design.
+2. **Dispute adjudication is a single key.** `resolve_author_dispute` and `create_refund_pool` are gated only on `config.config_authority` (`require_keys_eq!(config.config_authority, authority.key())`). One ordinary pubkey unilaterally decides Upheld/Dismissed and sizes refunds — no multisig, timelock, quorum, or appeal; on-chain evidence is a URI string. Slashed author bond is paid **100% to the challenger** (`resolve_author_dispute.rs`), not to harmed buyers, so a compromised or colluding resolver + challenger can drain any author's bond. _Fix:_ multisig + timelock on the resolver authority at minimum; route slashed funds to harmed buyers (or explicitly justify otherwise); longer term, the optimistic-oracle / LLM-jury adjudication design.
 
 3. **No pause / emergency stop in the 2026-05-30 audit; fixed on devnet 2026-06-19.** At audit time, `config.paused` was written only at init (`= false`); no instruction set it true, so every `require!(!paused)` guard was dead code and `pause_authority` was never read. A3 adds `set_paused(paused: bool)` gated by `config.pause_authority`, emits `PauseStateChanged`, and keeps buyer/voucher claim flows open while paused. It was merged, deployed, IDL-upgraded, and live-smoked on devnet on 2026-06-19. Remaining before mainnet: put pause authority under approved custody, record the production signer policy, and repeat the smoke on the mainnet release-candidate deployment.
 
@@ -102,7 +156,7 @@ These findings are now reflected in `.agents/plans/a2-dispute-governance-v1.plan
 - If Kora sponsorship is enabled for external demo or release-candidate use: Phantom warning noise from partial Kora signing should be reduced by the prepare-time Kora signature path for sponsored purchase and registration. Before calling it release-candidate ready, smoke-test that Phantom receives the sponsor-pre-signed transaction, submit skips duplicate Kora signing, and wallet-signing blockhash expiry is refreshed cleanly.
 - Kora scope must be explicit in release notes and UI copy. The 2026-06-24 spike covers `register_agent` and `purchase_skill` only; `create_skill_listing`, `initialize_listing_settlement`, `deposit_author_bond`, `vouch`, `link_vouch_to_listing`, `open_author_dispute`, and `claim_purchase_refund` still need separate `rent_payer: Signer` interfaces plus sponsored API routes before those paths can be called no-SOL/user-gas-free.
 - If the x402 bridge is enabled: `/api/x402/supported` advertises the protocol-listed bridge only after a live devnet smoke proves settlement into the protocol vault, `settle_x402_purchase`, purchase PDA creation, entitlement recording, and paid raw download all work from a fresh buyer.
-- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7.
+- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7. _(2026-07-02: that separate Base launch plan has now been adopted — the framing inverted. Base mainnet via the Phase 10 gate plan is the launch path, and this Solana RC gate list applies only if the Solana track is revisited. See [Base Mainnet Track](#base-mainnet-track-2026-07-02).)_
 - Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
 - If Kora sponsorship is enabled: Kora endpoint, auth mode, fee token, signer backend, payer account, validation allowlists, spend caps, and emergency disable env are frozen and recorded in the production runbook.
 - If the x402 bridge is enabled: facilitator endpoint, accepted network/mint, settlement vault, settlement authority, payment-ref/memo policy, idempotency/reconciliation procedure, monitoring, and emergency disable env are frozen and recorded in the production runbook.
@@ -229,6 +283,12 @@ Review at least these user-facing protocol flows end to end:
 ## Mainnet Go / No-Go
 
 Mainnet launch should wait until every release candidate gate is green and the remaining risks are written down with explicit owners.
+
+_(2026-07-02: the go/no-go lists below are the Solana-track record. For the active Base track,
+the go/no-go is the Phase 10 gate checklist; its Base-equivalent hard no-gos are: the deployed
+contract is still `base-poc-v0`, the v1 trust layer (Phase 9) is absent, no external security
+pass on the v1 contract, admin/relayer/paymaster custody is a single hot key, or any env
+enables `eip155:8453` before the gates pass.)_
 
 Go:
 

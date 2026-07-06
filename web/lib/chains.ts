@@ -80,6 +80,55 @@ export function getConfiguredSolanaChainContext(): string {
   return normalized ?? inferred;
 }
 
+// Phase 8a default-chain seam (.agents/plans/base-port-chain-adapter-phase-8a.plan.md):
+// Base Sepolia is the default new-user writable path. This value affects rendered wallet/default
+// UI, so it is driven SOLELY by the client-inlined NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT —
+// the only env var visible identically on the server (SSR) and in the browser (hydration). A
+// server-only AGENTVOUCH_DEFAULT_CHAIN_CONTEXT is intentionally ignored here: honoring it would
+// let SSR render one default while the client hydrates another (a #418-class mismatch, see PR #65).
+// Rollback to Solana: set NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana and redeploy
+// (NEXT_PUBLIC_* is build-time inlined). Base mainnet (eip155:8453) stays refused here until
+// Phase 10 (the blocked mainnet cutover gate plan, formerly 8b).
+let warnedDefaultChainContext = false;
+
+function warnDefaultChainContextOnce(message: string): void {
+  if (warnedDefaultChainContext) return;
+  warnedDefaultChainContext = true;
+  console.warn(message);
+}
+
+export function getDefaultChainContext(): string {
+  const configured = process.env.NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT;
+  if (!configured) return BASE_SEPOLIA_CHAIN_CONTEXT;
+
+  const normalized = normalizeChainContext(configured, {
+    defaultLegacySolanaChainContext: getConfiguredSolanaChainContext(),
+  });
+
+  if (!normalized) {
+    warnDefaultChainContextOnce(
+      `Ignoring invalid NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}"; ` +
+        `defaulting to ${BASE_SEPOLIA_CHAIN_CONTEXT}.`
+    );
+    return BASE_SEPOLIA_CHAIN_CONTEXT;
+  }
+
+  if (normalized === BASE_SEPOLIA_CHAIN_CONTEXT) return normalized;
+  if (normalized.startsWith("solana:")) return normalized;
+
+  // Fail closed for eip155:8453 and any other non-writable context: never default to Base
+  // mainnet before the Phase 10 gate; fall back to the configured Solana context instead.
+  warnDefaultChainContextOnce(
+    `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT "${configured}" is not a supported default in ` +
+      "Phase 8a (Base mainnet stays blocked until Phase 10); falling back to the configured Solana context."
+  );
+  return getConfiguredSolanaChainContext();
+}
+
+export function isBaseSepoliaDefaultEnabled(): boolean {
+  return getDefaultChainContext() === BASE_SEPOLIA_CHAIN_CONTEXT;
+}
+
 export function normalizeChainContext(
   value: string | null | undefined,
   options?: { defaultLegacySolanaChainContext?: string }

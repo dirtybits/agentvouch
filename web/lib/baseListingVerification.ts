@@ -80,7 +80,7 @@ export type BaseSkillListingRow = {
 
 export type VerifyBaseSkillListingInput = {
   skill: BaseSkillListingRow;
-  txHash: string;
+  txHash?: string | null;
   authorAddress?: string | null;
   expectedPriceUsdcMicros?: string | null;
   expectedUri?: string | null;
@@ -88,7 +88,7 @@ export type VerifyBaseSkillListingInput = {
 
 export type BaseSkillListingVerificationResult = {
   authorAddress: Address;
-  txHash: Hex;
+  txHash: Hex | null;
   listingId: Hex;
   skillIdHash: Hex;
   priceUsdcMicros: string | null;
@@ -114,6 +114,23 @@ function normalizeMicrosAllowZero(
   const trimmed = value?.trim();
   if (!trimmed || !/^\d+$/.test(trimmed)) return null;
   return BigInt(trimmed).toString();
+}
+
+export function isSameSkillRawUri(input: {
+  actual: string;
+  expected: string;
+}): boolean {
+  if (input.actual === input.expected) return true;
+  try {
+    const actualUrl = new URL(input.actual);
+    const expectedUrl = new URL(input.expected);
+    return (
+      actualUrl.pathname === expectedUrl.pathname &&
+      actualUrl.search === expectedUrl.search
+    );
+  } catch {
+    return false;
+  }
 }
 
 function createBasePublicClient() {
@@ -204,7 +221,8 @@ async function findSkillListingCreatedEvent(input: {
 export async function verifyBaseSkillListing(
   input: VerifyBaseSkillListingInput
 ): Promise<BaseSkillListingVerificationResult> {
-  const txHash = requireTxHash(input.txHash.trim());
+  const rawTxHash = input.txHash?.trim() ?? "";
+  const txHash = rawTxHash ? requireTxHash(rawTxHash) : null;
   const chainContext = normalizeInputChainContext(input.skill.chain_context);
   if (chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT) {
     throw new Error("Skill is linked to a different chain context");
@@ -246,22 +264,22 @@ export async function verifyBaseSkillListing(
 
   const [listing, event] = await Promise.all([
     fetchLiveListing({ contract, listingId: expectedListingId }),
-    findSkillListingCreatedEvent({ contract, txHash }),
+    txHash ? findSkillListingCreatedEvent({ contract, txHash }) : null,
   ]);
 
-  if (event.listingId !== expectedListingId) {
+  if (event && event.listingId !== expectedListingId) {
     throw new Error("Base listing event does not match this skill");
   }
-  if (event.author !== author || listing.author !== author) {
+  if ((event && event.author !== author) || listing.author !== author) {
     throw new Error("Base listing author does not match this skill");
   }
   if (
-    event.price !== expectedPrice ||
+    (event && event.price !== expectedPrice) ||
     listing.priceUsdcMicros !== expectedPrice
   ) {
     throw new Error("Base listing price does not match this skill");
   }
-  if (event.free !== (expectedPrice === 0n)) {
+  if (event && event.free !== (expectedPrice === 0n)) {
     throw new Error("Base listing free flag does not match its price");
   }
   if (listing.skillIdHash !== skillIdHash) {
@@ -273,7 +291,13 @@ export async function verifyBaseSkillListing(
   if (listing.description !== (input.skill.description ?? "")) {
     throw new Error("Base listing description does not match this skill");
   }
-  if (input.expectedUri && listing.uri !== input.expectedUri) {
+  if (
+    input.expectedUri &&
+    !isSameSkillRawUri({
+      actual: listing.uri,
+      expected: input.expectedUri,
+    })
+  ) {
     throw new Error("Base listing URI does not match this skill");
   }
 

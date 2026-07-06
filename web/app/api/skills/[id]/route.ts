@@ -44,6 +44,7 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
+import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
   loadSkillDetailSnapshot,
   type SkillDetailSnapshot,
@@ -474,6 +475,7 @@ export async function PATCH(
       on_chain_address?: string;
       baseListing?: {
         txHash?: string;
+        relinkExisting?: boolean;
         authorAddress?: string;
         chainContext?: string;
         expectedPriceUsdcMicros?: string;
@@ -490,9 +492,13 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      if (!baseListing.txHash) {
+      const relinkExisting = baseListing.relinkExisting === true;
+      if (!baseListing.txHash && !relinkExisting) {
         return NextResponse.json(
-          { error: "Missing required field: baseListing.txHash" },
+          {
+            error:
+              "Missing required field: baseListing.txHash unless relinkExisting is true",
+          },
           { status: 400 }
         );
       }
@@ -543,10 +549,12 @@ export async function PATCH(
 
       const verification = await verifyBaseSkillListing({
         skill: row,
-        txHash: baseListing.txHash,
+        txHash: baseListing.txHash ?? null,
         authorAddress: baseListing.authorAddress,
-        expectedPriceUsdcMicros: baseListing.expectedPriceUsdcMicros ?? null,
-        expectedUri: `${request.nextUrl.origin}/api/skills/${id}/raw`,
+        expectedPriceUsdcMicros: relinkExisting
+          ? null
+          : baseListing.expectedPriceUsdcMicros ?? null,
+        expectedUri: getCanonicalSkillRawUrl(id),
       });
 
       const [updated] = await sql()<SkillRow>`
@@ -562,7 +570,7 @@ export async function PATCH(
           on_chain_program_id = ${verification.onChainProgramId},
           evm_listing_id = ${verification.listingId},
           evm_contract_address = ${verification.onChainProgramId.toLowerCase()},
-          evm_tx_hash = ${verification.txHash},
+          evm_tx_hash = COALESCE(${verification.txHash}, evm_tx_hash),
           updated_at = NOW()
         WHERE id = ${id}::uuid
         RETURNING *

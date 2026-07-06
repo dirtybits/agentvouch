@@ -247,6 +247,14 @@ const BASE_USDC_SKILL = {
   evm_tx_hash:
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 };
+const BASE_ORPHAN_USDC_SKILL = {
+  ...BASE_USDC_SKILL,
+  id: "uuid-base-orphan-usdc",
+  currency_mint: null,
+  evm_listing_id: null,
+  evm_contract_address: null,
+  evm_tx_hash: null,
+};
 
 function validAuthHeader(
   id: string,
@@ -408,6 +416,24 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(body.payment_flow).toBe("listing-required");
     expect(body.amount_micros).toBe("1000000");
     expect(body.on_chain_address).toBeNull();
+  });
+
+  it("returns Base native USDC for Base orphan rows in listing-required metadata", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([BASE_ORPHAN_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-base-orphan-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("PAYMENT-REQUIRED")).toBeNull();
+    const body = await res.json();
+    expect(body.payment_flow).toBe("listing-required");
+    expect(body.chain_context).toBe("eip155:84532");
+    expect(body.currency_mint).toBe(
+      "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    );
+    expect(mockBuildBaseX402Requirement).not.toHaveBeenCalled();
   });
 
   it("returns a Base EIP-3009 x402 requirement for Base-listed paid skills", async () => {

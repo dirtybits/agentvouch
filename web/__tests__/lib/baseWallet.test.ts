@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { getAddress } from "viem";
+import { decodeErrorResult, getAddress, parseAbi } from "viem";
 
+import { AGENTVOUCH_EVM_READ_ABI } from "@/lib/adapters/agentVouchEvmAbi";
+import { buildBaseAgentMetadataUri } from "@/lib/adapters/baseAgentMetadata";
 import {
   baseUsdcMicros,
   computeListingId,
   formatBaseUsdc,
+  isBaseDuplicatePurchaseError,
+  isBaseReceiptPendingError,
   skillIdHashFrom,
 } from "@/lib/adapters/baseWallet";
 import { BASE_USDC_DECIMALS } from "@/lib/adapters/baseWalletConfig";
@@ -28,5 +32,55 @@ describe("Base wallet listing ids", () => {
     expect(computeListingId(author, skillIdHash)).toBe(
       "0x9a06da52dc8297f03a7dd570a72bcffaefea565f98d4c09fec9451410dc49cda"
     );
+  });
+});
+
+describe("Base wallet registration metadata", () => {
+  it("builds a non-empty chain-qualified author metadata URI", () => {
+    const author = getAddress("0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854");
+    const uri = buildBaseAgentMetadataUri(author);
+
+    expect(uri).toContain(`/api/author/${author}`);
+    expect(uri).toContain("chainContext=eip155%3A84532");
+    expect(uri).not.toBe("");
+  });
+});
+
+describe("Base wallet transaction receipt polling", () => {
+  it("recognizes viem receipt-not-found races as pending confirmations", () => {
+    expect(
+      isBaseReceiptPendingError(
+        new Error(
+          'Transaction receipt with hash "0x1f6a3de5212bb0abfd3fc47fa7107380315a2930db9142a6e96cdfb68415a8fc" could not be found. The Transaction may not be processed on a block yet. Version: viem@2.47.6'
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("does not classify ordinary contract reverts as pending confirmations", () => {
+    expect(isBaseReceiptPendingError(new Error("AlreadyPurchased()"))).toBe(
+      false
+    );
+  });
+
+  it("recognizes DuplicatePurchase reverts as already-owned purchases", () => {
+    expect(
+      isBaseDuplicatePurchaseError(
+        new Error(
+          'The contract function "purchaseSkill" reverted. Error: DuplicatePurchase()'
+        )
+      )
+    ).toBe(true);
+  });
+});
+
+describe("AgentVouchEvm custom errors", () => {
+  it("decodes EmptyMetadata reverts from Base writes", () => {
+    const decoded = decodeErrorResult({
+      abi: parseAbi([...AGENTVOUCH_EVM_READ_ABI]),
+      data: "0xae921357",
+    });
+
+    expect(decoded.errorName).toBe("EmptyMetadata");
   });
 });

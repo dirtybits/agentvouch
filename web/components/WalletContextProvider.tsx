@@ -60,6 +60,7 @@ import type { ChainWallet } from "@/lib/adapters/types";
 import {
   BASE_SEPOLIA_CHAIN_CONTEXT,
   getConfiguredSolanaChainContext,
+  isBaseSepoliaDefaultEnabled,
 } from "@/lib/chains";
 import {
   createPhantomEmbeddedWallet,
@@ -168,6 +169,9 @@ const AgentVouchWalletSignerContext =
 const baseWalletConfig = getBaseWalletConfig();
 const baseWalletConfigured = baseWalletConfig.configured;
 const solanaChainContext = getConfiguredSolanaChainContext();
+// Phase 8a: default-chain-aware wallet precedence. Env-static like the config
+// values above — the default cannot change within a running client.
+const baseSepoliaDefault = isBaseSepoliaDefaultEnabled();
 const baseWalletConfigError = baseWalletConfigured
   ? null
   : BASE_WALLET_UNCONFIGURED_MESSAGE;
@@ -782,16 +786,21 @@ function AgentVouchWalletBridge({
     }
   }, []);
 
-  // Enforce a single active wallet. Solana takes priority everywhere else
-  // (chainWalletValue, the header pill), so drop any live Base passkey session
-  // once a Solana wallet connects. Without this, a reload that both
-  // auto-connects Solana and restores a Base passkey leaves the Base session
-  // live in state and localStorage with no rendered control to disconnect it.
+  // Enforce a single active wallet when a reload both auto-connects Solana and
+  // restores a Base passkey. Which session survives follows the Phase 8a
+  // default chain: Base wins under the Base Sepolia default, Solana wins under
+  // the rollback env (the Phase 4 behavior). Without this, the losing session
+  // stays live in state and localStorage with no rendered control to
+  // disconnect it. Deliberate cross-connects cannot collide here: the connect
+  // menu only renders when neither chain is connected.
   useEffect(() => {
-    if (status === "connected" && account && baseSmartAccount) {
+    if (!(status === "connected" && account && baseSmartAccount)) return;
+    if (baseSepoliaDefault) {
+      void disconnect();
+    } else {
       void disconnectBasePasskey();
     }
-  }, [status, account, baseSmartAccount, disconnectBasePasskey]);
+  }, [status, account, baseSmartAccount, disconnect, disconnectBasePasskey]);
 
   const baseChainWallet = useMemo<ChainWallet | null>(() => {
     if (!baseSmartAccount) return null;
@@ -863,8 +872,13 @@ function AgentVouchWalletBridge({
 
   const chainWalletValue = useMemo<AgentVouchChainWalletContextValue>(() => {
     const solanaConnected = status === "connected" && !!account;
-    const baseConnected = baseWalletValue.status === "connected";
-    if (solanaConnected && account) {
+    const baseConnected =
+      baseWalletValue.status === "connected" && !!baseWalletValue.account;
+    // While the single-active-wallet effect resolves a dual restore, both can
+    // be connected for a render — the active chain follows the default.
+    const solanaActive =
+      solanaConnected && (!baseSepoliaDefault || !baseConnected);
+    if (solanaActive && account) {
       return {
         status,
         account,

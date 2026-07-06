@@ -35,7 +35,7 @@ function familyOf(chainContext: string | null | undefined): ChainFamily {
 }
 
 // Display helpers must degrade to null/fallback for chains the adapter registry does not
-// support yet (e.g. Base mainnet before Phase 8b), so adapter resolution never throws here.
+// support yet (e.g. Base mainnet before Phase 10), so adapter resolution never throws here.
 function adapterFor(
   chainContext: string | null | undefined
 ): ChainAdapter | null {

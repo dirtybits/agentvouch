@@ -177,7 +177,7 @@ describe("shortenChainAddress", () => {
   });
 
   it("falls back to generic 6/4 truncation when no adapter supports the chain", () => {
-    // Base mainnet is intentionally unsupported until Phase 8b; display must degrade, not throw.
+    // Base mainnet is intentionally unsupported until Phase 10; display must degrade, not throw.
     expect(
       shortenChainAddress({
         chainContext: BASE_CHAIN_CONTEXT,

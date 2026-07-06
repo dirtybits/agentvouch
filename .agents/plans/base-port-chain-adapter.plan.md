@@ -21,13 +21,16 @@ todos:
     content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch rehearsal, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
     status: completed
   - id: address-type-sweep
-    content: "Phase 7. After Phase 6 and the now-complete Phase 2 circle-back, replace @solana/kit Address (base58/PDA) assumptions with chain-aware address helpers + per-chain explorer helpers across the touched files. Preserve Phase 6's storage/display normalization split: EVM storage lowercase, display may checksum."
-    status: pending
+    content: "Phase 7 DONE 2026-07-02 via PR #73. Chain-aware address helpers, explorer links, EVM buyer API boundaries, storage/display normalization split, behavioral tests, import guards, and browser smoke for one Solana + one Base listing surface all landed. See .agents/plans/base-port-chain-adapter-phase-7.plan.md."
+    status: completed
   - id: make-base-canonical
-    content: "Phase 8, TWO gates (PR #58 review 2026-06-29). 8a: default chain_context -> Base SEPOLIA (eip155:84532) behind a flag, Solana still selectable. 8b (LATER, blocked): mainnet cutover once mainnet RPC/contract/USDC/paymaster exist and getAdapter accepts eip155:8453. Do NOT flip the default to generic Base/eip155:8453 before 8b."
+    content: "Phase 8. Dedicated Phase 8a plan: .agents/plans/base-port-chain-adapter-phase-8a.plan.md. Default new-user writable path -> Base SEPOLIA eip155:84532 behind an explicit Solana rollback switch; Solana remains selectable and legacy trust/default row fallbacks stay Solana. Base mainnet is not part of Phase 8."
     status: pending
   - id: verify-e2e
-    content: "Phase 9. E2E on Base (passkey register->list->buy gas-free through CDP paymaster; raw download; agent x402) + targeted Solana direct-purchase regression if Solana remains selectable. forge contracts job + web format/lint/typecheck/vitest green; Vercel build green."
+    content: "Phase 9. Dedicated plan drafted in .agents/plans/base-port-chain-adapter-phase-9.plan.md. Prove Base Sepolia default E2E (passkey register/list/buy/raw download + agent x402 + Solana regression if selectable), then scope/implement minimal Base v1 trust layer and security/ownership gates before any Phase 10 mainnet cutover."
+    status: pending
+  - id: base-mainnet-cutover
+    content: "Phase 10. Dedicated blocked gate plan: .agents/plans/base-port-chain-adapter-phase-10.plan.md. Cut over to Base mainnet only after Phase 9 v1 trust/security gates, mainnet deploy/RPC/USDC/paymaster, custody policy, runbook, and real-funds smoke evidence exist."
     status: pending
 isProject: false
 ---
@@ -66,15 +69,14 @@ but off by default.
 
 ## Resuming this plan in a fresh session (HANDOFF)
 
-As of 2026-07-01, completed Base-port phases land through one PR branch per phase off current
-`main`. The current active branch for Phase 6 planning/execution is **`feat/base-port-phase-6`**.
+As of 2026-07-02, completed Base-port phases land through one PR branch per phase off current
+`main`. The current active planning branch is **`feat/base-port-phase-8`**.
 To take over:
 
 1. `git fetch origin`, then either check out the active phase branch or create the next phase branch
    from `origin/main` (fresh worktree setup: [[agentvouch-worktree-setup]]).
-2. Read the frontmatter `todos` **and the dated sequencing notes below**. The Phase 2 circle-back is
-   now complete; the next implementation phase is Phase 7 unless strategy shifts straight to
-   Base-default smoke planning.
+2. Read the frontmatter `todos` **and the dated sequencing notes below**. Phase 7 is complete; the
+   next implementation phase is Phase 8a (Base Sepolia default), not Base mainnet.
 3. Read the relevant phase section under "## Phases" plus its dedicated sub-plan when one exists.
    Each phase is self-contained (files, steps, Done-when), but dated sequencing notes override
    frontmatter order when they say so.
@@ -100,6 +102,19 @@ To take over:
 > be revisited only if Solana remains first-class; Base list/purchase/raw-download belongs to the
 > Base write/default/E2E smoke lane (Phase 5/9), especially now that the CDP paymaster env exists.
 > Phase 7 address sweep is unblocked.
+>
+> **POST-PHASE-7 / PHASE-8 SEQUENCING (2026-07-02).** Phase 7 merged via PR #73 with the optional
+> browser smoke completed: one Solana listing rendered with Solana Explorer PDA link, and one Base
+> listing rendered with Base Sepolia Basescan tx link plus intentionally display-only EVM author.
+> Phase 8a should now flip the default new-user writable path to Base Sepolia behind rollback, but it
+> must not rewrite legacy Solana fallbacks or imply Base rows have stake-backed trust. Phase 9 is
+> re-scoped from generic E2E only into Base Sepolia E2E plus the minimal Base v1 trust/security gate
+> needed before any Phase 10 mainnet cutover.
+>
+> **PHASE 10 RENAME (2026-07-02).** The blocked Base mainnet cutover was originally drafted as
+> "Phase 8b." That created a confusing 8a -> 9 -> 8b sequence, so it is now Phase 10. The intended
+> order is Phase 8a (Base Sepolia default), Phase 9 (Base E2E + minimal v1 trust/security), then
+> Phase 10 (Base mainnet cutover).
 
 ## What already exists to build on
 
@@ -485,10 +500,11 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chai
   were verified in `pg_indexes`, and production API smoke returned 200 for `/api/skills?mode=fast`,
   `/api/skills/activity`, and `/api/x402/supported`.
 
-### Phase 7 — `address-type-sweep` [pending]
+### Phase 7 — `address-type-sweep` [completed]
 
 Dedicated sub-plan: [`base-port-chain-adapter-phase-7.plan.md`](./base-port-chain-adapter-phase-7.plan.md).
 
+- **Status:** DONE 2026-07-02 via PR #73.
 - **Goal:** stop assuming Solana base58/PDA addresses app-wide while preserving the Phase 6
   storage/display invariant: EVM storage and lookup values are lowercase; display may checksum.
 - **Files:** a chain-tagged address type + `explorerTxUrl`/`explorerAddressUrl` helpers (already on
@@ -497,26 +513,45 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-7.plan.md`](./base-port-chai
   until the Base-default UX pass.
 - **Done when:** addresses + explorer links render correctly for both a Base and a Solana listing;
   behavioral `chainAddress` unit tests and import guards pass; `npm run typecheck` green.
+- **Post-merge evidence:** format/lint/typecheck/vitest/build passed during review; browser smoke
+  rendered `another-skill-to-delete` with Solana Explorer PDA link and `phase-3b-demo-skill` with
+  Base Sepolia Basescan tx link.
 
 ### Phase 8 — `make-base-canonical` [pending]
+
+Dedicated sub-plan: [`base-port-chain-adapter-phase-8a.plan.md`](./base-port-chain-adapter-phase-8a.plan.md).
 
 Two explicit gates (PR #58 review 2026-06-29): the adapter/config today support Base **Sepolia**
 only, and `getAdapter()` deliberately **rejects mainnet** (`eip155:8453`) until mainnet
 RPC/contract/USDC/paymaster config exists — so do NOT flip the default to generic `Base`/`eip155:8453`.
 
 - **8a — Base Sepolia default for port smoke [pending]:** `web/lib/chains.ts`
-  `getConfiguredChainContext()` defaults to **`eip155:84532`** (Sepolia), behind a flag that keeps
-  Solana selectable. Done when a fresh visit defaults to Base **Sepolia**; the flag restores Solana
-  (the rollback switch).
-- **8b — Base mainnet cutover [LATER gate — blocked]:** only after a mainnet `AgentVouchEvm` deploy
-  + mainnet RPC + mainnet USDC + a CDP mainnet paymaster exist and `getAdapter()` accepts
-  `eip155:8453`. Flip the default to mainnet then. Do NOT ask a follow-on agent to do this until those exist.
+  should gain a default-chain seam that defaults to **`eip155:84532`** (Sepolia), behind an explicit
+  env rollback that keeps Solana selectable. Done when a fresh visit/default write path uses Base
+  **Sepolia**, paid publish uses `ChainWallet.createSkillListing`, and the rollback env restores
+  Solana as the default.
 
 ### Phase 9 — `verify-e2e` [pending]
 
-- **Goal:** prove the whole thing + no regression.
-- **Done when:** Base human flow (passkey, 0 gas) + agent x402 both pass; Solana regression passes
-  when selected; all CI gates below green.
+Dedicated sub-plan: [`base-port-chain-adapter-phase-9.plan.md`](./base-port-chain-adapter-phase-9.plan.md).
+
+- **Goal:** prove Base Sepolia default E2E, then close the Base trust/mainnet-readiness gap before
+  Phase 10.
+- **Done when:** Base human flow (passkey, register/list/buy, raw download, gas sponsorship evidence)
+  + agent x402 both pass; Solana regression passes when selected; minimal Base v1 trust layer
+  (vouch/author bond/founder-resolved report or dispute path), ownership policy, and security review
+  are complete enough to unblock a future mainnet plan.
+
+### Phase 10 — `base-mainnet-cutover` [blocked]
+
+Dedicated sub-plan: [`base-port-chain-adapter-phase-10.plan.md`](./base-port-chain-adapter-phase-10.plan.md).
+
+- **Goal:** cut the default chain over from Base Sepolia (`eip155:84532`) to Base mainnet
+  (`eip155:8453`) only after Phase 9 and all mainnet ops/security prerequisites are complete.
+- **Done when:** mainnet `AgentVouchEvm` v1 is deployed and reviewed, Base-chain modules are
+  parameterized instead of Sepolia-pinned, `getAdapter()` accepts `eip155:8453`, the default flips
+  behind rollback, and a human-approved real-funds mainnet smoke proves register/list/buy/raw
+  download + x402.
 
 ## Cross-cutting verification & CI gates
 

@@ -6,6 +6,7 @@ import {
   type DirectPurchaseSkillRow,
 } from "@/lib/directPurchaseVerification";
 import {
+  verifyAndRecordBaseExistingPurchase,
   verifyAndRecordBaseDirectPurchase,
   type BaseDirectPurchaseSkillRow,
 } from "@/lib/basePurchaseVerification";
@@ -87,13 +88,6 @@ export async function POST(
   const expectedPriceUsdcMicros = stringOrNull(body.expectedPriceUsdcMicros);
   const paymentRef = txHash ?? signature;
 
-  if (!paymentRef) {
-    return NextResponse.json(
-      { error: "Missing transaction signature" },
-      { status: 400 }
-    );
-  }
-
   const skill = id.startsWith(CHAIN_PREFIX)
     ? await buildChainOnlySkillRow(id.slice(CHAIN_PREFIX.length))
     : await fetchRepoSkillRow(id);
@@ -131,13 +125,20 @@ export async function POST(
     };
 
     try {
-      const verification = await verifyAndRecordBaseDirectPurchase({
-        skill: baseSkill,
-        txHash: paymentRef,
-        buyerAddress: buyer,
-        listingId: listingId ?? listing,
-        expectedPriceUsdcMicros,
-      });
+      const verification = paymentRef
+        ? await verifyAndRecordBaseDirectPurchase({
+            skill: baseSkill,
+            txHash: paymentRef,
+            buyerAddress: buyer,
+            listingId: listingId ?? listing,
+            expectedPriceUsdcMicros,
+          })
+        : await verifyAndRecordBaseExistingPurchase({
+            skill: baseSkill,
+            buyerAddress: buyer ?? "",
+            listingId: listingId ?? listing,
+            expectedPriceUsdcMicros,
+          });
 
       return NextResponse.json({
         ok: true,
@@ -171,6 +172,13 @@ export async function POST(
       const status = /already recorded/i.test(message) ? 409 : 400;
       return NextResponse.json({ error: message }, { status });
     }
+  }
+
+  if (!paymentRef) {
+    return NextResponse.json(
+      { error: "Missing transaction signature" },
+      { status: 400 }
+    );
   }
 
   if (!skill.author_pubkey) {

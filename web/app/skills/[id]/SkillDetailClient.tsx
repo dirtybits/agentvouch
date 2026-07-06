@@ -66,6 +66,7 @@ import {
 } from "@/lib/chains";
 import { BASE_SEPOLIA_EXPLORER_URL } from "@/lib/adapters/baseWalletConfig";
 import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
+import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
   FiAlertTriangle,
   FiInfo,
@@ -100,6 +101,36 @@ interface ContentVerification {
   all_versions_pinned: boolean;
   current_cid_consistent: boolean;
   status: "verified" | "drift_detected" | "unverified";
+}
+
+function isBaseListingExistsError(error: unknown): boolean {
+  return getErrorMessage(error, "").includes("ListingExists");
+}
+
+function isBaseListingMissingError(error: unknown): boolean {
+  return /not found on-chain|was not found/i.test(getErrorMessage(error, ""));
+}
+
+function hasPositiveStoredUsdcPrice(value: string | null | undefined): boolean {
+  return getPositiveStoredUsdcMicros(value) !== null;
+}
+
+function getPositiveStoredUsdcMicros(
+  value: string | null | undefined
+): bigint | null {
+  try {
+    const micros = BigInt(value ?? "0");
+    return micros > 0n ? micros : null;
+  } catch {
+    return null;
+  }
+}
+
+function getPositiveStoredUsdcMicrosNumber(
+  value: string | null | undefined
+): number | null {
+  const micros = getPositiveStoredUsdcMicros(value);
+  return micros === null ? null : Number(micros);
 }
 
 interface SkillDetail {
@@ -188,10 +219,7 @@ function isBlockingPurchaseStatus(
 }
 
 function buildCanonicalSkillUri(skillId: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return `${window.location.origin}/api/skills/${skillId}/raw`;
+  return getCanonicalSkillRawUrl(skillId);
 }
 
 function stripMarkdown(value: string): string {
@@ -267,7 +295,7 @@ async function fetchSignedSkill({
 }: {
   id: string;
   walletAddress: string;
-  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array | string>;
   skill: SkillDetail;
   format: "raw" | "zip";
 }): Promise<Response> {
@@ -276,7 +304,8 @@ async function fetchSignedSkill({
       walletAddress,
       signMessage,
       skillId: skill.id,
-      listingAddress: skill.on_chain_address ?? undefined,
+      listingAddress:
+        skill.evm_listing_id ?? skill.on_chain_address ?? undefined,
     })
   );
   const res = await fetch(`/api/skills/${id}/${format}`, {
@@ -517,6 +546,18 @@ export default function SkillDetailPage({
     });
   }, [activeChainContext, activeWalletAddress, refreshSkill, loadedSkillId]);
 
+  useEffect(() => {
+    if (
+      skill?.price_usdc_micros &&
+      hasPositiveStoredUsdcPrice(skill.price_usdc_micros)
+    ) {
+      const formatted = formatUsdcMicros(skill.price_usdc_micros);
+      if (formatted) {
+        setListPrice(formatted);
+      }
+    }
+  }, [skill?.id, skill?.price_usdc_micros]);
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
@@ -548,14 +589,22 @@ export default function SkillDetailPage({
   // multi-file skills, otherwise SKILL.md. Returns true when the archive was
   // delivered (used to phrase the success message).
   const downloadEntitledSkill = useCallback(async (): Promise<boolean> => {
-    if (!skill || !walletAddress || !signMessage) {
+    const downloadWalletAddress = activeWalletAddress ?? walletAddress;
+    const downloadSignMessage =
+      activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+      activeChainWallet?.signMessage
+        ? async (message: Uint8Array) =>
+            activeChainWallet.signMessage!(new TextDecoder().decode(message))
+        : signMessage;
+
+    if (!skill || !downloadWalletAddress || !downloadSignMessage) {
       throw new Error("Connect a wallet to download this skill.");
     }
     const isMultiFile = (skill.files?.length ?? 0) > 1;
     const res = await fetchSignedSkill({
       id,
-      walletAddress,
-      signMessage,
+      walletAddress: downloadWalletAddress,
+      signMessage: downloadSignMessage,
       skill,
       format: isMultiFile ? "zip" : "raw",
     });
@@ -570,8 +619,11 @@ export default function SkillDetailPage({
     return isMultiFile;
   }, [
     skill,
-    walletAddress,
+    activeChainContext,
+    activeChainWallet,
+    activeWalletAddress,
     signMessage,
+    walletAddress,
     id,
     triggerBrowserDownload,
     downloadSkillFile,
@@ -582,7 +634,11 @@ export default function SkillDetailPage({
     setListing(true);
     setListResult(null);
     try {
-      const priceUsdcMicros = toUsdcMicros(parseFloat(listPrice || "0"));
+      const storedPriceUsdcMicros = getPositiveStoredUsdcMicrosNumber(
+        skill.price_usdc_micros
+      );
+      const priceUsdcMicros =
+        storedPriceUsdcMicros ?? toUsdcMicros(parseFloat(listPrice || "0"));
       if (!isValidListingPriceLamports(priceUsdcMicros)) {
         setListResult({
           success: false,
@@ -591,7 +647,7 @@ export default function SkillDetailPage({
         setListing(false);
         return;
       }
-      const skillUri = `${window.location.origin}/api/skills/${id}/raw`;
+      const skillUri = buildCanonicalSkillUri(id);
       const isBaseListingAuthor =
         skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
         activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
@@ -609,39 +665,100 @@ export default function SkillDetailPage({
           return;
         }
 
-        const listingResult = await activeChainWallet.createSkillListing({
-          skillId: skill.skill_id,
-          uri: skillUri,
-          name: skill.name,
-          description: skill.description ?? "",
-          priceUsdcMicros: BigInt(priceUsdcMicros),
-        });
+        const patchBaseListing = async (
+          baseListing:
+            | {
+                txHash: string;
+                authorAddress: string;
+                chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+                expectedPriceUsdcMicros: string;
+              }
+            | {
+                relinkExisting: true;
+                authorAddress: string;
+                chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+              }
+        ) => {
+          const patchRes = await fetch(`/api/skills/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baseListing }),
+          });
+          if (!patchRes.ok) {
+            const patchBody = (await patchRes.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              patchBody?.error || "Base listing was created but not linked"
+            );
+          }
+          return (await patchRes.json()) as SkillDetail;
+        };
 
-        const patchRes = await fetch(`/api/skills/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            baseListing: {
-              txHash: listingResult.ref,
-              authorAddress: activeWalletAddress,
-              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-              expectedPriceUsdcMicros: String(priceUsdcMicros),
-            },
-          }),
-        });
-        if (!patchRes.ok) {
-          const patchBody = (await patchRes.json().catch(() => null)) as {
-            error?: string;
-          } | null;
-          throw new Error(
-            patchBody?.error || "Base listing was created but not linked"
-          );
+        const existingListingPatch = {
+          relinkExisting: true,
+          authorAddress: activeWalletAddress,
+          chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+        } as const;
+
+        if (hasPositiveStoredUsdcPrice(skill.price_usdc_micros)) {
+          try {
+            const updated = await patchBaseListing(existingListingPatch);
+            setSkill(updated);
+            setListResult({
+              success: true,
+              message: "Linked existing Base marketplace listing successfully!",
+            });
+            await refreshSkill();
+            return;
+          } catch (error) {
+            if (!isBaseListingMissingError(error)) {
+              throw error;
+            }
+          }
         }
-        const updated = (await patchRes.json()) as SkillDetail;
+
+        let baseListing:
+          | {
+              txHash: string;
+              authorAddress: string;
+              chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+              expectedPriceUsdcMicros: string;
+            }
+          | {
+              relinkExisting: true;
+              authorAddress: string;
+              chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
+            };
+
+        try {
+          const listingResult = await activeChainWallet.createSkillListing({
+            skillId: skill.skill_id,
+            uri: skillUri,
+            name: skill.name,
+            description: skill.description ?? "",
+            priceUsdcMicros: BigInt(priceUsdcMicros),
+          });
+          baseListing = {
+            txHash: listingResult.ref,
+            authorAddress: activeWalletAddress,
+            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+            expectedPriceUsdcMicros: String(priceUsdcMicros),
+          };
+        } catch (error) {
+          if (!isBaseListingExistsError(error)) {
+            throw error;
+          }
+          baseListing = existingListingPatch;
+        }
+        const updated = await patchBaseListing(baseListing);
         setSkill(updated);
         setListResult({
           success: true,
-          message: "Listed on Base marketplace successfully!",
+          message:
+            "relinkExisting" in baseListing
+              ? "Linked existing Base marketplace listing successfully!"
+              : "Listed on Base marketplace successfully!",
         });
         await refreshSkill();
         return;
@@ -812,16 +929,24 @@ export default function SkillDetailPage({
           expectedPriceUsdcMicros: BigInt(skill.price_usdc_micros),
         });
 
+        const verifyBody = purchaseResult.alreadyPurchased
+          ? {
+              buyer: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              listingId: skill.evm_listing_id,
+              expectedPriceUsdcMicros: skill.price_usdc_micros,
+            }
+          : {
+              txHash: purchaseResult.ref,
+              buyer: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              listingId: skill.evm_listing_id,
+              expectedPriceUsdcMicros: skill.price_usdc_micros,
+            };
         const verifyRes = await fetch(`/api/skills/${id}/purchase/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            txHash: purchaseResult.ref,
-            buyer: activeWalletAddress,
-            chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
-            listingId: skill.evm_listing_id,
-            expectedPriceUsdcMicros: skill.price_usdc_micros,
-          }),
+          body: JSON.stringify(verifyBody),
         });
         if (!verifyRes.ok) {
           const verifyBody = (await verifyRes.json().catch(() => null)) as {
@@ -833,8 +958,12 @@ export default function SkillDetailPage({
           );
         }
 
-        setUsdcPurchaseTx(purchaseResult.ref);
-        setUsdcPurchaseExplorerUrl(purchaseResult.explorerUrl);
+        if (!purchaseResult.alreadyPurchased) {
+          setUsdcPurchaseTx(purchaseResult.ref);
+          setUsdcPurchaseExplorerUrl(purchaseResult.explorerUrl);
+        }
+        const fullTree = await downloadEntitledSkill();
+        const downloaded = fullTree ? "the full skill" : "SKILL.md";
         await refreshSkill({
           includeBuyer: true,
           buyerAddress: activeWalletAddress,
@@ -845,8 +974,9 @@ export default function SkillDetailPage({
         );
         setInstallResult({
           success: true,
-          message:
-            "Base USDC purchase confirmed and entitlement verified. Base signed downloads are still pending.",
+          message: purchaseResult.alreadyPurchased
+            ? `Base entitlement already active. Downloaded ${downloaded}.`
+            : `Base USDC purchase confirmed and verified. Downloaded ${downloaded}.`,
         });
       } catch (error: unknown) {
         setInstallResult({
@@ -1016,7 +1146,11 @@ export default function SkillDetailPage({
   };
 
   const handleSignedDownload = async () => {
-    if (!connected || !walletAddress || !signMessage || !skill) {
+    const canSignActiveDownload =
+      (activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+        Boolean(activeWalletAddress && activeChainWallet?.signMessage)) ||
+      Boolean(connected && walletAddress && signMessage);
+    if (!canSignActiveDownload || !skill) {
       return;
     }
 
@@ -1047,6 +1181,27 @@ export default function SkillDetailPage({
       setDownloading(false);
     }
   };
+
+  const isEvmAuthor = Boolean(
+    skill?.author_pubkey && skill.chain_context?.startsWith("eip155:")
+  );
+  const evmAuthorChainLabel = isEvmAuthor
+    ? getChainDisplayLabel(skill?.chain_context)
+    : null;
+  const isSolanaAuthor =
+    !!skill &&
+    !isEvmAuthor &&
+    !!walletAddress &&
+    walletAddress === skill.author_pubkey;
+  const isBaseAuthor =
+    !!skill &&
+    isEvmAuthor &&
+    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    !!activeWalletAddress &&
+    !!skill.author_pubkey &&
+    activeWalletAddress.toLowerCase() === skill.author_pubkey.toLowerCase();
+  const isAuthor = isSolanaAuthor || isBaseAuthor;
 
   const startEditing = useCallback(() => {
     if (!skill) return;
@@ -1122,7 +1277,14 @@ export default function SkillDetailPage({
 
   const handlePublishVersion = async () => {
     if (!skill || skill.source === "chain") return;
-    if (!connected || !walletAddress || !signMessage) {
+    if (
+      !(
+        (isBaseAuthor &&
+          activeChainWallet?.signMessage &&
+          activeWalletAddress) ||
+        (isSolanaAuthor && walletAddress && signMessage)
+      )
+    ) {
       setVersionResult({
         success: false,
         message: "Connect your wallet to publish a new version.",
@@ -1142,15 +1304,42 @@ export default function SkillDetailPage({
     try {
       const timestamp = Date.now();
       const message = buildSignMessage("publish-skill", timestamp);
-      const signatureBytes = await signMessage(
-        new TextEncoder().encode(message)
-      );
-      const signature = encodeBase64(signatureBytes);
+      let auth: {
+        pubkey: string;
+        signature: string;
+        message: string;
+        timestamp: number;
+      } | null = null;
+
+      if (
+        isBaseAuthor &&
+        activeChainWallet?.signMessage &&
+        activeWalletAddress
+      ) {
+        auth = {
+          pubkey: activeWalletAddress,
+          signature: await activeChainWallet.signMessage(message),
+          message,
+          timestamp,
+        };
+      } else if (isSolanaAuthor && walletAddress && signMessage) {
+        const signatureBytes = await signMessage(
+          new TextEncoder().encode(message)
+        );
+        auth = {
+          pubkey: walletAddress,
+          signature: encodeBase64(signatureBytes),
+          message,
+          timestamp,
+        };
+      }
+      if (!auth)
+        throw new Error("Connect your wallet to publish a new version.");
       const response = await fetch(`/api/skills/${skill.id}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: { pubkey: walletAddress, signature, message, timestamp },
+          auth,
           content: versionDraft,
           changelog: versionChangelog.trim() || undefined,
         }),
@@ -1182,26 +1371,6 @@ export default function SkillDetailPage({
   const isSynced = !isMirror && Boolean(skill?.synced_repo_url);
   const visibleTags =
     skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
-  const isEvmAuthor = Boolean(
-    skill?.author_pubkey && skill.chain_context?.startsWith("eip155:")
-  );
-  const evmAuthorChainLabel = isEvmAuthor
-    ? getChainDisplayLabel(skill?.chain_context)
-    : null;
-  const isSolanaAuthor =
-    !!skill &&
-    !isEvmAuthor &&
-    !!walletAddress &&
-    walletAddress === skill.author_pubkey;
-  const isBaseAuthor =
-    !!skill &&
-    isEvmAuthor &&
-    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
-    activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
-    !!activeWalletAddress &&
-    !!skill.author_pubkey &&
-    activeWalletAddress.toLowerCase() === skill.author_pubkey.toLowerCase();
-  const isAuthor = isSolanaAuthor || isBaseAuthor;
   const authorLabel =
     isMirror && skill?.author_handle
       ? `Mirrored from @${skill.author_handle}`
@@ -1229,7 +1398,7 @@ export default function SkillDetailPage({
     : "Unverified publisher identity";
 
   useEffect(() => {
-    if (!skill || !isSolanaAuthor) {
+    if (!skill || !isAuthor) {
       handledAuthorActionRef.current = null;
       return;
     }
@@ -1240,7 +1409,11 @@ export default function SkillDetailPage({
       return;
     }
 
-    if (requestedAuthorAction === "edit-listing" && skill.on_chain_address) {
+    if (
+      requestedAuthorAction === "edit-listing" &&
+      isSolanaAuthor &&
+      skill.on_chain_address
+    ) {
       startEditing();
       handledAuthorActionRef.current = requestedAuthorAction;
       return;
@@ -1260,6 +1433,7 @@ export default function SkillDetailPage({
     requestedAuthorAction,
     skill,
     startEditing,
+    isAuthor,
     isSolanaAuthor,
   ]);
 
@@ -1350,6 +1524,10 @@ export default function SkillDetailPage({
   const hasBaseListing =
     skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
     Boolean(skill.evm_listing_id);
+  const needsBaseListingSync =
+    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    !hasBaseListing &&
+    hasPositiveStoredUsdcPrice(skill.price_usdc_micros);
   const isBaseProtocolSkill = hasBaseListing;
   const activeBaseWalletReady =
     activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
@@ -1403,7 +1581,7 @@ export default function SkillDetailPage({
       ? walletCanAuthorizeDirectUsdc
       : walletCanAuthorizeBrowserX402);
   const signedRedownloadAvailable =
-    !isBaseProtocolSkill && (hasUsdcPrimary || Boolean(skill.on_chain_address));
+    hasUsdcPrimary || Boolean(skill.on_chain_address);
   const apiPath = `/api/skills/${skill.id}/raw`;
   const installUrl =
     isChainOnly && skill?.skill_uri
@@ -1852,8 +2030,7 @@ export default function SkillDetailPage({
               </div>
             </details>
             {/* Version History */}
-            {(skill.versions?.length > 0 ||
-              (isSolanaAuthor && !isChainOnly)) && (
+            {(skill.versions?.length > 0 || (isAuthor && !isChainOnly)) && (
               <div className="rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50 p-6">
                 <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-2">
@@ -1862,7 +2039,7 @@ export default function SkillDetailPage({
                       Version History
                     </span>
                   </div>
-                  {isSolanaAuthor && !isChainOnly && !versionComposerOpen && (
+                  {isAuthor && !isChainOnly && !versionComposerOpen && (
                     <button
                       onClick={openVersionComposer}
                       className={`${navButtonSecondaryInlineClass} gap-1.5 font-medium`}
@@ -1872,7 +2049,7 @@ export default function SkillDetailPage({
                     </button>
                   )}
                 </div>
-                {isSolanaAuthor && !isChainOnly && versionComposerOpen && (
+                {isAuthor && !isChainOnly && versionComposerOpen && (
                   <div className="mb-4 p-4 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)]">
                     <div className="flex items-center justify-between gap-4 mb-3">
                       <div>
@@ -1987,7 +2164,7 @@ export default function SkillDetailPage({
                     ))}
                   </div>
                 ) : (
-                  isSolanaAuthor &&
+                  isAuthor &&
                   !isChainOnly && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Publish the first repo-backed version update for this
@@ -2024,9 +2201,17 @@ export default function SkillDetailPage({
                       </span>
                     )}
                   </div>
-                  <InfoTip label={`${purchaseTitle} details`} align="right">
-                    {purchaseDescription}
-                  </InfoTip>
+                  <div className="flex items-center gap-2">
+                    {isPaidSkill && buyerHasPurchased && !isAuthor && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-300">
+                        <FiCheckCircle className="h-3 w-3" />
+                        Purchased
+                      </span>
+                    )}
+                    <InfoTip label={`${purchaseTitle} details`} align="right">
+                      {purchaseDescription}
+                    </InfoTip>
+                  </div>
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-gray-500 dark:text-gray-400">
                   <span>
@@ -2802,7 +2987,7 @@ export default function SkillDetailPage({
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
                 <FiCheckCircle className="w-4 h-4" />
-                Listed on Base
+                Base listing linked
                 {skill.evm_tx_hash && (
                   <a
                     href={`${BASE_SEPOLIA_EXPLORER_URL}/tx/${skill.evm_tx_hash}`}
@@ -2841,12 +3026,15 @@ export default function SkillDetailPage({
               <div className="flex items-center gap-2 mb-3">
                 <UsdcIcon className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-normal text-gray-900 dark:text-white">
-                  List on Marketplace
+                  {needsBaseListingSync
+                    ? "Sync Base Listing"
+                    : "List on Marketplace"}
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Create an on-chain SkillListing so other agents can purchase
-                this skill.
+                {needsBaseListingSync
+                  ? "Link the existing Base SkillListing to this repo record. If no live listing is found, AgentVouch will create one."
+                  : "Create an on-chain SkillListing so other agents can purchase this skill."}
               </p>
 
               {listResult && (
@@ -2883,12 +3071,12 @@ export default function SkillDetailPage({
                   {listing ? (
                     <>
                       <FiLoader className="w-4 h-4 animate-spin" />
-                      Creating listing…
+                      {needsBaseListingSync ? "Syncing…" : "Creating listing…"}
                     </>
                   ) : (
                     <>
                       <UsdcIcon className="w-4 h-4" />
-                      List Now
+                      {needsBaseListingSync ? "Sync Now" : "List Now"}
                     </>
                   )}
                 </button>

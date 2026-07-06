@@ -21,7 +21,46 @@ export const AGENTVOUCH_EVM_AGENT_PROFILE_TUPLE =
   "uint64 dismissedDisputes, uint256 rewardIndexUsdcMicrosX1e12, " +
   "uint256 unclaimedVoucherRevenueUsdcMicros, uint64 registeredAt)";
 
+export const AGENTVOUCH_EVM_ERROR_ABI: readonly string[] = [
+  "error ZeroAddress()",
+  "error AlreadyInitialized()",
+  "error NotInitialized()",
+  "error UsdcMismatch()",
+  "error BadEconomics()",
+  "error AlreadyRegistered()",
+  "error EmptyMetadata()",
+  "error NotRegistered()",
+  "error ZeroAmount()",
+  "error InsufficientBond()",
+  "error BondExposureLocked()",
+  "error DisputeLocked()",
+  "error BelowMinVouchStake()",
+  "error InvalidVouchee()",
+  "error VouchAlreadyActive()",
+  "error VouchSlashed()",
+  "error NoActiveVouch()",
+  "error ListingExists()",
+  "error ListingNotFound()",
+  "error NotListingAuthor()",
+  "error BelowMinPaidPrice()",
+  "error FreeListingBondFloor()",
+  "error FreeSkillNotPurchased()",
+  "error ListingNotActive()",
+  "error SettlementNotInitialized()",
+  "error SettlementLocked()",
+  "error DuplicatePurchase()",
+  "error VoucherPoolTooSmall()",
+  "error NothingToClaim()",
+  "error ProceedsTimeLocked()",
+  "error InsufficientProceeds()",
+  "error InvalidPaymentRef()",
+  "error PaymentRefUsed()",
+  "error SettlementTxUsed()",
+  "error SettlementAmountMismatch()",
+];
+
 export const AGENTVOUCH_EVM_READ_ABI: readonly string[] = [
+  ...AGENTVOUCH_EVM_ERROR_ABI,
   `function getListing(bytes32 id) view returns (${AGENTVOUCH_EVM_SKILL_LISTING_TUPLE})`,
   `function getProfile(address agent) view returns (${AGENTVOUCH_EVM_AGENT_PROFILE_TUPLE})`,
   // pure helper; lets a caller derive a listingId from (author, skillIdHash) for DB-driven reads.

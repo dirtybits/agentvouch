@@ -43,7 +43,7 @@ swap is deferred until there is a real multi-EVM collision risk.
 - Phase 5 already added additive chain-qualified fields in `web/lib/usdcPurchases.ts` and
   `web/lib/db.ts`. Phase 6 hardens that transitional model; it is not a from-zero schema addition.
 - Use CAIP-2 chain labels. Base Sepolia remains `eip155:84532`; Base mainnet `eip155:8453` is still
-  blocked until Phase 8b.
+  blocked until Phase 10.
 
 ## Scope
 
@@ -147,7 +147,7 @@ swap is deferred until there is a real multi-EVM collision risk.
 - 2026-07-01 review update: Defer the destructive entitlement PK swap. Today, Solana
   `buyer_pubkey` values are base58 and Base values are lowercased `0x...` hex, so their namespaces
   are disjoint. The real collision appears only when a second EVM chain is enabled, which is blocked
-  until Phase 8b/mainnet. Phase 6 should add chain-qualified indexes and read/write discipline
+  until Phase 10/mainnet. Phase 6 should add chain-qualified indexes and read/write discipline
   additively, keep the legacy `(skill_db_id, buyer_pubkey)` PK/upsert path, and leave the destructive
   PK swap for a later multi-EVM migration.
 

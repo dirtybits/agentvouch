@@ -22,10 +22,10 @@ export async function GET(
     await recordInstallAndDownloadEvent(access.skill.id, {
       kind: "archive",
       request,
-      walletPubkey: getOptionalDownloadAuthPubkey(
+      walletPubkey: await getOptionalDownloadAuthPubkey(
         request,
         id,
-        access.skill.on_chain_address
+        access.skill.evm_listing_id ?? access.skill.on_chain_address
       ),
       authPresent: Boolean(request.headers.get("x-agentvouch-auth")),
       skillVersionId: access.skill.version_id,
