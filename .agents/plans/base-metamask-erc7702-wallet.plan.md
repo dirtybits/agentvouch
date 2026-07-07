@@ -23,6 +23,9 @@ todos:
   - id: verify-and-close
     content: Run format, lint/typecheck/vitest/build gates per AGENTS.md, update phase smoke evidence, and document any ERC-7702 capability gaps discovered. Local gates passed; live smoke evidence still pending.
     status: completed
+  - id: author-writes-parity
+    content: "FOLLOW-UP (added 2026-07-07, outside the buyer-only scope above): implement MetaMask registerAgent/createSkillListing as EOA transactions reusing this plan's sendInjectedTransaction/receipt/event helpers, replacing the explicit unsupported errors in createBaseInjectedChainWallet. Optional — pick up only when a smoke or user flow needs a second Base author identity. Trust writes (vouch/self-stake/report) are NOT tracked here; they belong to the Phase 9 ChainWallet trust-write seam extension (see base-port-chain-adapter-phase-9.plan.md Web Scope)."
+    status: pending
 isProject: false
 ---
 

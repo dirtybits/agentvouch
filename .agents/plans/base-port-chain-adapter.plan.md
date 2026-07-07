@@ -611,6 +611,14 @@ retained, just dormant. Per-phase: revert that phase's single PR.
 - **Wallet provider (gates Phase 4) — RESOLVED 2026-06-25:** Coinbase Smart Wallet passkey for the
   MVP (POC-proven, gas-free). wagmi/MetaMask injected = roadmapped follow-on, reconsidered if it
   proves too much lifting; not in the MVP.
+  **UPDATE 2026-07-07:** MetaMask injected **buyer** support landed via PR #83
+  (`.agents/plans/base-metamask-erc7702-wallet.plan.md` — live smoke still pending there). Two
+  tracked follow-ons, deliberately NOT new phases here: MetaMask author-write parity
+  (register/list) is a pending todo in that plan; Base trust **writes** (vouch, author-bond
+  self-stake, openReport) need a reviewed `ChainWallet` seam extension and are tracked in the
+  Phase 9 sub-plan's report/vouch UI scope — the seam today is marketplace-only
+  (register/list/buy/x402/signMessage) while the deployed contract already exposes the full
+  trust surface.
 - **Circle Modular Wallets / Circle Paymaster (reviewed 2026-06-30):** not Phase 5. Modular Wallets
   are a future Circle-native wallet variant; Circle Paymaster is a future user-pays-gas-in-USDC
   option. The Base port MVP stays on Coinbase Smart Wallet + CDP-sponsored UserOps.
