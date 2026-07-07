@@ -57,18 +57,32 @@ cannot drift). Summary of where the Base track stands and what blocks mainnet:
 
 **Blocking Base mainnet (Phase 9 + Phase 10 gates — see the Phase 10 plan for the full checklist):**
 
-1. The deployed contract is the **`base-poc-v0` spike** (`contracts/base-poc/`), EOA-deployed
-   and unaudited. It must not ship to mainnet. Phase 9 owns the v1 contract with the minimal
-   trust layer (vouch/revoke, author bond, founder-resolved reports) — without it, Base is a
-   paid marketplace without the stake-backed reputation differentiator.
-   - **Local implementation note (2026-07-06):** `contracts/base-poc/src/AgentVouchEvm.sol`
-     now declares `PROTOCOL_VERSION = "base-v1-candidate"` and includes the Phase 9 MVP
+1. The deployed contract is the **`base-poc-v0` spike lineage** (`contracts/base-poc/`),
+   EOA-deployed and unaudited. It must not ship to mainnet. Phase 9 owns the v1 contract with
+   the trust layer — without it, Base is a paid marketplace without the stake-backed reputation
+   differentiator.
+   - **Status (2026-07-06, PR #78 merged):** `contracts/base-poc/src/AgentVouchEvm.sol`
+     declares `PROTOCOL_VERSION = "base-v1-candidate"` and includes the Phase 9 MVP
      author-report primitive: registered reporters bond USDC to open an author-wide report,
      `RESOLVER_ROLE` resolves it as Upheld or Dismissed, dismissed reports may optionally
      forfeit the reporter bond to the author as an anti-griefing penalty, upheld reports slash at
      most one dispute bond from the author's posted bond, and Base trust reads expose
      open/upheld/dismissed counters. This is not deployment evidence, not an external audit, and not a Phase 10
      mainnet green light.
+   - **Follow-up (2026-07-06/07, PR #79 open):** Deploy.s.sol config initialization, sample UI
+     ABI sync, production-runbook Base env/custody/security sections, Base detail/list live
+     trust rendering, and the **first live Base default-path purchase evidence** — a passkey
+     buyer purchase of the Base smoke listing with buyer ETH delta `0`, chain-qualified receipt
+     and entitlement rows, a signed raw download, and unsigned/non-buyer access failing closed
+     with a Base x402 `402`. Still open there: fresh author register/list smoke, live agent
+     x402 settlement (blocked on a dedicated `BASE_X402_RELAYER_PRIVATE_KEY` relayer plus a
+     funded agent EOA — human setup), report/vouch UI actions, custody sign-off, and reviews.
+   - **Decision (2026-07-06): the Base v1 trust bar is raised from author-bond-only report
+     slashing to a full A1 voucher-slashing mechanism port** (EVM-simplified,
+     invariant-preserving), sequenced as Phase 9b-2 so it lands **before** the 9c internal +
+     external security review — one review must cover the complete mechanism. Plan:
+     `.agents/plans/base-a1-voucher-slashing-port.plan.md`. Until it lands, vouching on Base is
+     reward-only — the same P0.1 condition the 2026-05-30 Solana audit flagged.
 2. Internal + external security review of the v1 contract (the [Security Review](#security-review)
    expectations apply to every USDC-moving function, translated to the EVM surface: EIP-3009
    authorization binding, reentrancy, split accounting, pause semantics).
@@ -89,6 +103,65 @@ The [Authority Policy](#authority-policy), [Monitoring](#monitoring),
 were written for the Solana program but state chain-agnostic expectations — apply them to the
 Base v1 contract and its operational keys (admin roles, relayer, paymaster) when executing
 Phase 9 and Phase 10.
+
+## Launch Trust Bar (chain-agnostic, 2026-07-06)
+
+Before this section existed, the document implied two different bars: the Solana no-go list
+treats "dispute resolution depends on a single key" as a hard no-go (the full A2 governance
+stack), while the Base Phase 9 MVP is founder-resolved reports under a single `RESOLVER_ROLE` by
+design. Both cannot be the launch gate. This section records the actual bar once, for whichever
+chain launches; A2-style two-phase/timelocked/multisig governance remains the **post-launch
+direction** (Roadmap Phase C), not the launch gate.
+
+A founder/admin-resolved dispute path is acceptable at mainnet launch **only if all of the
+following hold**:
+
+1. **Enforced voucher downside exists on the launch chain.** Vouching must not be reward-only:
+   upheld paid-listing reports/disputes slash linked vouch stake, not just the author bond.
+   (Solana: A1, live since 2026-06-10. Base: the Phase 9b-2 A1 port — a launch gate as of the
+   2026-07-06 decision.)
+2. **Slashed funds route harmed-party-first.** Buyer/refund exposure is satisfied before any
+   reporter/challenger reward; the reward is capped (bps + absolute cap) and never funded from
+   slash buckets. 100%-to-challenger routing is a no-go on any chain (the P0.2 collusion
+   finding).
+3. **Resolver custody is documented and separated.** The resolver key is not the deployer,
+   treasury, or upgrade key; custody, rotation, and emergency-removal procedures are written in
+   the runbook. Multisig is strongly preferred; a documented hardware-wallet policy is the
+   floor.
+4. **A pause escape hatch is live and custody-approved.** Pause blocks new exposure while buyer
+   refunds and voucher claims stay open (Solana A3 semantics; Base `setPaused` under
+   `PAUSE_ROLE`).
+5. **The UI labels centralized resolution honestly.** Trust surfaces say reports are
+   founder-resolved; no copy implies decentralized adjudication before it exists.
+
+Where the older Solana no-go bullets conflict with this bar (single-key resolution as an
+unconditional no-go), this section governs: single-key resolution passes only under conditions
+1–5; the routing and custody bullets remain hard no-gos.
+
+## Platform Concentration Risk (Coinbase, 2026-07-06)
+
+The Base track is not just a chain bet — it is a four-way dependency on one vendor: **chain**
+(Base), **wallet** (Coinbase Smart Wallet passkey is the only shipped write path), **gas** (CDP
+paymaster/bundler sponsors every UserOp), and **distribution** (the x402 ecosystem). A policy
+change in any one — paymaster pricing/allowlists, Smart Wallet API/passkey behavior, x402
+protocol direction — degrades the default UX with no code bug on our side. Accepted as the cost
+of the distribution bet; mitigations must stay warm rather than theoretical:
+
+- **Wallet diversification:** the MetaMask/EIP-7702 injected-wallet spike (staged in the
+  `contracts/base-poc/ui` v3 work; 7702 status: MetaMask supports it, Phantom does not) is the
+  named follow-on wallet variant, with Circle Modular Wallets as the passkey/MSCA alternative.
+  Wagmi/injected support was consciously deferred at Phase 4 — revisit it before or at Phase 10
+  so the wallet layer is not single-vendor at mainnet.
+- **Gas-model fallback:** Circle Paymaster (user pays gas in USDC) is the sustainability/outage
+  fallback to CDP-sponsored UserOps. x402 Lane B (EIP-3009) also needs no paymaster at all for
+  agent buyers — an outage of CDP degrades human passkey UX, not agent settlement.
+- **Chain rollback:** the Phase 8a env seam (`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`
+  - redeploy) restores the Solana default, whose trust layer is complete on devnet; Kora remains
+    the Solana-native fee-abstraction path if that rollback is ever exercised for real traffic.
+- **Monitoring/incident hooks:** add CDP paymaster spend/error rates, UserOp failure spikes, and
+  Smart Wallet connect failure rates to [Monitoring](#monitoring); add a "paymaster/bundler
+  outage or policy change" playbook to [Incident Response](#incident-response) alongside the
+  existing Kora/paymaster entry.
 
 ## Code Audit Findings (2026-05-30)
 
@@ -294,9 +367,17 @@ Mainnet launch should wait until every release candidate gate is green and the r
 
 _(2026-07-02: the go/no-go lists below are the Solana-track record. For the active Base track,
 the go/no-go is the Phase 10 gate checklist; its Base-equivalent hard no-gos are: the deployed
-contract is still `base-poc-v0`, the v1 trust layer (Phase 9) is absent, no external security
-pass on the v1 contract, admin/relayer/paymaster custody is a single hot key, or any env
-enables `eip155:8453` before the gates pass.)_
+contract is still the `base-poc-v0` spike lineage, the v1 trust layer (Phase 9) is absent, no
+external security pass on the v1 contract, admin/relayer/paymaster custody is a single hot key,
+or any env enables `eip155:8453` before the gates pass.)_
+
+_(2026-07-06 amendments: **voucher slashing absent from the Base v1 at mainnet is now a Base
+no-go too** — the A1 port (Phase 9b-2) was approved as a launch gate. The single-key-resolver
+no-go is interpreted through the [Launch Trust Bar](#launch-trust-bar-chain-agnostic-2026-07-06):
+founder-resolved reports pass only under its five conditions; harmed-party-first routing and
+documented custody remain hard no-gos. The
+[Platform Concentration Risk](#platform-concentration-risk-coinbase-2026-07-06) section names
+the Coinbase dependency and its required warm mitigations.)_
 
 Go:
 
