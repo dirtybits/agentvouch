@@ -6,8 +6,8 @@ todos:
     content: "COMPLETED 2026-07-06 (ops/base-port-phase-9-followup): Vercel preview/production env pull verified the configured DB, Base Sepolia RPC, CDP paymaster/bundler, public Phantom/Solana, and Solana sponsor variables by name only. Live Base write/x402 smokes remain blocked until a dedicated Base x402 relayer key (`BASE_X402_RELAYER_PRIVATE_KEY` or equivalent) and funded author/buyer/agent keys are available locally; no secret values were printed."
     status: completed
   - id: smoke-human-base-flow
-    content: "IN PROGRESS 2026-07-07: existing Base passkey buyer smoke passed for Base listing `efa82c9d-fcc1-47d6-8145-780bd9388783` (`base-smoke-test-v2`). Chrome restored buyer wallet `0x3fc722ba956f17b521087984F2c5c0BA47Df3c6B`; UI showed Purchased pill and signed download completed. DB row is `chain_context=eip155:84532`, author `0x4124d5105aaff0dadadf1709eb999857166dc30c`, `price_usdc_micros=1000000`, `currency_mint=0x036CbD53842c5426634e7929541eC2318f3dCF7e`, `evm_listing_id=0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, `evm_contract_address=0x6fd9e7fd459ee5d7503d9d549e75596a2c4fd854`, `evm_tx_hash=0x90297eda2b56d5cb20c327194651c2e028715d661d15ed115ada1f02db91b845`, `on_chain_address=null`. Recovered purchase tx via Base Sepolia logs: `0x1f6a3de5212bb0abfd3fc47fa7107380315a2930db9142a6e96cdfb68415a8fc` at block `43677980`; `SkillPurchased` event has purchase id `0x32a68a8fbbdf2afab9b2cc664cf076e36f1e65090e46893ca491b85f9bcb0df8`, revision `1`, price `1000000`, authorShare `1000000`, voucherPool `0`; USDC `Transfer` moved `1000000` micros from buyer to contract. Buyer ETH balance was `0 -> 0` wei across the purchase block (delta `0`). Receipt and entitlement rows are chain-qualified for buyer `0x3fc722ba956f17b521087984f2c5c0ba47df3c6b`, `buyer_chain_context=eip155:84532`, `payment_flow=direct-purchase-skill`, `asset_chain_context=eip155:84532`, and the entitlement updated during the signed download. Unsigned/non-buyer raw access returns `402 Payment Required` with Base x402 metadata. Still open for a brand-new smoke: fresh passkey author register/list plus fresh second-buyer purchase if the release owner wants a new listing instead of the existing linked smoke fixture."
-    status: in_progress
+    content: "COMPLETED 2026-07-07: Base human flow is proven against live Base Sepolia fixtures. Existing Base passkey buyer smoke passed for downloadable listing `efa82c9d-fcc1-47d6-8145-780bd9388783` (`base-smoke-test-v2`) with buyer `0x3fc722ba956f17b521087984F2c5c0BA47Df3c6B`, signed raw download, chain-qualified receipt/entitlement, and unsigned raw `402 Payment Required`. Follow-up MetaMask smoke used independent buyer `0xc00fca0034d6de438e991be7afce40a799fb533b`: Phase 3b seeded listing purchase tx `0xa12daf94b6c53c89475219f0042d8a5091b94354fe555d9a075a2194a447cdfa` proved Base receipt/entitlement but raw failed because that fixture has no `skill_versions`; downloadable `base-smoke-test-v2` purchase tx `0x9e6105cf39b92c09e6109deb78b492be2c46906de4d976c088d592c99ce50f3e` proved full purchase -> verify -> signed `GET /raw 200` -> `SKILL.md` download. DB rows are `buyer_chain_context=eip155:84532`, `amount_micros=1000000`, `payment_flow=direct-purchase-skill`, `protocol_version=base-poc-v0`; unsigned raw still returns Base x402 `402`. Fresh author register/list was not rerun; this item closes on the existing linked live fixtures plus independent buyer proof."
+    status: completed
   - id: smoke-agent-x402-flow
     content: "IN PROGRESS 2026-07-07: `/api/x402/supported` and unauthenticated raw access for `efa82c9d-fcc1-47d6-8145-780bd9388783` advertise `eip155:84532`, payment flow `base-x402-purchase-skill`, Base Sepolia native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, listing id `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, contract `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`, EIP-3009 `receiveWithAuthorization`, revision `1`, and amount `1000000`. Live settlement remains open: local env still has no `BASE_X402_RELAYER_PRIVATE_KEY` or equivalent dedicated relayer key, and `npx awal@2.12.0 status --json` reports the agent wallet server running but `authenticated=false`, so no funded agent EOA/EIP-3009 signer is available from this session. Still open: live authorization, settlement tx, x402 receipt/entitlement rows, duplicate-settlement guard, and x402 raw download."
     status: in_progress
@@ -126,6 +126,29 @@ Out of scope:
   endpoint still fails closed with Base x402 `402 Payment Required`. Agent x402 settlement remains
   blocked because no dedicated Base x402 relayer key is present in local env and the `awal` agent
   wallet is not authenticated.
+- 2026-07-07 MetaMask live-smoke follow-up after PR #83 merge: merged `origin/main` into
+  `ops/base-port-phase-9-followup`, discovered Chrome exposed Core Wallet's MetaMask-compatible
+  provider before real MetaMask, and fixed provider selection to skip Core's `coreProvider` /
+  `addProvider` shim. Targeted regression `web/__tests__/lib/baseInjectedWallet.test.ts` passed.
+  MetaMask connected/restored on Base Sepolia as independent buyer
+  `0xc00fca0034d6de438e991be7afce40a799fb533b`. RPC preflight at block `43845240`: ETH
+  `0.016998280584441705`, USDC `149`. Purchase 1, Phase 3b fixture
+  `cf0b7fa7-f111-4cca-8a0e-d45b127743bd`, tx
+  `0xa12daf94b6c53c89475219f0042d8a5091b94354fe555d9a075a2194a447cdfa`, block `43845274`,
+  receipt `5fd2b409-f908-4440-b7cf-729b3931593e`, entitlement buyer chain `eip155:84532`, amount
+  `1000000`, purchase id `0x94ee3ca99f46ddf61861298ba054b1c492d8879a415eec2069b050aa37cc5063`;
+  raw failed with `404` because the fixture has no `skill_versions` rows. Purchase 2, downloadable
+  `base-smoke-test-v2` (`efa82c9d-fcc1-47d6-8145-780bd9388783`), tx
+  `0x9e6105cf39b92c09e6109deb78b492be2c46906de4d976c088d592c99ce50f3e`, block `43845448`,
+  receipt `38bd7f93-98b0-4389-8c29-0e3617faad98`, purchase id
+  `0xe8f03b2723846b33a883c40ab591ef6ea3a936911e35442b1882c84d3d258e30`; browser reported
+  `Base USDC purchase confirmed and verified. Downloaded SKILL.md.`, server logged signed
+  `GET /api/skills/efa82c9d-fcc1-47d6-8145-780bd9388783/raw 200`, unsigned raw returned Base x402
+  `402 Payment Required`, and `skill_download_events` recorded `event_kind=raw`,
+  `auth_present=true`, `requested_path=SKILL.md`, wallet `0xc00f...533b`. Final RPC balance at
+  block `43845496`: ETH unchanged at `0.016998280584441705`, USDC `147`. Observed purchase tx
+  senders differed from buyer while contract events/DB buyer matched, so record this as MetaMask's
+  delegated/smart-transaction execution shape rather than plain `tx.from === buyer` EOA evidence.
 
 ## Part A - Base Sepolia E2E Proof
 
