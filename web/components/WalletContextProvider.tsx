@@ -53,6 +53,17 @@ import {
   getBaseWalletConfig,
 } from "@/lib/adapters/baseWalletConfig";
 import {
+  BASE_INJECTED_WALLET_NAME,
+  BASE_INJECTED_WALLET_SOURCE,
+  createBaseInjectedChainWallet,
+  disconnectBaseInjectedWallet,
+  getInjectedMetaMaskProvider,
+  restoreBaseInjectedWalletSession,
+  subscribeToEip6963MetaMaskProviders,
+  type BaseInjectedWalletSession,
+  type Eip1193Provider,
+} from "@/lib/adapters/baseInjectedWallet";
+import {
   createBasePasskeyChainWallet,
   type BasePasskeySmartAccount,
 } from "@/lib/adapters/baseWallet";
@@ -121,15 +132,20 @@ type AgentVouchWalletSignerContextValue = {
 type BasePasskeyWalletContextValue = {
   status: AgentVouchWalletStatus;
   account: string | null;
-  walletName: typeof BASE_PASSKEY_WALLET_NAME | null;
-  source: typeof BASE_PASSKEY_WALLET_SOURCE | null;
+  walletName: string | null;
+  source:
+    | typeof BASE_PASSKEY_WALLET_SOURCE
+    | typeof BASE_INJECTED_WALLET_SOURCE
+    | null;
   chainContext: typeof BASE_SEPOLIA_CHAIN_CONTEXT;
   chainLabel: typeof BASE_SEPOLIA_CHAIN_LABEL;
   configured: boolean;
   config: ReturnType<typeof getBaseWalletConfig>;
   error: string | null;
   chainWallet: ChainWallet | null;
+  injectedAvailable: boolean;
   connect: () => Promise<void>;
+  connectInjected: () => Promise<void>;
   disconnect: () => Promise<void>;
 };
 
@@ -138,7 +154,10 @@ type AgentVouchChainWalletContextValue = {
   account: string | null;
   chainContext: string | null;
   walletName: string | null;
-  source: AgentVouchWalletSource | typeof BASE_PASSKEY_WALLET_SOURCE;
+  source:
+    | AgentVouchWalletSource
+    | typeof BASE_PASSKEY_WALLET_SOURCE
+    | typeof BASE_INJECTED_WALLET_SOURCE;
   chainWallet: ChainWallet | null;
   solana: AgentVouchWalletContextValue;
   base: BasePasskeyWalletContextValue;
@@ -186,8 +205,12 @@ const BasePasskeyWalletContext = createContext<BasePasskeyWalletContextValue>({
   config: baseWalletConfig,
   error: baseWalletConfigError,
   chainWallet: null,
+  injectedAvailable: false,
   connect: async () => {
     throw new Error("Base wallet provider is not mounted");
+  },
+  connectInjected: async () => {
+    throw new Error("Base injected wallet provider is not mounted");
   },
   disconnect: async () => {},
 });
@@ -222,8 +245,12 @@ const AgentVouchChainWalletContext =
       config: baseWalletConfig,
       error: baseWalletConfigError,
       chainWallet: null,
+      injectedAvailable: false,
       connect: async () => {
         throw new Error("Base wallet provider is not mounted");
+      },
+      connectInjected: async () => {
+        throw new Error("Base injected wallet provider is not mounted");
       },
       disconnect: async () => {},
     },
@@ -523,6 +550,10 @@ function AgentVouchWalletBridge({
     useState<AgentVouchWalletStatus>("disconnected");
   const [baseSmartAccount, setBaseSmartAccount] =
     useState<BasePasskeySmartAccount | null>(null);
+  const [baseInjectedProvider, setBaseInjectedProvider] =
+    useState<Eip1193Provider | null>(null);
+  const [baseInjectedSession, setBaseInjectedSession] =
+    useState<BaseInjectedWalletSession | null>(null);
   const [baseError, setBaseError] = useState<string | null>(null);
   const directAutoConnectAttemptedRef = useRef(false);
 
@@ -637,6 +668,29 @@ function AgentVouchWalletBridge({
     if (!baseWalletConfigured) return;
 
     let cancelled = false;
+    const setDetectedProvider = (provider: Eip1193Provider | null) => {
+      if (cancelled || !provider) return;
+      setBaseInjectedProvider((current) => current ?? provider);
+    };
+
+    setDetectedProvider(getInjectedMetaMaskProvider());
+    const unsubscribeEip6963 =
+      subscribeToEip6963MetaMaskProviders(setDetectedProvider);
+    const timeouts = [
+      window.setTimeout(
+        () => setDetectedProvider(getInjectedMetaMaskProvider()),
+        250
+      ),
+      window.setTimeout(
+        () => setDetectedProvider(getInjectedMetaMaskProvider()),
+        1000
+      ),
+      window.setTimeout(
+        () => setDetectedProvider(getInjectedMetaMaskProvider()),
+        2000
+      ),
+    ];
+
     void import("@/lib/adapters/baseWallet")
       .then(({ restoreBasePasskeyAccount }) => restoreBasePasskeyAccount())
       .then((account) => {
@@ -661,8 +715,105 @@ function AgentVouchWalletBridge({
 
     return () => {
       cancelled = true;
+      unsubscribeEip6963();
+      for (const timeout of timeouts) {
+        window.clearTimeout(timeout);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!baseWalletConfigured || !baseInjectedProvider) return;
+    let cancelled = false;
+    void restoreBaseInjectedWalletSession(baseInjectedProvider)
+      .then((session) => {
+        if (cancelled || !session) return;
+        setBaseInjectedSession(session);
+        setBaseStatus("connected");
+        setBaseError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Failed to restore Base MetaMask wallet:", error);
+        setBaseStatus("error");
+        setBaseError(
+          error instanceof Error
+            ? error.message
+            : "Failed to restore Base MetaMask wallet"
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseInjectedProvider]);
+
+  useEffect(() => {
+    const provider = baseInjectedProvider;
+    if (!provider) return;
+
+    const onAccountsChanged = (accounts: unknown) => {
+      if (!Array.isArray(accounts) || typeof accounts[0] !== "string") {
+        setBaseInjectedSession(null);
+        disconnectBaseInjectedWallet();
+        if (!baseSmartAccount) setBaseStatus("disconnected");
+        return;
+      }
+      void restoreBaseInjectedWalletSession(provider)
+        .then((session) => {
+          setBaseInjectedSession(session);
+          if (session) {
+            setBaseStatus("connected");
+            setBaseError(null);
+            return;
+          }
+          if (!baseSmartAccount) setBaseStatus("disconnected");
+        })
+        .catch((error) => {
+          setBaseInjectedSession(null);
+          setBaseStatus(baseSmartAccount ? "connected" : "error");
+          setBaseError(
+            error instanceof Error
+              ? error.message
+              : "Failed to restore Base MetaMask wallet"
+          );
+        });
+    };
+    const onChainChanged = () => {
+      void restoreBaseInjectedWalletSession(provider)
+        .then((session) => {
+          setBaseInjectedSession(session);
+          if (session) {
+            setBaseStatus("connected");
+            setBaseError(null);
+            return;
+          }
+          if (!baseSmartAccount) setBaseStatus("disconnected");
+        })
+        .catch((error) => {
+          setBaseInjectedSession(null);
+          setBaseStatus(baseSmartAccount ? "connected" : "error");
+          setBaseError(
+            error instanceof Error
+              ? error.message
+              : "MetaMask is not on Base Sepolia"
+          );
+        });
+    };
+    const onDisconnect = () => {
+      setBaseInjectedSession(null);
+      disconnectBaseInjectedWallet();
+      if (!baseSmartAccount) setBaseStatus("disconnected");
+    };
+
+    provider.on?.("accountsChanged", onAccountsChanged);
+    provider.on?.("chainChanged", onChainChanged);
+    provider.on?.("disconnect", onDisconnect);
+    return () => {
+      provider.removeListener?.("accountsChanged", onAccountsChanged);
+      provider.removeListener?.("chainChanged", onChainChanged);
+      provider.removeListener?.("disconnect", onDisconnect);
+    };
+  }, [baseInjectedProvider, baseSmartAccount]);
 
   const connectorConnected =
     connectorWallet.status === "connected" && !!connectorWallet.account;
@@ -748,15 +899,22 @@ function AgentVouchWalletBridge({
     source,
   ]);
 
+  const disconnectBaseInjected = useCallback(async () => {
+    disconnectBaseInjectedWallet();
+    setBaseInjectedSession(null);
+    setBaseStatus(baseSmartAccount ? "connected" : "disconnected");
+    setBaseError(null);
+  }, [baseSmartAccount]);
+
   const disconnectBasePasskey = useCallback(async () => {
     const { disconnectBasePasskeyAccount } = await import(
       "@/lib/adapters/baseWallet"
     );
     disconnectBasePasskeyAccount();
     setBaseSmartAccount(null);
-    setBaseStatus("disconnected");
+    setBaseStatus(baseInjectedSession ? "connected" : "disconnected");
     setBaseError(null);
-  }, []);
+  }, [baseInjectedSession]);
 
   const connectBasePasskey = useCallback(async () => {
     if (!baseWalletConfigured) {
@@ -772,6 +930,10 @@ function AgentVouchWalletBridge({
         "@/lib/adapters/baseWallet"
       );
       const account = await createBasePasskeyAccount();
+      // Only drop an active MetaMask session once the passkey connect
+      // succeeded, so a cancelled prompt keeps the current wallet.
+      disconnectBaseInjectedWallet();
+      setBaseInjectedSession(null);
       setBaseSmartAccount(account);
       setBaseStatus("connected");
     } catch (error) {
@@ -786,6 +948,47 @@ function AgentVouchWalletBridge({
     }
   }, []);
 
+  const connectBaseInjected = useCallback(async () => {
+    if (!baseWalletConfigured) {
+      setBaseStatus("error");
+      setBaseError(BASE_WALLET_UNCONFIGURED_MESSAGE);
+      throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
+    }
+    const provider = baseInjectedProvider ?? getInjectedMetaMaskProvider();
+    if (!provider) {
+      const message =
+        "MetaMask is not installed or is not available to this page.";
+      setBaseStatus("error");
+      setBaseError(message);
+      throw new Error(message);
+    }
+
+    setBaseStatus("connecting");
+    setBaseError(null);
+    try {
+      const [
+        { createBaseInjectedWalletSession },
+        { disconnectBasePasskeyAccount },
+      ] = await Promise.all([
+        import("@/lib/adapters/baseInjectedWallet"),
+        import("@/lib/adapters/baseWallet"),
+      ]);
+      const session = await createBaseInjectedWalletSession(provider);
+      disconnectBasePasskeyAccount();
+      setBaseInjectedProvider(provider);
+      setBaseInjectedSession(session);
+      setBaseSmartAccount(null);
+      setBaseStatus("connected");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to connect MetaMask";
+      setBaseInjectedSession(null);
+      setBaseStatus("error");
+      setBaseError(message);
+      throw error;
+    }
+  }, [baseInjectedProvider]);
+
   // Enforce a single active wallet when a reload both auto-connects Solana and
   // restores a Base passkey. Which session survives follows the Phase 8a
   // default chain: Base wins under the Base Sepolia default, Solana wins under
@@ -794,22 +997,44 @@ function AgentVouchWalletBridge({
   // disconnect it. Deliberate cross-connects cannot collide here: the connect
   // menu only renders when neither chain is connected.
   useEffect(() => {
-    if (!(status === "connected" && account && baseSmartAccount)) return;
+    const baseConnected = Boolean(baseSmartAccount || baseInjectedSession);
+    if (!(status === "connected" && account && baseConnected)) return;
     if (baseSepoliaDefault) {
       void disconnect();
+    } else if (baseInjectedSession) {
+      void disconnectBaseInjected();
     } else {
       void disconnectBasePasskey();
     }
-  }, [status, account, baseSmartAccount, disconnect, disconnectBasePasskey]);
+  }, [
+    status,
+    account,
+    baseSmartAccount,
+    baseInjectedSession,
+    disconnect,
+    disconnectBaseInjected,
+    disconnectBasePasskey,
+  ]);
 
   const baseChainWallet = useMemo<ChainWallet | null>(() => {
+    if (baseInjectedSession) {
+      return createBaseInjectedChainWallet(
+        baseInjectedSession,
+        disconnectBaseInjected
+      );
+    }
     if (!baseSmartAccount) return null;
 
     return createBasePasskeyChainWallet(
       baseSmartAccount,
       disconnectBasePasskey
     );
-  }, [baseSmartAccount, disconnectBasePasskey]);
+  }, [
+    baseInjectedSession,
+    baseSmartAccount,
+    disconnectBaseInjected,
+    disconnectBasePasskey,
+  ]);
 
   const walletValue = useMemo<AgentVouchWalletContextValue>(
     () => ({
@@ -848,24 +1073,43 @@ function AgentVouchWalletBridge({
   const baseWalletValue = useMemo<BasePasskeyWalletContextValue>(
     () => ({
       status: baseStatus,
-      account: baseSmartAccount?.address ?? null,
-      walletName: baseSmartAccount ? BASE_PASSKEY_WALLET_NAME : null,
-      source: baseSmartAccount ? BASE_PASSKEY_WALLET_SOURCE : null,
+      account:
+        baseInjectedSession?.address.toLowerCase() ??
+        baseSmartAccount?.address ??
+        null,
+      walletName: baseInjectedSession
+        ? BASE_INJECTED_WALLET_NAME
+        : baseSmartAccount
+        ? BASE_PASSKEY_WALLET_NAME
+        : null,
+      source: baseInjectedSession
+        ? BASE_INJECTED_WALLET_SOURCE
+        : baseSmartAccount
+        ? BASE_PASSKEY_WALLET_SOURCE
+        : null,
       chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
       chainLabel: BASE_SEPOLIA_CHAIN_LABEL,
       configured: baseWalletConfigured,
       config: baseWalletConfig,
       error: baseWalletConfigError ?? baseError,
       chainWallet: baseChainWallet,
+      injectedAvailable: !!baseInjectedProvider,
       connect: connectBasePasskey,
-      disconnect: disconnectBasePasskey,
+      connectInjected: connectBaseInjected,
+      disconnect: baseInjectedSession
+        ? disconnectBaseInjected
+        : disconnectBasePasskey,
     }),
     [
       baseChainWallet,
       baseError,
+      baseInjectedProvider,
+      baseInjectedSession,
       baseSmartAccount,
       baseStatus,
+      connectBaseInjected,
       connectBasePasskey,
+      disconnectBaseInjected,
       disconnectBasePasskey,
     ]
   );

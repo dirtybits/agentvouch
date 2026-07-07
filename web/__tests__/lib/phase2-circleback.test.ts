@@ -89,6 +89,7 @@ describe("phase 2: x402 family separation", () => {
     "lib/baseListingVerification.ts",
     "lib/adapters/base.ts",
     "lib/adapters/baseWallet.ts",
+    "lib/adapters/baseInjectedWallet.ts",
   ];
 
   it("Base x402/verification modules never import Solana PDA/ATA/x402 code", () => {
