@@ -128,6 +128,30 @@ describe("Base injected execution mode probe", () => {
       params: [address, [BASE_SEPOLIA_CHAIN_ID_HEX]],
     });
   });
+
+  it("records the skipped 7702 capability when MetaMask advertises atomic batching", async () => {
+    const metamask = provider({
+      isMetaMask: true,
+      capabilities: { "0x14a34": { atomicBatch: { supported: true } } },
+    });
+    const address = getAddress("0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854");
+
+    await expect(
+      probeBaseInjectedExecutionMode(metamask, address)
+    ).resolves.toBe("erc7702-capable-skipped");
+  });
+
+  it("records EOA fallback when the capability probe is unsupported", async () => {
+    const metamask = provider({ isMetaMask: true });
+    metamask.request = vi.fn(async () => {
+      throw new Error("Method wallet_getCapabilities is not supported");
+    });
+    const address = getAddress("0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854");
+
+    await expect(
+      probeBaseInjectedExecutionMode(metamask, address)
+    ).resolves.toBe("eoa");
+  });
 });
 
 describe("Base injected ChainWallet", () => {
@@ -137,7 +161,7 @@ describe("Base injected ChainWallet", () => {
     const session: BaseInjectedWalletSession = {
       provider: metamask,
       address,
-      executionMode: "erc7702-unavailable",
+      executionMode: "eoa",
     };
 
     const wallet = createBaseInjectedChainWallet(session, async () => {});
@@ -156,7 +180,7 @@ describe("Base injected ChainWallet", () => {
     const session: BaseInjectedWalletSession = {
       provider: provider({ isMetaMask: true }),
       address: getAddress("0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854"),
-      executionMode: "erc7702-unavailable",
+      executionMode: "eoa",
     };
     const wallet = createBaseInjectedChainWallet(session, async () => {});
 

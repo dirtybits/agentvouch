@@ -78,7 +78,7 @@ type Eip6963ProviderDetail = {
 export type BaseInjectedWalletSession = {
   provider: Eip1193Provider;
   address: Address;
-  executionMode: "eoa" | "erc7702-unavailable";
+  executionMode: "eoa" | "erc7702-capable-skipped";
 };
 
 type WindowWithEthereum = Window & {
@@ -256,14 +256,16 @@ export async function probeBaseInjectedExecutionMode(
         typeof chainCapabilities === "object" &&
         "atomicBatch" in chainCapabilities
       ) {
-        return "erc7702-unavailable";
+        // Batching is advertised, but the 7702 execution path is unreviewed;
+        // record the capability and stay on ordinary EOA transactions.
+        return "erc7702-capable-skipped";
       }
       return "eoa";
     }
   } catch {
     // MetaMask stable channels may not expose EIP-5792/7702 probing yet.
   }
-  return "erc7702-unavailable";
+  return "eoa";
 }
 
 async function requestInjectedAccount(

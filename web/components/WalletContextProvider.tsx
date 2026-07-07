@@ -929,9 +929,11 @@ function AgentVouchWalletBridge({
       const { createBasePasskeyAccount } = await import(
         "@/lib/adapters/baseWallet"
       );
+      const account = await createBasePasskeyAccount();
+      // Only drop an active MetaMask session once the passkey connect
+      // succeeded, so a cancelled prompt keeps the current wallet.
       disconnectBaseInjectedWallet();
       setBaseInjectedSession(null);
-      const account = await createBasePasskeyAccount();
       setBaseSmartAccount(account);
       setBaseStatus("connected");
     } catch (error) {
