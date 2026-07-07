@@ -3,22 +3,22 @@ name: base-port-chain-adapter-phase-9
 overview: "Prove the Base Sepolia default end-to-end, then scope and build the minimal EVM trust layer and security gates required before any Base mainnet cutover."
 todos:
   - id: preflight-base-e2e-env
-    content: Verify Base Sepolia contract, CDP paymaster/bundler, relayer, USDC, funded passkey wallet, and agent EOA x402 envs before running live smokes.
-    status: pending
+    content: "COMPLETED 2026-07-06 (ops/base-port-phase-9-followup): Vercel preview/production env pull verified the configured DB, Base Sepolia RPC, CDP paymaster/bundler, public Phantom/Solana, and Solana sponsor variables by name only. Live Base write/x402 smokes remain blocked until a dedicated Base x402 relayer key (`BASE_X402_RELAYER_PRIVATE_KEY` or equivalent) and funded author/buyer/agent keys are available locally; no secret values were printed."
+    status: completed
   - id: smoke-human-base-flow
-    content: Run Base passkey register/list/buy/raw-download with gas sponsored by CDP paymaster and record tx hashes plus ETH/USDC deltas.
-    status: pending
-  - id: smoke-agent-x402-flow
-    content: Run Base EIP-3009/x402 agent payment through settle/verify/raw download and record authorization, settlement tx, receipt, and entitlement evidence.
-    status: pending
-  - id: smoke-solana-regression
-    content: If Solana remains selectable after Phase 8, run a targeted Solana direct-purchase/raw-download regression and note sponsored-checkout status separately.
-    status: pending
-  - id: scope-base-v1-trust-layer
-    content: "IN PROGRESS 2026-07-06 (a2a-loop slice, PR #78): the report/dispute primitive is scoped AND implemented — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE with a forfeitReporterBond anti-griefing lever (added after the a2a review-1 blocker: always-refunded dismissal made bond/exit-locking griefing free), upheld slash bounded to min(authorBond, reportBond). vouch/revoke + author bond preserved from the POC. STILL OPEN: ownership/custody policy, snapshot-vs-live Base trust decision, reporter-vs-treasury bounty routing decision."
+    content: "IN PROGRESS 2026-07-06: read-only Base default smoke passed locally for the existing Base listing `efa82c9d-fcc1-47d6-8145-780bd9388783` — detail API/page render live Base trust, the raw endpoint fails closed with a Base EIP-3009/x402 402 requirement, and Base copy no longer references Solana gas. Still open: actual passkey register/list/buy/raw-download with user approvals, tx/userOp hashes, ETH/USDC deltas, and buyer/non-buyer raw-access proof."
     status: in_progress
+  - id: smoke-agent-x402-flow
+    content: "IN PROGRESS 2026-07-06: `/api/x402/supported` and the Base raw 402 requirement advertise `eip155:84532`, Base Sepolia native USDC, listing id, contract, and `base-x402-purchase-skill`. Still open: live EIP-3009 authorization, settlement tx, receipt/entitlement rows, duplicate-settlement guard, and raw download; blocked locally by missing dedicated Base relayer/funded agent EOA envs."
+    status: in_progress
+  - id: smoke-solana-regression
+    content: "IN PROGRESS 2026-07-06: read-only Solana regression confirmed a paid Solana raw endpoint still fails closed with a direct-purchase 402 requirement. Still open: actual Solana direct purchase/raw download with a non-author buyer; sponsored/Kora checkout remains separate and not required unless Solana is re-promoted."
+    status: in_progress
+  - id: scope-base-v1-trust-layer
+    content: "COMPLETED 2026-07-06 via PR #78: the MVP Base trust primitive was scoped and implemented as author reports/disputes — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE, reporter USDC bond, forfeitReporterBond dismissal anti-griefing lever, upheld slash bounded to min(authorBond, reportBond), vouch/revoke + author bond preserved from the POC, and live Base trust reads for marketplace rows. Remaining ownership/custody, bounty-routing, snapshot-vs-live scale, UI, deploy/runbook, and audit work is tracked under implement-and-audit-base-v1 plus Phase 10 gates."
+    status: completed
   - id: implement-and-audit-base-v1
-    content: "IN PROGRESS 2026-07-06 (a2a-loop slice, PR #78): reports primitive + live Base trust on /skills implemented and gated — forge 75/75 (9-test Reports suite) and web 90 files/566 tests re-verified independently by Claude on 2026-07-06, matching the a2a run.log. STILL OPEN: report/vouch UI surfaces, Deploy.s.sol + ui/src/abi.ts sync, forge CI gate, internal + external security review (the audit half of this todo has not started)."
+    content: "IN PROGRESS 2026-07-06: implementation portion completed for the first 9b slice — reports primitive + live Base trust on /skills implemented and gated; Bugbot follow-ups fixed EVM identity retention, revision-scanned Base purchase repair, walletless EVM publish rejection, chain-context purchase verification, and signed Base listing PATCH. Follow-up branch synced Deploy.s.sol + ui/src/abi.ts, documented Base v1 candidate ops/runbook/security gates, confirmed forge CI already exists, fixed Base detail API/page live trust, and fixed Base paid-detail copy. STILL OPEN before Phase 9 can close: report/vouch UI actions, actual live Base/Solana write smokes, ownership/custody sign-off, internal review, and external security review."
     status: in_progress
 isProject: false
 ---
@@ -96,6 +96,25 @@ Out of scope:
   before 9c closeout; decide reporter-bounty vs treasury routing for upheld slashes before
   mainnet; close the snapshot-vs-live Base trust question before Phase 10 traffic (live per-author
   RPC reads on `/skills` are plan-sanctioned for Sepolia only); Part A live smokes untouched.
+- 2026-07-06 post-merge review of PR #78 (`a6e7727`): the plan ledger should treat the Base trust
+  layer scoping item as complete. PR #78 did complete the MVP author-report shape, contract events,
+  Base trust read path, and security hardening fixes for the slice. It did not complete Phase 9 as a
+  whole: live Base E2E smokes, x402 evidence, Solana regression, report/vouch UI, deploy-script/ABI
+  sync, forge CI, ownership/custody policy, runbook updates, and external security review remain
+  open gates.
+- 2026-07-06 follow-up branch `ops/base-port-phase-9-followup`: closed the static/ops gaps that did
+  not need live secrets — `Deploy.s.sol` now initializes the Base v1 candidate config explicitly,
+  the sample UI ABI mirrors the report/vouch/revenue/read methods, the production runbook records
+  Base env/custody/security/smoke evidence requirements, and CI already contains
+  `forge test -vv` for `contracts/base-poc`. Local read-only smoke evidence: `/api/skills/{id}` and
+  the rendered Base skill page now resolve live Base trust + identity (`eip155:84532`) instead of
+  null/Solana fallback, the Base raw endpoint returns a Base EIP-3009/x402 402 requirement, and the
+  Solana raw endpoint still fails closed with a direct-purchase 402 requirement. Live writes remain
+  blocked until the human wallet/funded-key/relayer setup is available, and external security review
+  remains a required non-Codex gate. Verification on this branch: `npm run format:check`,
+  `npm run lint --workspace @agentvouch/web`, `npm run typecheck --workspace @agentvouch/web`,
+  web tests (90 files / 571 tests), Base contract tests (75/75), Base POC UI/harness typecheck, and
+  `npm exec --workspace @agentvouch/web next -- build --webpack`.
 
 ## Part A - Base Sepolia E2E Proof
 

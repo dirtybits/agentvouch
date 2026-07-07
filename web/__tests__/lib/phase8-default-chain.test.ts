@@ -137,6 +137,21 @@ describe("phase 8a: EVM publisher auth", () => {
     );
   });
 
+  it("browse resolves EVM author identities with the Base chain context", () => {
+    const source = read("app/api/skills/route.ts");
+    const liveTrustBlock = source.slice(
+      source.indexOf("async function resolveLiveSkillTrust"),
+      source.indexOf("function persistAuthorTrustSnapshots")
+    );
+    expect(liveTrustBlock).toContain("identity-base");
+    expect(liveTrustBlock).toContain(
+      "await resolveIdentityGroup(evmAuthors, BASE_SEPOLIA_CHAIN_CONTEXT)"
+    );
+    expect(liveTrustBlock).not.toMatch(
+      /resolveManyAgentIdentitiesByWallet\(authorPubkeys,[\s\S]+hasAgentProfileByWallet/
+    );
+  });
+
   it("skills POST verifies EVM publishers via ERC-1271/6492 and stamps Base Sepolia", () => {
     const source = read("app/api/skills/route.ts");
     expect(source).toContain("verifyEvmWalletSignature");
@@ -214,5 +229,26 @@ describe("phase 8a: trust stays chain-qualified and honest after the flip", () =
     expect(trust).toContain(
       "activeDisputesAgainstAuthor +\n      disputesUpheldAgainstAuthor +\n      dismissedDisputes"
     );
+  });
+
+  it("Base detail rows resolve live EVM trust by default", () => {
+    const route = read("app/api/skills/[id]/route.ts");
+    const snapshot = read("lib/skillDetailSnapshot.ts");
+    expect(route).toContain("shouldApplyLiveTrust");
+    expect(route).toMatch(
+      /snapshot\.chain_context\?\.startsWith\("eip155:"\)[\s\S]+isEvmAddress\(snapshot\.author_pubkey\)/
+    );
+    expect(route).toMatch(
+      /const skillSnapshot = shouldApplyLiveTrust[\s\S]+await applyLiveAuthorTrust\(snapshot\)/
+    );
+    expect(route).toMatch(
+      /"Cache-Control": shouldApplyLiveTrust[\s\S]+PRIVATE_NO_STORE_CACHE_CONTROL/
+    );
+    expect(snapshot).toContain("function applyLiveBaseTrust");
+    expect(snapshot).toContain("resolveBaseAuthorTrust");
+    expect(snapshot).toMatch(/return applyLiveBaseTrust\(snapshot\)/);
+    expect(snapshot).toContain('chainContext?.startsWith("eip155:")');
+    expect(snapshot).toContain("native USDC");
+    expect(snapshot).toContain("paymaster policy");
   });
 });
