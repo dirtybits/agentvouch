@@ -8,7 +8,18 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
-Last reviewed: 2026-06-24.
+Last reviewed: 2026-07-06.
+
+> **Update 2026-07-06: the Base default flip happened.** Phase 8a (PR #74) made Base Sepolia the
+> default new-user writable path behind the Solana rollback env — the "reversible commit point"
+> referenced below has been exercised, so Base is no longer "frontrunner, not written in stone";
+> it is the launch track, gated by the Phase 9/10 plans and `docs/MAINNET_READINESS.md` (Base
+> Mainnet Track, Launch Trust Bar, Platform Concentration Risk). Phase A below remains the
+> **Solana-track** hardening record; its A1 mechanism is being ported to the Base v1 candidate
+> (`.agents/plans/base-a1-voucher-slashing-port.plan.md`, approved 2026-07-06) and its A2
+> design-lock findings carry over as the harmed-party-first/capped-reward routing invariants for
+> Base reports. Kora stays the Solana-native fallback, relevant only if the rollback env is ever
+> exercised for real traffic.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
@@ -60,7 +71,7 @@ Run the Go/No-Go in `docs/MAINNET_READINESS.md`. Nothing here overrides it.
 ## Phase C: Post-Mainnet Protocol Direction
 
 - **Optimistic dispute resolution.** A challenger's proposed ruling stands after a contest window unless the author (or a voucher — they have stake at risk and are natural watchdogs) escalates; the multisig only adjudicates contested cases. The A2 two-phase resolution is the stepping stone.
-- **LLM-jury / optimistic-oracle adjudication** enters as *evidence input* to contested cases, not as the authority, until it has a track record.
+- **LLM-jury / optimistic-oracle adjudication** enters as _evidence input_ to contested cases, not as the authority, until it has a track record.
 - Carried protocol ideas (from `TODO.md`, revalidate before building): reputation decay, on-chain evidence hashing (IPFS pointers + content hash instead of bare URI strings).
 
 ## Phase D: Product Strategy
