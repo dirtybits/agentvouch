@@ -18,7 +18,7 @@ todos:
     content: "COMPLETED 2026-07-06 via PR #78: the MVP Base trust primitive was scoped and implemented as author reports/disputes — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE, reporter USDC bond, forfeitReporterBond dismissal anti-griefing lever, upheld slash bounded to min(authorBond, reportBond), vouch/revoke + author bond preserved from the POC, and live Base trust reads for marketplace rows. Remaining ownership/custody, bounty-routing, snapshot-vs-live scale, UI, deploy/runbook, and audit work is tracked under implement-and-audit-base-v1 plus Phase 10 gates."
     status: completed
   - id: implement-and-audit-base-v1
-    content: "IN PROGRESS 2026-07-06: implementation portion completed for the first 9b slice — reports primitive + live Base trust on /skills implemented and gated; Bugbot follow-ups fixed EVM identity retention, revision-scanned Base purchase repair, walletless EVM publish rejection, chain-context purchase verification, and signed Base listing PATCH. Follow-up branch synced Deploy.s.sol + ui/src/abi.ts, documented Base v1 candidate ops/runbook/security gates, confirmed forge CI already exists, fixed Base detail API/page live trust, and fixed Base paid-detail copy. STILL OPEN before Phase 9 can close: report/vouch UI actions, actual live Base/Solana write smokes, ownership/custody sign-off, internal review, and external security review."
+    content: "IN PROGRESS 2026-07-06: implementation portion completed for the first 9b slice — reports primitive + live Base trust on /skills implemented and gated; Bugbot follow-ups fixed EVM identity retention, revision-scanned Base purchase repair, walletless EVM publish rejection, chain-context purchase verification, and signed Base listing PATCH. Follow-up branch synced Deploy.s.sol + ui/src/abi.ts, documented Base v1 candidate ops/runbook/security gates, confirmed forge CI already exists, fixed Base detail API/page live trust, and fixed Base paid-detail copy. STILL OPEN before Phase 9 can close: report/vouch/self-stake UI actions (incl. the ChainWallet trust-write seam extension — see Web Scope, scoped 2026-07-07), actual live Base/Solana write smokes, ownership/custody sign-off, internal review, and external security review."
     status: in_progress
 isProject: false
 ---
@@ -262,6 +262,18 @@ Before mainnet:
 - Base vouch/report UI:
   - Author page can become chain-aware for EVM authors if the v1 contract supports it.
   - Skill/detail pages should show Base stake-at-risk and report history honestly.
+  - **Trust WRITES need a reviewed `ChainWallet` seam extension first (scoped 2026-07-07).** The
+    seam (`web/lib/adapters/types.ts`) today exposes only marketplace actions
+    (registerAgent/createSkillListing/purchaseSkill/buildX402Payment/signMessage), while the
+    deployed contract already has `vouch`/`revokeVouch`, `depositAuthorBond`/`withdrawAuthorBond`
+    (self-stake), `openReport`, `claimVoucherRevenue`, and `withdrawAuthorProceeds`. Add the
+    trust-write methods to the seam, implement Coinbase Smart Wallet first (batched approve+call
+    UserOps, same pattern as purchaseSkill), and route the Base vouch/report UI through the seam —
+    do NOT hard-wire a third path the way today's dashboard/author vouch UI is wired directly to
+    the Solana generated client. `resolveReport` stays founder-tooling (RESOLVER_ROLE), not a
+    seam method. MetaMask implementations of these writes are optional parity via the PR #83 EOA
+    send/receipt helpers, tracked separately in
+    `.agents/plans/base-metamask-erc7702-wallet.plan.md` (author-writes-parity note).
 - Activity/dashboard:
   - Include Base trust/vouch/report activity where useful.
   - Keep Solana PDA dashboards separate or clearly labelled.
