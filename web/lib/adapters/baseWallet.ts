@@ -58,11 +58,13 @@ export { computeListingId, skillIdHashFrom } from "./baseListing";
 const PASSKEY_STORAGE_KEY = "agentvouch:base-sepolia:passkey";
 const PASSKEY_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:passkey:active";
 
-const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
+export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   ...AGENTVOUCH_EVM_READ_ABI,
   "function registerAgent(string metadataUri)",
   "function createSkillListing(bytes32 skillIdHash, string uri, string name, string description, uint256 priceUsdcMicros) returns (bytes32)",
   "function purchaseSkill(bytes32 id) returns (bytes32)",
+  "function purchaseId(address buyer, bytes32 id, uint64 revision) pure returns (bytes32)",
+  "function getPurchase(bytes32 pId) view returns (bool exists, address buyer, bytes32 listingId, uint64 revision, uint256 priceUsdcMicros, uint256 authorShareUsdcMicros, uint256 voucherPoolUsdcMicros, uint64 timestamp)",
   "event AgentRegistered(address indexed agent, string metadataUri, uint64 registeredAt)",
   "event SkillPurchased(bytes32 indexed purchaseId, bytes32 indexed listingId, address indexed buyer, uint64 revision, uint256 price, uint256 authorShare, uint256 voucherPool)",
 ]);
@@ -71,10 +73,18 @@ type StoredCredential = { id: string; publicKey: Hex };
 
 export type BasePasskeySmartAccount = SmartAccount;
 
-type BaseWriteConfig = {
+export type BaseContractWriteConfig = {
   agentVouchAddress: Address;
   usdcAddress: Address;
+};
+
+type BasePaymasterWriteConfig = BaseContractWriteConfig & {
   paymasterRpcUrl: string;
+};
+
+export type BasePurchaseApprovalPlan = {
+  resetAllowance: boolean;
+  approvePrice: boolean;
 };
 
 type RawListing = {
@@ -90,6 +100,18 @@ type RawListing = {
   status: number;
   lockedByDispute: boolean;
   exists: boolean;
+};
+
+type RawPurchase = {
+  exists: boolean;
+  buyer: Address;
+  listingId: Hex;
+  revision: bigint;
+  priceUsdcMicros: bigint;
+};
+
+type RawPurchaseTuple = Partial<RawPurchase> & {
+  [index: number]: unknown;
 };
 
 type BaseUserOperationResult = TxResult & {
@@ -139,7 +161,7 @@ function sameEvmAddress(
   );
 }
 
-function requireBaseWriteConfig(): BaseWriteConfig {
+export function requireBaseContractWriteConfig(): BaseContractWriteConfig {
   const config = getBaseWalletConfig();
   if (!config.configured) {
     throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
@@ -152,11 +174,6 @@ function requireBaseWriteConfig(): BaseWriteConfig {
   if (config.chainId !== BASE_SEPOLIA_CHAIN_ID) {
     throw new Error(
       `Base writes require chain id ${BASE_SEPOLIA_CHAIN_ID}; received ${config.chainId}.`
-    );
-  }
-  if (!BASE_CDP_PAYMASTER_RPC_URL) {
-    throw new Error(
-      "Base writes require NEXT_PUBLIC_BASE_CDP_PAYMASTER_RPC_URL or NEXT_PUBLIC_CDP_RPC_URL."
     );
   }
 
@@ -175,21 +192,27 @@ function requireBaseWriteConfig(): BaseWriteConfig {
     );
   }
 
-  return {
-    agentVouchAddress,
-    usdcAddress,
-    paymasterRpcUrl: BASE_CDP_PAYMASTER_RPC_URL,
-  };
+  return { agentVouchAddress, usdcAddress };
 }
 
-function createBasePublicClient() {
+function requireBasePaymasterWriteConfig(): BasePaymasterWriteConfig {
+  const config = requireBaseContractWriteConfig();
+  if (!BASE_CDP_PAYMASTER_RPC_URL) {
+    throw new Error(
+      "Coinbase Smart Wallet Base writes require NEXT_PUBLIC_BASE_CDP_PAYMASTER_RPC_URL or NEXT_PUBLIC_CDP_RPC_URL."
+    );
+  }
+  return { ...config, paymasterRpcUrl: BASE_CDP_PAYMASTER_RPC_URL };
+}
+
+export function createBasePublicClient() {
   return createPublicClient({
     chain: baseSepolia,
     transport: http(BASE_SEPOLIA_RPC_URL),
   });
 }
 
-async function assertBaseSepoliaChain(
+export async function assertBaseSepoliaChain(
   publicClient: ReturnType<typeof createBasePublicClient>
 ): Promise<void> {
   const chainId = await publicClient.getChainId();
@@ -200,7 +223,7 @@ async function assertBaseSepoliaChain(
   }
 }
 
-async function fetchLiveListing(
+export async function fetchLiveListing(
   publicClient: ReturnType<typeof createBasePublicClient>,
   agentVouchAddress: Address,
   listingId: Hex
@@ -221,7 +244,7 @@ async function fetchLiveListing(
   return listing;
 }
 
-function findEvent(
+export function findBaseWalletEvent(
   logs: readonly { address: Address; topics: readonly Hex[]; data: Hex }[],
   contract: Address,
   eventName: "AgentRegistered" | "SkillListingCreated" | "SkillPurchased"
@@ -254,7 +277,7 @@ async function sendBaseUserOperation(
   account: BasePasskeySmartAccount,
   calls: unknown[]
 ): Promise<BaseUserOperationResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
   const publicClient = createBasePublicClient();
   await assertBaseSepoliaChain(publicClient);
 
@@ -282,7 +305,7 @@ async function sendBaseUserOperation(
   };
 }
 
-async function waitForBaseTransactionReceipt(
+export async function waitForBaseTransactionReceipt(
   publicClient: ReturnType<typeof createBasePublicClient>,
   txHash: Hex,
   label: string
@@ -309,6 +332,82 @@ export function baseUsdcMicros(amountUsdc: string): bigint {
 
 export function formatBaseUsdc(micros: bigint): string {
   return formatUnits(micros, BASE_USDC_DECIMALS);
+}
+
+export function planBasePurchaseApprovals(input: {
+  allowance: bigint;
+  expectedPriceUsdcMicros: bigint;
+}): BasePurchaseApprovalPlan {
+  const { allowance, expectedPriceUsdcMicros } = input;
+  return {
+    resetAllowance: allowance > 0n && allowance !== expectedPriceUsdcMicros,
+    approvePrice: allowance !== expectedPriceUsdcMicros,
+  };
+}
+
+function tupleField<T extends keyof RawPurchase>(
+  tuple: RawPurchaseTuple,
+  key: T,
+  index: number
+): RawPurchase[T] | unknown {
+  return tuple[key] ?? tuple[index];
+}
+
+function normalizeBasePurchaseTuple(value: unknown): RawPurchase {
+  const tuple = value as RawPurchaseTuple;
+  return {
+    exists: Boolean(tupleField(tuple, "exists", 0)),
+    buyer: requireBaseEvmAddress(
+      String(tupleField(tuple, "buyer", 1) ?? ""),
+      "Base purchase buyer"
+    ),
+    listingId: requireBaseBytes32(
+      String(tupleField(tuple, "listingId", 2) ?? ""),
+      "Base purchase listing id"
+    ),
+    revision: BigInt(String(tupleField(tuple, "revision", 3) ?? 0)),
+    priceUsdcMicros: BigInt(
+      String(tupleField(tuple, "priceUsdcMicros", 4) ?? 0)
+    ),
+  };
+}
+
+export async function findExistingBasePurchase(input: {
+  publicClient: ReturnType<typeof createBasePublicClient>;
+  agentVouchAddress: Address;
+  buyer: Address;
+  listingId: Hex;
+  currentRevision: bigint;
+}): Promise<{ purchaseId: Hex; purchase: RawPurchase } | null> {
+  const MAX_REVISION_SCAN = 20n;
+  for (
+    let revision = input.currentRevision;
+    revision >= 1n && input.currentRevision - revision < MAX_REVISION_SCAN;
+    revision -= 1n
+  ) {
+    const purchaseId = (await input.publicClient.readContract({
+      address: input.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "purchaseId",
+      args: [input.buyer, input.listingId, revision],
+    })) as Hex;
+    const purchase = normalizeBasePurchaseTuple(
+      await input.publicClient.readContract({
+        address: input.agentVouchAddress,
+        abi: AGENTVOUCH_EVM_WRITE_ABI,
+        functionName: "getPurchase",
+        args: [purchaseId],
+      })
+    );
+    if (
+      purchase.exists &&
+      getAddress(purchase.buyer) === input.buyer &&
+      purchase.listingId === input.listingId
+    ) {
+      return { purchaseId, purchase };
+    }
+  }
+  return null;
 }
 
 export async function fetchBaseUsdcBalance(address: string): Promise<bigint> {
@@ -432,7 +531,7 @@ export async function registerBaseAgent(
   account: BasePasskeySmartAccount,
   metadataUri: string
 ): Promise<TxResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
   const publicClient = createBasePublicClient();
   const result = await sendBaseUserOperation(account, [
     {
@@ -448,7 +547,7 @@ export async function registerBaseAgent(
     result.txHash,
     "Base agent registration"
   );
-  const event = findEvent(
+  const event = findBaseWalletEvent(
     receipt.logs,
     config.agentVouchAddress,
     "AgentRegistered"
@@ -464,7 +563,7 @@ export async function createBaseSkillListing(
   account: BasePasskeySmartAccount,
   input: CreateSkillListingInput
 ): Promise<TxResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
   const publicClient = createBasePublicClient();
   const skillIdHash = skillIdHashFrom(input.skillId);
   const listingId = computeListingId(account.address, skillIdHash);
@@ -488,7 +587,7 @@ export async function createBaseSkillListing(
     result.txHash,
     "Base marketplace listing"
   );
-  const event = findEvent(
+  const event = findBaseWalletEvent(
     receipt.logs,
     config.agentVouchAddress,
     "SkillListingCreated"
@@ -510,7 +609,7 @@ export async function purchaseBaseSkill(
   account: BasePasskeySmartAccount,
   input: PurchaseSkillInput
 ): Promise<BasePurchaseResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
   const listingId = requireBaseBytes32(input.listingId, "Base listing id");
   const publicClient = createBasePublicClient();
   await assertBaseSepoliaChain(publicClient);
@@ -557,16 +656,20 @@ export async function purchaseBaseSkill(
     );
   }
 
+  const approvals = planBasePurchaseApprovals({
+    allowance,
+    expectedPriceUsdcMicros: input.expectedPriceUsdcMicros,
+  });
   const calls: unknown[] = [];
-  if (allowance !== input.expectedPriceUsdcMicros) {
-    if (allowance > 0n) {
-      calls.push({
-        to: config.usdcAddress,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [config.agentVouchAddress, 0n],
-      });
-    }
+  if (approvals.resetAllowance) {
+    calls.push({
+      to: config.usdcAddress,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [config.agentVouchAddress, 0n],
+    });
+  }
+  if (approvals.approvePrice) {
     calls.push({
       to: config.usdcAddress,
       abi: erc20Abi,
@@ -601,7 +704,7 @@ export async function purchaseBaseSkill(
     result.txHash,
     "Base USDC purchase"
   );
-  const event = findEvent(
+  const event = findBaseWalletEvent(
     receipt.logs,
     config.agentVouchAddress,
     "SkillPurchased"

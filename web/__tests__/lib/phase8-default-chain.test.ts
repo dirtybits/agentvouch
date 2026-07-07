@@ -16,9 +16,8 @@ describe("phase 8a: wallet precedence follows the default chain", () => {
     const source = read("components/WalletContextProvider.tsx");
     expect(source).toContain("isBaseSepoliaDefaultEnabled");
     // Base default drops the Solana session; rollback drops the Base session.
-    expect(source).toMatch(
-      /if \(baseSepoliaDefault\) \{\s*void disconnect\(\);\s*\} else \{\s*void disconnectBasePasskey\(\);/
-    );
+    expect(source).toContain("void disconnectBasePasskey();");
+    expect(source).toContain("void disconnectBaseInjected();");
     // Strict Mode restore guard stays.
     expect(source).toContain("cancelled = true");
   });
@@ -37,6 +36,7 @@ describe("phase 8a: wallet precedence follows the default chain", () => {
     expect(source).toContain("{!baseSepoliaDefault && baseSection}");
     // Base stays selectable under rollback: exactly one baseSection render per mode.
     expect(source).toContain("Base Sepolia");
+    expect(source).toContain("BASE_INJECTED_WALLET_NAME");
   });
 });
 

@@ -15,6 +15,7 @@ import {
   BASE_PASSKEY_WALLET_NAME,
   shortenEvmAddress,
 } from "@/lib/adapters/baseWalletConfig";
+import { BASE_INJECTED_WALLET_NAME } from "@/lib/adapters/baseInjectedWallet";
 import {
   fetchBaseUsdcBalance,
   formatBaseUsdc,
@@ -295,7 +296,9 @@ export function ClientWalletButton() {
         {showMenu && (
           <div className="absolute right-0 mt-2 w-80 rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50">
             <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
-              {baseWallet.chainLabel}
+              {baseWallet.walletName
+                ? `${baseWallet.chainLabel} · ${baseWallet.walletName}`
+                : baseWallet.chainLabel}
             </div>
             {addressMenuSection(baseWallet.account, baseUsdcBalance)}
             <button
@@ -378,6 +381,34 @@ export function ClientWalletButton() {
           ? "Opening passkey..."
           : BASE_PASSKEY_WALLET_NAME}
       </button>
+      <button
+        onClick={() => {
+          void baseWallet
+            .connectInjected()
+            .then(() => setShowMenu(false))
+            .catch((error) => {
+              console.error("Failed to connect MetaMask:", error);
+            });
+        }}
+        disabled={
+          baseWallet.status === "connecting" ||
+          !baseWallet.configured ||
+          !baseWallet.injectedAvailable
+        }
+        className={`${walletMenuButtonClass} mt-1 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed`}
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-sm border border-gray-200 bg-white text-[11px] font-normal text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200">
+          M
+        </span>
+        {baseWallet.status === "connecting"
+          ? "Opening wallet..."
+          : BASE_INJECTED_WALLET_NAME}
+      </button>
+      {!baseWallet.injectedAvailable ? (
+        <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+          MetaMask appears when the browser extension is available.
+        </p>
+      ) : null}
       {baseWallet.error ? (
         <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">
           {baseWallet.error}
