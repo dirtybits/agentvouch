@@ -6,10 +6,10 @@ todos:
     content: "COMPLETED 2026-07-06 (ops/base-port-phase-9-followup): Vercel preview/production env pull verified the configured DB, Base Sepolia RPC, CDP paymaster/bundler, public Phantom/Solana, and Solana sponsor variables by name only. Live Base write/x402 smokes remain blocked until a dedicated Base x402 relayer key (`BASE_X402_RELAYER_PRIVATE_KEY` or equivalent) and funded author/buyer/agent keys are available locally; no secret values were printed."
     status: completed
   - id: smoke-human-base-flow
-    content: "IN PROGRESS 2026-07-06: read-only Base default smoke passed locally for the existing Base listing `efa82c9d-fcc1-47d6-8145-780bd9388783` — detail API/page render live Base trust, the raw endpoint fails closed with a Base EIP-3009/x402 402 requirement, and Base copy no longer references Solana gas. Still open: actual passkey register/list/buy/raw-download with user approvals, tx/userOp hashes, ETH/USDC deltas, and buyer/non-buyer raw-access proof."
+    content: "IN PROGRESS 2026-07-07: existing Base passkey buyer smoke passed for Base listing `efa82c9d-fcc1-47d6-8145-780bd9388783` (`base-smoke-test-v2`). Chrome restored buyer wallet `0x3fc722ba956f17b521087984F2c5c0BA47Df3c6B`; UI showed Purchased pill and signed download completed. DB row is `chain_context=eip155:84532`, author `0x4124d5105aaff0dadadf1709eb999857166dc30c`, `price_usdc_micros=1000000`, `currency_mint=0x036CbD53842c5426634e7929541eC2318f3dCF7e`, `evm_listing_id=0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, `evm_contract_address=0x6fd9e7fd459ee5d7503d9d549e75596a2c4fd854`, `evm_tx_hash=0x90297eda2b56d5cb20c327194651c2e028715d661d15ed115ada1f02db91b845`, `on_chain_address=null`. Recovered purchase tx via Base Sepolia logs: `0x1f6a3de5212bb0abfd3fc47fa7107380315a2930db9142a6e96cdfb68415a8fc` at block `43677980`; `SkillPurchased` event has purchase id `0x32a68a8fbbdf2afab9b2cc664cf076e36f1e65090e46893ca491b85f9bcb0df8`, revision `1`, price `1000000`, authorShare `1000000`, voucherPool `0`; USDC `Transfer` moved `1000000` micros from buyer to contract. Buyer ETH balance was `0 -> 0` wei across the purchase block (delta `0`). Receipt and entitlement rows are chain-qualified for buyer `0x3fc722ba956f17b521087984f2c5c0ba47df3c6b`, `buyer_chain_context=eip155:84532`, `payment_flow=direct-purchase-skill`, `asset_chain_context=eip155:84532`, and the entitlement updated during the signed download. Unsigned/non-buyer raw access returns `402 Payment Required` with Base x402 metadata. Still open for a brand-new smoke: fresh passkey author register/list plus fresh second-buyer purchase if the release owner wants a new listing instead of the existing linked smoke fixture."
     status: in_progress
   - id: smoke-agent-x402-flow
-    content: "IN PROGRESS 2026-07-06: `/api/x402/supported` and the Base raw 402 requirement advertise `eip155:84532`, Base Sepolia native USDC, listing id, contract, and `base-x402-purchase-skill`. Still open: live EIP-3009 authorization, settlement tx, receipt/entitlement rows, duplicate-settlement guard, and raw download; blocked locally by missing dedicated Base relayer/funded agent EOA envs."
+    content: "IN PROGRESS 2026-07-07: `/api/x402/supported` and unauthenticated raw access for `efa82c9d-fcc1-47d6-8145-780bd9388783` advertise `eip155:84532`, payment flow `base-x402-purchase-skill`, Base Sepolia native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, listing id `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, contract `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`, EIP-3009 `receiveWithAuthorization`, revision `1`, and amount `1000000`. Live settlement remains open: local env still has no `BASE_X402_RELAYER_PRIVATE_KEY` or equivalent dedicated relayer key, and `npx awal@2.12.0 status --json` reports the agent wallet server running but `authenticated=false`, so no funded agent EOA/EIP-3009 signer is available from this session. Still open: live authorization, settlement tx, x402 receipt/entitlement rows, duplicate-settlement guard, and x402 raw download."
     status: in_progress
   - id: smoke-solana-regression
     content: "IN PROGRESS 2026-07-06: read-only Solana regression confirmed a paid Solana raw endpoint still fails closed with a direct-purchase 402 requirement. Still open: actual Solana direct purchase/raw download with a non-author buyer; sponsored/Kora checkout remains separate and not required unless Solana is re-promoted."
@@ -115,6 +115,17 @@ Out of scope:
   `npm run lint --workspace @agentvouch/web`, `npm run typecheck --workspace @agentvouch/web`,
   web tests (90 files / 571 tests), Base contract tests (75/75), Base POC UI/harness typecheck, and
   `npm exec --workspace @agentvouch/web next -- build --webpack`.
+- 2026-07-07 live-smoke follow-up on PR #79: refreshed stale local dependencies with root
+  `npm ci` (no tracked file changes), started local web on `localhost:3001`, restored Chrome's
+  Base passkey buyer wallet, and completed a signed raw download for the existing Base smoke skill
+  `efa82c9d-fcc1-47d6-8145-780bd9388783`. DB evidence confirms the Base row, direct-purchase
+  receipt, and entitlement are chain-qualified; Base Sepolia log recovery found purchase tx
+  `0x1f6a3de5212bb0abfd3fc47fa7107380315a2930db9142a6e96cdfb68415a8fc`, purchase id
+  `0x32a68a8fbbdf2afab9b2cc664cf076e36f1e65090e46893ca491b85f9bcb0df8`, price/author share
+  `1000000`, voucher pool `0`, and buyer ETH delta `0` wei across block `43677980`. The unsigned raw
+  endpoint still fails closed with Base x402 `402 Payment Required`. Agent x402 settlement remains
+  blocked because no dedicated Base x402 relayer key is present in local env and the `awal` agent
+  wallet is not authenticated.
 
 ## Part A - Base Sepolia E2E Proof
 
