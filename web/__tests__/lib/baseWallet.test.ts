@@ -9,6 +9,7 @@ import {
   formatBaseUsdc,
   isBaseDuplicatePurchaseError,
   isBaseReceiptPendingError,
+  planBasePurchaseApprovals,
   skillIdHashFrom,
 } from "@/lib/adapters/baseWallet";
 import { BASE_USDC_DECIMALS } from "@/lib/adapters/baseWalletConfig";
@@ -82,5 +83,34 @@ describe("AgentVouchEvm custom errors", () => {
     });
 
     expect(decoded.errorName).toBe("EmptyMetadata");
+  });
+});
+
+describe("Base wallet approval planning", () => {
+  it("does not approve when allowance already exactly matches price", () => {
+    expect(
+      planBasePurchaseApprovals({
+        allowance: 1_000_000n,
+        expectedPriceUsdcMicros: 1_000_000n,
+      })
+    ).toEqual({ resetAllowance: false, approvePrice: false });
+  });
+
+  it("resets stale non-zero allowance before approving the exact price", () => {
+    expect(
+      planBasePurchaseApprovals({
+        allowance: 500_000n,
+        expectedPriceUsdcMicros: 1_000_000n,
+      })
+    ).toEqual({ resetAllowance: true, approvePrice: true });
+  });
+
+  it("approves the exact price from zero allowance", () => {
+    expect(
+      planBasePurchaseApprovals({
+        allowance: 0n,
+        expectedPriceUsdcMicros: 1_000_000n,
+      })
+    ).toEqual({ resetAllowance: false, approvePrice: true });
   });
 });

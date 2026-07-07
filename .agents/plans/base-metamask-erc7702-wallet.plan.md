@@ -4,24 +4,27 @@ overview: "Add MetaMask and ERC-7702-capable Base Sepolia buyer support behind t
 todos:
   - id: map-current-base-wallet-seams
     content: Audit the current Coinbase Smart Wallet Base path, ChainWallet interfaces, and purchase/download call sites; record the exact split between shared Base logic and wallet-specific execution.
-    status: pending
+    status: completed
   - id: add-injected-base-wallet-provider
     content: Add MetaMask/injected EIP-1193 detection, connect, disconnect, chain switching, address restore, and wallet-menu UI alongside Coinbase Smart Wallet.
-    status: pending
+    status: completed
   - id: refactor-base-wallet-execution
     content: Extract shared Base register/list/purchase helpers so Coinbase Smart Wallet keeps UserOp batching while MetaMask can use ERC-7702 when available and approve-then-purchase fallback otherwise.
-    status: pending
+    status: completed
   - id: implement-metamask-buyer-flow
     content: Implement MetaMask Base Sepolia purchase, entitlement detection, signed raw download, friendly duplicate/already-purchased errors, and expected-price guard preservation.
-    status: pending
+    status: completed
   - id: cover-wallet-isolation-tests
     content: Add or update tests proving Coinbase, MetaMask, and Solana wallet paths stay isolated and Base code does not import Solana write/x402-only seams.
-    status: pending
+    status: completed
   - id: run-live-smokes
-    content: Browser-smoke MetaMask as a distinct Base Sepolia buyer, confirm DB receipt/entitlement rows, unsigned raw 402, signed download success, and Coinbase/Solana regressions.
+    content: Browser-smoke MetaMask as a distinct Base Sepolia buyer, confirm DB receipt/entitlement rows, unsigned raw 402, signed download success, and Coinbase/Solana regressions. Not run in this fixer pass; requires funded MetaMask/Base Sepolia browser wallet.
     status: pending
   - id: verify-and-close
-    content: Run format, lint/typecheck/vitest/build gates per AGENTS.md, update phase smoke evidence, and document any ERC-7702 capability gaps discovered.
+    content: Run format, lint/typecheck/vitest/build gates per AGENTS.md, update phase smoke evidence, and document any ERC-7702 capability gaps discovered. Local gates passed; live smoke evidence still pending.
+    status: completed
+  - id: author-writes-parity
+    content: "FOLLOW-UP (added 2026-07-07, outside the buyer-only scope above): implement MetaMask registerAgent/createSkillListing as EOA transactions reusing this plan's sendInjectedTransaction/receipt/event helpers, replacing the explicit unsupported errors in createBaseInjectedChainWallet. Optional — pick up only when a smoke or user flow needs a second Base author identity. Trust writes (vouch/self-stake/report) are NOT tracked here; they belong to the Phase 9 ChainWallet trust-write seam extension (see base-port-chain-adapter-phase-9.plan.md Web Scope)."
     status: pending
 isProject: false
 ---
@@ -80,6 +83,10 @@ Out of scope:
   - Extract shared pure helpers for Base Sepolia config, listing fetch, price/balance/allowance
     checks, receipt parsing, duplicate purchase detection, and user-facing error normalization.
   - Add a MetaMask/injected implementation that returns a `ChainWallet`.
+- `web/lib/adapters/baseInjectedWallet.ts` or similarly-scoped client-only module
+  - Prefer adding injected-provider discovery, EIP-1193 request helpers, chain switching, account
+    restore, and EOA transaction sending here instead of making `baseWallet.ts` a second large
+    provider implementation. Re-export only small factory helpers from `baseWallet.ts` if needed.
 - `web/lib/adapters/baseWalletConfig.ts`
   - Reuse existing Base Sepolia constants and env validation. Do not add `eip155:8453` paths.
 - `web/components/WalletContextProvider.tsx`
@@ -105,6 +112,74 @@ Out of scope:
 - `web/__tests__/lib/phase8-default-chain.test.ts`
   - Extend wallet/default-chain assertions for the injected Base option.
 - Add focused tests near existing Base wallet tests if present, or under `web/__tests__/lib/`.
+
+## Implementer Review (2026-07-07)
+
+Repo inspection found the plan direction is sound, but implementation needs these enhancements before
+code work starts:
+
+- **Current checkout/base verified:** this worktree is
+  `a2a/base-metamask-erc7702-wallet-20260707`; `main` and `HEAD` currently resolve to the same
+  commit (`4e68d4b`). Implementation can proceed from the requested base branch without rebasing
+  first, unless `main` moves before coding starts.
+- **Do not copy the Base POC MetaMask 7702 file as working code.**
+  `contracts/base-poc/ui/src/accounts/metamask7702.ts` is a disabled spike stub that throws and
+  explicitly says the MetaMask 7702 signing/bundler path is still pending. Use it only as a warning
+  about the open question: whether MetaMask lets this app sign an authorization and drive the app's
+  own CDP bundler/paymaster. The production web implementation must treat 7702 as optional and keep
+  standard EOA writes as the acceptance path.
+- **Split Base write config before sharing helpers.** `web/lib/adapters/baseWallet.ts` currently has
+  `requireBaseWriteConfig()` that requires `BASE_CDP_PAYMASTER_RPC_URL`. That is correct for
+  Coinbase Smart Wallet UserOps, but it would incorrectly block a MetaMask EOA fallback that only
+  needs the Base Sepolia RPC, AgentVouch contract, and native USDC address. Refactor into:
+  - a paymaster-free `requireBaseContractWriteConfig()` for shared EOA/UserOp validation; and
+  - a Coinbase-only `requireBasePaymasterConfig()` or equivalent used only by
+    `sendBaseUserOperation()`.
+- **Keep injected wallet code client-only and out of server bundles.** `baseWallet.ts` is already
+  `"use client"`, but helper extraction must not move `window`, EIP-1193 providers, account-change
+  listeners, or wallet SDK assumptions into `web/lib/adapters/base.ts`, route handlers, or any
+  server-safe module. Add any new injected wallet file to the Base family guard in
+  `web/__tests__/lib/phase2-circleback.test.ts`.
+- **Use existing `viem`; do not add a dependency unless a blocker is proven.** `@agentvouch/web`
+  already depends on `viem@^2.52.2`, which should cover public/wallet clients and EOA contract
+  writes. Adding wagmi, MetaMask SDK, or account-abstraction packages should be treated as a
+  separate build-tool/dependency decision.
+- **Provider detection needs lifecycle coverage.** The UI currently owns direct Phantom injection
+  and delayed detection in `WalletContextProvider.tsx`. MetaMask should follow the same pattern:
+  detect at mount plus delayed retries, prefer EIP-6963 MetaMask providers when available, subscribe
+  to `accountsChanged` and `chainChanged`, and remove listeners on cleanup. The stored "active"
+  flag must be source-specific so a saved Coinbase passkey and a saved MetaMask account cannot both
+  restore as active without the existing single-active-wallet arbitration resolving them.
+- **MetaMask EOA writes need their own transaction path.** For fallback mode, use a viem wallet
+  client or minimal EIP-1193 `eth_sendTransaction` wrapper to:
+  - switch/add Base Sepolia (`0x14a34`) before writes;
+  - read live listing, balance, and allowance through the existing public client;
+  - send `approve(0)` only when the current allowance is non-zero and different from the expected
+    price;
+  - send `approve(price)` when allowance is insufficient or stale;
+  - send `purchaseSkill(listingId)`;
+  - wait for each receipt, verify `SkillPurchased`, and return `paidGas: true` for EOA fallback
+    transactions.
+- **Message signing needs an EOA-specific test.** The Base passkey wallet signs through the smart
+  account and relies on ERC-1271/6492 verification in `web/lib/evmAuth.ts`. MetaMask should use
+  `personal_sign`/viem `signMessage` with the connected EOA, return a `0x` signature, and verify
+  through the same `verifyEvmWalletSignature` path. Add a focused test that the MetaMask
+  `ChainWallet.signMessage` adapter lowercases the API identity while preserving display-only
+  checksumming in UI.
+- **Keep author writes honest.** If `registerAgent` and `createSkillListing` are not implemented
+  for MetaMask in this pass, the MetaMask `ChainWallet` methods must throw explicit unsupported
+  errors. Do not route MetaMask author writes through the Coinbase smart account or silently fall
+  back to Solana.
+- **Tests should cover behavior, not only source text.** Existing Base wallet tests are mostly pure
+  helper/source guards. Add behavioral tests for extracted price/allowance decision logic,
+  duplicate/pending error normalization, injected provider selection, Base mainnet rejection, and
+  disconnect/restore source isolation. Source tests should only guard import-family and UI wiring
+  invariants.
+- **Live smoke needs gas and faucet prerequisites.** MetaMask fallback pays Base Sepolia ETH gas and
+  spends Base Sepolia test USDC. Record both starting balances, the approve tx hash(es), purchase tx
+  hash, receipt/entitlement rows, and whether 7702 was skipped, rejected, or used. A successful EOA
+  fallback smoke is enough to close the buyer feature; 7702 evidence is a closeout note, not a
+  blocker.
 
 ## Implementation Steps
 
@@ -200,6 +275,11 @@ Treat ERC-7702 as a capability path, not a protocol dependency.
   correctness.
 - Do not require ERC-7702 to pass the smoke. The acceptance path is: MetaMask can buy and download;
   ERC-7702 support is an enhancement with evidence recorded in the plan closeout.
+
+2026-07-07 fixer note: the MetaMask adapter now probes `wallet_getCapabilities` on connect/restore
+and records EOA fallback when the Base Sepolia provider does not expose a reviewed 7702 batching
+capability. The purchase implementation intentionally remains ordinary EOA `approve` /
+`purchaseSkill` until a reviewed MetaMask 7702 execution path is available.
 
 ## Verification
 
