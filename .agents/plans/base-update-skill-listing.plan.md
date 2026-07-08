@@ -26,9 +26,11 @@ isProject: false
 # Base updateSkillListing (Revision Bump) Port
 
 ## Goal
+
 Base authors can edit listing metadata and price with Solana-parity semantics. Metadata-only edits do not bump revision. URI or price changes bump `currentRevision`, initialize a fresh settlement bucket, and are blocked while the listing is dispute-locked or the author has open disputes.
 
 ## Implemented
+
 - `contracts/base-poc/src/AgentVouchEvm.sol`
   - Added `updateSkillListing(bytes32,string,string,string,uint256)`.
   - Added `SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)`.
@@ -53,7 +55,9 @@ Base authors can edit listing metadata and price with Solana-parity semantics. M
   - Routed Base author edit UI through the ChainWallet seam and PATCH rehydrate path.
 
 ## Verification
+
 Passed:
+
 - `forge test --root contracts/base-poc`
 - `npm run test --workspace @agentvouch/web -- __tests__/api/skills-route.test.ts`
 - `npm run format:check`
@@ -63,14 +67,24 @@ Passed:
 - `git diff --check`
 
 Attempted but blocked:
+
 - `npm exec --workspace @agentvouch/web -- next build --webpack`
   - Blocker: `getaddrinfo ENOTFOUND fonts.googleapis.com`
   - Failed while fetching `Crimson Pro`, `Crimson Text`, and `Inconsolata` via `next/font`.
 
 Deferred:
+
 - Base Sepolia live smoke is deferred to the combined A1 run per plan sequencing.
 
 ## Notes
+
 - `web/public/skill.md` was reviewed by scope and left unchanged.
 - `docs/PRODUCTION_RUNBOOK.md` now includes `updateSkillListing` in the Base v1 security review surface.
 - `.agents/plans/base-port-chain-adapter-phase-9.plan.md` should add `updateSkillListing` to the Base v1 contract scope, but this session could not write `.agents` files directly.
+- 2026-07-08: metadata-only edits (name/description) remain allowed while dispute-locked — Solana parity, accepted at review.
+
+## Rollback
+
+- **Contract:** `updateSkillListing` ships only with the next Sepolia candidate deploy. Until that deploy, revert this PR (or drop the candidate that includes it); no live Base chain state depends on the function yet.
+- **Web seam/UI:** additive `ChainWallet.updateSkillListing`, Base PATCH `mode: "update"`, and author edit UI — revert cleanly by reverting the PR commits. No shared write-path breakage if unused.
+- **DB:** no migration. Listing rows re-hydrate from chain after update verification; rolling back web alone leaves rows consistent with the last verified on-chain state.

@@ -9,7 +9,7 @@ todos:
     content: "Implement in contracts/base-poc/src/AgentVouchEvm.sol (+ AgentVouchTypes.sol) per the locked design: optional listingId + purchase reference on AuthorReport (financial vs reputation-only branch); vouch() lock while vouchee has open reports (symmetric to the existing revokeVouch DisputeLocked guard); resolveReport(Upheld) O(1) parking with snapshot of slashPercentage/reward caps and totalVouchStakeReceivedUsdcMicros; permissionless slashReportVouches(reportId, vouchers[]) crank verifying eligibility per vouch, slashing at the snapshotted percentage into a ring-fenced refund-only bucket, setting VouchStatus.Slashed dead positions (accrual-excluded), and closing the report when accounted stake equals the snapshot; minimal refund claim for verified buyers of the referenced listing with claim window; residual-to-treasury close path with events; residual voucher stake reclaimable via revokeVouch after close."
     status: pending
   - id: forge-tests
-    content: "Forge suite mirroring the Solana A1 coverage under the locked design: slash math at snapshot percentage, multi-voucher crank across multiple calls, stake-accounting completeness (report closes only when accounted == snapshot), two-sided membership lock (vouch() and revokeVouch both revert mid-report; totalVouchStakeReceived frozen), revision/listing dodge blocks, per-(report,voucher) double-slash guard, ring-fence (slash bucket never author-withdrawable, never in reporter-reward base), buyer-first refund claim + one-claim-per-purchase + window expiry + residual-to-treasury, reputation-only branch (no listing/purchase ref => no voucher slash, locks clear), reward-vault solvency with Slashed positions, zero-vouch path, pause interaction, reentrancy on USDC moves, gas snapshot for the recommended crank page size."
+    content: "Forge suite mirroring the Solana A1 coverage under the locked design: slash math at snapshot percentage, multi-voucher crank across multiple calls, stake-accounting completeness (report closes only when accounted == snapshot), two-sided membership lock (vouch() and revokeVouch both revert mid-report; totalVouchStakeReceived frozen), revision/listing dodge blocks, per-(report,voucher) double-slash guard, ring-fence (slash bucket never author-withdrawable, never in reporter-reward base), buyer-first refund claim + one-claim-per-purchase + window expiry + residual-to-treasury, reputation-only branch (no listing/purchase ref => no voucher slash, locks clear), reward-vault solvency with Slashed positions, zero-vouch path, pause interaction, reentrancy on USDC moves, gas snapshot for the recommended crank page size; once listing-referenced reports set `lockedByDispute`, add the updateSkillListing bump-guard flag-path test (flag set → bump reverts DisputeLocked even with `openDisputes == 0`)."
     status: pending
   - id: sync-artifacts
     content: "Sync Deploy.s.sol config, contracts/base-poc/ui/src/abi.ts, harness ABI fragments, and web/lib/adapters/agentVouchEvmAbi.ts + baseAuthorTrust.ts read surfaces (slashed-stake counters, report exposure) — keeping BaseAdapter server-safe."
@@ -58,6 +58,13 @@ setup is human-gated and runs in parallel).
 > backed purchase → upheld report → crank slash → refund claim → residual reclaim). Part A
 > human-gated items (x402 relayer key, funded agent EOA, fresh author passkey smoke) proceed in
 > parallel with either loop.
+
+> **2026-07-08 (PR #86 review follow-up):** `updateSkillListing` already guards bumps on
+> `l.lockedByDispute || profiles[author].openDisputes > 0`, but nothing in the pre-A1 contract
+> sets `lockedByDispute`, so the flag half of the bump guard is untestable today. Once this
+> plan's listing-referenced reports set that flag, the `forge-tests` suite must cover the flag
+> path explicitly (flag set → bump reverts `DisputeLocked` even when `openDisputes == 0`).
+> Metadata-only updates while locked remain allowed (Solana parity; accepted at #86 review).
 
 ## Baseline (what exists in the v1 candidate today)
 
