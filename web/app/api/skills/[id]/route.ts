@@ -342,7 +342,14 @@ export async function GET(
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
-    const skillSnapshot = useLiveTrust
+    const shouldApplyLiveTrust =
+      useLiveTrust ||
+      Boolean(
+        snapshot.author_pubkey &&
+          snapshot.chain_context?.startsWith("eip155:") &&
+          isEvmAddress(snapshot.author_pubkey)
+      );
+    const skillSnapshot = shouldApplyLiveTrust
       ? await applyLiveAuthorTrust(snapshot)
       : snapshot;
 
@@ -362,7 +369,7 @@ export async function GET(
     if (!buyerAddress && !canCheckEvmBuyer) {
       return NextResponse.json(skillSnapshot, {
         headers: {
-          "Cache-Control": useLiveTrust
+          "Cache-Control": shouldApplyLiveTrust
             ? PRIVATE_NO_STORE_CACHE_CONTROL
             : buildPublicCacheControl(
                 PUBLIC_ROUTE_CACHE_SECONDS.skillDetail,

@@ -6,9 +6,10 @@ import {console2} from "forge-std/console2.sol";
 import {AgentVouchEvm} from "../src/AgentVouchEvm.sol";
 import {AgentVouchTypes} from "../src/libraries/AgentVouchTypes.sol";
 
-/// @notice Deploys AgentVouchEvm and initializes config for the gas-free UX spike.
+/// @notice Deploys AgentVouchEvm and initializes config for the Base v1 candidate.
 ///         Target: Base Sepolia (eip155:84532). The deployer (DEPLOYER_PRIVATE_KEY)
-///         is granted every role, so it can call initializeConfig in the same run.
+///         is granted every role by the constructor unless ADMIN_ADDRESS is provided.
+///         Mainnet deployments must use documented multisig/custody from the Phase 10 gate.
 ///
 ///         Usage:
 ///           export DEPLOYER_PRIVATE_KEY=0x...
@@ -41,7 +42,7 @@ contract Deploy is Script {
         c.usdc = u;
         c.chainContext = "eip155:84532"; // Base Sepolia
         c.minVouchStakeUsdcMicros = 1_000_000; // 1 USDC
-        c.disputeBondUsdcMicros = 5_000_000; // 5 USDC (disputes are Phase 5; unused by this spike)
+        c.disputeBondUsdcMicros = 5_000_000; // 5 USDC reporter bond for author reports
         c.minAuthorBondForFreeListingUsdcMicros = 10_000_000; // 10 USDC
         c.minPaidListingPriceUsdcMicros = 1_000_000; // 1 USDC
         c.authorShareBps = 6000; // 60% author
@@ -49,5 +50,16 @@ contract Deploy is Script {
         c.protocolFeeBps = 0; // reserved
         c.slashPercentage = 100;
         c.authorProceedsLockSeconds = 0; // no proceeds time-lock for the demo
+        c.refundClaimWindowSeconds = 0; // refund pools are deferred on Base v1 candidate
+        c.challengerRewardBps = 0; // upheld reports route bounded author-bond slash to reporter
+        c.challengerRewardCapUsdcMicros = 0;
+        c.stakeWeightPerUsdc = 0;
+        c.riskComponentCap = 0;
+        c.vouchWeight = 0;
+        c.vouchComponentCap = 0;
+        c.longevityBonusPerDay = 0;
+        c.longevityComponentCap = 0;
+        c.upheldDisputePenalty = 0;
+        c.reputationScoreCap = 0;
     }
 }

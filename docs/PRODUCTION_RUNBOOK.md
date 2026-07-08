@@ -1,6 +1,8 @@
 # AgentVouch Production Runbook
 
 This runbook covers the deployed `agentvouch` web app and the USDC-native `v0.2.0` devnet protocol.
+The near-term mainnet track is Base, but Base remains gated by the Phase 9/10 plans until the
+v1 contract, custody, live smokes, and security review are complete.
 
 ## Production Shape
 
@@ -31,6 +33,22 @@ Set preview and production deliberately. Do not assume local `.env.local`, Verce
 | `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED` | bridge-only | Enables protocol-listed x402 bridge purchases when set to `true`; keep unset/false unless the full bridge smoke is approved |
 
 Keep `SOLANA_RPC_URL` and `NEXT_PUBLIC_SOLANA_RPC_URL` on the same cluster. A mismatch can make wallet flows look like protocol bugs.
+
+Base Sepolia / Base mainnet variables are intentionally separate from the Solana runtime. For any
+environment where Base writes are enabled, record these names and confirm server/client values agree:
+
+| Variable                           | Required       | Purpose                                                      |
+| ---------------------------------- | -------------- | ------------------------------------------------------------ |
+| `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT` | yes for Base default | `base-sepolia` for the testnet default; `solana` for rollback. `eip155:8453` is blocked until Phase 10. |
+| `BASE_SEPOLIA_RPC_URL`             | Base Sepolia   | Server-side Base Sepolia reads and settlement verification    |
+| `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` | Base Sepolia   | Browser-visible Base Sepolia RPC                             |
+| `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` | Base Sepolia | AgentVouchEvm contract address used by web reads/writes       |
+| `NEXT_PUBLIC_BASE_USDC_ADDRESS`    | Base Sepolia   | Base Sepolia native USDC address                              |
+| `CDP_RPC_URL`                      | sponsored writes | Coinbase Developer Platform paymaster/bundler endpoint used by the base-poc harness and passkey smart-account flows |
+| `BASE_X402_RELAYER_PRIVATE_KEY`    | Base x402      | Dedicated low-privilege settlement/relayer EOA; never use the deployer/admin key |
+
+Do not print secret values in PR comments or smoke logs. Record only variable names, chain context,
+contract addresses, public wallet addresses, and transaction/userOp hashes.
 
 ## Deployment Checklist
 
@@ -101,6 +119,40 @@ Record the authority pubkeys for each environment before production changes:
 - treasury authority
 - x402 settlement authority
 - pause authority
+
+## Base V1 Candidate Operations
+
+The Base contract surface under `contracts/base-poc` is now a **Base v1 candidate**, not a mainnet
+release. It includes `PROTOCOL_VERSION = "base-v1-candidate"`, USDC purchase/x402 flows,
+author bonds, vouch/revoke, and founder/admin-resolved author reports.
+
+Before any Base mainnet deployment:
+
+1. Use a fresh non-upgradeable deployment unless a concrete operational need justifies a proxy.
+2. Put every privileged role behind documented custody, preferably a multisig:
+   `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `TREASURY_ROLE`, `SETTLEMENT_ROLE`, and
+   `PAUSE_ROLE`.
+3. Keep the x402 relayer as a dedicated low-privilege funded EOA. It must not be the deployer,
+   default admin, resolver, treasury, or pause key.
+4. Record role holders, threshold/signers, emergency rotation, and revocation procedure in the
+   deployment state doc before promotion.
+5. Run `forge test --root contracts/base-poc` in CI and locally for every contract change.
+6. Run internal review plus an external security pass over every USDC-moving path before Phase 10:
+   `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase`, `depositAuthorBond`,
+   `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue`, `withdrawAuthorProceeds`,
+   `openReport`, and `resolveReport`.
+
+Base Sepolia smoke evidence to capture before treating Phase 9 as closed:
+
+- Base passkey author register/list userOp or tx hash.
+- Base passkey buyer purchase userOp or tx hash.
+- Buyer ETH delta showing sponsored gas policy worked as intended.
+- Buyer, author, voucher pool, and contract USDC deltas.
+- Receipt and entitlement rows with `buyer_chain_context` / `buyer_address`.
+- Raw download success for the buyer and rejection for a non-buyer.
+- Base EIP-3009/x402 authorization hash/ref, settlement tx, duplicate-settlement guard, and raw
+  download proof.
+- One Solana direct-purchase/raw-download regression while Solana remains selectable.
 
 ## Emergency Pause
 

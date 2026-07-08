@@ -311,26 +311,40 @@ async function resolveLiveSkillTrust(input: {
       }
     });
   }
-  let identityMap = new Map<string, AgentIdentitySummary>();
-  if (authorPubkeys.length > 0) {
+  const identityMap = new Map<string, AgentIdentitySummary>();
+  const resolveIdentityGroup = async (
+    authors: string[],
+    chainContext?: string
+  ) => {
+    if (authors.length === 0) return;
     try {
-      identityMap = await input.timing.measure("identity", () =>
-        resolveManyAgentIdentitiesByWallet(authorPubkeys, {
-          hasAgentProfileByWallet: new Map(
-            authorPubkeys.map((authorPubkey) => [
-              authorPubkey,
-              trustMap.get(authorPubkey)?.isRegistered ?? false,
-            ])
-          ),
-        })
+      const resolved = await input.timing.measure(
+        chainContext?.startsWith("eip155:")
+          ? "identity-base"
+          : "identity-solana",
+        () =>
+          resolveManyAgentIdentitiesByWallet(authors, {
+            chainContext,
+            hasAgentProfileByWallet: new Map(
+              authors.map((authorPubkey) => [
+                authorPubkey,
+                trustMap.get(authorPubkey)?.isRegistered ?? false,
+              ])
+            ),
+          })
       );
+      for (const [authorPubkey, identity] of resolved.entries()) {
+        identityMap.set(authorPubkey, identity);
+      }
     } catch (error) {
       console.error(
         "Failed to resolve author identities for /api/skills:",
         error
       );
     }
-  }
+  };
+  await resolveIdentityGroup(solanaAuthors);
+  await resolveIdentityGroup(evmAuthors, BASE_SEPOLIA_CHAIN_CONTEXT);
   return { trustMap, identityMap };
 }
 

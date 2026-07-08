@@ -147,7 +147,9 @@ export function selectMetaMaskProvider(
         !provider.isPhantom &&
         !provider.isBraveWallet &&
         !provider.isCoinbaseWallet &&
-        !provider.isRabby
+        !provider.isRabby &&
+        !("coreProvider" in provider) &&
+        !("addProvider" in provider)
     ) ?? null
   );
 }

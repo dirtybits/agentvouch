@@ -15,6 +15,7 @@ import {
   getConfiguredSolanaChainContext,
   normalizePersistedChainContext,
 } from "@/lib/chains";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import {
   getSkillPaymentFlow,
   normalizeUsdcMicros,
@@ -37,10 +38,12 @@ import type {
   AgentIdentitySummary,
   AgentUsernameSource,
 } from "@/lib/agentIdentity";
+import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import type { SkillFileTreeEntry } from "@/components/SkillFileTree";
 import type { AuthorTrust } from "@/lib/trust";
 import { SCAN_MODEL } from "@/lib/ai/gateway";
 import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
@@ -284,10 +287,60 @@ function buildAuthorIdentity(
   };
 }
 
+async function applyLiveBaseTrust(
+  snapshot: SkillDetailSnapshot
+): Promise<SkillDetailSnapshot> {
+  if (
+    !snapshot.author_pubkey ||
+    !snapshot.chain_context?.startsWith("eip155:") ||
+    !isEvmAddress(snapshot.author_pubkey)
+  ) {
+    return snapshot;
+  }
+
+  const authorAddress = getEvmAddress(snapshot.author_pubkey);
+  const authorTrust = await resolveBaseAuthorTrust(
+    authorAddress,
+    snapshot.chain_context
+  );
+  const authorIdentity =
+    (await resolveAgentIdentityByWallet(authorAddress, {
+      chainContext: snapshot.chain_context,
+      hasAgentProfile: authorTrust.isRegistered,
+    }).catch(() => null)) ?? snapshot.author_identity;
+  const authorTrustSummary = buildAgentTrustSummary({
+    walletPubkey: authorAddress,
+    trust: authorTrust,
+    identity: authorIdentity,
+  });
+
+  return {
+    ...snapshot,
+    author_pubkey: authorAddress,
+    author_trust: authorTrust,
+    author_trust_summary: authorTrustSummary,
+    author_identity: authorIdentity,
+    signals: buildTrustSignals({
+      trust: authorTrust,
+      scan: snapshot.security_scan,
+    }),
+    purchaseRiskWarning:
+      snapshot.price_usdc_micros &&
+      BigInt(snapshot.price_usdc_micros) > 0n &&
+      authorTrust.totalStakeAtRisk === 0
+        ? "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution."
+        : null,
+  };
+}
+
 function buildDefaultPriceDisclosure(
-  priceUsdcMicros: string | null
+  priceUsdcMicros: string | null,
+  chainContext: string | null
 ): string | null {
   if (!priceUsdcMicros || BigInt(priceUsdcMicros) <= 0n) return null;
+  if (chainContext?.startsWith("eip155:")) {
+    return "Buying this skill transfers native USDC and creates an on-chain purchase receipt. Gas handling follows the connected Base wallet and paymaster policy.";
+  }
   return "Buying this skill transfers USDC and creates an on-chain purchase receipt, so your wallet still needs a small amount of SOL for rent and network fees.";
 }
 
@@ -453,7 +506,7 @@ async function loadSkillDetailSnapshotUncached(
   const versions =
     parseJson<SkillDetailSnapshot["versions"]>(row.versions) ?? [];
 
-  return {
+  const snapshot = {
     id: row.id,
     skill_id: row.skill_id,
     public_slug: row.public_slug,
@@ -517,7 +570,10 @@ async function loadSkillDetailSnapshotUncached(
         ? "verified"
         : "drift_detected",
     },
-    priceDisclosure: buildDefaultPriceDisclosure(priceUsdcMicros),
+    priceDisclosure: buildDefaultPriceDisclosure(
+      priceUsdcMicros,
+      normalizePersistedChainContext(row.chain_context)
+    ),
     purchaseRiskWarning:
       priceUsdcMicros &&
       BigInt(priceUsdcMicros) > 0n &&
@@ -525,6 +581,8 @@ async function loadSkillDetailSnapshotUncached(
         ? "This author has not posted slashable backing yet. Dispute recovery depends on the author's locked proceeds at the time of resolution."
         : null,
   } as SkillDetailSnapshot;
+
+  return applyLiveBaseTrust(snapshot);
 }
 
 export function buildSkillDetailSnapshotMetadata(

@@ -14,6 +14,8 @@ import {
 
 type MockProvider = Eip1193Provider & {
   requests: { method: string; params?: unknown[] | Record<string, unknown> }[];
+  coreProvider?: unknown;
+  addProvider?: unknown;
 };
 
 function provider(
@@ -85,6 +87,16 @@ describe("Base injected MetaMask provider detection", () => {
     expect(
       selectMetaMaskProvider([phantomCompat, braveCompat, rabbyCompat])
     ).toBeNull();
+  });
+
+  it("skips Core Wallet's MetaMask-compatible provider shim", () => {
+    const coreCompat = Object.assign(provider({ isMetaMask: true }), {
+      coreProvider: {},
+      addProvider: vi.fn(),
+    });
+    const metamask = provider({ isMetaMask: true });
+
+    expect(selectMetaMaskProvider([coreCompat, metamask])).toBe(metamask);
   });
 });
 

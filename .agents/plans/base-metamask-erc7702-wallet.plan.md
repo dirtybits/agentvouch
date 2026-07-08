@@ -18,10 +18,10 @@ todos:
     content: Add or update tests proving Coinbase, MetaMask, and Solana wallet paths stay isolated and Base code does not import Solana write/x402-only seams.
     status: completed
   - id: run-live-smokes
-    content: Browser-smoke MetaMask as a distinct Base Sepolia buyer, confirm DB receipt/entitlement rows, unsigned raw 402, signed download success, and Coinbase/Solana regressions. Not run in this fixer pass; requires funded MetaMask/Base Sepolia browser wallet.
-    status: pending
+    content: "COMPLETED 2026-07-07: Browser-smoked MetaMask as distinct Base Sepolia buyer `0xc00fca0034d6de438e991be7afce40a799fb533b` on localhost. First purchase against Phase 3b seeded listing `cf0b7fa7-f111-4cca-8a0e-d45b127743bd` proved chain-qualified receipt/entitlement (`tx=0xa12daf94b6c53c89475219f0042d8a5091b94354fe555d9a075a2194a447cdfa`, `evm_purchase_id=0x94ee3ca99f46ddf61861298ba054b1c492d8879a415eec2069b050aa37cc5063`, amount `1000000`) but raw download correctly failed because the seeded listing has no `skill_versions` rows. Second purchase against downloadable listing `efa82c9d-fcc1-47d6-8145-780bd9388783` (`base-smoke-test-v2`) completed end-to-end: `tx=0x9e6105cf39b92c09e6109deb78b492be2c46906de4d976c088d592c99ce50f3e`, `evm_purchase_id=0xe8f03b2723846b33a883c40ab591ef6ea3a936911e35442b1882c84d3d258e30`, receipt/entitlement chain fields `eip155:84532`, unsigned raw returns `402 Payment Required`, signed browser raw download returns `200` and records a `skill_download_events` row (`event_kind=raw`, `auth_present=true`, `requested_path=SKILL.md`)."
+    status: completed
   - id: verify-and-close
-    content: Run format, lint/typecheck/vitest/build gates per AGENTS.md, update phase smoke evidence, and document any ERC-7702 capability gaps discovered. Local gates passed; live smoke evidence still pending.
+    content: "COMPLETED 2026-07-07: Follow-up branch reran `npm run format:check`, `npm run lint --workspace @agentvouch/web`, `npm run typecheck --workspace @agentvouch/web`, `npm test --workspace @agentvouch/web` (91 files / 585 tests), targeted `baseInjectedWallet.test.ts` (11 tests), and `npm exec --workspace @agentvouch/web -- next build --webpack`. Build passed with existing network-fallback warnings for Neon/Helius during static generation."
     status: completed
   - id: author-writes-parity
     content: "FOLLOW-UP (added 2026-07-07, outside the buyer-only scope above): implement MetaMask registerAgent/createSkillListing as EOA transactions reusing this plan's sendInjectedTransaction/receipt/event helpers, replacing the explicit unsupported errors in createBaseInjectedChainWallet. Optional — pick up only when a smoke or user flow needs a second Base author identity. Trust writes (vouch/self-stake/report) are NOT tracked here; they belong to the Phase 9 ChainWallet trust-write seam extension (see base-port-chain-adapter-phase-9.plan.md Web Scope)."
@@ -180,6 +180,46 @@ code work starts:
   hash, receipt/entitlement rows, and whether 7702 was skipped, rejected, or used. A successful EOA
   fallback smoke is enough to close the buyer feature; 7702 evidence is a closeout note, not a
   blocker.
+
+## Live Smoke Closeout (2026-07-07)
+
+- Found and fixed a real Chrome provider-selection issue before the smoke: Chrome exposed Core
+  Wallet, MetaMask, and Phantom as MetaMask-shaped EIP-1193 providers. Core's compatibility shim
+  appeared first and made the app fail to connect MetaMask. `selectMetaMaskProvider` now filters
+  providers with Core's `coreProvider` / `addProvider` markers, covered by
+  `web/__tests__/lib/baseInjectedWallet.test.ts`.
+- MetaMask connected/restored on Base Sepolia as buyer
+  `0xc00fca0034d6de438e991be7afce40a799fb533b`; the wallet menu showed `149 USDC` before the
+  smoke. RPC preflight at block `43845240`: ETH `0.016998280584441705`, USDC `149`.
+- Seeded Phase 3b listing purchase:
+  - Skill `cf0b7fa7-f111-4cca-8a0e-d45b127743bd`, listing
+    `0x658b604e9f71b05d580d1fe24891b2686c46ba4fc1961f3027d908a8ad2bcb11`.
+  - Purchase tx `0xa12daf94b6c53c89475219f0042d8a5091b94354fe555d9a075a2194a447cdfa`, status
+    `success`, block `43845274`, gasUsed `393476`.
+  - DB receipt `5fd2b409-f908-4440-b7cf-729b3931593e` and entitlement are chain-qualified for
+    buyer `0xc00fca0034d6de438e991be7afce40a799fb533b`, amount `1000000`, payment flow
+    `direct-purchase-skill`, protocol `base-poc-v0`, purchase id
+    `0x94ee3ca99f46ddf61861298ba054b1c492d8879a415eec2069b050aa37cc5063`.
+  - Raw download failed with `404` because this seeded read-only listing has zero `skill_versions`
+    rows; the payment path was valid, the fixture was not downloadable.
+- Downloadable Base listing purchase and raw download:
+  - Skill `efa82c9d-fcc1-47d6-8145-780bd9388783` (`base-smoke-test-v2`), listing
+    `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, price `1000000`.
+  - Purchase tx `0x9e6105cf39b92c09e6109deb78b492be2c46906de4d976c088d592c99ce50f3e`, status
+    `success`, block `43845448`, gasUsed `342200`.
+  - DB receipt `38bd7f93-98b0-4389-8c29-0e3617faad98` and entitlement are chain-qualified for
+    buyer `0xc00fca0034d6de438e991be7afce40a799fb533b`, amount `1000000`, payment flow
+    `direct-purchase-skill`, protocol `base-poc-v0`, purchase id
+    `0xe8f03b2723846b33a883c40ab591ef6ea3a936911e35442b1882c84d3d258e30`.
+  - Browser UI reported `Base USDC purchase confirmed and verified. Downloaded SKILL.md.`;
+    server log confirmed signed `GET /api/skills/efa82c9d-fcc1-47d6-8145-780bd9388783/raw 200`.
+    Unsigned raw access returned `402 Payment Required` with Base x402 metadata. Download event row
+    recorded `event_kind=raw`, `auth_present=true`, `requested_path=SKILL.md`, version id
+    `940dec87-3e36-4d45-8f43-22149fb33630`.
+- Final RPC balance at block `43845496`: ETH `0.016998280584441705`, USDC `147`, proving the two
+  1 USDC purchases. The observed purchase tx senders (`0xb01c...9c2e`, `0xc066...8b8c`) differ from
+  the buyer while the contract event/DB buyer remain `0xc00f...533b`; record this as MetaMask's
+  delegated/smart-transaction execution shape rather than a plain `tx.from === buyer` EOA shape.
 
 ## Implementation Steps
 
