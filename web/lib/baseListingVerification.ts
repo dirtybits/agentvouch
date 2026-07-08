@@ -31,8 +31,7 @@ import {
   BASE_SEPOLIA_CHAIN_CONTEXT,
   normalizeInputChainContext,
 } from "@/lib/chains";
-
-export const BASE_AGENTVOUCH_PROTOCOL_VERSION = "base-poc-v0";
+import { fetchBaseAgentVouchProtocolVersion } from "@/lib/baseProtocolVersion";
 
 const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 
@@ -446,16 +445,22 @@ export async function verifyBaseSkillListing(
   });
   const skillIdHash = skillIdHashFrom(input.skill.skill_id);
   const expectedListingId = computeListingId(author, skillIdHash);
+  const storedProtocolVersion = input.skill.on_chain_protocol_version?.trim();
+  const protocolVersionPromise = storedProtocolVersion
+    ? Promise.resolve(storedProtocolVersion)
+    : fetchBaseAgentVouchProtocolVersion({ contract });
 
-  const [listing, createEvent, updateEvent] = await Promise.all([
-    fetchLiveListing({ contract, listingId: expectedListingId }),
-    txHash && mode === "create"
-      ? findSkillListingCreatedEvent({ contract, txHash })
-      : null,
-    txHash && mode === "update"
-      ? findSkillListingUpdatedEvent({ contract, txHash })
-      : null,
-  ]);
+  const [listing, protocolVersion, createEvent, updateEvent] =
+    await Promise.all([
+      fetchLiveListing({ contract, listingId: expectedListingId }),
+      protocolVersionPromise,
+      txHash && mode === "create"
+        ? findSkillListingCreatedEvent({ contract, txHash })
+        : null,
+      txHash && mode === "update"
+        ? findSkillListingUpdatedEvent({ contract, txHash })
+        : null,
+    ]);
   const event = createEvent ?? updateEvent;
 
   if (event && event.listingId !== expectedListingId) {
@@ -502,8 +507,7 @@ export async function verifyBaseSkillListing(
     skillIdHash,
     priceUsdcMicros: expectedPrice > 0n ? expectedPriceMicros : null,
     currencyMint: currency,
-    protocolVersion:
-      input.skill.on_chain_protocol_version ?? BASE_AGENTVOUCH_PROTOCOL_VERSION,
+    protocolVersion,
     onChainProgramId: contract,
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     listingRevision: listing.currentRevision.toString(),

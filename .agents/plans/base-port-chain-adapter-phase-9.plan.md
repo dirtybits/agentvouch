@@ -288,7 +288,9 @@ Verify these before running live smokes:
 - `BASE_SEPOLIA_RPC_URL` / `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` points at a reliable archive-capable
   Base Sepolia endpoint.
 - `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` (read as the `BASE_AGENTVOUCH_CONTRACT_ADDRESS` constant in
-  `web/lib/adapters/baseConfig.ts`) points at the expected F-1-fixed/POC contract.
+  `web/lib/adapters/baseConfig.ts`) points at the expected Base Sepolia contract for the smoke
+  under test: the historical F-1-fixed/POC contract for purchase/x402 fixtures, or the v1 candidate
+  for report/vouch trust-write smokes.
 - `NEXT_PUBLIC_BASE_USDC_ADDRESS` (read as the `BASE_USDC_ADDRESS` constant, defaulting to the
   Base Sepolia USDC in `baseConstants.ts`) matches Base Sepolia native USDC.
 - CDP paymaster/bundler endpoint is present for UserOps.

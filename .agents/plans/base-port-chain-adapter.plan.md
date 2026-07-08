@@ -27,7 +27,7 @@ todos:
     content: "Phase 8 (8a) DONE 2026-07-02 via PR #74. Base Sepolia (eip155:84532) is the default new-user writable path behind the single rollback env NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana; EVM publisher auth (ERC-1271/6492) and Base paid publish through the ChainWallet seam landed with it. Solana remains selectable; legacy trust/default row fallbacks stay Solana. Base mainnet was never part of Phase 8. See .agents/plans/base-port-chain-adapter-phase-8a.plan.md."
     status: completed
   - id: verify-e2e
-    content: "Phase 9 IN PROGRESS. 9b-1 (report primitive + Base trust reads) merged via PR #78; follow-up PR #79 (open) synced Deploy.s.sol/ABI/runbook and recorded the first live Base default-path buyer purchase + signed raw download evidence. RE-SCOPED 2026-07-06: full A1 voucher-slashing port to the Base v1 candidate approved as Phase 9b-2 — dedicated plan .agents/plans/base-a1-voucher-slashing-port.plan.md — landing BEFORE the 9c security review. Still open: fresh author register/list smoke, live agent x402 settlement (human-gated relayer/funded-EOA setup), Solana purchase regression, report/vouch UI, custody sign-off, internal + external review. See .agents/plans/base-port-chain-adapter-phase-9.plan.md."
+    content: "Phase 9 IN PROGRESS. Part A live smokes are recorded in the phase-9 plan: Base default-path human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive + Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base Sepolia v1 candidate (`0x5992…B7d1`, `base-v1-candidate`) and recorded vouch/report browser smokes. RE-SCOPED 2026-07-06: full A1 voucher-slashing port to the Base v1 candidate approved as Phase 9b-2 — dedicated plan .agents/plans/base-a1-voucher-slashing-port.plan.md — landing BEFORE the 9c security review. Still open: A1 implementation, remaining self-stake/proceeds trust-write smoke, ownership/custody sign-off, internal review, and external security review. See .agents/plans/base-port-chain-adapter-phase-9.plan.md."
     status: in_progress
   - id: base-mainnet-cutover
     content: "Phase 10. Dedicated blocked gate plan: .agents/plans/base-port-chain-adapter-phase-10.plan.md. Cut over to Base mainnet only after Phase 9 v1 trust/security gates, mainnet deploy/RPC/USDC/paymaster, custody policy, runbook, and real-funds smoke evidence exist."
@@ -137,9 +137,11 @@ To take over:
 - **Seam is half-stubbed:** `web/lib/chains.ts` already defines `base` (`eip155:8453`) and the
   `skills` table already has a `chain_context` column — both used only for display/config today.
   Make them load-bearing.
-- **Fixed Base contract:** `AgentVouchEvm` at `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`
-  (Base Sepolia, F-1-fixed — Lane B uses `receiveWithAuthorization`). Mirrors the Solana core
-  economics (60/40 split, USDC micros). See [[base-poc-gasfree-spike]].
+- **Original Base contract:** `AgentVouchEvm` at `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`
+  (Base Sepolia, F-1-fixed — Lane B uses `receiveWithAuthorization`). It mirrors the Solana core
+  economics (60/40 split, USDC micros) and remains the historical POC/default fallback; Phase 9
+  v1-candidate smokes now point env at `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`. See
+  [[base-poc-gasfree-spike]] and `docs/BASE_DEPLOY.md`.
 - **The BaseAdapter's engine already exists** in `contracts/base-poc` — lift, don't rewrite:
   - `contracts/base-poc/ui/src/flow.ts` — register/list/buy as sponsored 4337 UserOps
     (`listingId`/`skillIdHash` calc + ABI calls).
@@ -552,12 +554,13 @@ A1-port sub-plan (9b-2, added 2026-07-06):
 
 - **Goal:** prove Base Sepolia default E2E, then close the Base trust/mainnet-readiness gap before
   Phase 10.
-- **Status (2026-07-06/07):** 9b-1 (report primitive + Base trust reads) merged via PR #78;
-  PR #79 (open) closed static ops gaps and recorded the first live Base buyer purchase + signed
-  raw download on the default path. 9b-2 (full A1 voucher-slashing port) approved 2026-07-06 and
-  must land before the 9c security review. Remaining: fresh author register/list smoke, live agent
-  x402 settlement (human-gated relayer + funded agent EOA), Solana purchase regression,
-  report/vouch UI, custody sign-off, internal + external review.
+- **Status (2026-07-08):** Part A live smokes are recorded in the phase-9 plan: Base default-path
+  human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive
+  + Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base
+  Sepolia v1 candidate, pointed local/dev/preview envs at it, and recorded vouch/report browser
+  smokes. 9b-2 (full A1 voucher-slashing port) was approved 2026-07-06 and must land before the 9c
+  security review. Remaining: A1 implementation, remaining self-stake/proceeds trust-write smoke,
+  ownership/custody sign-off, internal review, and external security review.
 - **Done when:** Base human flow (passkey, register/list/buy, raw download, gas sponsorship evidence)
   - agent x402 both pass; Solana regression passes when selected; the Base v1 trust layer
     (vouch/author bond/founder-resolved reports **plus the 9b-2 voucher-slashing port**), ownership
