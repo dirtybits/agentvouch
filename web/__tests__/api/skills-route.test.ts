@@ -50,6 +50,7 @@ vi.mock("@/lib/onchain", () => ({
 }));
 
 const mockVerifyBaseSkillListing = vi.fn();
+const mockVerifyBaseSkillListingRemoved = vi.fn();
 vi.mock("@/lib/baseListingVerification", () => ({
   isSameSkillRawUri: (input: { actual: string; expected: string }) => {
     if (input.actual === input.expected) return true;
@@ -66,6 +67,8 @@ vi.mock("@/lib/baseListingVerification", () => ({
   },
   verifyBaseSkillListing: (...args: unknown[]) =>
     mockVerifyBaseSkillListing(...args),
+  verifyBaseSkillListingRemoved: (...args: unknown[]) =>
+    mockVerifyBaseSkillListingRemoved(...args),
 }));
 
 vi.mock("@/lib/agentIdentity", () => ({
@@ -945,6 +948,174 @@ describe("PATCH /api/skills/[id]", () => {
 
     expect(res.status).toBe(400);
     expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+    expect(dbQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a Base listing by clearing only EVM fields after verifying the remove tx", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    // Post-remove row: EVM link fields nulled, evm_tx_hash set to the remove tx,
+    // on_chain_address untouched (Solana PDA namespace is disjoint).
+    const updated = {
+      ...baseSkill,
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+      evm_tx_hash:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListingRemoved.mockResolvedValueOnce({
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      txHash:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: remove-base-listing",
+            timestamp: Date.now(),
+          },
+          baseListing: {
+            mode: "remove",
+            txHash:
+              "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListingRemoved).toHaveBeenCalledWith({
+      skill: baseSkill,
+      txHash:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      authorAddress: "0x1111111111111111111111111111111111111111",
+    });
+    // SELECT + UPDATE ran; verifyBaseSkillListing (create/update path) did not.
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.evm_listing_id).toBeNull();
+    expect(body.evm_contract_address).toBeNull();
+    expect(body.evm_tx_hash).toBe(
+      "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    );
+  });
+
+  it("rejects a Base listing remove with no txHash before any DB read", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: remove-base-listing",
+            timestamp: Date.now(),
+          },
+          baseListing: {
+            mode: "remove",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base listing remove requires txHash",
+    });
+    expect(mockVerifyBaseSkillListingRemoved).not.toHaveBeenCalled();
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not clear the DB row when Base remove verification fails", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    mockVerifyBaseSkillListingRemoved.mockRejectedValueOnce(
+      new Error("Base listing is not in Removed status after remove tx")
+    );
+    const dbQuery = vi.fn().mockResolvedValueOnce([baseSkill]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: remove-base-listing",
+            timestamp: Date.now(),
+          },
+          baseListing: {
+            mode: "remove",
+            txHash:
+              "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/Removed status/i);
+    // Only the SELECT ran — the UPDATE that clears EVM fields never fired.
     expect(dbQuery).toHaveBeenCalledTimes(1);
   });
 });
