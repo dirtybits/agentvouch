@@ -107,13 +107,24 @@ same counter `withdrawAuthorBond` and `revokeVouch` already use).
 
 ## Coordination with the A1 port (Phase 9b-2)
 
-Independent but order-aware: this plan can land before or after
-`base-a1-voucher-slashing-port`. If A1 lands first and its listing-referenced reports start
-setting `lockedByDispute`, the bump guard here honors it automatically; if this lands first,
-the `openDisputes > 0` check carries the invariant alone. **Both must be in the v1 candidate
-before the Phase 9c security review** — update rotation gates settlement integrity even though
-it moves no USDC directly. Update the review scope list in `docs/PRODUCTION_RUNBOOK.md`'s Base
-V1 Candidate Operations section to include `updateSkillListing` when this merges.
+Independent but order-aware: the lock semantics work in either order. If A1 lands first and its
+listing-referenced reports start setting `lockedByDispute`, the bump guard here honors it
+automatically; if this lands first, the `openDisputes > 0` check carries the invariant alone.
+**Both must be in the v1 candidate before the Phase 9c security review** — update rotation
+gates settlement integrity even though it moves no USDC directly. Update the review scope list
+in `docs/PRODUCTION_RUNBOOK.md`'s Base V1 Candidate Operations section to include
+`updateSkillListing` when this merges.
+
+> **SEQUENCING (2026-07-07, founder-acked): run this plan FIRST, then
+> `base-a1-voucher-slashing-port`. Never run the two a2a loops in parallel** — both edit
+> `AgentVouchEvm.sol`, `AgentVouchTypes.sol`, the forge suites, `ui/src/abi.ts`, and
+> `web/lib/adapters/agentVouchEvmAbi.ts`, and the A1 plan's revision-dodge-block forge test
+> needs this plan's `updateSkillListing` to exist. The fresh-candidate deploy + live smoke in
+> `verify-update` should be **combined with the A1 plan's smoke into one deploy and one
+> evidence run after both plans merge**; if this plan completes before A1 lands, mark the
+> live-smoke portion of `verify-update` as deferred-to-the-combined-run with a dated note
+> rather than deploying twice or overclaiming. Local forge + web gates still run per PR as
+> usual.
 
 ## Verification
 
