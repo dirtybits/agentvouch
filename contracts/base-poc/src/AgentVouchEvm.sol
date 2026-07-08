@@ -27,7 +27,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     // Matches Solana REWARD_INDEX_SCALE (state/skill_listing.rs).
     uint256 internal constant REWARD_INDEX_SCALE = 1e12;
-    uint256 internal constant MAX_LISTING_URI_BYTES = 128;
+    uint256 internal constant MAX_LISTING_URI_BYTES = 256;
     uint256 internal constant MAX_LISTING_NAME_BYTES = 64;
     uint256 internal constant MAX_LISTING_DESCRIPTION_BYTES = 256;
 

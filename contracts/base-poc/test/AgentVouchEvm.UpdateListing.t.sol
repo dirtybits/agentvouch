@@ -183,7 +183,7 @@ contract UpdateListingTest is Test {
         vm.expectRevert(AgentVouchEvm.EmptyListingName.selector);
         av.updateSkillListing(listingId, "uri-v1", "", "Description", PRICE);
         vm.expectRevert(AgentVouchEvm.ListingUriTooLong.selector);
-        av.updateSkillListing(listingId, _longString(129), "Name", "Description", PRICE);
+        av.updateSkillListing(listingId, _longString(257), "Name", "Description", PRICE);
         vm.expectRevert(AgentVouchEvm.ListingNameTooLong.selector);
         av.updateSkillListing(listingId, "uri-v1", _longString(65), "Description", PRICE);
         vm.expectRevert(AgentVouchEvm.ListingDescriptionTooLong.selector);

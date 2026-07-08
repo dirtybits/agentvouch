@@ -20,6 +20,7 @@ import {
   normalizePersistedChainContext,
 } from "@/lib/chains";
 import {
+  isSameSkillRawUri,
   verifyBaseSkillListing,
   type BaseSkillListingRow,
 } from "@/lib/baseListingVerification";
@@ -611,6 +612,23 @@ export async function PATCH(
         );
       }
 
+      const canonicalSkillRawUrl = getCanonicalSkillRawUrl(id);
+      if (
+        baseListingMode === "update" &&
+        !isSameSkillRawUri({
+          actual: baseListing.expectedUri!,
+          expected: canonicalSkillRawUrl,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing update URI must match the canonical skill raw URL",
+          },
+          { status: 400 }
+        );
+      }
+
       const verification = await verifyBaseSkillListing({
         skill: row,
         mode: baseListingMode,
@@ -619,10 +637,7 @@ export async function PATCH(
         expectedPriceUsdcMicros: relinkExisting
           ? null
           : baseListing.expectedPriceUsdcMicros ?? null,
-        expectedUri:
-          baseListingMode === "update"
-            ? baseListing.expectedUri
-            : getCanonicalSkillRawUrl(id),
+        expectedUri: canonicalSkillRawUrl,
         expectedName:
           baseListingMode === "update" ? baseListing.expectedName : undefined,
         expectedDescription:
