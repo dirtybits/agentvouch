@@ -1674,8 +1674,8 @@ export default function AuthorProfilePage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
                 <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <FiShield className="text-[var(--sea-accent)]" /> Manage
-                  Base Self Stake
+                  <FiShield className="text-[var(--sea-accent)]" /> Manage Base
+                  Self Stake
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Deposit or withdraw your Base author bond. Open reports lock
@@ -1739,7 +1739,8 @@ export default function AuthorProfilePage() {
                     {selfStakeTx && (
                       <a
                         href={
-                          selfStakeTxExplorerUrl ?? getSolanaFmTxUrl(selfStakeTx)
+                          selfStakeTxExplorerUrl ??
+                          getSolanaFmTxUrl(selfStakeTx)
                         }
                         target="_blank"
                         rel="noopener noreferrer"
