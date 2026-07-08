@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAuthorTrust } from "@/lib/trust";
 import { verifyEvmWalletSignature } from "@/lib/evmAuth";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import {
@@ -595,6 +599,26 @@ export async function PATCH(
           { status: 401 }
         );
       }
+      // Scope the signed message per Base listing mode. No legacy allowance on
+      // any Base mode — the web clients always sign a skill-scoped message.
+      const baseListingExpectedAction =
+        baseListingMode === "update"
+          ? "update-base-listing"
+          : baseListingMode === "remove"
+          ? "remove-base-listing"
+          : "link-base-listing";
+      const baseListingScope = assertPublisherAuthMessageScope({
+        message: auth.message,
+        timestamp: auth.timestamp,
+        expectedAction: baseListingExpectedAction,
+        skillId: id,
+      });
+      if (!baseListingScope.ok) {
+        return NextResponse.json(
+          { error: baseListingScope.error },
+          { status: 401 }
+        );
+      }
       if (
         !row.author_pubkey ||
         evmAuthVerification.pubkey !== row.author_pubkey.toLowerCase()
@@ -730,6 +754,21 @@ export async function PATCH(
     if (!verification.valid) {
       return NextResponse.json(
         { error: verification.error || "Invalid signature" },
+        { status: 401 }
+      );
+    }
+    // CLI still signs Action+Timestamp-only for publish-skill link mutations
+    // (2026-07-08 dated legacy). Web clients should include Skill id.
+    const solanaLinkScope = assertPublisherAuthMessageScope({
+      message: auth.message,
+      timestamp: auth.timestamp,
+      expectedAction: "publish-skill",
+      skillId: id,
+      allowLegacyWithoutSkillId: true,
+    });
+    if (!solanaLinkScope.ok) {
+      return NextResponse.json(
+        { error: solanaLinkScope.error },
         { status: 401 }
       );
     }

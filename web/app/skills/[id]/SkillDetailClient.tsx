@@ -20,7 +20,7 @@ import { SolAmount } from "@/components/SolAmount";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import {
   buildDownloadRawMessage,
-  buildSignMessage,
+  buildPublisherAuthMessage,
   createSignedDownloadAuthPayload,
 } from "@/lib/authPayload";
 import { encodeBase64 } from "@/lib/base64";
@@ -805,7 +805,11 @@ export default function SkillDetailPage({
       );
 
       const timestamp = Date.now();
-      const message = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${timestamp}`;
+      const message = buildPublisherAuthMessage({
+        action: "publish-skill",
+        timestamp,
+        skillId: id,
+      });
       const msgBytes = new TextEncoder().encode(message);
       const sigBytes = await signMessage(msgBytes);
       const signature = encodeBase64(sigBytes);
@@ -1463,7 +1467,11 @@ export default function SkillDetailPage({
     setVersionResult(null);
     try {
       const timestamp = Date.now();
-      const message = buildSignMessage("publish-skill", timestamp);
+      const message = buildPublisherAuthMessage({
+        action: "publish-skill",
+        timestamp,
+        skillId: skill.id,
+      });
       let auth: {
         pubkey: string;
         signature: string;

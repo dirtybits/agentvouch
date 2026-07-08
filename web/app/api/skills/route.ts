@@ -9,7 +9,11 @@ import {
   resolveMultipleAuthorTrust,
   type AuthorTrust,
 } from "@/lib/trust";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
 import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
@@ -479,6 +483,15 @@ async function resolvePublisherAuth(input: {
   request: NextRequest;
   auth: AuthPayload | undefined;
   requiresWallet: boolean;
+  /** Expected Action line in the signed publisher message (e.g. publish-skill). */
+  expectedAction: string;
+  /** When set, the signed message must include this skill DB UUID. */
+  skillId?: string;
+  /**
+   * 2026-07-08: accept CLI-shaped Action+Timestamp-only messages that omit
+   * Skill id. Prefer skill-scoped messages from web clients.
+   */
+  allowLegacyWithoutSkillId?: boolean;
 }): Promise<
   | { ok: true; publisher: PublisherAuth }
   | { ok: false; status: number; error: string }
@@ -495,6 +508,17 @@ async function resolvePublisherAuth(input: {
         status: 401,
         error: verification.error || "Invalid signature",
       };
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: input.auth.message,
+      timestamp: input.auth.timestamp,
+      expectedAction: input.expectedAction,
+      skillId: input.skillId,
+      allowLegacyWithoutSkillId: input.allowLegacyWithoutSkillId,
+    });
+    if (!scope.ok) {
+      return { ok: false, status: 401, error: scope.error };
     }
 
     // resolveBaseAuthorTrust never throws — an RPC failure reads as an
@@ -537,6 +561,17 @@ async function resolvePublisherAuth(input: {
         status: 401,
         error: verification.error || "Invalid signature",
       };
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: input.auth.message,
+      timestamp: input.auth.timestamp,
+      expectedAction: input.expectedAction,
+      skillId: input.skillId,
+      allowLegacyWithoutSkillId: input.allowLegacyWithoutSkillId,
+    });
+    if (!scope.ok) {
+      return { ok: false, status: 401, error: scope.error };
     }
 
     let isRegistered = false;
@@ -870,6 +905,8 @@ export async function POST(request: NextRequest) {
       request,
       auth,
       requiresWallet: requiresWalletPublisher,
+      // Create has no skill UUID yet — Action + Timestamp only.
+      expectedAction: "publish-skill",
     });
     if (!publisherResult.ok) {
       return NextResponse.json(

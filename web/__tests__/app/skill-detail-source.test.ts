@@ -71,7 +71,7 @@ describe("skill detail source", () => {
     );
     expect(source).toContain("endpoint.");
     expect(source).toContain("Publish New Version");
-    expect(source).toContain("buildSignMessage");
+    expect(source).toContain("buildPublisherAuthMessage");
     expect(source).toContain('requestedAuthorAction === "publish-version"');
     expect(source).toContain("Listing edits stay on the on-chain");
   });

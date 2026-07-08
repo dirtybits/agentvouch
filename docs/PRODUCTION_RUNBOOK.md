@@ -144,6 +144,16 @@ Before any Base mainnet deployment:
    `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase`, `depositAuthorBond`,
    `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue`, `withdrawAuthorProceeds`,
    `updateSkillListing`, `openReport`, and `resolveReport`.
+7. **Publisher auth message scope (fixed 2026-07-08):** wallet signature verification alone is
+   not sufficient. `POST /api/skills`, `PATCH /api/skills/[id]`, and
+   `POST /api/skills/[id]/versions` require the signed message's `Action:` (and `Skill id:` for
+   skill-targeted mutations) to match the route. The Base `baseListing` PATCH branch checks the
+   action per mode — `create`/relink → `link-base-listing`, `update` → `update-base-listing`,
+   `remove` → `remove-base-listing` — with no legacy allowance on any Base mode. Raw download
+   already scope-checked. The published CLI still signs Action+Timestamp-only for some
+   Solana `publish-skill` mutations; those paths temporarily accept that legacy shape
+   (`allowLegacyWithoutSkillId`) until the CLI is bumped — do not treat missing Action/Skill-id
+   checks as acceptable debt again.
 
 Base Sepolia smoke evidence to capture before treating Phase 9 as closed:
 
