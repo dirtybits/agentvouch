@@ -177,6 +177,17 @@ describe("phase 8a: EVM publisher auth", () => {
     );
   });
 
+  it("Base authors can route listing removal through ChainWallet removeSkillListing", () => {
+    const detail = read("app/skills/[id]/SkillDetailClient.tsx");
+    expect(detail).toContain("activeChainWallet.removeSkillListing");
+    expect(detail).toContain('mode: "remove"');
+    expect(detail).toContain("Action: remove-base-listing");
+    expect(detail).toMatch(
+      /if \(isBaseAuthor\)[\s\S]+activeChainWallet\.removeSkillListing/
+    );
+    expect(detail).toContain("(isSolanaAuthor || isBaseAuthor)");
+  });
+
   it("version publishing accepts Base author signatures through EVM auth", () => {
     const route = read("app/api/skills/[id]/versions/route.ts");
     expect(route).toContain("verifyEvmWalletSignature");

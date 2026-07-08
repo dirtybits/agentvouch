@@ -22,6 +22,7 @@ import {
 import {
   isSameSkillRawUri,
   verifyBaseSkillListing,
+  verifyBaseSkillListingRemoved,
   type BaseSkillListingRow,
 } from "@/lib/baseListingVerification";
 import {
@@ -483,7 +484,7 @@ export async function PATCH(
       auth?: AuthPayload;
       on_chain_address?: string;
       baseListing?: {
-        mode?: "create" | "update";
+        mode?: "create" | "update" | "remove";
         txHash?: string;
         relinkExisting?: boolean;
         authorAddress?: string;
@@ -506,19 +507,33 @@ export async function PATCH(
         );
       }
       const baseListingMode = baseListing.mode ?? "create";
-      if (baseListingMode !== "create" && baseListingMode !== "update") {
+      if (
+        baseListingMode !== "create" &&
+        baseListingMode !== "update" &&
+        baseListingMode !== "remove"
+      ) {
         return NextResponse.json(
           { error: "Invalid Base listing mode" },
           { status: 400 }
         );
       }
       const relinkExisting = baseListing.relinkExisting === true;
-      if (!baseListing.txHash && !relinkExisting) {
+      if (
+        !baseListing.txHash &&
+        !relinkExisting &&
+        baseListingMode !== "remove"
+      ) {
         return NextResponse.json(
           {
             error:
               "Missing required field: baseListing.txHash unless relinkExisting is true",
           },
+          { status: 400 }
+        );
+      }
+      if (baseListingMode === "remove" && !baseListing.txHash) {
+        return NextResponse.json(
+          { error: "Base listing remove requires txHash" },
           { status: 400 }
         );
       }
@@ -610,6 +625,31 @@ export async function PATCH(
           { error: "Not the Base skill author" },
           { status: 403 }
         );
+      }
+
+      if (baseListingMode === "remove") {
+        // Chain-qualified: clear EVM listing fields only — never on_chain_address.
+        const removal = await verifyBaseSkillListingRemoved({
+          skill: row,
+          txHash: baseListing.txHash!,
+          authorAddress: baseListing.authorAddress,
+        });
+        const [updated] = await sql()<SkillRow>`
+          UPDATE skills
+          SET
+            evm_listing_id = NULL,
+            evm_contract_address = NULL,
+            on_chain_protocol_version = NULL,
+            on_chain_program_id = NULL,
+            evm_tx_hash = ${removal.txHash},
+            updated_at = NOW()
+          WHERE id = ${id}::uuid
+          RETURNING *
+        `;
+        return NextResponse.json({
+          ...updated,
+          chain_context: normalizePersistedChainContext(updated.chain_context),
+        });
       }
 
       const canonicalSkillRawUrl = getCanonicalSkillRawUrl(id);

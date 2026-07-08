@@ -139,6 +139,7 @@ export interface ChainWallet {
   registerAgent(metadataUri: string): Promise<RegisterAgentResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
   updateSkillListing(input: UpdateSkillListingInput): Promise<TxResult>;
+  removeSkillListing(input: { listingId: string }): Promise<TxResult>;
   purchaseSkill(input: PurchaseSkillInput): Promise<PurchaseSkillResult>;
 
   // trust writes (Phase 9). Implementations must keep approval amounts exact

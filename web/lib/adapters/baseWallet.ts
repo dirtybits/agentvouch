@@ -81,6 +81,7 @@ export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   "function revokeVouch(address vouchee)",
   "function createSkillListing(bytes32 skillIdHash, string uri, string name, string description, uint256 priceUsdcMicros) returns (bytes32)",
   "function updateSkillListing(bytes32 id, string uri, string name, string description, uint256 priceUsdcMicros) returns (uint64)",
+  "function removeSkillListing(bytes32 id)",
   "function purchaseSkill(bytes32 id) returns (bytes32)",
   "function openReport(address author, string evidenceUri) returns (uint64)",
   "function claimVoucherRevenue(address author)",
@@ -93,6 +94,7 @@ export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   "event Vouched(address indexed voucher, address indexed vouchee, uint256 stake)",
   "event VouchRevoked(address indexed voucher, address indexed vouchee, uint256 returned)",
   "event SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)",
+  "event SkillListingRemoved(bytes32 indexed listingId)",
   "event SkillPurchased(bytes32 indexed purchaseId, bytes32 indexed listingId, address indexed buyer, uint64 revision, uint256 price, uint256 authorShare, uint256 voucherPool)",
   "event VoucherRevenueClaimed(address indexed voucher, address indexed author, uint256 amount)",
   "event AuthorProceedsWithdrawn(bytes32 indexed listingId, uint64 revision, address indexed author, uint256 amount)",
@@ -284,6 +286,7 @@ export function findBaseWalletEvent(
     | "VouchRevoked"
     | "SkillListingCreated"
     | "SkillListingUpdated"
+    | "SkillListingRemoved"
     | "SkillPurchased"
     | "AuthorReportOpened"
     | "VoucherRevenueClaimed"
@@ -734,6 +737,41 @@ export async function updateBaseSkillListing(
   ) {
     throw new Error(
       "Base updateSkillListing receipt did not match the submitted listing."
+    );
+  }
+
+  return result;
+}
+
+export async function removeBaseSkillListing(
+  account: BasePasskeySmartAccount,
+  input: { listingId: string }
+): Promise<TxResult> {
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "removeSkillListing",
+      args: [listingId],
+    },
+  ]);
+
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base marketplace listing removal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "SkillListingRemoved"
+  );
+  if (event?.args.listingId !== listingId) {
+    throw new Error(
+      "Base removeSkillListing receipt did not match the submitted listing."
     );
   }
 
@@ -1269,6 +1307,7 @@ export function createBasePasskeyChainWallet(
     registerAgent: (metadataUri) => registerBaseAgent(account, metadataUri),
     createSkillListing: (input) => createBaseSkillListing(account, input),
     updateSkillListing: (input) => updateBaseSkillListing(account, input),
+    removeSkillListing: (input) => removeBaseSkillListing(account, input),
     purchaseSkill: (input) => purchaseBaseSkill(account, input),
     depositAuthorBond: (input) => depositBaseAuthorBond(account, input),
     withdrawAuthorBond: (input) => withdrawBaseAuthorBond(account, input),

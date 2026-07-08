@@ -836,7 +836,7 @@ export default function SkillDetailPage({
   };
 
   const handleRemoveListing = async () => {
-    if (!connected || !walletAddress || !skill?.skill_id) return;
+    if (!skill?.skill_id) return;
     if (
       !window.confirm(
         "Remove this skill from the marketplace? Existing purchases are unaffected but no new purchases will be possible."
@@ -846,10 +846,72 @@ export default function SkillDetailPage({
     setRemoving(true);
     setRemoveResult(null);
     try {
-      await oracle.removeSkillListing(skill.skill_id);
-      await refreshSkill();
-      setSkill((s) => (s ? { ...s, on_chain_address: null } : s));
-      setRemoveResult({ success: true, message: "Listing removed." });
+      if (isBaseAuthor) {
+        if (
+          !activeChainWallet ||
+          !activeWalletAddress ||
+          !activeChainWallet.signMessage ||
+          !skill.evm_listing_id
+        ) {
+          setRemoveResult({
+            success: false,
+            message: "Connect the Base author wallet to remove this listing.",
+          });
+          setRemoving(false);
+          return;
+        }
+        const removeTx = await activeChainWallet.removeSkillListing({
+          listingId: skill.evm_listing_id,
+        });
+        const timestamp = Date.now();
+        const message = `AgentVouch Skill Repo\nAction: remove-base-listing\nSkill id: ${skill.id}\nTimestamp: ${timestamp}`;
+        const signature = await activeChainWallet.signMessage(message);
+        const patchRes = await fetch(`/api/skills/${skill.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            auth: {
+              pubkey: activeWalletAddress,
+              signature,
+              message,
+              timestamp,
+            },
+            baseListing: {
+              mode: "remove",
+              txHash: removeTx.ref,
+              authorAddress: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+            },
+          }),
+        });
+        if (!patchRes.ok) {
+          const patchBody = (await patchRes.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            patchBody?.error ||
+              "Listing removed on-chain but failed to update the skill row"
+          );
+        }
+        const updated = (await patchRes.json()) as SkillDetail;
+        setSkill(updated);
+        await refreshSkill();
+        setRemoveResult({ success: true, message: "Base listing removed." });
+      } else {
+        if (!connected || !walletAddress) {
+          setRemoveResult({
+            success: false,
+            message: "Connect the author wallet to remove this listing.",
+          });
+          setRemoving(false);
+          return;
+        }
+        await oracle.removeSkillListing(skill.skill_id);
+        await refreshSkill();
+        // Solana path: clear Solana listing PDA only — never Base EVM fields.
+        setSkill((s) => (s ? { ...s, on_chain_address: null } : s));
+        setRemoveResult({ success: true, message: "Listing removed." });
+      }
     } catch (error: unknown) {
       setRemoveResult({
         success: false,
@@ -2890,7 +2952,7 @@ export default function SkillDetailPage({
                       Publish New Version
                     </button>
                   )}
-                  {isSolanaAuthor && (
+                  {(isSolanaAuthor || isBaseAuthor) && (
                     <button
                       onClick={handleRemoveListing}
                       disabled={removing}
@@ -2900,7 +2962,7 @@ export default function SkillDetailPage({
                       {removing ? "Removing…" : "Remove"}
                     </button>
                   )}
-                  {isBaseAuthor && (
+                  {isBaseAuthor && skill.evm_listing_id && (
                     <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
                       {skill.evm_listing_id?.slice(0, 10)}...
                       {skill.evm_listing_id?.slice(-8)}
