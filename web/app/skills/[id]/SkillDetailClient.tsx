@@ -1389,7 +1389,9 @@ export default function SkillDetailPage({
 
   const isChainOnly = skill?.source === "chain";
   const isMirror = Boolean(skill?.mirror_source_key);
-  const isSynced = !isMirror && Boolean(skill?.synced_repo_url);
+  const syncedRepoUrl = !isMirror
+    ? sanitizeSyncedRepoUrl(skill?.synced_repo_url)
+    : null;
   const visibleTags =
     skill?.tags?.filter((tag) => !RESERVED_SKILL_TAGS.has(tag)) ?? [];
   const authorLabel =
@@ -1758,9 +1760,9 @@ export default function SkillDetailPage({
                       Mirror
                     </span>
                   ) : null}
-                  {isSynced && sanitizeSyncedRepoUrl(skill.synced_repo_url) ? (
+                  {syncedRepoUrl ? (
                     <a
-                      href={sanitizeSyncedRepoUrl(skill.synced_repo_url)!}
+                      href={syncedRepoUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"
