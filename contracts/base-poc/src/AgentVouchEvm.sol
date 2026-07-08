@@ -27,6 +27,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     // Matches Solana REWARD_INDEX_SCALE (state/skill_listing.rs).
     uint256 internal constant REWARD_INDEX_SCALE = 1e12;
+    uint256 internal constant MAX_LISTING_URI_BYTES = 256;
+    uint256 internal constant MAX_LISTING_NAME_BYTES = 64;
+    uint256 internal constant MAX_LISTING_DESCRIPTION_BYTES = 256;
 
     // --- Roles (replace Solana Config authority pubkeys) ---
     bytes32 public constant CONFIG_ROLE = keccak256("CONFIG_ROLE");
@@ -59,6 +62,14 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     event Vouched(address indexed voucher, address indexed vouchee, uint256 stake);
     event VouchRevoked(address indexed voucher, address indexed vouchee, uint256 returned);
     event SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free);
+    event SkillListingUpdated(
+        bytes32 indexed listingId,
+        address indexed author,
+        uint64 revision,
+        uint256 price,
+        bool free,
+        bool revisionChanged
+    );
     event SkillListingRemoved(bytes32 indexed listingId);
     event SkillPurchased(
         bytes32 indexed purchaseId,
@@ -111,6 +122,11 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error ListingExists();
     error ListingNotFound();
     error NotListingAuthor();
+    error EmptyListingUri();
+    error EmptyListingName();
+    error ListingUriTooLong();
+    error ListingNameTooLong();
+    error ListingDescriptionTooLong();
     error BelowMinPaidPrice();
     error FreeListingBondFloor();
     error FreeSkillNotPurchased();
@@ -292,6 +308,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         AgentVouchTypes.SkillListing storage l = listings[id];
         if (l.exists) revert ListingExists();
 
+        _validateListingMetadata(uri, name, description);
+
         bool free = priceUsdcMicros == 0;
         if (free) {
             if (p.authorBondUsdcMicros < config.minAuthorBondForFreeListingUsdcMicros) {
@@ -312,10 +330,59 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         l.status = AgentVouchTypes.ListingStatus.Active;
         l.exists = true;
         // implicit initialize_listing_settlement for revision 1
-        settlements[id][1].initialized = true;
-        settlements[id][1].createdAt = uint64(block.timestamp);
-        settlements[id][1].updatedAt = uint64(block.timestamp);
+        _initializeSettlement(id, 1);
         emit SkillListingCreated(id, msg.sender, priceUsdcMicros, free);
+    }
+
+    function updateSkillListing(
+        bytes32 id,
+        string calldata uri,
+        string calldata name,
+        string calldata description,
+        uint256 priceUsdcMicros
+    ) external returns (uint64 revision) {
+        if (!configInitialized) revert NotInitialized();
+        AgentVouchTypes.SkillListing storage l = listings[id];
+        if (!l.exists) revert ListingNotFound();
+        if (l.author != msg.sender) revert NotListingAuthor();
+        AgentVouchTypes.AgentProfile storage p = profiles[msg.sender];
+        if (!p.registered) revert NotRegistered();
+        _requireNotPaused();
+        if (l.status == AgentVouchTypes.ListingStatus.Removed) revert ListingNotActive();
+
+        _validateListingMetadata(uri, name, description);
+
+        bool wasFree = l.priceUsdcMicros == 0;
+        bool free = priceUsdcMicros == 0;
+        if (free) {
+            if (p.authorBondUsdcMicros < config.minAuthorBondForFreeListingUsdcMicros) {
+                revert FreeListingBondFloor();
+            }
+        } else if (priceUsdcMicros < config.minPaidListingPriceUsdcMicros) {
+            revert BelowMinPaidPrice();
+        }
+
+        bool revisionChanged =
+            keccak256(bytes(l.uri)) != keccak256(bytes(uri)) || l.priceUsdcMicros != priceUsdcMicros;
+        if (revisionChanged) {
+            if (l.lockedByDispute || p.openDisputes > 0) revert DisputeLocked();
+            l.currentRevision += 1;
+            _initializeSettlement(id, l.currentRevision);
+        }
+
+        if (wasFree && !free) {
+            p.activeFreeListingCount -= 1;
+        } else if (!wasFree && free) {
+            p.activeFreeListingCount += 1;
+        }
+
+        l.uri = uri;
+        l.name = name;
+        l.description = description;
+        l.priceUsdcMicros = priceUsdcMicros;
+
+        revision = l.currentRevision;
+        emit SkillListingUpdated(id, msg.sender, revision, priceUsdcMicros, free, revisionChanged);
     }
 
     /// @notice Port of `remove_skill_listing` (and `close_skill_listing`: on EVM there
@@ -572,6 +639,28 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         }
 
         emit SkillPurchased(pId, id, buyer, revision, price, authorShare, voucherPool);
+    }
+
+    function _validateListingMetadata(string calldata uri, string calldata name, string calldata description)
+        internal
+        pure
+    {
+        uint256 uriLength = bytes(uri).length;
+        if (uriLength == 0) revert EmptyListingUri();
+        if (uriLength > MAX_LISTING_URI_BYTES) revert ListingUriTooLong();
+        uint256 nameLength = bytes(name).length;
+        if (nameLength == 0) revert EmptyListingName();
+        if (nameLength > MAX_LISTING_NAME_BYTES) revert ListingNameTooLong();
+        if (bytes(description).length > MAX_LISTING_DESCRIPTION_BYTES) {
+            revert ListingDescriptionTooLong();
+        }
+    }
+
+    function _initializeSettlement(bytes32 id, uint64 revision) internal {
+        AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
+        s.initialized = true;
+        s.createdAt = uint64(block.timestamp);
+        s.updatedAt = uint64(block.timestamp);
     }
 
     /// @notice Port of `claim_voucher_revenue`. Accrues then pays out the voucher's

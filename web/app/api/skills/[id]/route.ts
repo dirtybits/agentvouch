@@ -20,6 +20,7 @@ import {
   normalizePersistedChainContext,
 } from "@/lib/chains";
 import {
+  isSameSkillRawUri,
   verifyBaseSkillListing,
   type BaseSkillListingRow,
 } from "@/lib/baseListingVerification";
@@ -482,11 +483,15 @@ export async function PATCH(
       auth?: AuthPayload;
       on_chain_address?: string;
       baseListing?: {
+        mode?: "create" | "update";
         txHash?: string;
         relinkExisting?: boolean;
         authorAddress?: string;
         chainContext?: string;
         expectedPriceUsdcMicros?: string;
+        expectedUri?: string;
+        expectedName?: string;
+        expectedDescription?: string;
       };
     };
 
@@ -500,12 +505,35 @@ export async function PATCH(
           { status: 400 }
         );
       }
+      const baseListingMode = baseListing.mode ?? "create";
+      if (baseListingMode !== "create" && baseListingMode !== "update") {
+        return NextResponse.json(
+          { error: "Invalid Base listing mode" },
+          { status: 400 }
+        );
+      }
       const relinkExisting = baseListing.relinkExisting === true;
       if (!baseListing.txHash && !relinkExisting) {
         return NextResponse.json(
           {
             error:
               "Missing required field: baseListing.txHash unless relinkExisting is true",
+          },
+          { status: 400 }
+        );
+      }
+      if (
+        baseListingMode === "update" &&
+        (!baseListing.txHash ||
+          baseListing.expectedName === undefined ||
+          baseListing.expectedDescription === undefined ||
+          baseListing.expectedUri === undefined ||
+          baseListing.expectedPriceUsdcMicros === undefined)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing update requires txHash and expected name, description, URI, and price.",
           },
           { status: 400 }
         );
@@ -584,19 +612,51 @@ export async function PATCH(
         );
       }
 
+      const canonicalSkillRawUrl = getCanonicalSkillRawUrl(id);
+      if (
+        baseListingMode === "update" &&
+        !isSameSkillRawUri({
+          actual: baseListing.expectedUri!,
+          expected: canonicalSkillRawUrl,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing update URI must match the canonical skill raw URL",
+          },
+          { status: 400 }
+        );
+      }
+
       const verification = await verifyBaseSkillListing({
         skill: row,
+        mode: baseListingMode,
         txHash: baseListing.txHash ?? null,
         authorAddress: baseListing.authorAddress,
         expectedPriceUsdcMicros: relinkExisting
           ? null
           : baseListing.expectedPriceUsdcMicros ?? null,
-        expectedUri: getCanonicalSkillRawUrl(id),
+        expectedUri: canonicalSkillRawUrl,
+        expectedName:
+          baseListingMode === "update" ? baseListing.expectedName : undefined,
+        expectedDescription:
+          baseListingMode === "update"
+            ? baseListing.expectedDescription
+            : undefined,
       });
+      const nextName =
+        baseListingMode === "update" ? baseListing.expectedName! : row.name;
+      const nextDescription =
+        baseListingMode === "update"
+          ? baseListing.expectedDescription!
+          : row.description;
 
       const [updated] = await sql()<SkillRow>`
         UPDATE skills
         SET
+          name = ${nextName},
+          description = ${nextDescription},
           chain_context = ${verification.chainContext},
           on_chain_address = NULL,
           price_usdc_micros = ${verification.priceUsdcMicros},

@@ -542,6 +542,12 @@ export function createBaseInjectedChainWallet(
           "MetaMask listing creation is not enabled yet; use Coinbase Smart Wallet for Base author actions."
         )
       ),
+    updateSkillListing: () =>
+      Promise.reject(
+        new Error(
+          "MetaMask listing updates are not enabled yet; use Coinbase Smart Wallet for Base author actions."
+        )
+      ),
     purchaseSkill: (input) =>
       purchaseBaseSkillWithInjectedWallet(session, input),
     depositAuthorBond: () => unsupportedAuthorWrite("Author bond deposit"),

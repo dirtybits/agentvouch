@@ -52,6 +52,15 @@ export interface CreateSkillListingInput {
   priceUsdcMicros: bigint;
 }
 
+export interface UpdateSkillListingInput {
+  listingId: string;
+  skillId: string;
+  uri: string;
+  name: string;
+  description: string;
+  priceUsdcMicros: bigint;
+}
+
 export interface PurchaseSkillInput {
   listingId: string;
   expectedPriceUsdcMicros: bigint;
@@ -129,6 +138,7 @@ export interface ChainWallet {
 
   registerAgent(metadataUri: string): Promise<RegisterAgentResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
+  updateSkillListing(input: UpdateSkillListingInput): Promise<TxResult>;
   purchaseSkill(input: PurchaseSkillInput): Promise<PurchaseSkillResult>;
 
   // trust writes (Phase 9). Implementations must keep approval amounts exact

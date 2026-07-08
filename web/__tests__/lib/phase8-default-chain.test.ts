@@ -164,6 +164,19 @@ describe("phase 8a: EVM publisher auth", () => {
     expect(source).toMatch(/signMessage: \(message\) =>/);
   });
 
+  it("Base authors can route listing edits through ChainWallet updateSkillListing", () => {
+    const detail = read("app/skills/[id]/SkillDetailClient.tsx");
+    expect(detail).toContain("activeChainWallet.updateSkillListing");
+    expect(detail).toContain('mode: "update"');
+    expect(detail).toContain("expectedPriceUsdcMicros");
+    expect(detail).toMatch(
+      /if \(isBaseAuthor\)[\s\S]+activeChainWallet\.updateSkillListing/
+    );
+    expect(detail).not.toContain(
+      "if (!connected || !walletAddress || !skill) return;"
+    );
+  });
+
   it("version publishing accepts Base author signatures through EVM auth", () => {
     const route = read("app/api/skills/[id]/versions/route.ts");
     expect(route).toContain("verifyEvmWalletSignature");

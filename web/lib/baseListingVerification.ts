@@ -39,6 +39,7 @@ const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 const AGENTVOUCH_EVM_LISTING_ABI = parseAbi([
   ...AGENTVOUCH_EVM_READ_ABI,
   "event SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free)",
+  "event SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)",
 ]);
 
 type RawListing = {
@@ -63,6 +64,11 @@ type SkillListingCreatedEvent = {
   free: boolean;
 };
 
+type SkillListingUpdatedEvent = SkillListingCreatedEvent & {
+  revision: bigint;
+  revisionChanged: boolean;
+};
+
 export type BaseSkillListingRow = {
   id: string;
   skill_id: string;
@@ -80,10 +86,13 @@ export type BaseSkillListingRow = {
 
 export type VerifyBaseSkillListingInput = {
   skill: BaseSkillListingRow;
+  mode?: "create" | "update";
   txHash?: string | null;
   authorAddress?: string | null;
   expectedPriceUsdcMicros?: string | null;
   expectedUri?: string | null;
+  expectedName?: string | null;
+  expectedDescription?: string | null;
 };
 
 export type BaseSkillListingVerificationResult = {
@@ -218,11 +227,70 @@ async function findSkillListingCreatedEvent(input: {
   throw new Error("Base listing transaction did not emit SkillListingCreated");
 }
 
+async function findSkillListingUpdatedEvent(input: {
+  contract: Address;
+  txHash: Hex;
+}): Promise<SkillListingUpdatedEvent> {
+  const receipt = await createBasePublicClient().getTransactionReceipt({
+    hash: input.txHash,
+  });
+  if (receipt.status !== "success") {
+    throw new Error("Base listing update transaction failed on-chain");
+  }
+
+  for (const log of receipt.logs) {
+    if (getAddress(log.address) !== input.contract) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: AGENTVOUCH_EVM_LISTING_ABI,
+        data: log.data,
+        topics: [...log.topics] as [Hex, ...Hex[]],
+      }) as unknown as {
+        eventName: string;
+        args: Record<string, unknown>;
+      };
+      if (decoded.eventName !== "SkillListingUpdated") continue;
+
+      const { listingId, author, revision, price, free, revisionChanged } =
+        decoded.args;
+      if (
+        typeof listingId !== "string" ||
+        typeof author !== "string" ||
+        typeof revision !== "bigint" ||
+        typeof price !== "bigint" ||
+        typeof free !== "boolean" ||
+        typeof revisionChanged !== "boolean"
+      ) {
+        throw new Error("Base listing update event has unexpected fields");
+      }
+
+      return {
+        listingId: requireBaseBytes32(listingId, "Base listing id"),
+        author: requireBaseEvmAddress(author, "Base author"),
+        revision,
+        price,
+        free,
+        revisionChanged,
+      };
+    } catch (error) {
+      if (error instanceof Error && /unexpected fields/.test(error.message)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Base listing transaction did not emit SkillListingUpdated");
+}
+
 export async function verifyBaseSkillListing(
   input: VerifyBaseSkillListingInput
 ): Promise<BaseSkillListingVerificationResult> {
+  const mode = input.mode ?? "create";
   const rawTxHash = input.txHash?.trim() ?? "";
   const txHash = rawTxHash ? requireTxHash(rawTxHash) : null;
+  if (mode === "update" && !txHash) {
+    throw new Error("Base listing update requires a transaction hash");
+  }
   const chainContext = normalizeInputChainContext(input.skill.chain_context);
   if (chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT) {
     throw new Error("Skill is linked to a different chain context");
@@ -262,10 +330,16 @@ export async function verifyBaseSkillListing(
   const skillIdHash = skillIdHashFrom(input.skill.skill_id);
   const expectedListingId = computeListingId(author, skillIdHash);
 
-  const [listing, event] = await Promise.all([
+  const [listing, createEvent, updateEvent] = await Promise.all([
     fetchLiveListing({ contract, listingId: expectedListingId }),
-    txHash ? findSkillListingCreatedEvent({ contract, txHash }) : null,
+    txHash && mode === "create"
+      ? findSkillListingCreatedEvent({ contract, txHash })
+      : null,
+    txHash && mode === "update"
+      ? findSkillListingUpdatedEvent({ contract, txHash })
+      : null,
   ]);
+  const event = createEvent ?? updateEvent;
 
   if (event && event.listingId !== expectedListingId) {
     throw new Error("Base listing event does not match this skill");
@@ -285,10 +359,13 @@ export async function verifyBaseSkillListing(
   if (listing.skillIdHash !== skillIdHash) {
     throw new Error("Base listing skill id hash does not match this skill");
   }
-  if (listing.name !== input.skill.name) {
+  const expectedName = input.expectedName ?? input.skill.name;
+  const expectedDescription =
+    input.expectedDescription ?? input.skill.description ?? "";
+  if (listing.name !== expectedName) {
     throw new Error("Base listing name does not match this skill");
   }
-  if (listing.description !== (input.skill.description ?? "")) {
+  if (listing.description !== expectedDescription) {
     throw new Error("Base listing description does not match this skill");
   }
   if (

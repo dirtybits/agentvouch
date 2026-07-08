@@ -143,7 +143,7 @@ Before any Base mainnet deployment:
 6. Run internal review plus an external security pass over every USDC-moving path before Phase 10:
    `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase`, `depositAuthorBond`,
    `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue`, `withdrawAuthorProceeds`,
-   `openReport`, and `resolveReport`.
+   `updateSkillListing`, `openReport`, and `resolveReport`.
 
 Base Sepolia smoke evidence to capture before treating Phase 9 as closed:
 

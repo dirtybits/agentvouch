@@ -163,6 +163,7 @@ describe("Base passkey trust-write seam", () => {
       "openBaseAuthorReport",
       "claimBaseVoucherRevenue",
       "withdrawBaseAuthorProceeds",
+      "updateBaseSkillListing",
     ]) {
       expect(source).toContain(marker);
     }
@@ -173,6 +174,8 @@ describe("Base passkey trust-write seam", () => {
     expect(source).toContain('functionName: "openReport"');
     expect(source).toContain("data: encodeFunctionData");
     expect(source).toContain('functionName: "vouch"');
+    expect(source).toContain('functionName: "updateSkillListing"');
+    expect(source).toContain('"SkillListingUpdated"');
     expect(source).toContain("OPEN_REPORT_SELECTOR");
     expect(source).toContain("publicClient.getCode");
     expect(source).toContain(
@@ -181,5 +184,31 @@ describe("Base passkey trust-write seam", () => {
     expect(source).toContain("sequentialApproval?: boolean");
     expect(source).toContain("if (input.sequentialApproval)");
     expect(source).toContain("sequentialApproval: true");
+  });
+});
+
+describe("Base listing update seam", () => {
+  it("keeps updateSkillListing in the ChainWallet interface and honest stubs", () => {
+    const types = readFileSync(
+      join(process.cwd(), "lib/adapters/types.ts"),
+      "utf8"
+    );
+    const baseInjected = readFileSync(
+      join(process.cwd(), "lib/adapters/baseInjectedWallet.ts"),
+      "utf8"
+    );
+    const solana = readFileSync(
+      join(process.cwd(), "lib/adapters/solanaWallet.ts"),
+      "utf8"
+    );
+
+    expect(types).toContain("UpdateSkillListingInput");
+    expect(types).toContain(
+      "updateSkillListing(input: UpdateSkillListingInput)"
+    );
+    expect(baseInjected).toContain(
+      "MetaMask listing updates are not enabled yet"
+    );
+    expect(solana).toContain("Solana listing updates are still routed through");
   });
 });

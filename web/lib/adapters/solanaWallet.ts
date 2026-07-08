@@ -78,6 +78,13 @@ export function createSolanaChainWallet(input: {
       return txResult(String(tx), summary.feePayer === session.signer.address);
     },
 
+    updateSkillListing: () =>
+      Promise.reject(
+        new Error(
+          "Solana listing updates are still routed through the legacy reputation hook."
+        )
+      ),
+
     async purchaseSkill(
       purchase: PurchaseSkillInput
     ): Promise<PurchaseSkillResult> {
