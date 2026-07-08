@@ -47,6 +47,18 @@ Sequencing: this plan is **Phase 9b-2** — after the PR #78/#79 report primitiv
 the 9c review closeout. It must not block Phase 9 Part A live smokes (x402 relayer/funded-EOA
 setup is human-gated and runs in parallel).
 
+> **SEQUENCING vs `base-update-skill-listing` (2026-07-07, founder-acked):** run this plan
+> **SECOND**, after `.agents/plans/base-update-skill-listing.plan.md` merges. Do NOT run the two
+> a2a loops in parallel — both edit `AgentVouchEvm.sol`, `AgentVouchTypes.sol`, the forge
+> suites, `ui/src/abi.ts`, and `web/lib/adapters/agentVouchEvmAbi.ts`. Additionally, this plan's
+> revision-dodge-block forge test (row 6) is only meaningful once `updateSkillListing` exists —
+> no bump function means nothing to block. The fresh Sepolia candidate deploy + live smoke in
+> `verify-and-record` should be **combined with the update plan's smoke into one deploy and one
+> evidence run after both plans merge** (create → buy rev 1 → update price/bump → buy rev 2 →
+> backed purchase → upheld report → crank slash → refund claim → residual reclaim). Part A
+> human-gated items (x402 relayer key, funded agent EOA, fresh author passkey smoke) proceed in
+> parallel with either loop.
+
 ## Baseline (what exists in the v1 candidate today)
 
 - `PROTOCOL_VERSION = "base-v1-candidate"`; `openReport`/`resolveReport` under `RESOLVER_ROLE`;
