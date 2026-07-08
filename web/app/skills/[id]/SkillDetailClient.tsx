@@ -1250,7 +1250,7 @@ export default function SkillDetailPage({
   }, [content]);
 
   const handleUpdateListing = async () => {
-    if (!connected || !walletAddress || !skill) return;
+    if (!skill) return;
     setUpdating(true);
     setUpdateResult(null);
     try {
@@ -1261,6 +1261,83 @@ export default function SkillDetailPage({
         setUpdateResult({
           success: false,
           message: `Price must be 0 for a free listing or at least ${formatMinPrice()}.`,
+        });
+        setUpdating(false);
+        return;
+      }
+      if (isBaseAuthor) {
+        if (
+          !activeChainWallet ||
+          !activeWalletAddress ||
+          !activeChainWallet.signMessage ||
+          !skill.evm_listing_id
+        ) {
+          setUpdateResult({
+            success: false,
+            message: "Connect the Base author wallet to update this listing.",
+          });
+          setUpdating(false);
+          return;
+        }
+        const updateTx = await activeChainWallet.updateSkillListing({
+          listingId: skill.evm_listing_id,
+          skillId: skill.skill_id,
+          uri: nextSkillUri,
+          name: editName,
+          description: editDescription,
+          priceUsdcMicros: BigInt(priceUsdcMicros),
+        });
+        const timestamp = Date.now();
+        const message = `AgentVouch Skill Repo\nAction: update-base-listing\nSkill id: ${skill.id}\nTimestamp: ${timestamp}`;
+        const signature = await activeChainWallet.signMessage(message);
+        const patchRes = await fetch(`/api/skills/${skill.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            auth: {
+              pubkey: activeWalletAddress,
+              signature,
+              message,
+              timestamp,
+            },
+            baseListing: {
+              mode: "update",
+              txHash: updateTx.ref,
+              authorAddress: activeWalletAddress,
+              chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+              expectedName: editName,
+              expectedDescription: editDescription,
+              expectedUri: nextSkillUri,
+              expectedPriceUsdcMicros: String(priceUsdcMicros),
+            },
+          }),
+        });
+        if (!patchRes.ok) {
+          const patchBody = (await patchRes.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            patchBody?.error || "Base listing updated on-chain but not synced"
+          );
+        }
+        const updated = (await patchRes.json()) as SkillDetail;
+        setSkill(updated);
+        await refreshSkill({
+          includeBuyer: true,
+          buyerAddress: activeWalletAddress,
+          buyerChainContext: activeChainContext,
+        });
+        setUpdateResult({
+          success: true,
+          message: "Listing updated on-chain!",
+        });
+        setEditing(false);
+        return;
+      }
+      if (!connected || !walletAddress) {
+        setUpdateResult({
+          success: false,
+          message: "Connect the author wallet to update this listing.",
         });
         setUpdating(false);
         return;
@@ -2758,7 +2835,7 @@ export default function SkillDetailPage({
 
         {/* ===== AUTHOR / ON-CHAIN LISTING ===== */}
         {/* On-chain listing section */}
-        {skill.on_chain_address ? (
+        {skill.on_chain_address || hasBaseListing ? (
           <div
             id="author-actions"
             className="mt-6 rounded-sm border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-4 mb-6"
@@ -2766,21 +2843,36 @@ export default function SkillDetailPage({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
                 <FiCheckCircle className="w-4 h-4" />
-                Listed on-chain
-                <a
-                  href={getConfiguredSolanaExplorerAddressUrl(
-                    skill.on_chain_address
-                  )}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-                  title={`View listing PDA ${skill.on_chain_address}`}
-                >
-                  View PDA
-                  <FiExternalLink className="w-3 h-3" />
-                </a>
+                {hasBaseListing ? "Base listing linked" : "Listed on-chain"}
+                {hasBaseListing ? (
+                  skill.evm_tx_hash && (
+                    <a
+                      href={`${BASE_SEPOLIA_EXPLORER_URL}/tx/${skill.evm_tx_hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                      title={`View Base tx ${skill.evm_tx_hash}`}
+                    >
+                      View tx
+                      <FiExternalLink className="w-3 h-3" />
+                    </a>
+                  )
+                ) : (
+                  <a
+                    href={getConfiguredSolanaExplorerAddressUrl(
+                      skill.on_chain_address as string
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                    title={`View listing PDA ${skill.on_chain_address}`}
+                  >
+                    View PDA
+                    <FiExternalLink className="w-3 h-3" />
+                  </a>
+                )}
               </div>
-              {isSolanaAuthor && !editing && (
+              {(isSolanaAuthor || isBaseAuthor) && !editing && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={startEditing}
@@ -2798,14 +2890,22 @@ export default function SkillDetailPage({
                       Publish New Version
                     </button>
                   )}
-                  <button
-                    onClick={handleRemoveListing}
-                    disabled={removing}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-                  >
-                    <FiTrash2 className="w-3.5 h-3.5" />
-                    {removing ? "Removing…" : "Remove"}
-                  </button>
+                  {isSolanaAuthor && (
+                    <button
+                      onClick={handleRemoveListing}
+                      disabled={removing}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                    >
+                      <FiTrash2 className="w-3.5 h-3.5" />
+                      {removing ? "Removing…" : "Remove"}
+                    </button>
+                  )}
+                  {isBaseAuthor && (
+                    <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                      {skill.evm_listing_id?.slice(0, 10)}...
+                      {skill.evm_listing_id?.slice(-8)}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -2998,47 +3098,6 @@ export default function SkillDetailPage({
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-        ) : hasBaseListing ? (
-          <div
-            id="author-actions"
-            className="mt-6 rounded-sm border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-4 mb-6"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
-                <FiCheckCircle className="w-4 h-4" />
-                Base listing linked
-                {skill.evm_tx_hash && (
-                  <a
-                    href={`${BASE_SEPOLIA_EXPLORER_URL}/tx/${skill.evm_tx_hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
-                    title={`View Base tx ${skill.evm_tx_hash}`}
-                  >
-                    View tx
-                    <FiExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-              </div>
-              {isBaseAuthor && (
-                <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                  {skill.evm_listing_id?.slice(0, 10)}...
-                  {skill.evm_listing_id?.slice(-8)}
-                </span>
-              )}
-            </div>
-            {updateResult && (
-              <p
-                className={`text-xs mt-2 ${
-                  updateResult.success
-                    ? "text-green-600 dark:text-green-400"
-                    : "text-red-600 dark:text-red-400"
-                }`}
-              >
-                {updateResult.message}
-              </p>
             )}
           </div>
         ) : (

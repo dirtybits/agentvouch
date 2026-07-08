@@ -7,6 +7,7 @@ export const agentVouchAbi = parseAbi([
   "function depositAuthorBond(uint256 amount)",
   "function vouch(address vouchee, uint256 stake)",
   "function createSkillListing(bytes32 skillIdHash, string uri, string name, string description, uint256 priceUsdcMicros) returns (bytes32)",
+  "function updateSkillListing(bytes32 id, string uri, string name, string description, uint256 priceUsdcMicros) returns (uint64)",
   "function purchaseSkill(bytes32 id) returns (bytes32)",
   "function claimVoucherRevenue(address author)",
   "function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount)",
@@ -15,6 +16,7 @@ export const agentVouchAbi = parseAbi([
   // x402 Lane B (trust-minimized): the agent signs an EIP-3009 authorization off-chain;
   // a relayer submits this and the contract pulls USDC + records the purchase atomically.
   "function purchaseWithAuthorization(bytes32 id, address buyer, uint256 validAfter, uint256 validBefore, uint8 v, bytes32 r, bytes32 s) returns (bytes32)",
+  "event SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)",
   "error AlreadyRegistered()",
   "error ListingNotFound()",
 ]);

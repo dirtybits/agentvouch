@@ -618,6 +618,7 @@ describe("PATCH /api/skills/[id]", () => {
     expect(res.status).toBe(200);
     expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
       skill: baseSkill,
+      mode: "create",
       txHash:
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       authorAddress: "0x1111111111111111111111111111111111111111",
@@ -734,10 +735,101 @@ describe("PATCH /api/skills/[id]", () => {
     expect(res.status).toBe(200);
     expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
       skill: baseSkill,
+      mode: "create",
       txHash: null,
       authorAddress: "0x1111111111111111111111111111111111111111",
       expectedPriceUsdcMicros: null,
       expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+    });
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates a Base listing only after verifying the update tx and expected fields", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Old Skill",
+      description: "Old description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    const updated = {
+      ...baseSkill,
+      name: "New Skill",
+      description: "New description",
+      price_usdc_micros: "20000",
+      evm_tx_hash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListing.mockResolvedValueOnce({
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      txHash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      skillIdHash:
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      priceUsdcMicros: "20000",
+      currencyMint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      protocolVersion: "base-poc-v0",
+      onChainProgramId: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      chainContext: "eip155:84532",
+      listingRevision: "2",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: {
+            pubkey: "0x1111111111111111111111111111111111111111",
+            signature: "0xsigned",
+            message: "AgentVouch Skill Repo\nAction: update-base-listing",
+            timestamp: Date.now(),
+          },
+          baseListing: {
+            mode: "update",
+            txHash:
+              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+            expectedName: "New Skill",
+            expectedDescription: "New description",
+            expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+            expectedPriceUsdcMicros: "20000",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
+      skill: baseSkill,
+      mode: "update",
+      txHash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      expectedPriceUsdcMicros: "20000",
+      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      expectedName: "New Skill",
+      expectedDescription: "New description",
     });
     expect(dbQuery).toHaveBeenCalledTimes(2);
   });
