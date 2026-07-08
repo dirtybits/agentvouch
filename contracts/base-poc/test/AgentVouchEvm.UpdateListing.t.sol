@@ -193,6 +193,24 @@ contract UpdateListingTest is Test {
         vm.stopPrank();
     }
 
+    function test_exactMaxFieldLengthsAccepted() public {
+        string memory maxUri = _longString(256);
+        string memory maxName = _longString(64);
+        string memory maxDescription = _longString(256);
+
+        vm.prank(author);
+        uint64 revision = av.updateSkillListing(listingId, maxUri, maxName, maxDescription, PRICE);
+
+        AgentVouchTypes.SkillListing memory listing = av.getListing(listingId);
+        assertEq(revision, 2);
+        assertEq(listing.currentRevision, 2);
+        assertEq(listing.uri, maxUri);
+        assertEq(listing.name, maxName);
+        assertEq(listing.description, maxDescription);
+        assertEq(listing.priceUsdcMicros, PRICE);
+        assertTrue(av.getSettlement(listingId, 2).initialized);
+    }
+
     function test_freePaidTransitionsMaintainCounterAndBondFloor() public {
         vm.prank(author);
         vm.expectRevert(AgentVouchEvm.FreeListingBondFloor.selector);
