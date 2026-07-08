@@ -40,7 +40,11 @@ const AGENTVOUCH_EVM_LISTING_ABI = parseAbi([
   ...AGENTVOUCH_EVM_READ_ABI,
   "event SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free)",
   "event SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)",
+  "event SkillListingRemoved(bytes32 indexed listingId)",
 ]);
+
+// ListingStatus enum: Active = 0, Suspended = 1, Removed = 2
+const LISTING_STATUS_REMOVED = 2;
 
 type RawListing = {
   author: Address;
@@ -86,7 +90,7 @@ export type BaseSkillListingRow = {
 
 export type VerifyBaseSkillListingInput = {
   skill: BaseSkillListingRow;
-  mode?: "create" | "update";
+  mode?: "create" | "update" | "remove";
   txHash?: string | null;
   authorAddress?: string | null;
   expectedPriceUsdcMicros?: string | null;
@@ -149,7 +153,7 @@ function createBasePublicClient() {
   });
 }
 
-async function fetchLiveListing(input: {
+async function readLiveListing(input: {
   contract: Address;
   listingId: Hex;
 }): Promise<RawListing> {
@@ -171,6 +175,14 @@ async function fetchLiveListing(input: {
   if (!listing.exists) {
     throw new Error("Base listing was not found on-chain");
   }
+  return listing;
+}
+
+async function fetchLiveListing(input: {
+  contract: Address;
+  listingId: Hex;
+}): Promise<RawListing> {
+  const listing = await readLiveListing(input);
   if (listing.status !== LISTING_STATUS_ACTIVE || listing.lockedByDispute) {
     throw new Error("Base listing is not active");
   }
@@ -282,10 +294,115 @@ async function findSkillListingUpdatedEvent(input: {
   throw new Error("Base listing transaction did not emit SkillListingUpdated");
 }
 
+async function findSkillListingRemovedEvent(input: {
+  contract: Address;
+  txHash: Hex;
+}): Promise<{ listingId: Hex }> {
+  const receipt = await createBasePublicClient().getTransactionReceipt({
+    hash: input.txHash,
+  });
+  if (receipt.status !== "success") {
+    throw new Error("Base listing remove transaction failed on-chain");
+  }
+
+  for (const log of receipt.logs) {
+    if (getAddress(log.address) !== input.contract) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: AGENTVOUCH_EVM_LISTING_ABI,
+        data: log.data,
+        topics: [...log.topics] as [Hex, ...Hex[]],
+      }) as unknown as {
+        eventName: string;
+        args: Record<string, unknown>;
+      };
+      if (decoded.eventName !== "SkillListingRemoved") continue;
+
+      const { listingId } = decoded.args;
+      if (typeof listingId !== "string") {
+        throw new Error("Base listing remove event has unexpected fields");
+      }
+
+      return {
+        listingId: requireBaseBytes32(listingId, "Base listing id"),
+      };
+    } catch (error) {
+      if (error instanceof Error && /unexpected fields/.test(error.message)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Base listing transaction did not emit SkillListingRemoved");
+}
+
+/**
+ * Verify an on-chain removeSkillListing receipt for a DB skill row.
+ * Clears are applied by the caller — this only proves the chain removal.
+ */
+export async function verifyBaseSkillListingRemoved(input: {
+  skill: BaseSkillListingRow;
+  txHash: string;
+  authorAddress: string;
+}): Promise<{ listingId: Hex; txHash: Hex }> {
+  const chainContext = normalizeInputChainContext(input.skill.chain_context);
+  if (chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT) {
+    throw new Error("Skill is linked to a different chain context");
+  }
+  if (!input.skill.author_pubkey) {
+    throw new Error("Base skill is missing an author address");
+  }
+  if (!input.skill.evm_listing_id) {
+    throw new Error("Base skill has no linked listing to remove");
+  }
+
+  const author = requireBaseEvmAddress(
+    input.skill.author_pubkey,
+    "Skill author"
+  );
+  if (
+    author !== requireBaseEvmAddress(input.authorAddress, "Submitted author")
+  ) {
+    throw new Error("Submitted Base author does not match this skill");
+  }
+
+  const storedListingId = requireBaseBytes32(
+    input.skill.evm_listing_id,
+    "Base listing id"
+  );
+  const txHash = requireTxHash(input.txHash);
+  const contract = getExpectedBaseContract({
+    skill: input.skill,
+    configuredContract: BASE_AGENTVOUCH_CONTRACT_ADDRESS,
+  });
+
+  const [removeEvent, listing] = await Promise.all([
+    findSkillListingRemovedEvent({ contract, txHash }),
+    readLiveListing({ contract, listingId: storedListingId }),
+  ]);
+
+  if (removeEvent.listingId !== storedListingId) {
+    throw new Error("Base remove event does not match this skill's listing");
+  }
+  if (listing.author !== author) {
+    throw new Error("Base listing author does not match this skill");
+  }
+  if (listing.status !== LISTING_STATUS_REMOVED) {
+    throw new Error("Base listing is not in Removed status after remove tx");
+  }
+
+  return { listingId: storedListingId, txHash };
+}
+
 export async function verifyBaseSkillListing(
   input: VerifyBaseSkillListingInput
 ): Promise<BaseSkillListingVerificationResult> {
   const mode = input.mode ?? "create";
+  if (mode === "remove") {
+    throw new Error(
+      "verifyBaseSkillListing does not handle remove; use verifyBaseSkillListingRemoved"
+    );
+  }
   const rawTxHash = input.txHash?.trim() ?? "";
   const txHash = rawTxHash ? requireTxHash(rawTxHash) : null;
   if (mode === "update" && !txHash) {

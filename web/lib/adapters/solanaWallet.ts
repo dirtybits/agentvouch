@@ -85,6 +85,13 @@ export function createSolanaChainWallet(input: {
         )
       ),
 
+    removeSkillListing: () =>
+      Promise.reject(
+        new Error(
+          "Solana listing removal is still routed through the legacy reputation hook."
+        )
+      ),
+
     async purchaseSkill(
       purchase: PurchaseSkillInput
     ): Promise<PurchaseSkillResult> {

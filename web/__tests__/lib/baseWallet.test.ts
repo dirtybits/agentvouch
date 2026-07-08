@@ -164,6 +164,7 @@ describe("Base passkey trust-write seam", () => {
       "claimBaseVoucherRevenue",
       "withdrawBaseAuthorProceeds",
       "updateBaseSkillListing",
+      "removeBaseSkillListing",
     ]) {
       expect(source).toContain(marker);
     }
@@ -176,6 +177,8 @@ describe("Base passkey trust-write seam", () => {
     expect(source).toContain('functionName: "vouch"');
     expect(source).toContain('functionName: "updateSkillListing"');
     expect(source).toContain('"SkillListingUpdated"');
+    expect(source).toContain('functionName: "removeSkillListing"');
+    expect(source).toContain('"SkillListingRemoved"');
     expect(source).toContain("OPEN_REPORT_SELECTOR");
     expect(source).toContain("publicClient.getCode");
     expect(source).toContain(
@@ -210,5 +213,28 @@ describe("Base listing update seam", () => {
       "MetaMask listing updates are not enabled yet"
     );
     expect(solana).toContain("Solana listing updates are still routed through");
+  });
+});
+
+describe("Base listing remove seam", () => {
+  it("keeps removeSkillListing in the ChainWallet interface and honest stubs", () => {
+    const types = readFileSync(
+      join(process.cwd(), "lib/adapters/types.ts"),
+      "utf8"
+    );
+    const baseInjected = readFileSync(
+      join(process.cwd(), "lib/adapters/baseInjectedWallet.ts"),
+      "utf8"
+    );
+    const solana = readFileSync(
+      join(process.cwd(), "lib/adapters/solanaWallet.ts"),
+      "utf8"
+    );
+
+    expect(types).toContain("removeSkillListing(input: { listingId: string })");
+    expect(baseInjected).toContain(
+      "MetaMask listing removal is not enabled yet"
+    );
+    expect(solana).toContain("Solana listing removal is still routed through");
   });
 });
