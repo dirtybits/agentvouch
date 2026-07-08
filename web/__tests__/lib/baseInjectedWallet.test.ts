@@ -208,5 +208,17 @@ describe("Base injected ChainWallet", () => {
         priceUsdcMicros: 1_000_000n,
       })
     ).rejects.toThrow(/Coinbase Smart Wallet/);
+    await expect(
+      wallet.vouchForAuthor({
+        authorAddress: "0x0000000000000000000000000000000000000001",
+        stakeUsdcMicros: 1_000_000n,
+      })
+    ).rejects.toThrow(/Coinbase Smart Wallet/);
+    await expect(
+      wallet.openAuthorReport({
+        authorAddress: "0x0000000000000000000000000000000000000001",
+        evidenceUri: "https://example.com/evidence",
+      })
+    ).rejects.toThrow(/Coinbase Smart Wallet/);
   });
 });

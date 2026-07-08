@@ -46,6 +46,12 @@ const INJECTED_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:metamask:active";
 const PURCHASE_SKILL_ABI = parseAbi([
   "function purchaseSkill(bytes32 id) returns (bytes32)",
 ]);
+const unsupportedAuthorWrite = (action: string) =>
+  Promise.reject(
+    new Error(
+      `${action} is not enabled for the MetaMask Base buyer wallet yet; use Coinbase Smart Wallet for Base author/trust actions.`
+    )
+  );
 
 type Eip1193RequestArgs = {
   method: string;
@@ -538,6 +544,14 @@ export function createBaseInjectedChainWallet(
       ),
     purchaseSkill: (input) =>
       purchaseBaseSkillWithInjectedWallet(session, input),
+    depositAuthorBond: () => unsupportedAuthorWrite("Author bond deposit"),
+    withdrawAuthorBond: () => unsupportedAuthorWrite("Author bond withdrawal"),
+    vouchForAuthor: () => unsupportedAuthorWrite("Base vouching"),
+    revokeVouch: () => unsupportedAuthorWrite("Base vouch revocation"),
+    openAuthorReport: () => unsupportedAuthorWrite("Base author reports"),
+    claimVoucherRevenue: () => unsupportedAuthorWrite("Voucher revenue claim"),
+    withdrawAuthorProceeds: () =>
+      unsupportedAuthorWrite("Author proceeds withdrawal"),
     buildX402Payment: () =>
       Promise.reject(
         new Error(

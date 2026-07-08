@@ -9,10 +9,11 @@ import {
 } from "next/navigation";
 import { address, type Address } from "@solana/kit";
 import Link from "next/link";
+import { getAddress, isAddress as isEvmAddress } from "viem";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { AgentProfileSetupCard } from "@/components/AgentProfileSetupCard";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
-import { useAgentVouchWallet } from "@/components/WalletContextProvider";
+import { useChainWallet } from "@/components/WalletContextProvider";
 import type { AuthPayload } from "@/lib/authPayload";
 import type { AuthorDisputeRecord } from "@/lib/authorDisputes";
 import {
@@ -21,6 +22,7 @@ import {
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import { formatDate } from "@/lib/formatDate";
+import { useWritableChainWallet } from "@/hooks/useWritableChainWallet";
 import { useReputationOracle } from "@/hooks/useReputationOracle";
 import { useAgentVouchTransactionSigner } from "@/hooks/useAgentVouchTransactionSigner";
 import type { AgentIdentitySummary } from "@/lib/agentIdentity";
@@ -40,6 +42,7 @@ import type { SolanaRegistryCandidate } from "@/lib/solanaAgentRegistry";
 import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
 import { getPublicSkillPath } from "@/lib/skillUrls";
+import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -83,6 +86,14 @@ function toBigInt(value: number | bigint | string | null | undefined): bigint {
   return BigInt(value);
 }
 
+function parseUsdcMicrosInput(value: string): bigint | null {
+  const trimmed = value.trim();
+  if (!/^\d+(\.\d{1,6})?$/.test(trimmed)) return null;
+  const [whole, fraction = ""] = trimmed.split(".");
+  const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
+  return micros > 0n ? micros : null;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -124,11 +135,19 @@ export default function AuthorProfilePage() {
   const searchParams = useSearchParams();
   const pubkey = params.pubkey as string;
 
-  const { status: walletStatus, account } = useAgentVouchWallet();
+  const chainSession = useChainWallet();
+  const activeChainWallet = useWritableChainWallet();
   const { signMessage } = useAgentVouchTransactionSigner();
-  const connected = walletStatus === "connected" && !!account;
-  const myPubkey = account ?? null;
+  const connected =
+    chainSession.status === "connected" && !!chainSession.account;
+  const myPubkey = chainSession.account ?? null;
   const oracle = useReputationOracle();
+  const evmAuthorAddress = isEvmAddress(pubkey) ? getAddress(pubkey) : null;
+  const isEvmAuthor = Boolean(evmAuthorAddress);
+  const isBaseTrustWrite =
+    !!activeChainWallet &&
+    !!evmAuthorAddress &&
+    activeChainWallet.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT;
 
   const [profile, setProfile] = useState<AgentProfileData | null>(null);
   const [vouchesReceived, setVouchesReceived] = useState<VouchRecord[]>([]);
@@ -147,6 +166,19 @@ export default function AuthorProfilePage() {
   const [vouching, setVouching] = useState(false);
   const [vouchStatus, setVouchStatus] = useState("");
   const [vouchTx, setVouchTx] = useState<string | null>(null);
+  const [vouchTxExplorerUrl, setVouchTxExplorerUrl] = useState<string | null>(
+    null
+  );
+  const [selfStakeAmount, setSelfStakeAmount] = useState("1");
+  const [selfStaking, setSelfStaking] = useState(false);
+  const [selfStakeStatus, setSelfStakeStatus] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [selfStakeTx, setSelfStakeTx] = useState<string | null>(null);
+  const [selfStakeTxExplorerUrl, setSelfStakeTxExplorerUrl] = useState<
+    string | null
+  >(null);
   const [myProfile, setMyProfile] = useState<AgentProfileData | null>(null);
   const [myProfileLoading, setMyProfileLoading] = useState(false);
   const [myProfileChecked, setMyProfileChecked] = useState(false);
@@ -189,6 +221,9 @@ export default function AuthorProfilePage() {
   } | null>(null);
   const [claimRouteDismissed, setClaimRouteDismissed] = useState(false);
   const [claimTx, setClaimTx] = useState<string | null>(null);
+  const [claimTxExplorerUrl, setClaimTxExplorerUrl] = useState<string | null>(
+    null
+  );
   const [claimingRevenueListing, setClaimingRevenueListing] = useState<
     string | null
   >(null);
@@ -197,13 +232,46 @@ export default function AuthorProfilePage() {
     message: string;
   } | null>(null);
   const [claimRevenueTx, setClaimRevenueTx] = useState<string | null>(null);
+  const [claimRevenueTxExplorerUrl, setClaimRevenueTxExplorerUrl] = useState<
+    string | null
+  >(null);
   const myProfileFetchId = useRef(0);
 
-  const isOwnProfile = myPubkey === pubkey;
+  const isOwnProfile =
+    !!myPubkey &&
+    (evmAuthorAddress
+      ? isEvmAddress(myPubkey) && getAddress(myPubkey) === evmAuthorAddress
+      : myPubkey === pubkey);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      if (evmAuthorAddress) {
+        const [repoRes, authorRes] = await Promise.all([
+          fetch(`/api/skills?author=${encodeURIComponent(evmAuthorAddress)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+          fetch(
+            `/api/author/${encodeURIComponent(
+              evmAuthorAddress
+            )}?chainContext=${encodeURIComponent(BASE_SEPOLIA_CHAIN_CONTEXT)}`
+          )
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+        ]);
+        const apiSkills = (repoRes?.skills ?? []) as RepoSkill[];
+        setProfile(null);
+        setVouchesReceived([]);
+        setVouchesGiven([]);
+        setRepoSkills(apiSkills.filter((skill) => skill.source !== "chain"));
+        setChainSkills(apiSkills.filter((skill) => skill.source === "chain"));
+        setAuthorTrust(authorRes?.author_trust ?? null);
+        setAuthorIdentity(authorRes?.author_identity ?? null);
+        setAuthorDisputes([]);
+        setProfileAuthorityByPda({});
+        return;
+      }
+
       const agentAddr = address(pubkey);
       const [prof, received, given, repoRes, authorRes] = await Promise.all([
         oracle.getAgentProfile(agentAddr).catch(() => null),
@@ -261,13 +329,20 @@ export default function AuthorProfilePage() {
     }
     // oracle is intentionally omitted — it changes reference every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pubkey]);
+  }, [evmAuthorAddress, pubkey]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   useEffect(() => {
+    if (isEvmAuthor) {
+      setMyProfile(null);
+      setMyProfileLoading(false);
+      setMyProfileChecked(true);
+      return;
+    }
+
     if (!connected || !myPubkey || isOwnProfile) {
       setMyProfile(null);
       setMyProfileLoading(false);
@@ -294,7 +369,7 @@ export default function AuthorProfilePage() {
       });
     // oracle is intentionally omitted — it changes reference every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, myPubkey, isOwnProfile]);
+  }, [connected, isEvmAuthor, myPubkey, isOwnProfile]);
 
   useEffect(() => {
     setRegistryLinkAuth(null);
@@ -311,10 +386,11 @@ export default function AuthorProfilePage() {
 
   const submitVouch = useCallback(async () => {
     if (!connected) return;
-    const amount = parseFloat(vouchAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const amountUsdcMicros = parseUsdcMicrosInput(vouchAmount);
+    if (amountUsdcMicros === null) {
       setVouchStatus("Error: Enter a valid stake amount in USDC.");
       setVouchTx(null);
+      setVouchTxExplorerUrl(null);
       setPendingVouchAfterRegister(false);
       return;
     }
@@ -322,19 +398,46 @@ export default function AuthorProfilePage() {
     setVouching(true);
     setVouchStatus("Creating vouch...");
     setVouchTx(null);
+    setVouchTxExplorerUrl(null);
     try {
-      const { tx } = await oracle.vouch(address(pubkey), amount);
+      if (isBaseTrustWrite && activeChainWallet && evmAuthorAddress) {
+        const result = await activeChainWallet.vouchForAuthor({
+          authorAddress: evmAuthorAddress,
+          stakeUsdcMicros: amountUsdcMicros,
+        });
+        setVouchStatus("Vouch created!");
+        setVouchTx(result.ref);
+        setVouchTxExplorerUrl(result.explorerUrl);
+        setTimeout(loadData, 2000);
+        return;
+      }
+
+      const { tx } = await oracle.vouch(
+        address(pubkey),
+        Number(amountUsdcMicros) / 1_000_000
+      );
       setVouchStatus("Vouch created!");
       setVouchTx(tx);
+      setVouchTxExplorerUrl(getSolanaFmTxUrl(tx));
       setTimeout(loadData, 2000);
     } catch (error: unknown) {
       setVouchStatus(`Error: ${getErrorMessage(error)}`);
       setVouchTx(null);
+      setVouchTxExplorerUrl(null);
     } finally {
       setVouching(false);
       setPendingVouchAfterRegister(false);
     }
-  }, [connected, loadData, oracle, pubkey, vouchAmount]);
+  }, [
+    activeChainWallet,
+    connected,
+    evmAuthorAddress,
+    isBaseTrustWrite,
+    loadData,
+    oracle,
+    pubkey,
+    vouchAmount,
+  ]);
 
   const waitForReadableProfile = useCallback(
     async (agentKey: Address, attempts = 8) => {
@@ -352,6 +455,12 @@ export default function AuthorProfilePage() {
     if (!connected) {
       setVouchStatus("Connect your wallet to vouch for this author.");
       setVouchTx(null);
+      setVouchTxExplorerUrl(null);
+      return;
+    }
+
+    if (isBaseTrustWrite) {
+      await submitVouch();
       return;
     }
 
@@ -364,6 +473,72 @@ export default function AuthorProfilePage() {
 
     await submitVouch();
   };
+
+  const submitBaseSelfStake = useCallback(
+    async (mode: "deposit" | "withdraw") => {
+      if (!isOwnProfile || !isBaseTrustWrite || !activeChainWallet) {
+        setSelfStakeStatus({
+          success: false,
+          message: "Connect the Base author wallet to manage self-stake.",
+        });
+        setSelfStakeTx(null);
+        setSelfStakeTxExplorerUrl(null);
+        return;
+      }
+
+      const amountUsdcMicros = parseUsdcMicrosInput(selfStakeAmount);
+      if (amountUsdcMicros === null || amountUsdcMicros <= 0n) {
+        setSelfStakeStatus({
+          success: false,
+          message: "Enter a valid self-stake amount in USDC.",
+        });
+        setSelfStakeTx(null);
+        setSelfStakeTxExplorerUrl(null);
+        return;
+      }
+
+      setSelfStaking(true);
+      setSelfStakeStatus(null);
+      setSelfStakeTx(null);
+      setSelfStakeTxExplorerUrl(null);
+
+      try {
+        const result =
+          mode === "deposit"
+            ? await activeChainWallet.depositAuthorBond({ amountUsdcMicros })
+            : await activeChainWallet.withdrawAuthorBond({ amountUsdcMicros });
+        setSelfStakeStatus({
+          success: true,
+          message:
+            mode === "deposit"
+              ? "Base self-stake deposited."
+              : "Base self-stake withdrawn.",
+        });
+        setSelfStakeTx(result.ref);
+        setSelfStakeTxExplorerUrl(result.explorerUrl);
+        setTimeout(loadData, 2000);
+      } catch (error: unknown) {
+        setSelfStakeStatus({
+          success: false,
+          message: getErrorMessage(
+            error,
+            mode === "deposit"
+              ? "Failed to deposit Base self-stake."
+              : "Failed to withdraw Base self-stake."
+          ),
+        });
+      } finally {
+        setSelfStaking(false);
+      }
+    },
+    [
+      activeChainWallet,
+      isBaseTrustWrite,
+      isOwnProfile,
+      loadData,
+      selfStakeAmount,
+    ]
+  );
 
   const handleRegister = async () => {
     if (!connected || !myPubkey) return;
@@ -602,6 +777,9 @@ export default function AuthorProfilePage() {
           isRegistered: true,
         }
       : null);
+  const authorCanReceiveTrust = isEvmAuthor
+    ? Boolean(authorTrust?.isRegistered)
+    : Boolean(profile);
 
   const authorWideBackingVouches = vouchesReceived.filter((vouch) =>
     countsTowardAuthorWideReportSnapshot(vouch.account.status)
@@ -674,7 +852,8 @@ export default function AuthorProfilePage() {
       ?.value ??
     claimSkillOptions[0]?.value ??
     "";
-  const registeredAt = Number(profile?.registeredAt ?? 0);
+  const registeredAt = Number(trustData?.registeredAt ?? 0);
+  const authorIsRegistered = Boolean(trustData?.isRegistered);
 
   const clearClaimRouteParams = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams.toString());
@@ -699,6 +878,7 @@ export default function AuthorProfilePage() {
       : claimSkillOptions[0]?.value ?? "";
     setClaimStatus(null);
     setClaimTx(null);
+    setClaimTxExplorerUrl(null);
     setClaimReason("malicious-skill");
     setClaimSkillContext(nextSkill);
     setClaimEvidenceUri("");
@@ -719,20 +899,37 @@ export default function AuthorProfilePage() {
         message: "Connect your wallet to claim voucher revenue.",
       });
       setClaimRevenueTx(null);
+      setClaimRevenueTxExplorerUrl(null);
       return;
     }
 
     setClaimingRevenueListing(AUTHOR_REWARD_POOL_CLAIM_ID);
     setClaimRevenueStatus(null);
     setClaimRevenueTx(null);
+    setClaimRevenueTxExplorerUrl(null);
 
     try {
+      if (isBaseTrustWrite && activeChainWallet && evmAuthorAddress) {
+        const result = await activeChainWallet.claimVoucherRevenue({
+          authorAddress: evmAuthorAddress,
+        });
+        setClaimRevenueStatus({
+          success: true,
+          message: "Voucher revenue claimed.",
+        });
+        setClaimRevenueTx(result.ref);
+        setClaimRevenueTxExplorerUrl(result.explorerUrl);
+        setTimeout(loadData, 2000);
+        return;
+      }
+
       const { tx } = await oracle.claimVoucherRevenue(address(pubkey));
       setClaimRevenueStatus({
         success: true,
         message: "Voucher revenue claimed.",
       });
       setClaimRevenueTx(tx);
+      setClaimRevenueTxExplorerUrl(getSolanaFmTxUrl(tx));
       setTimeout(loadData, 2000);
     } catch (error: unknown) {
       const message = getErrorMessage(
@@ -746,10 +943,19 @@ export default function AuthorProfilePage() {
           : message,
       });
       setClaimRevenueTx(null);
+      setClaimRevenueTxExplorerUrl(null);
     } finally {
       setClaimingRevenueListing(null);
     }
-  }, [connected, loadData, oracle, pubkey]);
+  }, [
+    activeChainWallet,
+    connected,
+    evmAuthorAddress,
+    isBaseTrustWrite,
+    loadData,
+    oracle,
+    pubkey,
+  ]);
 
   const handleSubmitClaim = async () => {
     if (!connected) {
@@ -771,7 +977,7 @@ export default function AuthorProfilePage() {
       return;
     }
 
-    if (!selectedClaimSkillValue) {
+    if (!isBaseTrustWrite && !selectedClaimSkillValue) {
       setClaimStatus({
         success: false,
         message: "Choose the listed skill this report is about.",
@@ -792,8 +998,32 @@ export default function AuthorProfilePage() {
     setClaiming(true);
     setClaimStatus(null);
     setClaimTx(null);
+    setClaimTxExplorerUrl(null);
 
     try {
+      if (isBaseTrustWrite && activeChainWallet && evmAuthorAddress) {
+        const result = await activeChainWallet.openAuthorReport({
+          authorAddress: evmAuthorAddress,
+          evidenceUri,
+        });
+        setClaimStatus({
+          success: true,
+          message: result.reportId
+            ? `Report #${result.reportId} opened. The reporter bond is held until founder/admin resolution.`
+            : "Report opened. The reporter bond is held until founder/admin resolution.",
+        });
+        setClaimTx(result.ref);
+        setClaimTxExplorerUrl(result.explorerUrl);
+        setClaimRouteDismissed(true);
+        setShowClaimModal(false);
+        clearClaimRouteParams();
+        setClaimReason("malicious-skill");
+        setClaimSkillContext("");
+        setClaimEvidenceUri("");
+        setTimeout(loadData, 2000);
+        return;
+      }
+
       const selectedSkillListing = address(
         selectedClaimSkillValue.slice("skill:".length)
       );
@@ -818,6 +1048,7 @@ export default function AuthorProfilePage() {
         message: `Report opened${contextLabel}. Free-skill disputes snapshot voucher backing for transparency but cap slashing at author bond; paid-skill disputes can continue into vouchers after author bond.`,
       });
       setClaimTx(tx);
+      setClaimTxExplorerUrl(getSolanaFmTxUrl(tx));
       setClaimRouteDismissed(true);
       setShowClaimModal(false);
       clearClaimRouteParams();
@@ -831,22 +1062,23 @@ export default function AuthorProfilePage() {
         message: getErrorMessage(error, "Failed to open report."),
       });
       setClaimTx(null);
+      setClaimTxExplorerUrl(null);
     } finally {
       setClaiming(false);
     }
   };
 
   useEffect(() => {
-    if (!profile || isOwnProfile) return;
+    if (!authorCanReceiveTrust || isOwnProfile) return;
     if (searchParams.get("report") !== "1") return;
     if (claimRouteDismissed) return;
     if (showClaimModal) return;
     openClaimModal();
   }, [
     claimRouteDismissed,
+    authorCanReceiveTrust,
     isOwnProfile,
     openClaimModal,
-    profile,
     searchParams,
     showClaimModal,
   ]);
@@ -907,7 +1139,7 @@ export default function AuthorProfilePage() {
             </div>
           )}
 
-        {showClaimModal && !isOwnProfile && profile && (
+        {showClaimModal && !isOwnProfile && authorCanReceiveTrust && (
           <div
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
             role="presentation"
@@ -937,11 +1169,9 @@ export default function AuthorProfilePage() {
                   Report this author
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  Open a skill-linked author dispute. The protocol always
-                  snapshots the author&apos;s current backing set for
-                  visibility. Free-skill disputes cap slashing at author bond;
-                  paid-skill disputes can continue into vouchers after author
-                  bond.
+                  {isBaseTrustWrite
+                    ? "Open an author-wide Base report. The reporter bond is held until founder/admin resolution."
+                    : "Open a skill-linked author dispute. The protocol always snapshots the author's current backing set for visibility. Free-skill disputes cap slashing at author bond; paid-skill disputes can continue into vouchers after author bond."}
                 </p>
               </div>
 
@@ -979,46 +1209,50 @@ export default function AuthorProfilePage() {
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Related skill
-                      </label>
-                      <select
-                        value={claimSkillContext}
-                        onChange={(e) => setClaimSkillContext(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
-                      >
-                        {claimSkillOptions.map((skill) => (
-                          <option key={skill.value} value={skill.value}>
-                            {skill.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Author-wide backing snapshot
-                      </label>
-                      <div className="rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          This report records the offending listed skill and the
-                          author&apos;s full backing snapshot. You cannot choose
-                          individual backers.
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {authorWideBackingVouches.length > 0
-                            ? `The protocol will snapshot ${
-                                authorWideBackingVouches.length
-                              } current backing ${
-                                authorWideBackingVouches.length === 1
-                                  ? "voucher"
-                                  : "vouchers"
-                              } when you open the report. Free-skill disputes keep that snapshot for transparency only; paid-skill disputes may also slash it after author bond.`
-                            : "This author has no live backing vouchers right now, so only author bond can be economically in scope."}
-                        </p>
+                    {!isBaseTrustWrite && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Related skill
+                        </label>
+                        <select
+                          value={claimSkillContext}
+                          onChange={(e) => setClaimSkillContext(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
+                        >
+                          {claimSkillOptions.map((skill) => (
+                            <option key={skill.value} value={skill.value}>
+                              {skill.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
+                    )}
+
+                    {!isBaseTrustWrite && (
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Author-wide backing snapshot
+                        </label>
+                        <div className="rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
+                            This report records the offending listed skill and
+                            the author&apos;s full backing snapshot. You cannot
+                            choose individual backers.
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {authorWideBackingVouches.length > 0
+                              ? `The protocol will snapshot ${
+                                  authorWideBackingVouches.length
+                                } current backing ${
+                                  authorWideBackingVouches.length === 1
+                                    ? "voucher"
+                                    : "vouchers"
+                                } when you open the report. Free-skill disputes keep that snapshot for transparency only; paid-skill disputes may also slash it after author bond.`
+                              : "This author has no live backing vouchers right now, so only author bond can be economically in scope."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1134,7 +1368,7 @@ export default function AuthorProfilePage() {
         </div>
 
         {/* Trust Badge */}
-        {!profile ? (
+        {!authorIsRegistered ? (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6 text-center">
             <FiShield className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1435,6 +1669,93 @@ export default function AuthorProfilePage() {
           ))}
         </div>
 
+        {isOwnProfile && isBaseTrustWrite && (
+          <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-2">
+                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <FiShield className="text-[var(--sea-accent)]" /> Manage
+                  Base Self Stake
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Deposit or withdraw your Base author bond. Open reports lock
+                  withdrawals until founder/admin resolution.
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Current self stake:{" "}
+                  <span className="font-mono text-gray-900 dark:text-white">
+                    {formatUsdc(trustData?.authorBondUsdcMicros)} USDC
+                  </span>
+                </p>
+              </div>
+
+              <div className="w-full md:max-w-sm">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Amount (USDC)
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="number"
+                    value={selfStakeAmount}
+                    onChange={(e) => setSelfStakeAmount(e.target.value)}
+                    min="0.01"
+                    step="0.01"
+                    className="min-w-0 flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void submitBaseSelfStake("deposit")}
+                    disabled={selfStaking}
+                    className={navButtonPrimaryInlineClass}
+                  >
+                    {selfStaking ? "Working..." : "Deposit"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void submitBaseSelfStake("withdraw")}
+                    disabled={selfStaking}
+                    className={navButtonSecondaryInlineClass}
+                  >
+                    Withdraw
+                  </button>
+                </div>
+                {selfStakeStatus && (
+                  <div
+                    className={`mt-3 rounded-sm border p-3 ${
+                      selfStakeStatus.success
+                        ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20"
+                        : "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm ${
+                        selfStakeStatus.success
+                          ? "text-green-700 dark:text-green-300"
+                          : "text-red-700 dark:text-red-300"
+                      }`}
+                    >
+                      {selfStakeStatus.message}
+                    </p>
+                    {selfStakeTx && (
+                      <a
+                        href={
+                          selfStakeTxExplorerUrl ?? getSolanaFmTxUrl(selfStakeTx)
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
+                      >
+                        View transaction
+                        <FiExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {!isOwnProfile && connected && viewerVouch && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -1492,7 +1813,7 @@ export default function AuthorProfilePage() {
               of author revenue.
             </p>
 
-            {!profile ? (
+            {!authorCanReceiveTrust ? (
               <div className="rounded-sm border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/20 p-4">
                 <p className="text-sm text-amber-700 dark:text-amber-300">
                   This author needs an on-chain profile before anyone can vouch
@@ -1551,12 +1872,15 @@ export default function AuthorProfilePage() {
                   )}
                 </div>
 
-                {connected && myProfileChecked && !myProfile && (
-                  <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-                    First vouch from this wallet? We&apos;ll ask you to create a
-                    one-time on-chain profile, then continue to the vouch.
-                  </p>
-                )}
+                {connected &&
+                  !isEvmAuthor &&
+                  myProfileChecked &&
+                  !myProfile && (
+                    <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+                      First vouch from this wallet? We&apos;ll ask you to create
+                      a one-time on-chain profile, then continue to the vouch.
+                    </p>
+                  )}
               </>
             )}
 
@@ -1573,12 +1897,12 @@ export default function AuthorProfilePage() {
                 </p>
                 {vouchTx && (
                   <a
-                    href={getSolanaFmTxUrl(vouchTx)}
+                    href={vouchTxExplorerUrl ?? getSolanaFmTxUrl(vouchTx)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                   >
-                    View transaction on Solana FM
+                    View transaction
                     <FiExternalLink className="w-3.5 h-3.5" />
                   </a>
                 )}
@@ -1677,12 +2001,15 @@ export default function AuthorProfilePage() {
                   </p>
                   {claimRevenueTx && (
                     <a
-                      href={getSolanaFmTxUrl(claimRevenueTx)}
+                      href={
+                        claimRevenueTxExplorerUrl ??
+                        getSolanaFmTxUrl(claimRevenueTx)
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                     >
-                      View transaction on Solana FM
+                      View transaction
                       <FiExternalLink className="w-3.5 h-3.5" />
                     </a>
                   )}
@@ -1934,7 +2261,7 @@ export default function AuthorProfilePage() {
           </div>
         )}
 
-        {!isOwnProfile && profile && (
+        {!isOwnProfile && authorIsRegistered && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
@@ -1962,7 +2289,7 @@ export default function AuthorProfilePage() {
 
               <button
                 onClick={() => openClaimModal()}
-                disabled={claimSkillOptions.length === 0}
+                disabled={!isEvmAuthor && claimSkillOptions.length === 0}
                 className={navButtonPrimaryInlineClass}
               >
                 <FiFlag className="w-4 h-4" />
@@ -1990,12 +2317,12 @@ export default function AuthorProfilePage() {
                   </p>
                   {claimTx && (
                     <a
-                      href={getSolanaFmTxUrl(claimTx)}
+                      href={claimTxExplorerUrl ?? getSolanaFmTxUrl(claimTx)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-sm text-[var(--sea-accent)] hover:text-[var(--sea-accent-strong)] hover:underline"
                     >
-                      View transaction on Solana FM
+                      View transaction
                       <FiExternalLink className="w-3.5 h-3.5" />
                     </a>
                   )}

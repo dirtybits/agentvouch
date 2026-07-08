@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeErrorResult, getAddress, parseAbi } from "viem";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 import { AGENTVOUCH_EVM_READ_ABI } from "@/lib/adapters/agentVouchEvmAbi";
 import { buildBaseAgentMetadataUri } from "@/lib/adapters/baseAgentMetadata";
@@ -86,6 +88,37 @@ describe("AgentVouchEvm custom errors", () => {
   });
 });
 
+describe("AgentVouchEvm Base v1 trust ABI", () => {
+  it("includes the config getter needed to read the live report bond", () => {
+    const abi = parseAbi([...AGENTVOUCH_EVM_READ_ABI]);
+    const config = abi.find(
+      (entry) => entry.type === "function" && entry.name === "getConfig"
+    );
+
+    expect(config).toBeTruthy();
+    expect(config?.type).toBe("function");
+    if (config?.type !== "function") throw new Error("getConfig ABI missing");
+    const configTuple = config.outputs[0] as
+      | { type: string; components?: { name?: string }[] }
+      | undefined;
+    expect(configTuple?.type).toBe("tuple");
+    expect(
+      configTuple?.components?.some(
+        (output: { name?: string }) => output.name === "disputeBondUsdcMicros"
+      )
+    ).toBe(true);
+  });
+
+  it("matches the deployed contract getter name, not the internal storage name", () => {
+    expect(AGENTVOUCH_EVM_READ_ABI).toEqual(
+      expect.arrayContaining([expect.stringContaining("function getConfig()")])
+    );
+    expect(AGENTVOUCH_EVM_READ_ABI).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("function config()")])
+    );
+  });
+});
+
 describe("Base wallet approval planning", () => {
   it("does not approve when allowance already exactly matches price", () => {
     expect(
@@ -112,5 +145,41 @@ describe("Base wallet approval planning", () => {
         expectedPriceUsdcMicros: 1_000_000n,
       })
     ).toEqual({ resetAllowance: false, approvePrice: true });
+  });
+});
+
+describe("Base passkey trust-write seam", () => {
+  it("routes Base trust writes through the ChainWallet implementation", () => {
+    const source = readFileSync(
+      join(process.cwd(), "lib/adapters/baseWallet.ts"),
+      "utf8"
+    );
+
+    for (const marker of [
+      "depositBaseAuthorBond",
+      "withdrawBaseAuthorBond",
+      "vouchForBaseAuthor",
+      "revokeBaseVouch",
+      "openBaseAuthorReport",
+      "claimBaseVoucherRevenue",
+      "withdrawBaseAuthorProceeds",
+    ]) {
+      expect(source).toContain(marker);
+    }
+    expect(source).toContain("buildExactUsdcApprovalCalls");
+    expect(source).toContain("ensureBaseAgentRegistered");
+    expect(source).toContain("agentvouch://base-passkey/");
+    expect(source).toContain("encodeFunctionData");
+    expect(source).toContain('functionName: "openReport"');
+    expect(source).toContain("data: encodeFunctionData");
+    expect(source).toContain('functionName: "vouch"');
+    expect(source).toContain("OPEN_REPORT_SELECTOR");
+    expect(source).toContain("publicClient.getCode");
+    expect(source).toContain(
+      "Base author reports are not deployed on the configured Base contract yet."
+    );
+    expect(source).toContain("sequentialApproval?: boolean");
+    expect(source).toContain("if (input.sequentialApproval)");
+    expect(source).toContain("sequentialApproval: true");
   });
 });

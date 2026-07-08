@@ -9,16 +9,16 @@ todos:
     content: "COMPLETED 2026-07-07: Base human flow is proven against live Base Sepolia fixtures. Existing Base passkey buyer smoke passed for downloadable listing `efa82c9d-fcc1-47d6-8145-780bd9388783` (`base-smoke-test-v2`) with buyer `0x3fc722ba956f17b521087984F2c5c0BA47Df3c6B`, signed raw download, chain-qualified receipt/entitlement, and unsigned raw `402 Payment Required`. Follow-up MetaMask smoke used independent buyer `0xc00fca0034d6de438e991be7afce40a799fb533b`: Phase 3b seeded listing purchase tx `0xa12daf94b6c53c89475219f0042d8a5091b94354fe555d9a075a2194a447cdfa` proved Base receipt/entitlement but raw failed because that fixture has no `skill_versions`; downloadable `base-smoke-test-v2` purchase tx `0x9e6105cf39b92c09e6109deb78b492be2c46906de4d976c088d592c99ce50f3e` proved full purchase -> verify -> signed `GET /raw 200` -> `SKILL.md` download. DB rows are `buyer_chain_context=eip155:84532`, `amount_micros=1000000`, `payment_flow=direct-purchase-skill`, `protocol_version=base-poc-v0`; unsigned raw still returns Base x402 `402`. Fresh author register/list was not rerun; this item closes on the existing linked live fixtures plus independent buyer proof."
     status: completed
   - id: smoke-agent-x402-flow
-    content: "IN PROGRESS 2026-07-07: `/api/x402/supported` and unauthenticated raw access for `efa82c9d-fcc1-47d6-8145-780bd9388783` advertise `eip155:84532`, payment flow `base-x402-purchase-skill`, Base Sepolia native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, listing id `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, contract `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`, EIP-3009 `receiveWithAuthorization`, revision `1`, and amount `1000000`. Live settlement remains open: local env still has no `BASE_X402_RELAYER_PRIVATE_KEY` or equivalent dedicated relayer key, and `npx awal@2.12.0 status --json` reports the agent wallet server running but `authenticated=false`, so no funded agent EOA/EIP-3009 signer is available from this session. Still open: live authorization, settlement tx, x402 receipt/entitlement rows, duplicate-settlement guard, and x402 raw download."
-    status: in_progress
+    content: "COMPLETED 2026-07-07: `/api/x402/supported` and unauthenticated raw access for `efa82c9d-fcc1-47d6-8145-780bd9388783` advertise `eip155:84532`, payment flow `base-x402-purchase-skill`, Base Sepolia native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, listing id `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, contract `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`, EIP-3009 `receiveWithAuthorization`, revision `1`, and amount `1000000`. Live settlement used plain EOA agent `0xAf1c1553009E269Ed6860220bCa0D588016cd2DB` and dedicated relayer `0x10ED5FBf22359edfd52Ad066f76CF2fD8181d0d8` through `/api/x402/settle`. Settlement tx `0xfba67b3793f7c518694ae9d793264aaf7a3db84468538b7255b77e50b1078b1c` succeeded in block `43847771`; x402 payment ref `452776e254ab20a752ca126757d84308b3f24ad69983208acf0d7b139f980615`; EVM purchase id `0xcf7cbe3e55c964334cb3f010368423852c6f75733314a9d3eeba5b753b05687f`. Duplicate `/api/x402/settle` retry returned `200` with `existing: true`. DB receipt `ae965090-6d59-44e8-a7e0-50339053f746` and entitlement are chain-qualified (`buyer_chain_context=eip155:84532`, `amount_micros=1000000`, `payment_flow=base-x402-purchase-skill`, `protocol_version=base-poc-v0`). Balance deltas around the settlement block: agent USDC `5 -> 4`, agent ETH `0 -> 0`, relayer ETH `0.007 -> 0.006998384970588198`. Unsigned raw still returns Base x402 `402`; signed `X-AgentVouch-Auth` raw download for the x402 buyer returned `200` with `SKILL.md`."
+    status: completed
   - id: smoke-solana-regression
-    content: "IN PROGRESS 2026-07-06: read-only Solana regression confirmed a paid Solana raw endpoint still fails closed with a direct-purchase 402 requirement. Still open: actual Solana direct purchase/raw download with a non-author buyer; sponsored/Kora checkout remains separate and not required unless Solana is re-promoted."
-    status: in_progress
+    content: "COMPLETED 2026-07-07: Solana direct purchase/raw-download regression passed with non-author buyer `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou` buying `Kora Paid Test Alpha` (`81977f9c-c6e4-40fc-bf8e-5b7f77468487`) from author `asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw`. On-chain listing `Ba7E2UuEVRWXdX2y8nrRjYiAHRH1s3yehwBZfj4bUVtJ`, revision `0`, price `1000000`; purchase tx `4wnwUwaUtAaDdJnLiHQjhTKo78APp5oE6kV16HcbvpNPsUDdWwuEvWPpTK5mci47BJ5JG44BXJEMP3DsKAmeHZJc` confirmed at slot `474702171`, purchase PDA `2Zyg6X3GJTfHrMTpGFNxyaYCy8LnxK98Bd4UbF2CK8H9`. Buyer USDC moved `56030000 -> 55030000`; author proceeds vault `600000 -> 1200000`; author reward vault `1700000 -> 2100000`. `/api/skills/{id}/purchase/verify` returned `200`; DB receipt `14bf89c5-d014-463b-be21-37823d5205cf` and entitlement are recorded with `payment_flow=direct-purchase-skill`, `chain_context=solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`, `protocol_version=v0.2.0`, `listing_revision=0`, settlement PDA `5LR4YmGSKKUsndwwZNzHKhQzecyBwQkdKaUShEtasKtk`. Unsigned raw stayed `402`; signed `X-AgentVouch-Auth` raw download returned `200` and `SKILL.md`. Sponsored/Kora checkout remains a separate follow-up unless Solana is re-promoted."
+    status: completed
   - id: scope-base-v1-trust-layer
     content: "COMPLETED 2026-07-06 via PR #78: the MVP Base trust primitive was scoped and implemented as author reports/disputes — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE, reporter USDC bond, forfeitReporterBond dismissal anti-griefing lever, upheld slash bounded to min(authorBond, reportBond), vouch/revoke + author bond preserved from the POC, and live Base trust reads for marketplace rows. Remaining ownership/custody, bounty-routing, snapshot-vs-live scale, UI, deploy/runbook, and audit work is tracked under implement-and-audit-base-v1 plus Phase 10 gates."
     status: completed
   - id: implement-and-audit-base-v1
-    content: "IN PROGRESS 2026-07-06: implementation portion completed for the first 9b slice — reports primitive + live Base trust on /skills implemented and gated; Bugbot follow-ups fixed EVM identity retention, revision-scanned Base purchase repair, walletless EVM publish rejection, chain-context purchase verification, and signed Base listing PATCH. Follow-up branch synced Deploy.s.sol + ui/src/abi.ts, documented Base v1 candidate ops/runbook/security gates, confirmed forge CI already exists, fixed Base detail API/page live trust, and fixed Base paid-detail copy. STILL OPEN before Phase 9 can close: report/vouch/self-stake UI actions (incl. the ChainWallet trust-write seam extension — see Web Scope, scoped 2026-07-07), actual live Base/Solana write smokes, ownership/custody sign-off, internal review, and external security review."
+    content: "IN PROGRESS 2026-07-08: implementation portion completed for the first 9b slice — reports primitive + live Base trust on /skills implemented and gated; Bugbot follow-ups fixed EVM identity retention, revision-scanned Base purchase repair, walletless EVM publish rejection, chain-context purchase verification, and signed Base listing PATCH. Follow-up branch synced Deploy.s.sol + ui/src/abi.ts, documented Base v1 candidate ops/security gates, added docs/BASE_DEPLOY.md, confirmed forge CI already exists, fixed Base detail API/page live trust, fixed Base paid-detail copy, and added the reviewed ChainWallet trust-write seam plus Base author-page vouch/report routing. Base Sepolia v1 deploy/env pointer/vouch/report smoke passed on the new contract. STILL OPEN before Phase 9 can close: remaining live Base trust-write smoke for self-stake/proceeds actions, ownership/custody sign-off, internal review, and external security review."
     status: in_progress
 isProject: false
 ---
@@ -149,6 +149,135 @@ Out of scope:
   block `43845496`: ETH unchanged at `0.016998280584441705`, USDC `147`. Observed purchase tx
   senders differed from buyer while contract events/DB buyer matched, so record this as MetaMask's
   delegated/smart-transaction execution shape rather than plain `tx.from === buyer` EOA evidence.
+- 2026-07-07 `smoke-agent-x402-flow` preflight: rechecked local envs by name only. `web/.env.local`
+  has Base Sepolia RPC and CDP paymaster/bundler RPC, but no dedicated
+  `BASE_X402_RELAYER_PRIVATE_KEY` / `AGENTVOUCH_BASE_RELAYER_PRIVATE_KEY` and no funded
+  `AGENT_PK`. `contracts/base-poc/harness/.env` has deployer/test-author env and contract address,
+  but no agent key, CDP harness top-up env, or dedicated relayer. Coinbase's hosted x402
+  facilitator and the x402.org test facilitator are standard `exact` payment facilitators, not a
+  drop-in for the current AgentVouch route: stock settlement pays `payTo`, while AgentVouch must
+  relay `purchaseWithAuthorization` to preserve the contract purchase event, DB receipt,
+  entitlement, revision binding, and author/voucher economics. Keep this smoke open until a
+  low-privilege relayer key and funded agent EOA are available, or until a separately-reviewed
+  protocol change intentionally moves Base agent purchases to standard facilitator transfers plus
+  an AgentVouch-specific entitlement/indexing design.
+- 2026-07-07 `smoke-agent-x402-flow` live settlement closeout: generated/funded the required
+  two-EOA shape locally (`AGENT_PK` agent buyer and `BASE_X402_RELAYER_PRIVATE_KEY` relayer),
+  then drove the actual web route on `localhost:3000`. Preflight at Base Sepolia block `43847767`:
+  skill `efa82c9d-fcc1-47d6-8145-780bd9388783`, listing
+  `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, revision `1`, amount
+  `1000000`, nonce `0xc8a8e6acc8eda1601d4219ca7ac3134688d62dcec37453d0e24ebb4df7333726`.
+  `/api/x402/settle` returned `200 complete` with settlement tx
+  `0xfba67b3793f7c518694ae9d793264aaf7a3db84468538b7255b77e50b1078b1c`, payment ref
+  `452776e254ab20a752ca126757d84308b3f24ad69983208acf0d7b139f980615`, payer
+  `0xAf1c1553009E269Ed6860220bCa0D588016cd2DB`, and EVM purchase id
+  `0xcf7cbe3e55c964334cb3f010368423852c6f75733314a9d3eeba5b753b05687f`. Duplicate retry with
+  the same payload returned `200` / `existing: true`. On-chain receipt in block `43847771` was
+  successful (`gasUsed=267425`); agent USDC delta `5 -> 4`, agent ETH delta `0 -> 0`, relayer ETH
+  delta `0.007 -> 0.006998384970588198`. Neon receipt
+  `ae965090-6d59-44e8-a7e0-50339053f746` and entitlement row are chain-qualified
+  (`buyer_chain_context=eip155:84532`, lowercase buyer address, `payment_flow=base-x402-purchase-skill`,
+  `protocol_version=base-poc-v0`, `listing_revision=1`). Unsigned raw access still returns Base
+  x402 `402 Payment required`; signed `X-AgentVouch-Auth` for the x402 buyer returns `200`,
+  `Content-Disposition: attachment; filename="SKILL.md"`, first bytes `# base smoke test v2`.
+- 2026-07-07 `smoke-solana-regression` closeout: ran the dormant Solana path through an actual
+  devnet direct purchase plus API verification/raw download. Buyer `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou`
+  (not the author) purchased `Kora Paid Test Alpha` (`81977f9c-c6e4-40fc-bf8e-5b7f77468487`) from
+  author `asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw`. Listing
+  `Ba7E2UuEVRWXdX2y8nrRjYiAHRH1s3yehwBZfj4bUVtJ`, revision `0`, price `1000000`; purchase tx
+  `4wnwUwaUtAaDdJnLiHQjhTKo78APp5oE6kV16HcbvpNPsUDdWwuEvWPpTK5mci47BJ5JG44BXJEMP3DsKAmeHZJc`
+  confirmed at slot `474702171`, purchase PDA `2Zyg6X3GJTfHrMTpGFNxyaYCy8LnxK98Bd4UbF2CK8H9`.
+  Balance/vault deltas: buyer USDC `56030000 -> 55030000`, author proceeds vault
+  `600000 -> 1200000`, author reward vault `1700000 -> 2100000` (60/40 split path still alive).
+  The first API retry used a mistyped UUID (`...40ce...`) and correctly returned `404`; rerun with
+  the actual DB id (`...40fc...`) returned `/api/skills/{id}/purchase/verify` `200`, recorded receipt
+  `14bf89c5-d014-463b-be21-37823d5205cf`, and wrote the matching entitlement
+  (`payment_flow=direct-purchase-skill`, `chain_context=solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`,
+  `protocol_version=v0.2.0`, `listing_revision=0`, settlement PDA
+  `5LR4YmGSKKUsndwwZNzHKhQzecyBwQkdKaUShEtasKtk`). Unsigned raw stayed `402` direct-purchase
+  required; signed `X-AgentVouch-Auth` returned `200` with `Content-Disposition:
+  attachment; filename="SKILL.md"` and first bytes `# Kora Paid Test Skill Alpha`. Sponsored/Kora
+  checkout was not exercised and remains separate unless Solana is re-promoted.
+- 2026-07-07 `implement-and-audit-base-v1` web trust-write seam slice: extended
+  `web/lib/adapters/types.ts` with Phase 9 trust-write methods (`depositAuthorBond`,
+  `withdrawAuthorBond`, `vouchForAuthor`, `revokeVouch`, `openAuthorReport`,
+  `claimVoucherRevenue`, `withdrawAuthorProceeds`), implemented the Coinbase Smart Wallet/Base
+  passkey path in `web/lib/adapters/baseWallet.ts` with exact USDC approvals plus receipt/event
+  validation, and kept MetaMask/Solana ChainWallet implementations explicit about unsupported
+  author/trust writes for this slice. The author page now detects EVM author routes, fetches
+  Base trust through `/api/author/{address}?chainContext=eip155:84532`, and routes Base vouch and
+  report actions through `useWritableChainWallet()` instead of the Solana reputation hook; Solana
+  author-page vouch/report paths remain unchanged. Verification: `npm run format:check`,
+  `npm run lint --workspace @agentvouch/web`, `npm run typecheck --workspace @agentvouch/web`,
+  targeted vitest for Base wallet/injected wallet/author page/phase-2 seam (4 files / 40 tests),
+  full web vitest (91 files / 588 tests), and
+  `npm exec --workspace @agentvouch/web next -- build --webpack`. The webpack build passed with
+  the pre-existing viem/tempo dynamic-import warning and sandbox DNS fallbacks for Neon/Helius
+  during static generation; no contract files changed, so `forge test --root contracts/base-poc`
+  was not rerun in this slice. Live Base trust-write smoke and the non-Codex custody/security
+  reviews remain open.
+- 2026-07-07 live Base report retry: the target author `0x4124d5105aAFf0DaDADf1709eB999857166DC30C`
+  is registered on the configured Base contract and has one live vouch/backing stake; the reporter
+  passkey wallet `0x3B63a88B203183802f4c815e870b5D1fFa73C779` is registered, funded, and has exact
+  `5` USDC allowance for the report bond. `getConfig()`, `getProfile()`, and the USDC
+  `transferFrom(reporter, contract, 5000000)` simulation all succeed, but `openReport(address,string)`
+  reverts immediately in a Foundry fork trace and the deployed bytecode at
+  `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854` does not contain selector `0x92e928f4`; `getAuthorReport`
+  also reverts. Conclusion: the local Phase 9 source/ABI is ahead of the configured deployed Base
+  Sepolia contract. The web wallet adapter now preflights deployed bytecode before author-report
+  approval/call and fails closed with a clear "Base author reports are not deployed..." message.
+  Browser verification on `localhost:3000` confirmed the clear deployment-gate message appears and
+  no wallet approval is attempted. Base report live smoke remains open until a report-enabled Base
+  v1 candidate is deployed and `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` points at it.
+- 2026-07-08 Base v1 deploy prep: added `docs/BASE_DEPLOY.md` as the Base Sepolia counterpart to
+  the Solana `docs/DEPLOY.md` runbook and linked it from `docs/PRODUCTION_RUNBOOK.md`. The runbook
+  records the old configured contract's missing `openReport(address,string)` selector, the exact
+  preflight/build/dry-run/broadcast/post-deploy/env-pointer/report-smoke commands, the fresh-state
+  actor setup caveat, and paymaster allowlist failure mode. Local verification: `forge test --root
+  contracts/base-poc -vv` passed 75/75; deploy dry-run against Base Sepolia simulated a fresh
+  `AgentVouchEvm` address `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`, USDC
+  `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, admin `0x191370b682924527c1A5fD6B484A4BC37460CA30`,
+  `config initialized: true`, chain `84532`, and estimated required ETH `0.000067132626`.
+  Codex did not broadcast the deploy transaction; the next gate is the human-run `--broadcast`,
+  local `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` pointer update, paymaster allowlist check, and report
+  smoke against the new contract.
+- 2026-07-08 Base v1 deploy/env/vouch smoke: the human broadcast the Base Sepolia v1-candidate
+  deploy. On-chain deployment succeeded at `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`; deploy tx
+  `0xe4aa637c07b31e0e08f9db72d9a517b2b06c99195aa7d857541c7754f83a1b2a`, config tx
+  `0x44e81e90adafa49f3d53650707a901f5728c7c314a881de1db1c9c618875ad60`, deploy/config blocks
+  `43853948`/`43853949`. Read-only verification returned `PROTOCOL_VERSION="base-v1-candidate"`,
+  `configInitialized=true`, `paused=false`, chain context `eip155:84532`, native Base Sepolia USDC,
+  and deployed bytecode containing `openReport(address,string)` selector `0x92e928f4`. Local
+  `web/.env.local` now points `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` at the v1 contract and
+  `NEXT_PUBLIC_BASE_AGENTVOUCH_FROM_BLOCK=43853948`. Vercel envs were updated for Development and
+  non-branch Preview only; Production was intentionally left on the previous implicit/default
+  contract until the report smoke and fresh-vs-existing Base listing strategy are signed off. The
+  first fresh-contract vouch attempt exposed a real Base passkey trust-write bug: the wallet called
+  `vouch` before the fresh contract had a profile for the reporter, causing `NotRegistered()`. The
+  Base passkey trust-write seam now calls `ensureBaseAgentRegistered` before author bond deposits,
+  vouches, and author reports; targeted `__tests__/lib/baseWallet.test.ts` passed 13/13. Browser
+  retry on `localhost:3000` with funded passkey reporter `0x3B63a88B203183802f4c815e870b5D1fFa73C779`
+  succeeded: reporter registration tx `0x55f589fc30c7f53727160e429f58582f67f0d361e9ce3e920eea9da4b2eee1bc`
+  at block `43854477`; vouch tx
+  `0xc2d3ae156975d1ba400e0520f168ceba07ab88292027d582de9de9e4b0252a27` at block `43854480`, staking
+  `1000000` USDC micros for target author `0x191370b682924527c1A5fD6B484A4BC37460CA30`. Readback:
+  reporter profile registered with one vouch given; target author profile shows one vouch received
+  and `1000000` backing. Still open at this point: report smoke against the v1 contract and the
+  non-Codex ownership/security reviews.
+- 2026-07-08 Base v1 report smoke closeout: local web was restarted on `localhost:3000` with
+  `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS=0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`. Browser
+  restored the funded Coinbase/passkey reporter `0x3B63a88B203183802f4c815e870b5D1fFa73C779`,
+  rendered the target author `0x191370b682924527c1A5fD6B484A4BC37460CA30` with `1` vouch and
+  `1 USDC` aggregate backing from the fresh v1 contract, and opened report `#1` with evidence URI
+  `https://example.com/agentvouch-base-v1-report-smoke-20260708`. UI showed "Report #1 opened. The
+  reporter bond is held until founder/admin resolution." On-chain event tx
+  `0x790dec5edbf8934aa4e497d4191bc96750c46b1dbd0947d58047adf5ca0cd141` landed in block
+  `43857874`. `getAuthorReport(1)` returns the expected reporter, author, evidence URI, status
+  open, and `5000000` USDC micros report bond. Target author profile now shows one open report;
+  reporter balance is `26000000` USDC micros and the contract holds `6000000` USDC micros
+  (`1 USDC` vouch stake + `5 USDC` report bond). The public RPC refused a wider log query over
+  2,000 blocks, so event lookup used a bounded latest-minus-1500 block range as documented in the
+  Base deploy runbook.
 
 ## Part A - Base Sepolia E2E Proof
 
@@ -328,6 +457,7 @@ Likely web files:
 Docs/runbooks:
 
 - `.agents/plans/base-port-chain-adapter.plan.md`
+- `docs/BASE_DEPLOY.md`
 - `docs/MAINNET_READINESS.md`
 - `docs/DEVNET_STATE.md` or a Base-specific deployment state doc if created
 - `web/public/skill.md` after product semantics change

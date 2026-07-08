@@ -36,6 +36,13 @@ function txResult(ref: string, paidGas: boolean): TxResult {
   };
 }
 
+const unsupportedSolanaTrustWrite = (action: string) =>
+  Promise.reject(
+    new Error(
+      `${action} is still routed through the legacy Solana reputation hook; the ChainWallet trust-write facade is implemented for Base first in Phase 9.`
+    )
+  );
+
 export function createSolanaChainWallet(input: {
   session: SolanaWriteSession;
   disconnect: () => Promise<void>;
@@ -95,6 +102,18 @@ export function createSolanaChainWallet(input: {
         result.summary.feePayer === session.signer.address
       );
     },
+
+    depositAuthorBond: () => unsupportedSolanaTrustWrite("Author bond deposit"),
+    withdrawAuthorBond: () =>
+      unsupportedSolanaTrustWrite("Author bond withdrawal"),
+    vouchForAuthor: () => unsupportedSolanaTrustWrite("Solana vouching"),
+    revokeVouch: () => unsupportedSolanaTrustWrite("Solana vouch revocation"),
+    openAuthorReport: () =>
+      unsupportedSolanaTrustWrite("Solana author reports"),
+    claimVoucherRevenue: () =>
+      unsupportedSolanaTrustWrite("Solana voucher revenue claim"),
+    withdrawAuthorProceeds: () =>
+      unsupportedSolanaTrustWrite("Solana author proceeds withdrawal"),
 
     buildX402Payment: () =>
       Promise.reject(
