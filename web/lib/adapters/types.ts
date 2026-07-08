@@ -57,6 +57,42 @@ export interface PurchaseSkillInput {
   expectedPriceUsdcMicros: bigint;
 }
 
+export interface DepositAuthorBondInput {
+  amountUsdcMicros: bigint;
+}
+
+export interface WithdrawAuthorBondInput {
+  amountUsdcMicros: bigint;
+}
+
+export interface VouchForAuthorInput {
+  authorAddress: string;
+  stakeUsdcMicros: bigint;
+}
+
+export interface RevokeVouchInput {
+  authorAddress: string;
+}
+
+export interface OpenAuthorReportInput {
+  authorAddress: string;
+  evidenceUri: string;
+}
+
+export interface ClaimVoucherRevenueInput {
+  authorAddress: string;
+}
+
+export interface WithdrawAuthorProceedsInput {
+  listingId: string;
+  listingRevision: number;
+  amountUsdcMicros: bigint;
+}
+
+export interface OpenAuthorReportResult extends TxResult {
+  reportId?: string;
+}
+
 export interface X402Payment {
   header: string;
   payload: unknown;
@@ -94,6 +130,18 @@ export interface ChainWallet {
   registerAgent(metadataUri: string): Promise<RegisterAgentResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
   purchaseSkill(input: PurchaseSkillInput): Promise<PurchaseSkillResult>;
+
+  // trust writes (Phase 9). Implementations must keep approval amounts exact
+  // and route through the connected wallet, not ad hoc page-level clients.
+  depositAuthorBond(input: DepositAuthorBondInput): Promise<TxResult>;
+  withdrawAuthorBond(input: WithdrawAuthorBondInput): Promise<TxResult>;
+  vouchForAuthor(input: VouchForAuthorInput): Promise<TxResult>;
+  revokeVouch(input: RevokeVouchInput): Promise<TxResult>;
+  openAuthorReport(
+    input: OpenAuthorReportInput
+  ): Promise<OpenAuthorReportResult>;
+  claimVoucherRevenue(input: ClaimVoucherRevenueInput): Promise<TxResult>;
+  withdrawAuthorProceeds(input: WithdrawAuthorProceedsInput): Promise<TxResult>;
 
   // agent x402 (server-verifiable payment authorization)
   buildX402Payment(listingId: string): Promise<X402Payment>;

@@ -26,6 +26,17 @@ export const AGENTVOUCH_EVM_AUTHOR_REPORT_TUPLE =
   "uint256 bondUsdcMicros, uint256 forfeitedReporterBondUsdcMicros, uint256 slashedAuthorBondUsdcMicros, " +
   "uint8 status, uint8 ruling, uint64 openedAt, uint64 resolvedAt)";
 
+export const AGENTVOUCH_EVM_CONFIG_TUPLE =
+  "(address usdc, string chainContext, uint256 minVouchStakeUsdcMicros, " +
+  "uint256 disputeBondUsdcMicros, uint256 minAuthorBondForFreeListingUsdcMicros, " +
+  "uint256 minPaidListingPriceUsdcMicros, uint16 authorShareBps, uint16 voucherShareBps, " +
+  "uint16 protocolFeeBps, uint8 slashPercentage, uint256 authorProceedsLockSeconds, " +
+  "uint256 refundClaimWindowSeconds, uint16 challengerRewardBps, " +
+  "uint256 challengerRewardCapUsdcMicros, uint32 stakeWeightPerUsdc, " +
+  "uint256 riskComponentCap, uint32 vouchWeight, uint256 vouchComponentCap, " +
+  "uint32 longevityBonusPerDay, uint256 longevityComponentCap, " +
+  "uint256 upheldDisputePenalty, uint256 reputationScoreCap)";
+
 export const AGENTVOUCH_EVM_ERROR_ABI: readonly string[] = [
   "error ZeroAddress()",
   "error AlreadyInitialized()",
@@ -70,6 +81,7 @@ export const AGENTVOUCH_EVM_ERROR_ABI: readonly string[] = [
 export const AGENTVOUCH_EVM_READ_ABI: readonly string[] = [
   ...AGENTVOUCH_EVM_ERROR_ABI,
   "function PROTOCOL_VERSION() view returns (string)",
+  `function getConfig() view returns (${AGENTVOUCH_EVM_CONFIG_TUPLE})`,
   `function getListing(bytes32 id) view returns (${AGENTVOUCH_EVM_SKILL_LISTING_TUPLE})`,
   `function getProfile(address agent) view returns (${AGENTVOUCH_EVM_AGENT_PROFILE_TUPLE})`,
   `function getAuthorReport(uint64 reportId) view returns (${AGENTVOUCH_EVM_AUTHOR_REPORT_TUPLE})`,
