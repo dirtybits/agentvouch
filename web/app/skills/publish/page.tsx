@@ -666,7 +666,7 @@ function PublishSkillPageInner() {
           );
 
           const patchTimestamp = Date.now();
-          const patchMessage = `AgentVouch Skill Repo\nAction: publish-skill\nTimestamp: ${patchTimestamp}`;
+          const patchMessage = `AgentVouch Skill Repo\nAction: publish-skill\nSkill id: ${skillDbId}\nTimestamp: ${patchTimestamp}`;
           const patchMsgBytes = new TextEncoder().encode(patchMessage);
           const patchSigBytes = await paidSignMessage(patchMsgBytes);
           const patchSignature = encodeBase64(patchSigBytes);

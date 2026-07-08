@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { sql } from "@/lib/db";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
 import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { pinSkillContent } from "@/lib/ipfs";
 import { runReviewSafe } from "@/lib/ai/review";
@@ -34,6 +38,19 @@ async function verifyVersionPublisherAuth(
       error:
         "This unverified publisher has not linked a wallet yet, so wallet-signed version publishing is unavailable.",
     };
+  }
+
+  // CLI still signs Action+Timestamp-only for publish-skill (2026-07-08 dated
+  // legacy). Web clients should include Skill id for the target DB UUID.
+  const scope = assertPublisherAuthMessageScope({
+    message: auth.message,
+    timestamp: auth.timestamp,
+    expectedAction: "publish-skill",
+    skillId: skill.id,
+    allowLegacyWithoutSkillId: true,
+  });
+  if (!scope.ok) {
+    return { ok: false, status: 401, error: scope.error };
   }
 
   const chainContext = normalizeInputChainContext(skill.chain_context);

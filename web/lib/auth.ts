@@ -4,7 +4,9 @@ import type { AuthPayload } from "@/lib/authPayload";
 import { getErrorMessage } from "@/lib/errors";
 
 export {
+  assertPublisherAuthMessageScope,
   buildDownloadRawMessage,
+  buildPublisherAuthMessage,
   buildSignMessage,
   createSignedDownloadAuthPayload,
   normalizeProtocolNewlines,

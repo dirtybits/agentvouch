@@ -14,9 +14,13 @@ vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  verifyWalletSignature: vi.fn(),
-}));
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth")>();
+  return {
+    ...actual,
+    verifyWalletSignature: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/evmAuth", () => ({
   verifyEvmWalletSignature: vi.fn(),
@@ -146,6 +150,18 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
+function publisherAuth(
+  pubkey: string,
+  action: string,
+  skillId?: string,
+  timestamp = Date.now()
+) {
+  const message = skillId
+    ? `AgentVouch Skill Repo\nAction: ${action}\nSkill id: ${skillId}\nTimestamp: ${timestamp}`
+    : `AgentVouch Skill Repo\nAction: ${action}\nTimestamp: ${timestamp}`;
+  return { pubkey, signature: "sig", message, timestamp };
+}
+
 function makeRawRequest(body: string, headers: Record<string, string>) {
   return new NextRequest("http://localhost/api/skills", {
     method: "POST",
@@ -214,12 +230,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "my-skill",
         name: "My Skill",
         description: "Test description",
@@ -352,12 +366,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "my-skill",
         name: "My Skill",
         description: longDescription,
@@ -402,12 +414,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "0x1111111111111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "0x1111111111111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "base-skill",
         name: "Base Skill",
         description: "Base paid skill",
@@ -433,12 +443,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "0x1111111111111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "0x1111111111111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "base-skill",
         name: "Base Skill",
         description: "Base paid skill",
@@ -464,12 +472,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "base-stamped-by-solana",
         name: "Base Stamped By Solana",
         description: "Should fail before DB writes",
@@ -556,12 +562,10 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "AuthorWallet1111111111111111111111111111111",
-            signature: "sig",
-            message: "msg",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "publish-skill"
+          ),
           on_chain_address: "Listing1111111111111111111111111111111111",
         }),
       }),
@@ -613,12 +617,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: link-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             txHash:
               "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -732,12 +735,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: link-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             relinkExisting: true,
             authorAddress: "0x1111111111111111111111111111111111111111",
@@ -813,12 +815,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: update-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "update-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             mode: "update",
             txHash:
@@ -874,12 +875,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: update-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "update-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             mode: "update",
             txHash:
@@ -928,12 +928,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: link-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             txHash:
               "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -998,12 +997,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: remove-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "remove-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             mode: "remove",
             txHash:
@@ -1043,12 +1041,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: remove-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "remove-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             mode: "remove",
             authorAddress: "0x1111111111111111111111111111111111111111",
@@ -1094,12 +1091,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "0x1111111111111111111111111111111111111111",
-            signature: "0xsigned",
-            message: "AgentVouch Skill Repo\nAction: remove-base-listing",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "remove-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             mode: "remove",
             txHash:
@@ -1117,5 +1113,297 @@ describe("PATCH /api/skills/[id]", () => {
     expect(body.error).toMatch(/Removed status/i);
     // Only the SELECT ran — the UPDATE that clears EVM fields never fired.
     expect(dbQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects baseListing PATCH when signed action does not match", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "skill-one",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Skill One",
+      description: "desc",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "publish-skill",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "link-base-listing"/i);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("rejects baseListing PATCH when signed skill id does not match", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "skill-one",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Skill One",
+      description: "desc",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "other-skill-id"
+          ),
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/skill id does not match/i);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Base update-mode PATCH signed with the wrong action", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Old Skill",
+      description: "Old description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // Signed publish-skill but requesting an update — must reject.
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "publish-skill",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "update",
+            txHash:
+              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+            expectedName: "New Skill",
+            expectedDescription: "New description",
+            expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+            expectedPriceUsdcMicros: "20000",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "update-base-listing"/i);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Base remove-mode PATCH signed with the wrong action", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // Signed link-base-listing but requesting a remove — must reject.
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "remove",
+            txHash:
+              "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "remove-base-listing"/i);
+    expect(mockVerifyBaseSkillListingRemoved).not.toHaveBeenCalled();
+  });
+
+  it("accepts Solana listing PATCH with skill-scoped publish-skill auth", async () => {
+    mockGetOnChainUsdcPrice.mockResolvedValue({
+      priceUsdcMicros: 5_000_000n,
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+          on_chain_address: "Listing111111111111111111111111111111111",
+          price_usdc_micros: "5000000",
+          chain_context: "solana:devnet",
+        },
+      ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "publish-skill",
+            "uuid-skill-1"
+          ),
+          on_chain_address: "Listing111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockGetOnChainUsdcPrice).toHaveBeenCalled();
+  });
+
+  it("accepts Solana listing PATCH with legacy Action+Timestamp-only CLI auth", async () => {
+    mockGetOnChainUsdcPrice.mockResolvedValue({
+      priceUsdcMicros: 5_000_000n,
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+          on_chain_address: "Listing111111111111111111111111111111111",
+          price_usdc_micros: "5000000",
+          chain_context: "solana:devnet",
+        },
+      ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // CLI legacy: no Skill id line
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "publish-skill"
+          ),
+          on_chain_address: "Listing111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects Solana listing PATCH when signed action does not match", async () => {
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
+          on_chain_address: "Listing111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "publish-skill"/i);
+    expect(mockGetOnChainUsdcPrice).not.toHaveBeenCalled();
   });
 });
