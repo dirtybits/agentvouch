@@ -57,10 +57,11 @@ cannot drift). Summary of where the Base track stands and what blocks mainnet:
 
 **Blocking Base mainnet (Phase 9 + Phase 10 gates — see the Phase 10 plan for the full checklist):**
 
-1. The deployed contract is the **`base-poc-v0` spike lineage** (`contracts/base-poc/`),
-   EOA-deployed and unaudited. It must not ship to mainnet. Phase 9 owns the v1 contract with
-   the trust layer — without it, Base is a paid marketplace without the stake-backed reputation
-   differentiator.
+1. The Base track has moved from the original **`base-poc-v0` spike** (`0x6Fd9…D854`) to a Base
+   Sepolia **v1 candidate** (`0x5992…B7d1`, `PROTOCOL_VERSION=base-v1-candidate`) for live report/vouch
+   smokes, but it is still EOA-deployed, unaudited, and testnet-only. It must not ship to mainnet.
+   Phase 9 still owns the complete v1 trust layer — without the A1 voucher-slashing port, Base is
+   not yet the stake-backed reputation differentiator.
    - **Status (2026-07-06, PR #78 merged):** `contracts/base-poc/src/AgentVouchEvm.sol`
      declares `PROTOCOL_VERSION = "base-v1-candidate"` and includes the Phase 9 MVP
      author-report primitive: registered reporters bond USDC to open an author-wide report,
@@ -69,14 +70,13 @@ cannot drift). Summary of where the Base track stands and what blocks mainnet:
      most one dispute bond from the author's posted bond, and Base trust reads expose
      open/upheld/dismissed counters. This is not deployment evidence, not an external audit, and not a Phase 10
      mainnet green light.
-   - **Follow-up (2026-07-06/07, PR #79 open):** Deploy.s.sol config initialization, sample UI
+   - **Follow-up (2026-07-06/08, PR #79 + PR #85):** Deploy.s.sol config initialization, sample UI
      ABI sync, production-runbook Base env/custody/security sections, Base detail/list live
-     trust rendering, and the **first live Base default-path purchase evidence** — a passkey
-     buyer purchase of the Base smoke listing with buyer ETH delta `0`, chain-qualified receipt
-     and entitlement rows, a signed raw download, and unsigned/non-buyer access failing closed
-     with a Base x402 `402`. Still open there: fresh author register/list smoke, live agent
-     x402 settlement (blocked on a dedicated `BASE_X402_RELAYER_PRIVATE_KEY` relayer plus a
-     funded agent EOA — human setup), report/vouch UI actions, custody sign-off, and reviews.
+     trust rendering, the first live Base default-path purchase evidence, live agent x402
+     settlement, Solana purchase/raw regression, and the Base v1-candidate deploy/vouch/report
+     browser smokes are recorded in the Phase 9 plan. Still open there: the full A1
+     voucher-slashing implementation, remaining self-stake/proceeds trust-write smoke,
+     ownership/custody sign-off, internal review, and external security review.
    - **Decision (2026-07-06): the Base v1 trust bar is raised from author-bond-only report
      slashing to a full A1 voucher-slashing mechanism port** (EVM-simplified,
      invariant-preserving), sequenced as Phase 9b-2 so it lands **before** the 9c internal +
@@ -365,11 +365,11 @@ Review at least these user-facing protocol flows end to end:
 
 Mainnet launch should wait until every release candidate gate is green and the remaining risks are written down with explicit owners.
 
-_(2026-07-02: the go/no-go lists below are the Solana-track record. For the active Base track,
-the go/no-go is the Phase 10 gate checklist; its Base-equivalent hard no-gos are: the deployed
-contract is still the `base-poc-v0` spike lineage, the v1 trust layer (Phase 9) is absent, no
-external security pass on the v1 contract, admin/relayer/paymaster custody is a single hot key,
-or any env enables `eip155:8453` before the gates pass.)_
+_(2026-07-02, amended 2026-07-08: the go/no-go lists below are the Solana-track record. For the
+active Base track, the go/no-go is the Phase 10 gate checklist; its Base-equivalent hard no-gos are:
+the target deployment is still the original `base-poc-v0` spike or lacks the full Phase 9 v1 trust
+layer, no external security pass on the v1 contract, admin/relayer/paymaster custody is a single hot
+key, or any env enables `eip155:8453` before the gates pass.)_
 
 _(2026-07-06 amendments: **voucher slashing absent from the Base v1 at mainnet is now a Base
 no-go too** — the A1 port (Phase 9b-2) was approved as a launch gate. The single-key-resolver

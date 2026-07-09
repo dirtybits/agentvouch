@@ -30,8 +30,8 @@ import {
   DIRECT_PURCHASE_PAYMENT_FLOW,
   recordUsdcPurchaseReceipt,
 } from "@/lib/usdcPurchases";
+import { fetchBaseAgentVouchProtocolVersion } from "@/lib/baseProtocolVersion";
 
-const BASE_AGENTVOUCH_PROTOCOL_VERSION = "base-poc-v0";
 const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 
 const AGENTVOUCH_EVM_PURCHASE_ABI = parseAbi([
@@ -334,10 +334,15 @@ export async function verifyBaseDirectPurchase(
     nativeUsdc: BASE_NATIVE_USDC_ADDRESS,
     usage: "purchases",
   });
+  const storedProtocolVersion = input.skill.on_chain_protocol_version?.trim();
+  const protocolVersionPromise = storedProtocolVersion
+    ? Promise.resolve(storedProtocolVersion)
+    : fetchBaseAgentVouchProtocolVersion({ contract });
 
-  const [listing, event] = await Promise.all([
+  const [listing, event, protocolVersion] = await Promise.all([
     fetchLiveListing({ contract, listingId }),
     findSkillPurchasedEvent({ contract, txHash }),
+    protocolVersionPromise,
   ]);
 
   if (listing.priceUsdcMicros !== expectedPrice) {
@@ -365,8 +370,7 @@ export async function verifyBaseDirectPurchase(
     amountMicros: expectedPriceMicros,
     currencyMint: currency,
     paymentFlow: DIRECT_PURCHASE_PAYMENT_FLOW,
-    protocolVersion:
-      input.skill.on_chain_protocol_version ?? BASE_AGENTVOUCH_PROTOCOL_VERSION,
+    protocolVersion,
     onChainProgramId: contract,
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     listingRevision: event.revision.toString(),
@@ -412,7 +416,14 @@ export async function verifyBaseExistingPurchase(
     nativeUsdc: BASE_NATIVE_USDC_ADDRESS,
     usage: "purchases",
   });
-  const listing = await fetchLiveListing({ contract, listingId });
+  const storedProtocolVersion = input.skill.on_chain_protocol_version?.trim();
+  const protocolVersionPromise = storedProtocolVersion
+    ? Promise.resolve(storedProtocolVersion)
+    : fetchBaseAgentVouchProtocolVersion({ contract });
+  const [listing, protocolVersion] = await Promise.all([
+    fetchLiveListing({ contract, listingId }),
+    protocolVersionPromise,
+  ]);
   if (listing.priceUsdcMicros !== expectedPrice) {
     throw new Error("Live Base listing price does not match this skill");
   }
@@ -479,8 +490,7 @@ export async function verifyBaseExistingPurchase(
     amountMicros: normalizedPurchase.priceUsdcMicros.toString(),
     currencyMint: currency,
     paymentFlow: DIRECT_PURCHASE_PAYMENT_FLOW,
-    protocolVersion:
-      input.skill.on_chain_protocol_version ?? BASE_AGENTVOUCH_PROTOCOL_VERSION,
+    protocolVersion,
     onChainProgramId: contract,
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     listingRevision: normalizedPurchase.revision.toString(),

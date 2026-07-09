@@ -45,8 +45,9 @@ Solana stays selectable; the Phase 8a env rollback seam keeps working as the eme
 - Phase 9 (`.agents/plans/base-port-chain-adapter-phase-9.plan.md`) owns the Base Sepolia E2E
   proof and the minimal Base v1 trust layer, ownership policy, and security review that gate this
   plan.
-- The current Base contract is the `base-poc-v0` spike (`contracts/base-poc/src/AgentVouchEvm.sol`).
-  It must not ship to mainnet as is.
+- The original Base fallback contract is the `base-poc-v0` spike (`0x6Fd9…D854`). Phase 9 now also
+  has a Base Sepolia v1 candidate (`0x5992…B7d1`, `base-v1-candidate`) for report/vouch smokes. Neither
+  contract may ship to mainnet without this checklist passing.
 
 ## Gate Checklist (all required before starting)
 
