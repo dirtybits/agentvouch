@@ -25,7 +25,7 @@ isProject: false
 
 # Phase 7 - Chain Address And Explorer Sweep
 
-> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 7 closeout evidence.
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 7 closeout evidence.
 
 ## Goal
 

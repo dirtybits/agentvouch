@@ -28,7 +28,7 @@ isProject: false
 
 # Phase 2 Circle-Back - Solana Adapter Cleanup
 
-> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 2 closeout evidence.
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 2 closeout evidence.
 
 ## Goal
 

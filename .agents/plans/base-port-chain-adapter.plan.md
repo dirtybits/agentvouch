@@ -560,15 +560,15 @@ A1-port sub-plan (9b-2, added 2026-07-06):
   Phase 10.
 - **Status (2026-07-08):** Part A live smokes are recorded in the phase-9 plan: Base default-path
   human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive
-  - Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base
-    Sepolia v1 candidate, pointed local/dev/preview envs at it, and recorded vouch/report browser
-    smokes. 9b-2 (full A1 voucher-slashing port) was approved 2026-07-06 and must land before the 9c
-    security review. Remaining: A1 implementation, remaining self-stake/proceeds trust-write smoke,
-    ownership/custody sign-off, internal review, and external security review.
-- **Done when:** Base human flow (passkey, register/list/buy, raw download, gas sponsorship evidence)
-  - agent x402 both pass; Solana regression passes when selected; the Base v1 trust layer
-    (vouch/author bond/founder-resolved reports **plus the 9b-2 voucher-slashing port**), ownership
-    policy, and security review are complete enough to unblock a future mainnet plan.
+  plus Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base
+  Sepolia v1 candidate, pointed local/dev/preview envs at it, and recorded vouch/report browser
+  smokes. 9b-2 (full A1 voucher-slashing port) was approved 2026-07-06 and must land before the 9c
+  security review. Remaining: A1 implementation, remaining self-stake/proceeds trust-write smoke,
+  ownership/custody sign-off, internal review, and external security review.
+- **Done when:** Base human flow (passkey, register/list/buy, raw download, gas sponsorship
+  evidence) and agent x402 both pass; Solana regression passes when selected; the Base v1 trust
+  layer (vouch/author bond/founder-resolved reports **plus the 9b-2 voucher-slashing port**),
+  ownership policy, and security review are complete enough to unblock a future mainnet plan.
 
 ### Phase 10 — `base-mainnet-cutover` [blocked]
 

@@ -49,7 +49,10 @@ residual ownership. No standalone plan exists yet; status and open decision live
 ### A5. Tests and review (P1)
 
 Base launch gate: full local/forge/live-smoke evidence plus internal and external security review
-after the complete A1 mechanism exists. Status: see the readiness table and the Phase 9 plan.
+after the complete A1 mechanism exists. Status: see the readiness table and the Phase 9 plan. The
+publish-time scanner eval discipline (`evals/skill-scan/`: unsafe recall is the north-star metric;
+every production miss becomes a dataset case, holdout first) continues alongside — see the
+skill-scan section in `AGENTS.md`.
 
 ## Phase B: Mainnet Launch
 

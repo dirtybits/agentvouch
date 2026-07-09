@@ -25,7 +25,7 @@ isProject: false
 
 # Phase 6 - Multichain Database Hardening
 
-> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 6 closeout evidence.
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 6 closeout evidence.
 
 Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.md) Phase 6
 (`db-multichain`).

@@ -25,7 +25,7 @@ isProject: false
 
 # Phase 8a - Base Sepolia Default
 
-> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 8a closeout evidence.
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 8a closeout evidence.
 
 ## Goal
 

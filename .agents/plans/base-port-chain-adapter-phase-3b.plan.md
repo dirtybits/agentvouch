@@ -28,7 +28,7 @@ isProject: false
 
 # Phase 3b — Render a Base listing in the live /skills marketplace
 
-> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 3 closeout evidence.
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 3 closeout evidence.
 
 Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.md) Phase 3
 (`base-adapter-readslice`). Phase **3a is done + live-verified** (BaseAdapter reads decode `getListing`
