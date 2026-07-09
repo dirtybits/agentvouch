@@ -6,7 +6,7 @@ todos:
     content: "DONE 2026-07-06 — design locked and acked (founder delegated the ack in-session after merging PR #81). Resolutions recorded in the 'Design-lock resolutions' section, grounded in contract recon: Base vouching is AUTHOR-WIDE (no link_vouch_to_listing exists; Vouch.linkedListingCount is vestigial), there is NO on-chain vouch enumeration (only totalVouchStakeReceivedUsdcMicros), and revokeVouch already carries the openDisputes>0 DisputeLocked exit lock. Decisions: (1) optional paid-listing + verified-purchase reference on reports splits the financial branch (bond-first then author-wide voucher slash) from reputation-only; (2) buyer-first routing with minimal on-chain refund claim, residual to treasury, capped reporter reward from author proceeds only; (3) config slashPercentage snapshotted at resolution, no resolver discretion; (4) park + permissionless calldata-driven crank as the ONLY slash path, completeness proven by stake accounting, with a new vouch() open-report lock freezing membership symmetrically."
     status: completed
   - id: implement-contract
-    content: "Implement in contracts/base-poc/src/AgentVouchEvm.sol (+ AgentVouchTypes.sol) per the locked design: optional listingId + purchase reference on AuthorReport (financial vs reputation-only branch); vouch() lock while vouchee has open reports (symmetric to the existing revokeVouch DisputeLocked guard); resolveReport(Upheld) O(1) parking with snapshot of slashPercentage/reward caps and totalVouchStakeReceivedUsdcMicros; permissionless slashReportVouches(reportId, vouchers[]) crank verifying eligibility per vouch, slashing at the snapshotted percentage into a ring-fenced refund-only bucket, setting VouchStatus.Slashed dead positions (accrual-excluded), and closing the report when accounted stake equals the snapshot; minimal refund claim for verified buyers of the referenced listing with claim window; residual-to-treasury close path with events; residual voucher stake reclaimable via revokeVouch after close."
+    content: "Implement in contracts/base-poc/src/AgentVouchEvm.sol (+ AgentVouchTypes.sol) per the locked design AND the 2026-07-09 pre-loop review: optional listingId + purchase reference on AuthorReport (financial vs reputation-only branch); financial openReport SETS l.lockedByDispute on the referenced listing (today the flag is read by _purchasableListing/updateSkillListing/removeSkillListing but NEVER written) and the report close path clears it; withdrawAuthorProceeds gains a lockedByDispute check for the referenced listing (currently only time-locked — without this the author drains the refund/reward funding mid-report); serialize financial reports per author (openReport rejects a new bond-exposing report while openDisputes > 0); vouch() lock while vouchee has open reports (symmetric to the existing revokeVouch DisputeLocked guard); resolveReport(Upheld) O(1) parking with snapshot of slashPercentage/reward caps and totalVouchStakeReceivedUsdcMicros; permissionless slashReportVouches(reportId, vouchers[]) crank verifying eligibility per vouch, slashing at the snapshotted percentage into a ring-fenced refund-only bucket, setting VouchStatus.Slashed dead positions (accrual-excluded, residual stake removed from totalVouchStakeReceivedUsdcMicros at slash time so it stops backing), and closing the report when accounted pre-slash stake equals the snapshot; minimal refund claim for verified buyers of the referenced listing (per-claim = min(remaining bucket, purchase price), one claim per purchase, claim window); residual-to-treasury close path with events; residual voucher stake reclaimable after close via a revokeVouch branch for VouchStatus.Slashed (the current Active-only guard would strand residuals)."
     status: pending
   - id: forge-tests
     content: "Forge suite mirroring the Solana A1 coverage under the locked design: slash math at snapshot percentage, multi-voucher crank across multiple calls, stake-accounting completeness (report closes only when accounted == snapshot), two-sided membership lock (vouch() and revokeVouch both revert mid-report; totalVouchStakeReceived frozen), revision/listing dodge blocks, per-(report,voucher) double-slash guard, ring-fence (slash bucket never author-withdrawable, never in reporter-reward base), buyer-first refund claim + one-claim-per-purchase + window expiry + residual-to-treasury, reputation-only branch (no listing/purchase ref => no voucher slash, locks clear), reward-vault solvency with Slashed positions, zero-vouch path, pause interaction, reentrancy on USDC moves, gas snapshot for the recommended crank page size; once listing-referenced reports set `lockedByDispute`, add the updateSkillListing bump-guard flag-path test (flag set → bump reverts DisputeLocked even with `openDisputes == 0`)."
@@ -18,7 +18,7 @@ todos:
     content: "Expose slashing honestly in web reads: Base skill/author trust shows stake-at-risk and slash history; no synthesized trust; chain-qualified joins preserved. UI actions (vouch/report) remain the Phase 9 report/vouch UI todo — this plan only guarantees the read surfaces reflect the new mechanism."
     status: pending
   - id: verify-and-record
-    content: "Full gate: forge test --root contracts/base-poc, web format/lint/typecheck/vitest, next build --webpack; deploy a fresh Sepolia candidate, run a scripted backed-purchase -> upheld-report -> slash -> residual-reclaim smoke with recorded tx hashes and USDC deltas; update MAINNET_READINESS Base track, the phase-9/10 plans, and web/public/skill.md if product semantics change."
+    content: "Full gate: forge test --root contracts/base-poc, web format/lint/typecheck/vitest, next build --webpack; deploy a fresh Sepolia candidate that SUPERSEDES the PR #85 candidate 0x5992dD52Ee2015f558D0A690777C55e27b05B7d1 (record it in docs/BASE_DEPLOY.md, repoint the envs PR #85 pointed at it, and bump PROTOCOL_VERSION so PR #90's live provenance reads distinguish pre/post-slashing rows); run a scripted backed-purchase -> update-bump -> upheld-report -> crank-slash -> refund-claim -> residual-reclaim smoke with recorded tx hashes and USDC deltas (the combined smoke per the sequencing note, covering the merged updateSkillListing flow too); flip the A1 row in the docs/MAINNET_READINESS.md Base Mainnet Gate Table, update the phase-9/10 plans, and web/public/skill.md if product semantics change."
     status: pending
 isProject: false
 ---
@@ -170,13 +170,54 @@ implementation-time divergence from these gets a dated note here, not a silent c
    percentage, marks the position `Slashed`, and adds to the ring-fenced bucket. **Completeness
    is proven by stake accounting**: the report closes when accounted (slashed-from) stake equals
    the snapshot — sound because the two-sided membership lock (row 5: existing revoke exit lock
-   - new `vouch()` entry lock) freezes `totalVouchStakeReceivedUsdcMicros` for the vouchee while
-     a report is open. No inline-slash fast path: one mechanism, one audit surface; gas per crank
-     call is bounded by the caller's array (forge gas snapshot informs the recommended page size
-     in docs, not a contract constant). Rejected alternative: an on-chain voucher enumeration
-     array — more storage and a new growth-unbounded structure for no gain over calldata + the
-     accounting proof.
+   plus the new `vouch()` entry lock) freezes `totalVouchStakeReceivedUsdcMicros` for the vouchee
+   while a report is open. No inline-slash fast path: one mechanism, one audit surface; gas per
+   crank call is bounded by the caller's array (forge gas snapshot informs the recommended page
+   size in docs, not a contract constant). Rejected alternative: an on-chain voucher enumeration
+   array — more storage and a new growth-unbounded structure for no gain over calldata plus the
+   accounting proof.
 
 Consequence noted for UX copy: blocking new `vouch()` during an open report is also buyer/voucher
 protection (no staking into an active dispute), but the UI must say why vouching is temporarily
 unavailable — track under the Phase 9 report/vouch UI todo.
+
+## Final pre-loop review (2026-07-09 — contract facts re-verified against current main)
+
+The design-lock (2026-07-06) predates PRs #85, #86, #88, #89, #90, and #93. This review re-checked
+every contract fact the design leans on against `main` as of `98712d9` and found three gaps that
+are now folded into the `implement-contract` and `verify-and-record` todos above. The a2a loop
+must treat these as in-scope, not optional hardening:
+
+1. **`withdrawAuthorProceeds` is NOT dispute-locked (verified: it checks only the rolling
+   `authorProceedsLockSeconds` time-lock and the never-written `s.locked` flag).** Without a
+   `lockedByDispute` check, the author can drain the referenced listing's proceeds the moment the
+   time-lock elapses mid-report — emptying both the buyer-first refund source and the
+   reporter-reward funding source. Freeze it while the referenced listing is dispute-locked.
+2. **`lockedByDispute` is read in three places (`_purchasableListing`, `updateSkillListing` bump
+   guard, `removeSkillListing`) but written NOWHERE.** The financial `openReport` branch must set
+   it on the referenced listing and the report close path must clear it. Setting it at OPEN (not
+   resolve) is load-bearing: `_purchasableListing` already rejects locked listings, so the flag
+   freezes buyer exposure for refund sizing, blocks the revision-rotation dodge, and blocks
+   removal — all for the whole dispute window. Clear it when the report closes (dismissed at
+   resolve; upheld once the crank completes and the refund bucket is funded); the refund claim
+   window runs independently of the listing lock so the author can sell again post-close.
+3. **`revokeVouch` reverts for any non-`Active` status (verified), so "residual reclaimable via
+   revokeVouch" needs an explicit `VouchStatus.Slashed` branch** — and the slash must remove the
+   residual from `totalVouchStakeReceivedUsdcMicros` at slash time (dead positions stop backing),
+   which also keeps any later report's snapshot consistent.
+
+Also confirmed while reviewing: `openReport` has no per-author serialization guard yet (invariant
+11 is real work, and it is what makes the single-snapshot completeness proof safe from concurrent
+financial reports); `settlements[id][revision].locked` is a second never-written parity flag —
+the loop may use it or ignore it, but must not assume it does anything today; and purchases are
+already correctly frozen by `_purchasableListing` once the flag is set, so no purchase-path change
+is needed beyond writing the flag.
+
+Environment deltas since the design-lock: the live Sepolia candidate is `0x5992…B7d1`
+(PR #85, envs repointed; recorded in `docs/BASE_DEPLOY.md`); `updateSkillListing` /
+`removeSkillListing` now exist (PRs #86/#89), so the row-6 dodge-block and the flag-path forge
+test are implementable as written; publisher-auth scope is enforced per Base mode (PR #88 — any
+new web mutation this plan adds must follow `assertPublisherAuthMessageScope`); protocol-version
+provenance is read live from the contract (PR #90), so the A1 deploy should bump
+`PROTOCOL_VERSION` deliberately; and the launch gate record is now the
+`docs/MAINNET_READINESS.md` Base Mainnet Gate Table (PR #93) — flip the A1 row at closeout.
