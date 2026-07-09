@@ -38,6 +38,10 @@ contract BondsVouchesListingsTest is Test {
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
+        c.refundClaimWindowSeconds = 1 days;
+        c.challengerRewardBps = 1_000;
+        c.challengerRewardCapUsdcMicros = 1_000_000;
+        c.treasuryRecipient = address(0xD00D);
     }
 
     function _setupActor(address a) internal {

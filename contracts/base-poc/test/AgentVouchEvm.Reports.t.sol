@@ -40,6 +40,10 @@ contract ReportsTest is Test {
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
+        c.refundClaimWindowSeconds = 1 days;
+        c.challengerRewardBps = 1_000;
+        c.challengerRewardCapUsdcMicros = 1_000_000;
+        c.treasuryRecipient = address(0xD00D);
     }
 
     function _setupActor(address actor) internal {
@@ -64,7 +68,7 @@ contract ReportsTest is Test {
         vm.prank(reporter);
         uint64 reportId = av.openReport(author, "ipfs://evidence");
 
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
+        AgentVouchTypes.LegacyAuthorReport memory report = av.getAuthorReport(reportId);
         assertTrue(report.exists);
         assertEq(report.reporter, reporter);
         assertEq(report.author, author);
@@ -98,12 +102,12 @@ contract ReportsTest is Test {
         assertEq(slashedBond, 0);
         assertEq(usdc.balanceOf(reporter), reporterBefore + DISPUTE_BOND);
 
-        AgentVouchTypes.AgentProfile memory profile = av.getProfile(author);
+        AgentVouchTypes.LegacyAgentProfile memory profile = av.getProfile(author);
         assertEq(profile.openDisputes, 0);
         assertEq(profile.dismissedDisputes, 1);
         assertEq(profile.upheldDisputes, 0);
 
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
+        AgentVouchTypes.LegacyAuthorReport memory report = av.getAuthorReport(reportId);
         assertEq(uint8(report.status), uint8(AgentVouchTypes.ReportStatus.Resolved));
         assertEq(uint8(report.ruling), uint8(AgentVouchTypes.Ruling.Dismissed));
         assertEq(report.bondUsdcMicros, 0);
@@ -126,12 +130,12 @@ contract ReportsTest is Test {
         assertEq(usdc.balanceOf(reporter), reporterBefore);
         assertEq(usdc.balanceOf(author), authorBefore + DISPUTE_BOND);
 
-        AgentVouchTypes.AgentProfile memory profile = av.getProfile(author);
+        AgentVouchTypes.LegacyAgentProfile memory profile = av.getProfile(author);
         assertEq(profile.openDisputes, 0);
         assertEq(profile.dismissedDisputes, 1);
         assertEq(profile.upheldDisputes, 0);
 
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
+        AgentVouchTypes.LegacyAuthorReport memory report = av.getAuthorReport(reportId);
         assertEq(uint8(report.status), uint8(AgentVouchTypes.ReportStatus.Resolved));
         assertEq(uint8(report.ruling), uint8(AgentVouchTypes.Ruling.Dismissed));
         assertEq(report.bondUsdcMicros, 0);
@@ -154,13 +158,13 @@ contract ReportsTest is Test {
         assertEq(slashedBond, DISPUTE_BOND);
         assertEq(usdc.balanceOf(reporter), reporterBefore + DISPUTE_BOND + DISPUTE_BOND);
 
-        AgentVouchTypes.AgentProfile memory profile = av.getProfile(author);
+        AgentVouchTypes.LegacyAgentProfile memory profile = av.getProfile(author);
         assertEq(profile.openDisputes, 0);
         assertEq(profile.upheldDisputes, 1);
         assertEq(profile.dismissedDisputes, 0);
         assertEq(profile.authorBondUsdcMicros, AUTHOR_BOND - DISPUTE_BOND);
 
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
+        AgentVouchTypes.LegacyAuthorReport memory report = av.getAuthorReport(reportId);
         assertEq(uint8(report.ruling), uint8(AgentVouchTypes.Ruling.Upheld));
         assertEq(report.slashedAuthorBondUsdcMicros, DISPUTE_BOND);
     }

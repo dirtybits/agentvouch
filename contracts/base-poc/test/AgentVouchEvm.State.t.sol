@@ -30,11 +30,15 @@ contract AgentVouchEvmStateTest is Test {
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
+        c.refundClaimWindowSeconds = 1 days;
+        c.challengerRewardBps = 1_000;
+        c.challengerRewardCapUsdcMicros = 1_000_000;
+        c.treasuryRecipient = address(0xD00D);
         // remaining reputation-scoring fields stay zero in the state skeleton
     }
 
     function test_configInitialized() public view {
-        AgentVouchTypes.Config memory c = av.getConfig();
+        AgentVouchTypes.LegacyConfig memory c = av.getConfig();
         assertEq(c.usdc, address(usdc));
         assertEq(c.authorShareBps, 6000);
         assertEq(c.voucherShareBps, 4000);
@@ -87,7 +91,7 @@ contract AgentVouchEvmStateTest is Test {
     function test_registerAgent() public {
         vm.prank(alice);
         av.registerAgent("ipfs://alice");
-        AgentVouchTypes.AgentProfile memory p = av.getProfile(alice);
+        AgentVouchTypes.LegacyAgentProfile memory p = av.getProfile(alice);
         assertTrue(p.registered);
         assertEq(p.metadataUri, "ipfs://alice");
         assertEq(p.registeredAt, uint64(block.timestamp));
