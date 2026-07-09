@@ -88,6 +88,7 @@ describe("POST /api/author/[pubkey]", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
     expect(body.author_trust.disputesAgainstAuthor).toBe(3);
     expect(body.author_identity.canonicalAgentId).toBe("agent-1");
     expect(body.author_trust_summary.canonical_agent_id).toBe("agent-1");

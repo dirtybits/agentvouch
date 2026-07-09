@@ -13,6 +13,7 @@ import {
   BASE_SEPOLIA_CHAIN_ID,
   BASE_SEPOLIA_RPC_URL,
 } from "@/lib/adapters/baseConfig";
+import { IN_MEMORY_CACHE_TTL_MS } from "./cachePolicy";
 import type { AuthorTrust } from "@/lib/trust";
 
 type BaseAgentProfile = {
@@ -33,7 +34,7 @@ type BaseAgentProfile = {
 };
 
 const cache = new Map<string, { data: AuthorTrust; expires: number }>();
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = IN_MEMORY_CACHE_TTL_MS.authorTrust;
 
 function defaultTrust(): AuthorTrust {
   return {
