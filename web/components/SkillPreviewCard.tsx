@@ -11,6 +11,7 @@ import {
   FiShield,
   FiUsers,
 } from "react-icons/fi";
+import { RiRobot2Line } from "react-icons/ri";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
@@ -172,6 +173,7 @@ function getVerdictMeta(verdict: Verdict): VerdictMeta {
 
 function getScanMeta(scan: SkillSecurityScan | null | undefined): {
   label: string;
+  Icon: React.ComponentType<{ className?: string }>;
   chip: string;
   title: string;
 } | null {
@@ -179,17 +181,19 @@ function getScanMeta(scan: SkillSecurityScan | null | undefined): {
   if (scan.verdict === "avoid") {
     return {
       label: "Automated avoid",
+      Icon: FiAlertTriangle,
       chip: "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
       title:
         "Automated advisory scan found concrete risk. This is not a staked vouch.",
     };
   }
   return {
-    label: scan.truncated ? "Automated review*" : "Automated review",
+    label: scan.truncated ? "Security reviewed*" : "Security reviewed",
+    Icon: RiRobot2Line,
     chip: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
     title: scan.truncated
-      ? "Automated advisory scan was truncated; review before installing. This is not a staked vouch."
-      : "Automated advisory scan did not find a concrete blocker. This is not a staked vouch.",
+      ? "This skill was reviewed by the AgentVouch skill security scanner, but the scan was truncated. Review before installing."
+      : "This skill was reviewed by the AgentVouch skill security scanner. This is not a staked vouch or guarantee.",
   };
 }
 
@@ -496,7 +500,7 @@ export default function SkillPreviewCard({
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
               title={scanMeta.title}
             >
-              <FiAlertTriangle className="h-3 w-3" />
+              <scanMeta.Icon className="h-3 w-3" />
               {scanMeta.label}
             </span>
           )}
