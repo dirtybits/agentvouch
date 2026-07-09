@@ -25,6 +25,8 @@ isProject: false
 
 # Phase 6 - Multichain Database Hardening
 
+> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 6 closeout evidence.
+
 Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.md) Phase 6
 (`db-multichain`).
 
@@ -196,8 +198,7 @@ are present. Do not add a uniqueness rule that conflates Base rows with Solana
 `on_chain_address`.
 
 Before adding the unique index, run the same standalone duplicate-check discipline used for
-entitlements. If multiple skill rows already point at the same `(chain_context, evm_contract_address,
-evm_listing_id)` tuple, stop and report the rows rather than creating an index from the request path.
+entitlements. If multiple skill rows already point at the same `(chain_context, evm_contract_address, evm_listing_id)` tuple, stop and report the rows rather than creating an index from the request path.
 Also backfill `evm_contract_address = lower(evm_contract_address)` and any stored EVM addresses that
 feed indexes before creating the index. Display-layer checksumming can still happen at render time.
 

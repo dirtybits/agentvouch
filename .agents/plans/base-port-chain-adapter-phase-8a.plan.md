@@ -25,6 +25,8 @@ isProject: false
 
 # Phase 8a - Base Sepolia Default
 
+> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 8a closeout evidence.
+
 ## Goal
 
 Make Base Sepolia (`eip155:84532`) the default **new-user writable path** for AgentVouch while

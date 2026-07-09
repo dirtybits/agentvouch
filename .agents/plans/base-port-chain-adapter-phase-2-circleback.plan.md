@@ -28,6 +28,8 @@ isProject: false
 
 # Phase 2 Circle-Back - Solana Adapter Cleanup
 
+> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 2 closeout evidence.
+
 ## Goal
 
 Complete the deferred Phase 2 work now that Phase 6 DB hardening has landed: route Solana reads and
@@ -185,8 +187,7 @@ npm exec --workspace @agentvouch/web next -- build --webpack
 ```
 
 Use the explicit webpack build as the production-parity gate for this branch, matching Phase 6 and
-the current repo guidance. Do not silently swap back to plain `npm run build --workspace
-@agentvouch/web` unless the repo intentionally changes its production bundler gate first.
+the current repo guidance. Do not silently swap back to plain `npm run build --workspace @agentvouch/web` unless the repo intentionally changes its production bundler gate first.
 
 Browser smoke before marking Phase 2 complete:
 

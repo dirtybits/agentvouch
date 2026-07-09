@@ -1,108 +1,76 @@
 # AgentVouch Mainnet Readiness
 
-`v0.2.0` is a USDC-native devnet release. It is not mainnet-ready until the items below are complete and reviewed.
-
-> **Update (2026-07-02): the mainnet target is now Base, not Solana.** After the Base port
-> (phases 2–7) and the Phase 8a default flip (PR #74: Base Sepolia is the default new-user
-> writable path behind a Solana rollback env), the launch vehicle is **Base mainnet
-> (`eip155:8453`)**, gated by `.agents/plans/base-port-chain-adapter-phase-10.plan.md`. See
-> [Base Mainnet Track](#base-mainnet-track-2026-07-02) below. The Solana-specific material in
-> the rest of this document remains the readiness record for the **Solana track**, which stays
-> selectable as the rollback/fallback chain — it is no longer the near-term launch path, and
-> its remaining blockers (dispute governance/A2, authority custody, refund reserve) gate a
-> Solana mainnet launch only if that decision is revisited.
+This document is the canonical launch-gate table for the active **Base mainnet** track
+(`eip155:8453`). Roadmap sequencing lives in `docs/ROADMAP.md`; phase execution evidence lives in
+`.agents/plans/base-port-chain-adapter*.plan.md`; Solana-specific readiness history lives in the
+[Solana Track appendix](#solana-track-historical-record--rollback-path-only).
 
 ## Current Assessment
 
-AgentVouch is close to a mainnet release candidate, but should not be treated as mainnet-ready yet.
+Base Sepolia is the default new-user writable path, but **Base mainnet is blocked**. Any code or
+environment change that enables `eip155:8453` before the table below is green is a stop-the-line
+bug. The launch decision has two tiers:
 
-The core product shape is in place: the USDC-native protocol, marketplace publishing and purchase flows, author trust surfaces, voucher backing, dashboard revenue visibility, and agent-facing install path now fit together. The remaining work is mainly release hardening, not product discovery.
+- **Capped founder-operated Base alpha:** founder/admin report resolution is acceptable only under
+  the [Launch Trust Bar](#launch-trust-bar-chain-agnostic-2026-07-06), with explicit exposure caps.
+- **Full trust-minimized Base mainnet:** adds A2-style governed dispute resolution before the launch
+  can be called trust-minimized.
 
-> **Update (2026-05-30): a direct code audit revised this assessment.** See [Code Audit Findings](#code-audit-findings-2026-05-30) below. At that point, the remaining work was **not** only release hardening: **voucher slashing — the core economic mechanism of a stake-backed reputation system — was missing**, and **dispute adjudication was a single key**. The slashing mechanism is now live on devnet per the 2026-06-10 update; the centralized trust root remains a launch blocker.
+## Base Mainnet Gate Table
 
-> **Update (2026-06-09): readiness re-read.** Active program references now converge on `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` in `declare_id!`, `Anchor.toml`, `web/agentvouch.json`, generated clients, protocol package constants, `web/public/skill.md`, `docs/DEVNET_STATE.md`, operator runbooks, and local agent reference docs. The remaining non-readiness source occurrence of `AgnTDF...` is intentionally retained as `TRACK_B_PREVIOUS_DEVNET_PROGRAM_ID` in `web/scripts/db-cutover.ts` for historical cleanup. The `revoke_vouch` open-dispute lock is now present in source; voucher slashing itself, dispute governance, emergency pause, and refund reserve policy remain launch blockers.
+This table is **Base-track only**. Solana A1 and A3 are already live-smoked on devnet and are kept
+as rollback-path history in the [Solana Track appendix](#solana-track-historical-record--rollback-path-only);
+they do not make the Base gate rows green.
 
-> **Update (2026-06-10): A1 devnet upgrade complete.** Program `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` was upgraded in slot `468574856` with deploy tx `2FYWJ3QfJLLTKr157tmkRFcQJs4fpRATiZWEs3MAQMZVwvbW8tcqUeGjGWVugKHasuu8qVJfEkBbRSGyyuU7Shrg`; the deployed binary matched local SHA-256 `641b9cd8536c8f9f7fabdc955553208fd76920ad045fa97517d38977560991b1`, and the on-chain IDL at `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4` semantically matched `target/idl/agentvouch.json` / `web/agentvouch.json`. Voucher slashing is now live on devnet and verified by `NO_DNA=1 anchor test` (31 passing), the direct devnet USDC smoke, x402 bridge POC, public flow-surface smoke, web tests/build, CLI tests/build, and lint/diff checks. Mainnet remains blocked by dispute governance, pause/emergency controls, authority policy/security review, and refund-reserve policy.
+| Gate                                         | Requirement                                                                                                                                                                                | Base-alpha blocking?               | Full-mainnet blocking?                           | Status                                                                                                                                                                                                      | Evidence (link)                                                                                                                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1 — Base voucher slashing                   | Port the Solana A1 downside mechanism to the Base v1 candidate so upheld paid-listing reports slash linked vouch stake, ring-fence slash buckets, and fund harmed-party-first refunds.     | Yes                                | Yes                                              | **Pending.** Approved as Phase 9b-2 on 2026-07-06; must land before security review.                                                                                                                        | `.agents/plans/base-a1-voucher-slashing-port.plan.md`; [P0.1 spec](#code-audit-findings-2026-05-30)                                                                                                   |
+| A2 — governed dispute resolution             | Replace founder-only resolution with two-phase/timelocked/governed dispute resolution and reserve-aware treasury rules.                                                                    | No, if the Launch Trust Bar passes | Yes                                              | **Deferred for alpha; required for full trust-minimized mainnet.** A2 design-lock invariants still constrain the alpha mechanism: buyer-first routing, capped rewards, snapshots, and zero-refund branches. | `.agents/plans/a2-dispute-governance-v1.plan.md`; `.agents/plans/a2-s*.plan.md`; [A2 findings](#a2-extra-review-findings-2026-06-17); [Launch Trust Bar](#launch-trust-bar-chain-agnostic-2026-07-06) |
+| A3 — Base pause and custody                  | Keep `setPaused` live on the Base v1 contract, put `PAUSE_ROLE` under approved custody, and prove pause blocks new exposure while refund/claim exits remain open.                          | Yes                                | Yes                                              | **Partial.** Pause semantics exist in the EVM contract family; production custody policy and release-candidate smoke are still open.                                                                        | `.agents/plans/a3-emergency-pause.plan.md`; `.agents/plans/base-port-chain-adapter-phase-9.plan.md`; [Authority Policy](#authority-policy); [Incident Response](#incident-response)                   |
+| A4 — refund reserve policy                   | Decide and document how refunds are bounded/backstopped when author proceeds or slashed funds are insufficient; prevent dispute-derived funds from accidental treasury sweep.              | Yes                                | Yes                                              | **DECISION NEEDED (founder).** A2/A1 plans define buyer-first mechanics, but the reserve/backstop policy is not yet locked.                                                                                 | [A2 findings](#a2-extra-review-findings-2026-06-17), especially residual/expired-fund ownership and reserve-aware sweep rules                                                                         |
+| A5 — tests and security review               | Run the full local gate suite, forge suite, live Base smokes, internal review, and one external security pass or explicit human-recorded acceptance for the complete v1 mechanism.         | Yes                                | Yes                                              | **Pending.** Review must happen after the A1 port so one pass covers the complete mechanism.                                                                                                                | [Security Review](#security-review); `.agents/plans/base-port-chain-adapter-phase-9.plan.md`                                                                                                          |
+| Alpha exposure caps                          | Define the cap that makes founder-operated alpha acceptable: max listing price, aggregate protocol exposure/TVL, and sponsored-gas spend cap.                                              | Yes                                | No, once replaced by full production risk policy | **DECISION NEEDED (founder).** Do not invent numbers in implementation plans.                                                                                                                               | [Launch Trust Bar](#launch-trust-bar-chain-agnostic-2026-07-06); [Platform Concentration Risk](#platform-concentration-risk-coinbase-2026-07-06)                                                      |
+| Contract role custody                        | Put `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `TREASURY_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` behind multisig or a documented accepted alternative.                       | Yes                                | Yes                                              | **Pending.** Testnet v1 candidate exists, but mainnet custody sign-off is not recorded.                                                                                                                     | [Authority Policy](#authority-policy); `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                       |
+| Mainnet deployment, RPC, USDC, and paymaster | Deploy a mainnet v1 contract, record deployment state, configure archive-capable RPC, verify Base mainnet native USDC, and provision CDP mainnet paymaster/bundler with funded gas policy. | Yes                                | Yes                                              | **Not started.** Current live evidence is Base Sepolia only.                                                                                                                                                | `docs/BASE_DEPLOY.md`; `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                                       |
+| Relayer/facilitator custody and monitoring   | Provision a dedicated low-privilege x402 relayer EOA, never the deployer key; document funding, top-up, spend limits, alerting, idempotency, and rollback.                                 | Yes                                | Yes                                              | **Partial on testnet; mainnet pending.** A dedicated relayer proved the Sepolia x402 smoke, but production custody/spend monitoring is open.                                                                | `.agents/plans/base-port-chain-adapter-phase-9.plan.md`; [Monitoring](#monitoring); [Incident Response](#incident-response)                                                                           |
+| Base chain parameterization sweep            | Move Sepolia-pinned modules behind a configured-Base-chain seam before `getAdapter()` accepts `eip155:8453`; keep Sepolia selectable after cutover.                                        | Yes                                | Yes                                              | **Pending.** About 13 modules are still Sepolia-pinned by constant.                                                                                                                                         | `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                                                              |
+| Sepolia-row policy                           | Decide whether existing `eip155:84532` listings/entitlements are hidden, badged as testnet, or kept purchasable once mainnet is default; no schema migration is expected.                  | Yes                                | Yes                                              | **DECISION NEEDED (founder).** Phase 6 chain-qualified rows let Sepolia and mainnet coexist; the open item is display/purchase policy.                                                                      | `.agents/plans/base-port-chain-adapter-phase-10.plan.md`; `.agents/plans/base-port-chain-adapter-phase-6.plan.md`                                                                                     |
 
-> **Update (2026-06-11): live dispute smoke complete.** `AGENTVOUCH_SMOKE_AUTHORITY_KEYPAIR=~/dev-keypair.json npm run smoke:devnet-usdc -- --apply --state-dir .agent-keys/a1-devnet-dispute-smoke --skill-id a1smoke-20260611` passed against devnet. The run linked a paid-listing vouch, purchased, opened a dispute, resolved it upheld with the config authority, cranked `slash_dispute_vouches`, created a `1_000_000` micro-USDC refund pool, and claimed the buyer refund. Result: `500_000` micro-USDC author bond slash, `500_000` micro-USDC voucher slash, vouch status `slashed`, active listing reward positions `0`, refund pool fully claimed, and the listing settlement dispute lock cleared.
-
-> **Update (2026-06-19): A3 emergency pause merged, deployed, and smoke-tested on devnet.** Program `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` was upgraded in slot `470607512` with deploy tx `5WDUWu15dU2L1FCFXd6MQeqG5SmppEjq8DMwFBdjhZCUSQ1AtD7haggRreXVeFYfZBbLSV6bMQ1GeJKmGp6gizHj`; local deploy artifact SHA-256 was `4def6997c51fb4ac2adf5963960845481913dfd28748990a7bb0be42cd63934d`. The on-chain IDL was upgraded at `BK3kFBTsNRVVhWae4ucHKV2huiioEWD1RRWAKrM68RT4` and fetched IDL contains `set_paused` / `PauseStateChanged`. The live pause smoke set `paused = true`, proved `create_skill_listing` fails with `Protocol is paused`, proved `claim_voucher_revenue` still works while paused, set `paused = false`, and proved a listing can be created after unpause. Mainnet remains blocked by dispute governance, authority custody/security review, and refund-reserve policy.
-
-> **Update (2026-06-19): Kora planning added.** Kora/USDC fee abstraction is the preferred next path for removing user-held SOL from AgentVouch flows. It is not yet a shipped readiness claim. If enabled before mainnet, it becomes part of the release candidate scope: Kora signer custody, validation policy, rate limits, fee pricing, monitoring, rollback, and devnet smoke tests must be reviewed alongside the existing wallet-paid path. Plan: `.agents/plans/kora-usdc-fee-abstraction.plan.md`.
-
-> **Update (2026-06-22): Base POC Phase 4.5 gate complete.** PR #44 implemented an isolated Base/EVM Foundry POC for Phases 0-4 under `contracts/base-poc` and recorded the interim decision memo in `docs/BASE_POC_INTERIM.md` with 65/65 tests. Finding: Base can preserve the purchase/accounting model and support gas-free-for-user USDC purchases, but it does not remove the need for relayer/paymaster/facilitator infrastructure and is not a clear RC shortcut over Solana + Kora. Lane B (`purchaseWithAuthorization`) is trust-minimized but has a production fund-stranding edge if an EIP-3009 authorization is submitted directly to USDC without recording a receipt; Lane C (`settleX402Purchase`) is bridge-equivalent and trusts a settlement authority. Base should remain decision evidence unless AgentVouch explicitly funds the x402/Coinbase distribution bet; it is not a mainnet-readiness blocker for the Solana RC.
-
-> **Update (2026-06-24): x402 bridge RC follow-up added.** If the protocol-listed x402 bridge is part of the release-candidate path, enable it on devnet and run an end-to-end UI/API smoke before launch readiness: buyer auth message, x402 requirement, facilitator verify/settle, settlement vault credit, backend `settle_x402_purchase`, purchase PDA creation, entitlement recording, and raw download. The production runbook must include bridge env, settlement authority custody, facilitator config, monitoring, rollback, and reconciliation steps before the bridge is considered RC-ready.
-
-The next milestone should be framed as **Mainnet Release Candidate**, not final mainnet launch. The release candidate is ready only when the protocol, wallet UX, production config, docs, and operating runbooks can survive repeated end-to-end devnet smoke tests without manual interpretation.
-
-> **Update (2026-06-17): A2 plan review found additional design-lock blockers.** The A2 branch should not move into Anchor implementation until the plan explicitly locks: A2 as a devnet clean break, cancellable pending resolutions, buyer-first paid refunds, program-computed refund pools, zero-refund paid dispute behavior, serialized author-bond exposure, residual/expired fund ownership, reserve-aware treasury sweep rules, and dispute-economic snapshots. See [A2 Extra Review Findings](#a2-extra-review-findings-2026-06-17).
-
-## Base Mainnet Track (2026-07-02)
-
-The authoritative gate checklist lives in
-`.agents/plans/base-port-chain-adapter-phase-10.plan.md` (kept there, not duplicated here, so it
-cannot drift). Summary of where the Base track stands and what blocks mainnet:
-
-**Shipped (Base Sepolia, testnet):**
+## Base Shipped Evidence
 
 - Phases 2–7: chain adapter/wallet seams, Base passkey `ChainWallet` writes, Base
   listing/purchase verification, EIP-3009 x402 settlement, chain-qualified DB semantics
-  (Phase 6 live migration applied to `agentvouch-postgres`), chain-aware address/explorer
+  (Phase 6 live migration applied to `agentvouch-postgres`), and chain-aware address/explorer
   boundaries.
 - Phase 8a (PR #74): Base Sepolia is the default new-user writable path behind the
-  single-var rollback (`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`), EVM publisher
-  auth (ERC-1271/6492), Base paid publish through the `ChainWallet` seam. `eip155:8453` is
-  explicitly rejected in code — enabling it before the Phase 10 gates pass is a stop-the-line bug.
+  single-var rollback (`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`), with EVM publisher
+  auth (ERC-1271/6492) and Base paid publish through the `ChainWallet` seam.
+- Phase 9 evidence is recorded in `.agents/plans/base-port-chain-adapter-phase-9.plan.md`: Base
+  human purchase/raw download, agent x402 settlement, Solana regression, Base v1-candidate
+  deployment (`0x5992…B7d1`, `PROTOCOL_VERSION=base-v1-candidate`), and Base vouch/report browser
+  smokes.
 
-**Blocking Base mainnet (Phase 9 + Phase 10 gates — see the Phase 10 plan for the full checklist):**
+## Decision Log
 
-1. The Base track has moved from the original **`base-poc-v0` spike** (`0x6Fd9…D854`) to a Base
-   Sepolia **v1 candidate** (`0x5992…B7d1`, `PROTOCOL_VERSION=base-v1-candidate`) for live report/vouch
-   smokes, but it is still EOA-deployed, unaudited, and testnet-only. It must not ship to mainnet.
-   Phase 9 still owns the complete v1 trust layer — without the A1 voucher-slashing port, Base is
-   not yet the stake-backed reputation differentiator.
-   - **Status (2026-07-06, PR #78 merged):** `contracts/base-poc/src/AgentVouchEvm.sol`
-     declares `PROTOCOL_VERSION = "base-v1-candidate"` and includes the Phase 9 MVP
-     author-report primitive: registered reporters bond USDC to open an author-wide report,
-     `RESOLVER_ROLE` resolves it as Upheld or Dismissed, dismissed reports may optionally
-     forfeit the reporter bond to the author as an anti-griefing penalty, upheld reports slash at
-     most one dispute bond from the author's posted bond, and Base trust reads expose
-     open/upheld/dismissed counters. This is not deployment evidence, not an external audit, and not a Phase 10
-     mainnet green light.
-   - **Follow-up (2026-07-06/08, PR #79 + PR #85):** Deploy.s.sol config initialization, sample UI
-     ABI sync, production-runbook Base env/custody/security sections, Base detail/list live
-     trust rendering, the first live Base default-path purchase evidence, live agent x402
-     settlement, Solana purchase/raw regression, and the Base v1-candidate deploy/vouch/report
-     browser smokes are recorded in the Phase 9 plan. Still open there: the full A1
-     voucher-slashing implementation, remaining self-stake/proceeds trust-write smoke,
-     ownership/custody sign-off, internal review, and external security review.
-   - **Decision (2026-07-06): the Base v1 trust bar is raised from author-bond-only report
-     slashing to a full A1 voucher-slashing mechanism port** (EVM-simplified,
-     invariant-preserving), sequenced as Phase 9b-2 so it lands **before** the 9c internal +
-     external security review — one review must cover the complete mechanism. Plan:
-     `.agents/plans/base-a1-voucher-slashing-port.plan.md`. Until it lands, vouching on Base is
-     reward-only — the same P0.1 condition the 2026-05-30 Solana audit flagged.
-2. Internal + external security review of the v1 contract (the [Security Review](#security-review)
-   expectations apply to every USDC-moving function, translated to the EVM surface: EIP-3009
-   authorization binding, reentrancy, split accounting, pause semantics).
-3. Authority custody: multisig (or documented alternative) for the v1 roles; the x402 relayer
-   must be a dedicated low-privilege funded EOA (never the deployer key), with custody, spend
-   limits, and monitoring — settlement fails closed without `BASE_X402_RELAYER_PRIVATE_KEY`.
-4. Mainnet infra: contract deploy + deployment state doc, archive-capable RPC, native USDC
-   config, CDP mainnet paymaster/bundler with funded gas policy and spend limits.
-5. Base-chain parameterization sweep: ~13 modules are Sepolia-pinned by constant and must move
-   behind a configured-Base-chain seam before `eip155:8453` can be enabled (detailed in the Phase 10
-   plan scope).
-6. Sepolia-row policy: decide how existing `eip155:84532` listings/entitlements render once
-   mainnet is the default (display/purchase policy only — Phase 6 chain-qualified rows need no
-   schema migration).
-
-The [Authority Policy](#authority-policy), [Monitoring](#monitoring),
-[Incident Response](#incident-response), and [Security Review](#security-review) sections below
-were written for the Solana program but state chain-agnostic expectations — apply them to the
-Base v1 contract and its operational keys (admin roles, relayer, paymaster) when executing
-Phase 9 and Phase 10.
+- **2026-05-30:** Direct code audit reclassified launch blockers as protocol correctness, not only
+  release hardening: voucher downside was missing and dispute resolution was centralized.
+- **2026-06-09:** Solana readiness re-read confirmed the active devnet program identity and locked
+  the A1 voucher-slashing design in `.agents/plans/a1-voucher-slashing.plan.md`.
+- **2026-06-10:** Solana A1 voucher slashing deployed and verified on devnet.
+- **2026-06-11:** Live Solana upheld-dispute smoke proved purchase, report, slashing, refund-pool,
+  refund-claim, and dispute-lock cleanup end to end.
+- **2026-06-17:** A2 plan review added design-lock invariants for buyer-first refunds, cancellable
+  pending resolutions, snapshot economics, zero-refund branches, and reserve-aware sweep rules.
+- **2026-06-19:** Solana A3 emergency pause deployed and live-smoked on devnet; Kora planning added
+  as a Solana fee-abstraction fallback, not a shipped readiness claim.
+- **2026-06-22:** PR #44 completed the Base POC Phase 4.5 gate and recorded the interim decision memo
+  in `docs/BASE_POC_INTERIM.md`.
+- **2026-06-24:** x402 bridge RC follow-up was added for the Solana track if that bridge becomes part
+  of a release-candidate path.
+- **2026-07-02:** Base mainnet became the active launch target; Solana readiness became historical
+  rollback-path record.
+- **2026-07-06:** Launch Trust Bar recorded founder-operated alpha as acceptable only under five
+  conditions; Base A1 voucher slashing was promoted to a Phase 9b-2 launch gate.
 
 ## Launch Trust Bar (chain-agnostic, 2026-07-06)
 
@@ -138,7 +106,9 @@ Where the older Solana no-go bullets conflict with this bar (single-key resoluti
 unconditional no-go), this section governs: single-key resolution passes only under conditions
 1–5; the routing and custody bullets remain hard no-gos.
 
-## Platform Concentration Risk (Coinbase, 2026-07-06)
+## Specifications
+
+### Platform Concentration Risk (Coinbase, 2026-07-06)
 
 The Base track is not just a chain bet — it is a four-way dependency on one vendor: **chain**
 (Base), **wallet** (Coinbase Smart Wallet passkey is the only shipped write path), **gas** (CDP
@@ -163,11 +133,11 @@ of the distribution bet; mitigations must stay warm rather than theoretical:
   outage or policy change" playbook to [Incident Response](#incident-response) alongside the
   existing Kora/paymaster entry.
 
-## Code Audit Findings (2026-05-30)
+### Code Audit Findings (2026-05-30)
 
 A direct review of `programs/agentvouch/src` and the test suites downgraded the assessment above. The escrow/accounting plumbing was solid (pinned PDA derivations re-checked in handlers, `transfer_checked` throughout, checked arithmetic, x402 replay guards via payment-ref + tx-sig PDAs, dispute locks that freeze paid-listing purchases/withdrawals). But the audit found one missing load-bearing mechanism and one centralized design choice, so part of the core product and trust model — not just release hardening — was still missing.
 
-### P0 — blocking (product + trust correctness)
+#### P0 — blocking (product + trust correctness)
 
 1. **Voucher slashing was missing in the 2026-05-30 audit; fixed on devnet 2026-06-10.** At audit time, the `AuthorBondThenVouchers` liability scope was recorded, but no instruction slashed voucher stake: `resolve_author_dispute.rs` only called `slash_author_bond_if_present`; `author_dispute.voucher_slashed_usdc_micros` was set to `0` at open and never recomputed; `VouchStatus::Slashed` (`state/vouch.rs`) was never assigned; `AuthorDisputeVouchLink` (`state/author_dispute_vouch_link.rs`) was defined but never created. Net at the time: **vouching was reward-only with zero downside** — the stake-backed-reputation thesis was not enforced on-chain. _Fix:_ implement voucher slashing (debit voucher vaults, set `VouchStatus::Slashed`) and keep the active-dispute lock on `revoke_vouch`.
 
@@ -183,7 +153,7 @@ A direct review of `programs/agentvouch/src` and the test suites downgraded the 
 
 4. **No refund reserve; refunds frequently unfundable.** Refund pools are funded from the author's own undisbursed proceeds for one revision, first-come-first-served until empty. Free-listing disputes produce no pool at all, and proceeds withdrawn before a dispute opened leave nothing. The slashed bond does not backstop buyers (it goes to the challenger).
 
-### P1 — required before launch
+#### P1 — required before launch
 
 5. **No config setters / authority rotation instructions.** Economic params (`slash_percentage`, bond floors, reward shares/caps) and authorities change only via redeploy or the M13 migration. `treasury_authority` has no withdrawal path — dismissed-dispute bonds accrue in the treasury vault with no in-program sweep.
 6. **External security review** of every USDC-moving instruction (per [Security Review](#security-review)) — not yet done; this is a Go gate.
@@ -191,7 +161,7 @@ A direct review of `programs/agentvouch/src` and the test suites downgraded the 
 
 Primary files for hardening: `instructions/resolve_author_dispute.rs`, `instructions/create_refund_pool.rs`, `instructions/revoke_vouch.rs`, `state/config.rs`.
 
-## A2 Extra Review Findings (2026-06-17)
+### A2 Extra Review Findings (2026-06-17)
 
 The draft A2 plan fixes the broad P0.2 direction - split resolver/config authority, add a timelocked propose/execute path, and route slashed value toward harmed buyers. Focused pre-implementation reviews found the following design-lock items that must be documented and tested before coding the A2 on-chain changes.
 
@@ -219,39 +189,7 @@ The draft A2 plan fixes the broad P0.2 direction - split resolver/config authori
 
 These findings are now reflected in `.agents/plans/a2-dispute-governance-v1.plan.md`. Mainnet remains no-go until the implemented program and tests prove these invariants.
 
-## Re-Read Findings (2026-06-09)
-
-- **Program identity:** active source and public/runtime artifacts point at `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`: `programs/agentvouch/src/lib.rs`, `Anchor.toml`, `web/agentvouch.json`, `web/generated/agentvouch/`, `packages/agentvouch-protocol/src/index.{ts,js,d.ts}`, `scripts/devnet-usdc-smoke.mjs`, `docs/DEVNET_STATE.md`, `docs/DEPLOY.md`, `docs/PRODUCTION_RUNBOOK.md`, `web/public/skill.md`, `.cursor/skills/agentvouch/`, and public docs.
-- **Historical ID:** `web/scripts/db-cutover.ts` retains `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` only as `TRACK_B_PREVIOUS_DEVNET_PROGRAM_ID` for old-state cleanup. Do not treat it as active deployment config.
-- **Purchase gate:** direct purchase verification is stronger than earlier notes imply. The API verifies the confirmed transaction, program id, chain context, listing PDA, derived `Purchase` PDA, buyer, listing revision, price, and USDC mint before recording an entitlement.
-- **x402 bridge:** protocol-listed x402 remains fail-closed behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`; `/api/x402/supported` does not advertise the bridge unless the flag is enabled. The bridge binds buyer/listing/skill/amount/nonce into a payment-ref hash and checks the backend settlement authority against on-chain config.
-- **Verification run:** `npm run test --workspace @agentvouch/web`, `npm run test --workspace @agentvouch/cli`, `NO_DNA=1 anchor build`, `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed on 2026-06-09. On 2026-06-10, `NO_DNA=1 anchor test` passed with 31 tests after rerunning outside the sandboxed port-binding failure; no port-8899 process was killed. The same day also passed web tests (332), CLI tests (50), web/CLI builds, web lint, `git diff --check`, direct devnet USDC smoke, strict x402 bridge POC, and public flow-surface smoke. On 2026-06-11, the direct devnet USDC smoke was extended and passed the live authority-keyed dispute/slash/refund branch. On 2026-06-19, the A3 pause smoke passed against the deployed program: pause blocked a new listing, voucher revenue claim stayed open, unpause restored listing creation, and final state confirmed `paused = false`.
-
-## Release Candidate Gates
-
-- Protocol safety review covers purchase, vouch, voucher reward, author bond, dispute, refund, close, claim, and withdraw paths.
-- Devnet soak has repeated the full happy path with fresh wallets: register, publish, vouch, purchase, claim voucher revenue, withdraw author proceeds, report, resolve, and refund.
-- Emergency pause has been exercised on devnet: pause, prove at least one risk-creating flow fails, prove buyer refund or voucher claim still works, unpause, and prove normal operation resumes.
-- Wallet UX is clear for locked wallets, simulation warnings, insufficient SOL, ATA creation, network mismatch, and rejected signatures.
-- If Kora sponsorship is enabled: wallet UX clearly distinguishes sponsored and fallback paths, quotes any USDC fee, proves users can complete the targeted flow without SOL, and never implies unsupported flows are SOL-free.
-- If Kora sponsorship is enabled for external demo or release-candidate use: Phantom warning noise from partial Kora signing should be reduced by the prepare-time Kora signature path for sponsored purchase and registration. Before calling it release-candidate ready, smoke-test that Phantom receives the sponsor-pre-signed transaction, submit skips duplicate Kora signing, and wallet-signing blockhash expiry is refreshed cleanly.
-- Kora scope must be explicit in release notes and UI copy. The 2026-06-24 spike covers `register_agent` and `purchase_skill` only; `create_skill_listing`, `initialize_listing_settlement`, `deposit_author_bond`, `vouch`, `link_vouch_to_listing`, `open_author_dispute`, and `claim_purchase_refund` still need separate `rent_payer: Signer` interfaces plus sponsored API routes before those paths can be called no-SOL/user-gas-free.
-- If the x402 bridge is enabled: `/api/x402/supported` advertises the protocol-listed bridge only after a live devnet smoke proves settlement into the protocol vault, `settle_x402_purchase`, purchase PDA creation, entitlement recording, and paid raw download all work from a fresh buyer.
-- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7. _(2026-07-02: that separate Base launch plan has now been adopted — the framing inverted. Base mainnet via the Phase 10 gate plan is the launch path, and this Solana RC gate list applies only if the Solana track is revisited. See [Base Mainnet Track](#base-mainnet-track-2026-07-02).)_
-- Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
-- If Kora sponsorship is enabled: Kora endpoint, auth mode, fee token, signer backend, payer account, validation allowlists, spend caps, and emergency disable env are frozen and recorded in the production runbook.
-- If the x402 bridge is enabled: facilitator endpoint, accepted network/mint, settlement vault, settlement authority, payment-ref/memo policy, idempotency/reconciliation procedure, monitoring, and emergency disable env are frozen and recorded in the production runbook.
-- Public docs match shipped behavior: `web/public/skill.md`, `/docs`, CLI help, paid download instructions, and publish/update flows.
-- Production operations are documented: monitoring, authority handling, rollback, incident response, and user support for paid access failures.
-
-## Required Decisions
-
-- Final mainnet values for `author_proceeds_lock_seconds`, `refund_claim_window_seconds`, `challenger_reward_bps`, and `challenger_reward_cap_usdc_micros`.
-- Whether upgrade authority remains active, moves behind a timelock, or is frozen after hardening.
-- Which multisig or governance mechanism controls upgrade, config, treasury, and settlement authorities.
-- Which monitoring and incident channels are authoritative.
-
-## Authority Policy
+### Authority Policy
 
 Mainnet must not depend on a single hot wallet for:
 
@@ -269,7 +207,7 @@ Before mainnet:
 3. Record authority pubkeys in the production runbook.
 4. Test authority rotation on devnet.
 
-## Treasury Policy
+### Treasury Policy
 
 Document:
 
@@ -282,7 +220,7 @@ Document:
 
 Treasury movement should be explainable from on-chain events and operator notes.
 
-## Monitoring
+### Monitoring
 
 Monitor at least:
 
@@ -298,7 +236,7 @@ Monitor at least:
 - unexpected treasury or settlement movement
 - if enabled, Kora payer SOL balance, Kora USDC fee receipts, Kora validation rejects, abnormal fee-payer outflow, sponsorship error rates, and fallback-rate spikes
 
-## Incident Response
+### Incident Response
 
 Have playbooks for:
 
@@ -322,7 +260,7 @@ Each playbook should include:
 - public/user communication threshold
 - postmortem requirements
 
-## Security Review
+### Security Review
 
 Before mainnet, complete an external or senior internal review of:
 
@@ -348,7 +286,44 @@ Review at least these user-facing protocol flows end to end:
 - purchaser claims a refund during the claim window
 - stale or closed listing behavior does not strand funds without a documented path
 
-## Launch Checklist
+## Solana Track (historical record — rollback path only)
+
+The following material is the Solana-track readiness record. It remains useful if the rollback path
+is re-promoted, but it is not the active Base mainnet gate table.
+
+### Re-Read Findings (2026-06-09)
+
+- **Program identity:** active source and public/runtime artifacts point at `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`: `programs/agentvouch/src/lib.rs`, `Anchor.toml`, `web/agentvouch.json`, `web/generated/agentvouch/`, `packages/agentvouch-protocol/src/index.{ts,js,d.ts}`, `scripts/devnet-usdc-smoke.mjs`, `docs/DEVNET_STATE.md`, `docs/DEPLOY.md`, `docs/PRODUCTION_RUNBOOK.md`, `web/public/skill.md`, `.cursor/skills/agentvouch/`, and public docs.
+- **Historical ID:** `web/scripts/db-cutover.ts` retains `AgnTDF3sXguYDpnkeS8jCyPRgaEahjivAWcqBjxDE7qZ` only as `TRACK_B_PREVIOUS_DEVNET_PROGRAM_ID` for old-state cleanup. Do not treat it as active deployment config.
+- **Purchase gate:** direct purchase verification is stronger than earlier notes imply. The API verifies the confirmed transaction, program id, chain context, listing PDA, derived `Purchase` PDA, buyer, listing revision, price, and USDC mint before recording an entitlement.
+- **x402 bridge:** protocol-listed x402 remains fail-closed behind `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED`; `/api/x402/supported` does not advertise the bridge unless the flag is enabled. The bridge binds buyer/listing/skill/amount/nonce into a payment-ref hash and checks the backend settlement authority against on-chain config.
+- **Verification run:** `npm run test --workspace @agentvouch/web`, `npm run test --workspace @agentvouch/cli`, `NO_DNA=1 anchor build`, `npm run build --workspace @agentvouch/web`, and `npm run build --workspace @agentvouch/cli` passed on 2026-06-09. On 2026-06-10, `NO_DNA=1 anchor test` passed with 31 tests after rerunning outside the sandboxed port-binding failure; no port-8899 process was killed. The same day also passed web tests (332), CLI tests (50), web/CLI builds, web lint, `git diff --check`, direct devnet USDC smoke, strict x402 bridge POC, and public flow-surface smoke. On 2026-06-11, the direct devnet USDC smoke was extended and passed the live authority-keyed dispute/slash/refund branch. On 2026-06-19, the A3 pause smoke passed against the deployed program: pause blocked a new listing, voucher revenue claim stayed open, unpause restored listing creation, and final state confirmed `paused = false`.
+
+### Release Candidate Gates
+
+- Protocol safety review covers purchase, vouch, voucher reward, author bond, dispute, refund, close, claim, and withdraw paths.
+- Devnet soak has repeated the full happy path with fresh wallets: register, publish, vouch, purchase, claim voucher revenue, withdraw author proceeds, report, resolve, and refund.
+- Emergency pause has been exercised on devnet: pause, prove at least one risk-creating flow fails, prove buyer refund or voucher claim still works, unpause, and prove normal operation resumes.
+- Wallet UX is clear for locked wallets, simulation warnings, insufficient SOL, ATA creation, network mismatch, and rejected signatures.
+- If Kora sponsorship is enabled: wallet UX clearly distinguishes sponsored and fallback paths, quotes any USDC fee, proves users can complete the targeted flow without SOL, and never implies unsupported flows are SOL-free.
+- If Kora sponsorship is enabled for external demo or release-candidate use: Phantom warning noise from partial Kora signing should be reduced by the prepare-time Kora signature path for sponsored purchase and registration. Before calling it release-candidate ready, smoke-test that Phantom receives the sponsor-pre-signed transaction, submit skips duplicate Kora signing, and wallet-signing blockhash expiry is refreshed cleanly.
+- Kora scope must be explicit in release notes and UI copy. The 2026-06-24 spike covers `register_agent` and `purchase_skill` only; `create_skill_listing`, `initialize_listing_settlement`, `deposit_author_bond`, `vouch`, `link_vouch_to_listing`, `open_author_dispute`, and `claim_purchase_refund` still need separate `rent_payer: Signer` interfaces plus sponsored API routes before those paths can be called no-SOL/user-gas-free.
+- If the x402 bridge is enabled: `/api/x402/supported` advertises the protocol-listed bridge only after a live devnet smoke proves settlement into the protocol vault, `settle_x402_purchase`, purchase PDA creation, entitlement recording, and paid raw download all work from a fresh buyer.
+- Base/EVM POC work is not part of the Solana RC gate unless a separate Base launch plan is explicitly adopted. Do not block the Solana RC on Base UI smoke or Phases 5-7. _(2026-07-02: that separate Base launch plan has now been adopted — the framing inverted. Base mainnet via the Phase 10 gate plan is the launch path, and this Solana RC gate list applies only if the Solana track is revisited. See [Base Mainnet Gate Table](#base-mainnet-gate-table).)_
+- Mainnet configuration is frozen: program ID, USDC mint, economic floors, config authority, treasury authority, resolver authority, Vercel env, and Neon branch.
+- If Kora sponsorship is enabled: Kora endpoint, auth mode, fee token, signer backend, payer account, validation allowlists, spend caps, and emergency disable env are frozen and recorded in the production runbook.
+- If the x402 bridge is enabled: facilitator endpoint, accepted network/mint, settlement vault, settlement authority, payment-ref/memo policy, idempotency/reconciliation procedure, monitoring, and emergency disable env are frozen and recorded in the production runbook.
+- Public docs match shipped behavior: `web/public/skill.md`, `/docs`, CLI help, paid download instructions, and publish/update flows.
+- Production operations are documented: monitoring, authority handling, rollback, incident response, and user support for paid access failures.
+
+### Required Decisions
+
+- Final mainnet values for `author_proceeds_lock_seconds`, `refund_claim_window_seconds`, `challenger_reward_bps`, and `challenger_reward_cap_usdc_micros`.
+- Whether upgrade authority remains active, moves behind a timelock, or is frozen after hardening.
+- Which multisig or governance mechanism controls upgrade, config, treasury, and settlement authorities.
+- Which monitoring and incident channels are authoritative.
+
+### Launch Checklist
 
 - `NO_DNA=1 anchor build` passes.
 - Full Anchor test suite passes.
@@ -361,12 +336,13 @@ Review at least these user-facing protocol flows end to end:
 - If x402 bridge is enabled, a devnet end-to-end bridge smoke has passed and the production runbook has bridge env, facilitator config, settlement authority custody, vault monitoring, idempotency/reconciliation, rollback, and emergency-disable instructions.
 - SEO and LLM-facing docs are handled in Milestone 14; pitch deck alignment is handled in Milestone 15 after settlement behavior is reflected.
 
-## Mainnet Go / No-Go
+### Mainnet Go / No-Go
 
 Mainnet launch should wait until every release candidate gate is green and the remaining risks are written down with explicit owners.
 
 _(2026-07-02, amended 2026-07-08: the go/no-go lists below are the Solana-track record. For the
-active Base track, the go/no-go is the Phase 10 gate checklist; its Base-equivalent hard no-gos are:
+active Base track, the go/no-go is the [Base Mainnet Gate Table](#base-mainnet-gate-table); its
+Base-equivalent hard no-gos are:
 the target deployment is still the original `base-poc-v0` spike or lacks the full Phase 9 v1 trust
 layer, no external security pass on the v1 contract, admin/relayer/paymaster custody is a single hot
 key, or any env enables `eip155:8453` before the gates pass.)_

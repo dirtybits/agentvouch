@@ -28,6 +28,8 @@ isProject: false
 
 # Phase 3b — Render a Base listing in the live /skills marketplace
 
+> **Status: Completed/Historical — do not edit except corrections. Current status:** > `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 3 closeout evidence.
+
 Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.md) Phase 3
 (`base-adapter-readslice`). Phase **3a is done + live-verified** (BaseAdapter reads decode `getListing`
 against the deployed contract). 3b is the **first UI wiring of the seam** — and the first time any
@@ -55,9 +57,11 @@ rendering unchanged. This proves the `ChainAdapter` seam generalizes to a second
 
 ## Design decisions to LOCK (before code)
 
-### D1 — Base listing-id storage  ⚠ needs user sign-off (live Neon migration)
+### D1 — Base listing-id storage ⚠ needs user sign-off (live Neon migration)
+
 Base listing ids are `bytes32` (66-char `0x…`), not Solana base58 PDAs, and `eba0b7c`'s reviewer
 explicitly said not to overload `on_chain_address`.
+
 - **Recommended:** add `evm_listing_id VARCHAR(66)` (+ `evm_contract_address VARCHAR(42)`,
   `evm_tx_hash VARCHAR(66)`) — the minimal slice of Phase 6 pulled forward. Explicit, durable, and
   `fetchSkillListing()` receives the exact bytes32 it needs.
@@ -65,9 +69,10 @@ explicitly said not to overload `on_chain_address`.
   fly. It still requires the author's EVM address stored on the row, must match the contract's keccak
   exactly, and hides the id from the DB — fragile for a value the seed already knows.
 - **Why this gates code:** it's a migration on the **live** Neon project ([[neon-db-two-projects]] —
-  use `agentvouch-postgres`, mind the branch limit). Confirm before running. _Decision recorded: ____ (date)._
+  use `agentvouch-postgres`, mind the branch limit). Confirm before running. _Decision recorded: \_\_\_\_ (date)._
 
 ### D2 — Seeding (needs creds)
+
 Both `0x6Fd9…D854` and the older `0x5D90…` have **zero** listings (verified 2026-06-24), so a listing
 must be created. Use the base-poc harness (`registerAgent` author → `createSkillListing`) against
 `0x6Fd9…D854` with a funded EOA (CDP paymaster for gas-free, or pay Sepolia gas). Record the returned
@@ -75,6 +80,7 @@ must be created. Use the base-poc harness (`registerAgent` author → `createSki
 `listingId` derivation reference: `contracts/base-poc/ui/src/flow.ts` (`computeListingId`).
 
 ### D3 — Route merge (behavior-preserving)
+
 Mirror the existing Solana pattern, don't replace it. `fetchOnChainListings()` (Solana
 `getProgramAccounts`) stays. Base uses DB-driven discovery and in-place row hydration instead of
 on-chain enumeration. The Base path is legitimately different (DB = discovery, chain = current state)
@@ -89,9 +95,11 @@ and overlay the live name/description/price onto that one row, marked non-purcha
 one card; the adapter is still exercised in the route (the seam proof). `fetchOnChainListings` (Solana)
 stays untouched. The `fetch-base-listings`/`wire-merge` todos below fold into this.
 
-### D4 — Base card rendering: read-only + chain-aware  (PR #58 review, 2026-06-29)
+### D4 — Base card rendering: read-only + chain-aware (PR #58 review, 2026-06-29)
+
 `evm_listing_id` has its own column (D1), but it must NOT be mapped into the
 `ChainSkillRow.on_chain_address` / card fields the existing UI treats as Solana:
+
 - **`on_chain_address` stays NULL for Base rows.** Downstream the client purchase path runs it
   through `address(listingPubkey)` (`@solana/kit`), and `price_usdc_micros` + `on_chain_address`
   makes the card look like a purchasable Solana `direct-purchase-skill` listing. Carry the id in
@@ -138,8 +146,7 @@ stays untouched. The `fetch-base-listings`/`wire-merge` todos below fold into th
 - **No regression:** Solana `/skills` cards unchanged; `fetchOnChainListings` path untouched.
 - **Bundle hygiene:** viem still dynamically imported; `BaseAdapter` only used server-side in the
   route handler (no `'use client'` import of the registry).
-- **Gates:** `cd web && npm run typecheck && npm run lint && npm test` **and** `npm run build
-  --workspace @agentvouch/web` green — the repo-required build gate (3b changes `web/lib/db.ts` +
+- **Gates:** `cd web && npm run typecheck && npm run lint && npm test` **and** `npm run build --workspace @agentvouch/web` green — the repo-required build gate (3b changes `web/lib/db.ts` +
   `web/app/api/skills/route.ts`; Next may need network for Google Fonts). (Markdown is not in
   `format:check` scope; `.ts` is.)
 
