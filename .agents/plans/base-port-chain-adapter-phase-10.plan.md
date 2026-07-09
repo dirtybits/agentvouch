@@ -3,7 +3,7 @@ name: base-port-chain-adapter-phase-10
 overview: "BLOCKED gate plan: cut the AgentVouch default over to Base mainnet (eip155:8453) only after the Phase 9 v1 trust/security gates and mainnet contract/RPC/USDC/paymaster prerequisites all exist."
 todos:
   - id: confirm-phase10-prerequisites
-    content: Confirm every prerequisite in the gate checklist (Phase 9 v1 contract + security review, mainnet deploy, RPC/USDC/paymaster env, custody policy, runbook) with recorded evidence before any code change.
+    content: Confirm every blocking row in the docs/MAINNET_READINESS.md Base Mainnet Gate Table has recorded evidence before any code change.
     status: pending
   - id: parameterize-base-chain-modules
     content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the ~13 Sepolia-pinned Base modules — chain context/id literals, the viem baseSepolia chain object, contract/USDC/RPC/explorer constants, evmAuth verification RPC, and the x402 routes — so Base Sepolia vs mainnet is env-selected, not hardcoded. This is the bulk of the Phase 10 code work.
@@ -24,11 +24,12 @@ isProject: false
 
 ## Status
 
-**BLOCKED.** Do not start this plan until every item in the gate checklist below has recorded
-evidence. Any code that enables `eip155:8453` before then is a stop-the-line bug (see the Phase 8a
-plan). This file used to be drafted as "Phase 8b," but was renamed on 2026-07-02 so the roadmap
-reads in dependency order: Phase 8a (Base Sepolia default), Phase 9 (Base E2E + trust/security),
-then Phase 10 (mainnet cutover).
+**BLOCKED.** Do not start this plan until the Base Mainnet Gate Table in
+`docs/MAINNET_READINESS.md` has the required recorded evidence for the chosen launch tier. Any code
+that enables `eip155:8453` before then is a stop-the-line bug (see the Phase 8a plan). This file
+used to be drafted as "Phase 8b," but was renamed on 2026-07-02 so the roadmap reads in dependency
+order: Phase 8a (Base Sepolia default), Phase 9 (Base E2E + trust/security), then Phase 10
+(mainnet cutover).
 
 ## Goal
 
@@ -47,34 +48,14 @@ Solana stays selectable; the Phase 8a env rollback seam keeps working as the eme
   plan.
 - The original Base fallback contract is the `base-poc-v0` spike (`0x6Fd9…D854`). Phase 9 now also
   has a Base Sepolia v1 candidate (`0x5992…B7d1`, `base-v1-candidate`) for report/vouch smokes. Neither
-  contract may ship to mainnet without this checklist passing.
+  contract may ship to mainnet without the readiness table passing.
 
-## Gate Checklist (all required before starting)
+## Gate Pointer (all required before starting)
 
-Record evidence (PR links, tx hashes, doc versions) next to each item when checked:
-
-- [ ] Phase 9 Part A complete: Base Sepolia default proven E2E (human passkey + agent x402 + raw
-      download + Solana regression).
-- [ ] Phase 9 Part B complete: Base v1 trust/payment contract implemented (vouch/revoke, author
-      bond, founder-resolved reports/disputes, version getter) with forge + web tests green.
-- [ ] Internal security review and one external security pass on the v1 contract, or an explicit
-      human-recorded acceptance.
-- [ ] Ownership/custody policy documented and applied: multisig (or documented alternative) holds
-      DEFAULT_ADMIN_ROLE / CONFIG_ROLE / RESOLVER_ROLE / TREASURY_ROLE / SETTLEMENT_ROLE /
-      PAUSE_ROLE.
-- [ ] Mainnet `AgentVouchEvm` v1 deployed, address recorded in a Base deployment state doc.
-- [ ] Mainnet RPC env (server + client names) provisioned and archive-capable where reads need it.
-- [ ] Base mainnet native USDC address configured and verified.
-- [ ] CDP mainnet paymaster/bundler exists with a funded gas policy and recorded spend limits.
-- [ ] Mainnet x402 relayer EOA provisioned: `BASE_X402_RELAYER_PRIVATE_KEY` (settlement fails
-      closed without it — PR #67), dedicated low-privilege key (NOT the deployer, per the PR #67
-      review), custody documented, ETH gas funding + top-up policy, spend monitoring/alerting.
-- [ ] `getAdapter()` accepts `eip155:8453` behind tests (currently it deliberately rejects it).
-- [ ] Sepolia-row policy decided: what `/skills` does with existing `eip155:84532` listings and
-      entitlements once mainnet is the default (hide, badge as testnet, or keep purchasable).
-      Phase 6's chain-qualified rows mean mainnet and Sepolia data coexist without migration —
-      the decision is display/purchase policy, not schema.
-- [ ] Mainnet deploy/cutover runbook drafted and `docs/MAINNET_READINESS.md` updated.
+The canonical go/no-go checklist is the
+`docs/MAINNET_READINESS.md` **Base Mainnet Gate Table**. Do not duplicate those rows here; this
+plan starts only after every Base-alpha-blocking row needed for the chosen launch tier has recorded
+evidence there. Phase 10 then implements the cutover mechanics below.
 
 ## Scope (once unblocked)
 
@@ -100,7 +81,7 @@ Record evidence (PR links, tx hashes, doc versions) next to each item when check
   non-Solana value falls back to Solana; after Phase 10 the mainnet context is the no-env default.
 - DB: no schema migration expected. Phase 6 chain-qualified rows key everything by chain context,
   so `eip155:8453` rows coexist with `eip155:84532` and Solana rows; apply the Sepolia-row
-  display/purchase policy from the gate checklist at the read/UI layer.
+  display/purchase policy from the readiness table at the read/UI layer.
 - Trust surfaces: mainnet Base authors flow through the Phase 9 trust reads/snapshots; no
   synthesized trust.
 - Docs: update `docs/MAINNET_READINESS.md`, deployment state doc, and `web/public/skill.md` for
@@ -132,7 +113,7 @@ Out of scope:
 
 ## Open Questions
 
-- Sepolia-row policy (gate checklist item): recommended default is badge-as-testnet + exclude from
+- Sepolia-row policy (readiness-table item): recommended default is badge-as-testnet + exclude from
   the default browse sort, keep detail pages renderable. Decide before implementation.
 - Whether `evmAuth` should verify ERC-1271/6492 signatures against the wallet's own chain (mainnet
   wallets verify on mainnet RPC) or pin to the default chain — smart-account signatures are

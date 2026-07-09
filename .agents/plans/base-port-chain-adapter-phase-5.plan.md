@@ -31,6 +31,8 @@ isProject: false
 
 # Phase 5 - Base Writes and EVM x402
 
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 5 closeout evidence.
+
 Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.md) Phase 5
 (`base-adapter-write`).
 

@@ -8,65 +8,55 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-08.
 
 > **Update 2026-07-06: the Base default flip happened.** Phase 8a (PR #74) made Base Sepolia the
 > default new-user writable path behind the Solana rollback env — the "reversible commit point"
 > referenced below has been exercised, so Base is no longer "frontrunner, not written in stone";
-> it is the launch track, gated by the Phase 9/10 plans and `docs/MAINNET_READINESS.md` (Base
-> Mainnet Track, Launch Trust Bar, Platform Concentration Risk). Phase A below remains the
-> **Solana-track** hardening record; its A1 mechanism is being ported to the Base v1 candidate
-> (`.agents/plans/base-a1-voucher-slashing-port.plan.md`, approved 2026-07-06) and its A2
-> design-lock findings carry over as the harmed-party-first/capped-reward routing invariants for
-> Base reports. Kora stays the Solana-native fallback, relevant only if the rollback env is ever
-> exercised for real traffic.
+> it is the launch track, gated by the Phase 9/10 plans and the Base gate table in
+> `docs/MAINNET_READINESS.md`. Phase A below is now a strategy pointer only: the gate definitions
+> and statuses live in readiness, while the implementation details live in the per-gate plan files.
+> Kora stays the Solana-native fallback, relevant only if the rollback env is ever exercised for real
+> traffic.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
-Blocks mainnet. Maps to the P0/P1 findings in `docs/MAINNET_READINESS.md`.
+Blocks Base mainnet. This section records sequencing only; the canonical gate status is the
+`docs/MAINNET_READINESS.md` Base gate table.
 
 ### A1. Voucher slashing (P0.1)
 
-Design locked 2026-06-09 — implementation plan in `.agents/plans/a1-voucher-slashing.plan.md`, design rationale in the readiness doc's P0.1 note. In brief:
-
-- Slash the disputed listing's linked vouch positions at `slash_percentage` in **pages** (new permissionless `slash_dispute_vouches` instruction; `resolve(Upheld)` parks the dispute in `SlashingVouchers` until the last page) — atomic resolve-time slashing doesn't fit tx limits at 32 positions.
-- Slashed funds are **ring-fenced** in `ListingSettlement.slashed_deposit_usdc_micros`: refund-pool-only, excluded from author withdrawals and the challenger-reward base.
-- Slashed vouches become dead positions (`VouchStatus::Slashed`, no backing, no rewards); residual stake reclaimable via `revoke_vouch` after the dispute closes.
-- Freeze slash-set membership via a `SkillListing.locked_by_dispute` mirror: `link_vouch_to_listing`, `unlink_vouch_from_listing`, revision bumps, and new-settlement init all blocked while dispute-locked (a settlement-only check is bypassable by rotating to a fresh settlement — the same rotation also let authors keep selling mid-dispute).
-- Guard `accrue_author_rewards` against non-live vouches so slashed residual stake stops earning (reward-vault solvency).
+Base launch gate: port the Solana A1 downside mechanism to the Base v1 candidate before the Phase 9
+security review. Plans: `.agents/plans/base-a1-voucher-slashing-port.plan.md` and historical
+Solana spec `.agents/plans/a1-voucher-slashing.plan.md`. Status: see the readiness table.
 
 ### A2. Dispute governance v1 (P0.2)
 
-Goal: convert "one hot key decides instantly and pays the challenger" into "a known signer set proposes, and the world has time to react." In order of leverage:
-
-1. **Reroute slashed funds.** Refund pool for harmed buyers first; challenger gets a capped reward via the existing `challenger_reward_bps` / `challenger_reward_cap_usdc_micros` config params. This removes the resolver+challenger collusion incentive and is the cheapest, most important change.
-2. **Split `resolver_authority` from `config_authority`** as a separate config field. Resolving disputes and changing economic params are different powers.
-3. **Add config setter and authority rotation instructions** (also covers P1.5). Without them, even pointing an authority at a multisig requires redeploy. Include a governed treasury sweep path for `treasury_authority`.
-4. **Two-phase resolution:** `propose_resolution` records the ruling and refund sizing, then a 48–72h timelock before `execute_resolution` moves funds. The window is where an author contests and a compromised resolver gets caught.
-5. **Squads multisig on the resolver authority.** 2-of-3 to start, documented honestly (signer set, threshold, rotation, emergency removal — see Authority Policy in the readiness doc). A small real signer set beats pretend decentralization.
-6. **Bound resolver discretion:** derive the refund pool ceiling from a formula (e.g. min of escrowed proceeds and affected-revision purchase volume) instead of a free authority-chosen number.
+Full-mainnet gate: governed dispute resolution. Capped founder-operated alpha may defer this only
+if the readiness Launch Trust Bar passes. Plans: `.agents/plans/a2-dispute-governance-v1.plan.md`
+and `.agents/plans/a2-s*.plan.md`. Status: see the readiness table.
 
 ### A3. Emergency pause (P0.3)
 
-Add a `set_paused` instruction gated on `pause_authority` (currently written at init and never read). The `require!(!paused)` guards already exist in ~10 handlers and become live once this ships.
-
-Status 2026-06-19: merged, same-ID upgraded on devnet, on-chain IDL upgraded, and pause/unpause smoke passed. Policy: paused blocks new exposure and author-side collateral exits; buyer refund claims and voucher revenue claims remain open. Remaining before mainnet: custody pause authority behind the approved signer policy and repeat the smoke on the release-candidate deployment.
+Base launch gate: pause must be live, custody-approved, and smoke-tested on the release-candidate
+deployment. Plan: `.agents/plans/a3-emergency-pause.plan.md`; Base status is in readiness.
 
 ### A4. Refund reserve policy (P0.4)
 
-Decide and document how refunds are backstopped when author proceeds are insufficient (free-listing disputes, proceeds withdrawn pre-dispute). A2's slashed-funds rerouting covers part of this; the residual policy must be written down even if the answer is "bounded, first-come-first-served, documented."
+Base launch gate: founder decision on bounded refund reserve/backstop policy and dispute-derived
+residual ownership. No standalone plan exists yet; status and open decision live in readiness.
 
 ### A5. Tests and review (P1)
 
-- Anchor tests for `update_skill_listing`, `remove_skill_listing`, `close_skill_listing`, `initialize_listing_settlement` (implemented, currently untested).
-- Voucher-slashing path tests once A1 lands, extending the existing upheld → bond-slash → refund-claim coverage in `tests/agentvouch-usdc-marketplace.ts` and `tests/agentvouch-usdc-disputes.ts`.
-- At least one API ↔ on-chain integration test proving entitlement/refund bookkeeping matches on-chain truth (web suite is currently fully mocked).
-- External security review of every USDC-moving instruction (Go gate; scope in the readiness doc's Security Review section).
-- Scanner eval harness (`evals/skill-scan/`): track unsafe-recall of the publish-time AI scan (`web/lib/ai/scan.ts`) against the labeled adversarial dataset; add every production miss as a new case (holdout first) and re-run before any rubric or model change. The adversarial set compounds into the evidence behind scanner claims and a reference set for disputes.
+Base launch gate: full local/forge/live-smoke evidence plus internal and external security review
+after the complete A1 mechanism exists. Status: see the readiness table and the Phase 9 plan. The
+publish-time scanner eval discipline (`evals/skill-scan/`: unsafe recall is the north-star metric;
+every production miss becomes a dataset case, holdout first) continues alongside — see the
+skill-scan section in `AGENTS.md`.
 
 ## Phase B: Mainnet Launch
 
-Run the Go/No-Go in `docs/MAINNET_READINESS.md`. Nothing here overrides it.
+Run the Base Mainnet Gate Table in `docs/MAINNET_READINESS.md`. Nothing here overrides it.
 
 ## Phase C: Post-Mainnet Protocol Direction
 
