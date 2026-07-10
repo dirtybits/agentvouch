@@ -55,7 +55,7 @@ contract ReportsTest is Test {
     }
 
     function test_protocolVersionMarksV1Candidate() public view {
-        assertEq(av.PROTOCOL_VERSION(), "base-v1-candidate");
+        assertEq(av.PROTOCOL_VERSION(), "base-v1-a1-candidate");
     }
 
     function test_openReportBondsAndLocksAuthorExposure() public {

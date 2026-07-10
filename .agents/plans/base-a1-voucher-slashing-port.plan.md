@@ -7,19 +7,19 @@ todos:
     status: completed
   - id: implement-contract
     content: "Implement in contracts/base-poc/src/AgentVouchEvm.sol (+ AgentVouchTypes.sol) per the locked design: optional listingId + purchase reference on AuthorReport (financial vs reputation-only branch); vouch() lock while vouchee has open reports (symmetric to the existing revokeVouch DisputeLocked guard); resolveReport(Upheld) O(1) parking with snapshot of slashPercentage/reward caps and totalVouchStakeReceivedUsdcMicros; permissionless slashReportVouches(reportId, vouchers[]) crank verifying eligibility per vouch, slashing at the snapshotted percentage into a ring-fenced refund-only bucket, setting VouchStatus.Slashed dead positions (accrual-excluded), and closing the report when accounted stake equals the snapshot; minimal refund claim for verified buyers of the referenced listing with claim window; residual-to-treasury close path with events; residual voucher stake reclaimable via revokeVouch after close."
-    status: pending
+    status: in_progress
   - id: forge-tests
     content: "Forge suite mirroring the Solana A1 coverage under the locked design: slash math at snapshot percentage, multi-voucher crank across multiple calls, stake-accounting completeness (report closes only when accounted == snapshot), two-sided membership lock (vouch() and revokeVouch both revert mid-report; totalVouchStakeReceived frozen), revision/listing dodge blocks, per-(report,voucher) double-slash guard, ring-fence (slash bucket never author-withdrawable, never in reporter-reward base), buyer-first refund claim + one-claim-per-purchase + window expiry + residual-to-treasury, reputation-only branch (no listing/purchase ref => no voucher slash, locks clear), reward-vault solvency with Slashed positions, zero-vouch path, pause interaction, reentrancy on USDC moves, gas snapshot for the recommended crank page size; once listing-referenced reports set `lockedByDispute`, add the updateSkillListing bump-guard flag-path test (flag set → bump reverts DisputeLocked even with `openDisputes == 0`)."
-    status: pending
+    status: in_progress
   - id: sync-artifacts
     content: "Sync Deploy.s.sol config, contracts/base-poc/ui/src/abi.ts, harness ABI fragments, and web/lib/adapters/agentVouchEvmAbi.ts + baseAuthorTrust.ts read surfaces (slashed-stake counters, report exposure) — keeping BaseAdapter server-safe."
-    status: pending
+    status: in_progress
   - id: web-trust-surfaces
     content: "Expose slashing honestly in web reads: Base skill/author trust shows stake-at-risk and slash history; no synthesized trust; chain-qualified joins preserved. UI actions (vouch/report) remain the Phase 9 report/vouch UI todo — this plan only guarantees the read surfaces reflect the new mechanism."
-    status: pending
+    status: in_progress
   - id: verify-and-record
     content: "Full gate: forge test --root contracts/base-poc, web format/lint/typecheck/vitest, next build --webpack; deploy a fresh Sepolia candidate, run a scripted backed-purchase -> upheld-report -> slash -> residual-reclaim smoke with recorded tx hashes and USDC deltas; update MAINNET_READINESS Base track, the phase-9/10 plans, and web/public/skill.md if product semantics change."
-    status: pending
+    status: in_progress
 isProject: false
 ---
 
@@ -171,11 +171,11 @@ implementation-time divergence from these gets a dated note here, not a silent c
    is proven by stake accounting**: the report closes when accounted (slashed-from) stake equals
    the snapshot — sound because the two-sided membership lock (row 5: existing revoke exit lock
    - new `vouch()` entry lock) freezes `totalVouchStakeReceivedUsdcMicros` for the vouchee while
-     a report is open. No inline-slash fast path: one mechanism, one audit surface; gas per crank
-     call is bounded by the caller's array (forge gas snapshot informs the recommended page size
-     in docs, not a contract constant). Rejected alternative: an on-chain voucher enumeration
-     array — more storage and a new growth-unbounded structure for no gain over calldata + the
-     accounting proof.
+   a report is open. No inline-slash fast path: one mechanism, one audit surface; gas per crank
+   call is bounded by the caller's array (forge gas snapshot informs the recommended page size
+   in docs, not a contract constant). Rejected alternative: an on-chain voucher enumeration
+   array — more storage and a new growth-unbounded structure for no gain over calldata + the
+   accounting proof.
 
 Consequence noted for UX copy: blocking new `vouch()` during an open report is also buyer/voucher
 protection (no staking into an active dispute), but the UI must say why vouching is temporarily
@@ -581,3 +581,67 @@ leaving 3,913 bytes below the EIP-170 limit.
 
 5. Keep the `forge build --root contracts/base-poc --sizes` checkpoint in the PR verification
    record. Stop implementation for approval if runtime bytecode reaches or exceeds 24,576 bytes.
+
+## Fixer Run Note (2026-07-09 — review 2)
+
+- Sequencing constraints were re-verified before edits: `base-update-skill-listing` is already in
+  the branch ancestry, this loop ran second, and the founder-acked claim-cohort/funding-order
+  decisions were treated as fixed.
+- Reviewable local progress before the protected size gate fired:
+  `withdrawAuthorProceeds` now rejects a listing locked by a financial report; `Deploy.s.sol`
+  hard-rejects non-Base-Sepolia chain IDs and requires explicit nonzero A1 deployment inputs; and
+  the isolated UI/harness ABIs include the additive financial-report lifecycle and rollback-safe
+  legacy views.
+- **STOP-THE-LINE:** `forge build --root contracts/base-poc --sizes` reports
+  `AgentVouchEvm` runtime size `27,931` bytes, which is `3,355` bytes above the EIP-170
+  `24,576`-byte limit. Per Deployment, observability, and verification addition 5, implementation
+  stopped for operator approval. No proxy, `via_ir`, build-toolchain change, feature deletion, or
+  contract split was selected autonomously.
+- All unfinished todos remain `in_progress` because work began but their done-when conditions are
+  unmet. No A1 behavioral suite or web trust/receipt patch was completed before the stop.
+
+## Closeout
+
+Verified:
+
+- `cwd=/Users/andysustic/Repos/agentvouch` — `git diff --check` passed.
+- `cwd=/Users/andysustic/Repos/agentvouch` — `npm run format:check` passed.
+- `cwd=/Users/andysustic/Repos/agentvouch` — `forge test --root contracts/base-poc` passed all
+  85 existing tests across seven suites; this is regression evidence only because the required
+  A1 behavioral suite does not exist yet.
+- `cwd=/Users/andysustic/Repos/agentvouch/contracts/base-poc` —
+  `forge fmt --check script/Deploy.s.sol` passed.
+- `cwd=/Users/andysustic/Repos/agentvouch/contracts/base-poc/harness` —
+  `npm run typecheck` passed.
+- `cwd=/Users/andysustic/Repos/agentvouch/contracts/base-poc/ui` — `npm run typecheck` passed.
+
+Attempted-blocked (cause):
+
+- `cwd=/Users/andysustic/Repos/agentvouch` —
+  `forge build --root contracts/base-poc --sizes` compiled, then exited 1 because
+  `AgentVouchEvm` is `27,931` runtime bytes, `3,355` over EIP-170. This protected gate blocks a
+  deployable candidate and requires an operator-approved size strategy.
+- `cwd=/Users/andysustic/Repos/agentvouch` —
+  `forge fmt --check --root contracts/base-poc` remains non-green on existing formatting deltas
+  in `AgentVouchEvm.sol`; no source-wide formatting rewrite was made after the stop.
+
+Deferred (tracked in):
+
+- Operator decision on a code-size strategy that preserves the locked economics and ABI, or
+  explicit approval for an otherwise-prohibited architecture/toolchain change — this plan's
+  EIP-170 stop gate.
+- Full A1 Forge coverage, web A1 trust/receipt surfaces, the resumable crank harness, compiled ABI
+  parity automation, readiness/runbook updates, and the full web gate — existing todos
+  `forge-tests`, `sync-artifacts`, `web-trust-surfaces`, and `verify-and-record`.
+- Founder-provided live values for `SLASH_PERCENTAGE`, `REFUND_CLAIM_WINDOW_SECONDS`,
+  `CHALLENGER_REWARD_BPS`, `CHALLENGER_REWARD_CAP_USDC_MICROS`, and `TREASURY_RECIPIENT`, followed
+  by an explicitly approved Base Sepolia deploy and combined live evidence run —
+  `verify-and-record`.
+
+Not claimed:
+
+- The A1 candidate is deployable, merged, deployed, live-smoked, externally reviewed, or ready
+  for Base mainnet.
+- The A1 Forge suite, web trust surfaces, existing-receipt-under-lock regression, docs/cutover
+  updates, full web gate, or human wallet smoke is complete.
+- Base mainnet (`eip155:8453`) was enabled or any live transaction was sent.

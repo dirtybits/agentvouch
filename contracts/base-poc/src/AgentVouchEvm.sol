@@ -1018,6 +1018,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         AgentVouchTypes.SkillListing storage l = listings[id];
         if (!l.exists) revert ListingNotFound();
         if (l.author != msg.sender) revert NotListingAuthor();
+        // Financial reports lock the listing at open (before an upheld ruling)
+        // so every revision's proceeds remain available for the snapshotted
+        // reporter-reward source until the report reaches a terminal path.
+        if (l.lockedByDispute) revert DisputeLocked();
         if (amount == 0) revert ZeroAmount();
 
         AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];

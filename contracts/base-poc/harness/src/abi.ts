@@ -1,7 +1,8 @@
 import { parseAbi } from "viem";
 
-/// Minimal AgentVouchEvm ABI: the write functions the gas-free flow exercises.
-/// (USDC approve/balanceOf/decimals come from viem's built-in `erc20Abi`.)
+/// AgentVouchEvm ABI for the gas-free flow plus resumable Base A1 lifecycle tooling.
+/// (USDC approve/balanceOf/decimals come from viem's built-in `erc20Abi`.) Legacy
+/// tuple getters remain unchanged; A1 fields are exposed through additive views.
 export const agentVouchAbi = parseAbi([
   "function registerAgent(string metadataUri)",
   "function depositAuthorBond(uint256 amount)",
@@ -12,11 +13,55 @@ export const agentVouchAbi = parseAbi([
   "function claimVoucherRevenue(address author)",
   "function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount)",
   "function openReport(address author, string evidenceUri) returns (uint64)",
+  "function openFinancialReport(address author, bytes32 listingId, bytes32 purchaseId, string evidenceUri) returns (uint64)",
   "function resolveReport(uint64 reportId, uint8 ruling, bool forfeitReporterBond) returns (uint256 returnedReporterBond, uint256 forfeitedReporterBond, uint256 slashedAuthorBond)",
+  "function slashReportVouches(uint64 reportId, address[] vouchers)",
+  "function claimFinancialReportRefund(uint64 reportId, bytes32 purchaseId)",
+  "function closeFinancialReportReserve(uint64 reportId)",
   // x402 Lane B (trust-minimized): the agent signs an EIP-3009 authorization off-chain;
   // a relayer submits this and the contract pulls USDC + records the purchase atomically.
   "function purchaseWithAuthorization(bytes32 id, address buyer, uint256 validAfter, uint256 validBefore, uint8 v, bytes32 r, bytes32 s) returns (bytes32)",
+  "function PROTOCOL_VERSION() view returns (string)",
+  "function getConfig() view returns ((address usdc, string chainContext, uint256 minVouchStakeUsdcMicros, uint256 disputeBondUsdcMicros, uint256 minAuthorBondForFreeListingUsdcMicros, uint256 minPaidListingPriceUsdcMicros, uint16 authorShareBps, uint16 voucherShareBps, uint16 protocolFeeBps, uint8 slashPercentage, uint256 authorProceedsLockSeconds, uint256 refundClaimWindowSeconds, uint16 challengerRewardBps, uint256 challengerRewardCapUsdcMicros, uint32 stakeWeightPerUsdc, uint256 riskComponentCap, uint32 vouchWeight, uint256 vouchComponentCap, uint32 longevityBonusPerDay, uint256 longevityComponentCap, uint256 upheldDisputePenalty, uint256 reputationScoreCap))",
+  "function getA1TreasuryRecipient() view returns (address)",
+  "function getProfile(address agent) view returns ((bool registered, string metadataUri, uint256 reputationScore, uint64 totalVouchesReceived, uint64 totalVouchesGiven, uint256 totalVouchStakeReceivedUsdcMicros, uint256 authorBondUsdcMicros, uint64 activeFreeListingCount, uint64 openDisputes, uint64 upheldDisputes, uint64 dismissedDisputes, uint256 rewardIndexUsdcMicrosX1e12, uint256 unclaimedVoucherRevenueUsdcMicros, uint64 registeredAt))",
+  "function getA1ProfileStats(address agent) view returns ((uint64 slashingReportCount, uint256 totalVouchStakeSlashedUsdcMicros))",
+  "function getVouch(address voucher, address vouchee) view returns ((address voucher, address vouchee, uint256 stakeUsdcMicros, uint8 status, uint256 cumulativeRevenueUsdcMicros, uint64 linkedListingCount, uint256 entryRewardIndexUsdcMicrosX1e12, uint256 pendingRewardsUsdcMicros, uint64 lastPayoutAt))",
+  "function getListing(bytes32 id) view returns ((address author, bytes32 skillIdHash, string uri, string name, string description, uint256 priceUsdcMicros, uint64 currentRevision, uint256 totalDownloads, uint256 totalRevenueUsdcMicros, uint8 status, bool lockedByDispute, bool exists))",
+  "function getSettlement(bytes32 id, uint64 revision) view returns ((bool initialized, uint64 createdAt, uint64 updatedAt, uint256 authorProceedsUsdcMicros, uint256 slashedDepositUsdcMicros, bool locked))",
+  "function getPurchase(bytes32 purchaseId) view returns ((bool exists, address buyer, bytes32 listingId, uint64 revision, uint256 priceUsdcMicros, uint256 authorShareUsdcMicros, uint256 voucherPoolUsdcMicros, uint64 timestamp))",
+  "function getAuthorReport(uint64 reportId) view returns ((bool exists, address reporter, address author, string evidenceUri, uint256 bondUsdcMicros, uint256 forfeitedReporterBondUsdcMicros, uint256 slashedAuthorBondUsdcMicros, uint8 status, uint8 ruling, uint64 openedAt, uint64 resolvedAt))",
+  "function getFinancialReport(uint64 reportId) view returns ((bool exists, address reporter, address author, string evidenceUri, uint256 bondUsdcMicros, uint256 forfeitedReporterBondUsdcMicros, uint256 slashedAuthorBondUsdcMicros, uint8 status, uint8 ruling, uint64 openedAt, uint64 resolvedAt, bool financial, bytes32 listingId, bytes32 purchaseId, uint64 rewardSettlementRevision, uint256 snapshottedPreSlashStakeUsdcMicros, uint256 processedPreSlashStakeUsdcMicros, uint256 slashedVouchStakeUsdcMicros, uint8 snapshottedSlashPercentage, uint16 snapshottedChallengerRewardBps, uint256 snapshottedChallengerRewardCapUsdcMicros, uint256 refundReserveUsdcMicros, uint256 refundRemainingUsdcMicros, uint256 reporterRewardReserveUsdcMicros, bool refundReserveClosed, uint64 parkedAt, uint64 refundFundedAt, uint64 refundDeadline, uint64 finalizedAt))",
+  "function financialReportIdByPurchase(bytes32 purchaseId) view returns (uint64)",
+  "function isReportVouchSlashed(uint64 reportId, address voucher) view returns (bool)",
+  "function hasFinancialReportRefund(uint64 reportId, bytes32 purchaseId) view returns (bool)",
+  "event Vouched(address indexed voucher, address indexed vouchee, uint256 stake)",
+  "event VouchRevoked(address indexed voucher, address indexed vouchee, uint256 returned)",
   "event SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)",
+  "event AuthorReportOpened(uint64 indexed reportId, address indexed reporter, address indexed author, uint256 bond, string evidenceUri)",
+  "event AuthorReportResolved(uint64 indexed reportId, address indexed resolver, address indexed author, uint8 ruling, uint256 returnedReporterBond, uint256 forfeitedReporterBond, uint256 slashedAuthorBond)",
+  "event FinancialReportOpened(uint64 indexed reportId, address indexed reporter, address indexed author, bytes32 listingId, bytes32 purchaseId, uint256 bond, string evidenceUri)",
+  "event FinancialReportParked(uint64 indexed reportId, address indexed resolver, address indexed author, uint256 preSlashStake, uint256 authorBondReserve, uint8 slashPercentage)",
+  "event FinancialReportVouchSlashed(uint64 indexed reportId, address indexed voucher, uint256 preSlashStake, uint256 slashAmount, uint256 processedPreSlashStake)",
+  "event FinancialReportFinalized(uint64 indexed reportId, address indexed author, uint256 refundReserve, uint256 reporterRewardReserve, uint64 refundDeadline)",
+  "event FinancialReportRefundClaimed(uint64 indexed reportId, bytes32 indexed purchaseId, address indexed buyer, uint256 amount)",
+  "event FinancialReportReserveClosed(uint64 indexed reportId, address indexed treasuryRecipient, address indexed reporter, uint256 reporterReward, uint256 treasurySweep)",
   "error AlreadyRegistered()",
+  "error BadEconomics()",
+  "error DisputeLocked()",
+  "error FinancialReportRequired()",
+  "error InvalidFinancialReference()",
+  "error InvalidSlashVouch()",
   "error ListingNotFound()",
+  "error NoRefundAvailable()",
+  "error PurchaseNotEligibleForRefund()",
+  "error RefundAlreadyClaimed()",
+  "error RefundNotFunded()",
+  "error RefundReserveClosed()",
+  "error RefundWindowExpired()",
+  "error RefundWindowOpen()",
+  "error ReportNotFound()",
+  "error ReportNotOpen()",
+  "error ReportNotSlashing()",
+  "error SlashStakeMismatch()",
 ]);
