@@ -41,7 +41,7 @@ The trimmed hash must match the local `.so` hash; the trailing bytes on the dump
 
 ## Instruction surface (25 instructions)
 
-`claim_purchase_refund`, `claim_voucher_revenue`, `close_skill_listing`, `create_refund_pool`, `create_skill_listing`, `deposit_author_bond`, `initialize_config`, `initialize_listing_settlement`, `link_vouch_to_listing`, `migrate_config_m13`, `migrate_skill_listing_m13`, `open_author_dispute`, `purchase_skill`, `register_agent`, `remove_skill_listing`, `resolve_author_dispute`, `revoke_vouch`, `set_paused`, `settle_x402_purchase`, `slash_dispute_vouches`, `unlink_vouch_from_listing`, `update_skill_listing`, `vouch`, `withdraw_author_bond`, `withdraw_author_proceeds`.
+The active program exposes the 25 Solana instructions recorded in [`docs/CHAIN_CAPABILITY_MAP.md`](./CHAIN_CAPABILITY_MAP.md). That map is checked against both `programs/agentvouch/src/lib.rs` and `web/agentvouch.json` by `npm run verify:chain-map`; this file remains the source of truth for the live devnet deployment and smoke evidence.
 
 Error codes were renumbered after `NoActiveAuthorBacking` was removed; downstream consumers that parse Anchor error variants by index must use the synced IDL rather than hard-coded numbers.
 
