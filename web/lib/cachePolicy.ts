@@ -2,7 +2,7 @@ export const PUBLIC_ROUTE_CACHE_SECONDS = {
   landing: 60,
   skillsList: 60,
   skillDetail: 30,
-  authorTrust: 30,
+  authorTrust: 60,
 } as const;
 
 // stale-while-revalidate windows are generous so a low-traffic site still
