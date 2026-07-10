@@ -82,33 +82,7 @@ The program also derives SPL Token vault accounts for protocol treasury, x402 se
 
 ### Instructions
 
-| Instruction                 | Who calls it         | Current behavior                                                                                                                              |
-| --------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialize_config`         | Deployer or operator | Initializes `ReputationConfig`, protocol treasury vault, and x402 settlement vault.                                                           |
-| `migrate_config_m13`        | Config authority     | Migrates older devnet config accounts into the M13-compatible layout.                                                                         |
-| `migrate_skill_listing_m13` | Listing author       | Migrates older devnet skill listings into the revision/settlement-aware layout.                                                               |
-| `set_paused`                | Pause authority      | Toggles the emergency pause; new risk-creating flows are blocked while claim/cleanup paths remain available.                                  |
-| `register_agent`            | Any wallet           | Creates or refreshes an `AgentProfile`.                                                                                                       |
-| `deposit_author_bond`       | Registered author    | Transfers USDC from the author ATA into the author bond vault.                                                                                |
-| `withdraw_author_bond`      | Registered author    | Withdraws unlocked USDC from the author bond vault.                                                                                           |
-| `vouch`                     | Registered voucher   | Transfers USDC into a vouch vault for another author.                                                                                         |
-| `revoke_vouch`              | Voucher              | Returns eligible USDC stake from a live vouch.                                                                                                |
-| `open_author_dispute`       | Challenger           | Opens a skill-linked author dispute and escrows the USDC dispute bond.                                                                        |
-| `resolve_author_dispute`    | Authorized resolver  | Dismisses or upholds the dispute and applies the configured slashing path.                                                                    |
-| `slash_dispute_vouches`     | Anyone               | Permissionlessly cranks voucher slashing pages for upheld paid disputes parked in `SlashingVouchers`.                                         |
-| `create_skill_listing`      | Registered author    | Creates a listing with `price_usdc_micros` and revision-scoped settlement vaults.                                                             |
-| `update_skill_listing`      | Listing author       | Updates URI, name, description, or USDC price.                                                                                                |
-| `remove_skill_listing`      | Listing author       | Marks a listing removed.                                                                                                                      |
-| `close_skill_listing`       | Listing author       | Closes a removed listing.                                                                                                                     |
-| `initialize_listing_settlement` | Listing author or helper | Creates the settlement escrow for the current listing revision when needed.                                                              |
-| `purchase_skill`            | Buyer                | Transfers USDC, records a revision-scoped purchase, and allocates author proceeds to escrow plus voucher rewards to the author's reward vault. |
-| `settle_x402_purchase`      | Settlement authority | Converts a verified protocol-listed x402 settlement into on-chain purchase, proceeds, and voucher-reward state.                               |
-| `withdraw_author_proceeds`  | Listing author       | Withdraws unlocked author proceeds from the settlement vault.                                                                                 |
-| `create_refund_pool`        | Config authority     | Funds a bounded refund pool for an upheld paid-skill dispute cohort.                                                                          |
-| `claim_purchase_refund`     | Buyer                | Claims one bounded refund for an eligible revision-scoped purchase.                                                                           |
-| `claim_voucher_revenue`     | Voucher              | Claims accrued author-wide USDC voucher rewards.                                                                                              |
-| `link_vouch_to_listing`     | Voucher              | Links a live author vouch to a listing so it can earn listing rewards and be snapshotted for paid-dispute slashing.                           |
-| `unlink_vouch_from_listing` | Voucher              | Unlinks a listing reward/slash position when the listing is not dispute-locked.                                                               |
+The canonical instruction list, plain-language verbs, Base mappings, semantic differences, and source-vs-deployment status live in [`docs/CHAIN_CAPABILITY_MAP.md`](./CHAIN_CAPABILITY_MAP.md). Run `npm run verify:chain-map` after changing either chain's public state-changing surface.
 
 ## Economic Parameters
 

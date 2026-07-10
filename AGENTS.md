@@ -16,6 +16,7 @@ This file is the operating manual for any model working in this repo. `CLAUDE.md
   - What happened in phase N: `.agents/plans/base-port-chain-adapter*.plan.md` frontmatter todos + dated notes; completed Phase 1–8 sections are historical and should not be edited except corrections.
   - Which PR/branch carried a change: `gh pr view` plus the umbrella ledger.
   - Live Solana devnet state (program ID, deploy txs, smoke fixtures): `docs/DEVNET_STATE.md`.
+  - Cross-chain instruction/capability parity and source-vs-deployment status: `docs/CHAIN_CAPABILITY_MAP.md`.
   - Chain seam interfaces: `web/lib/adapters/types.ts`.
   - Agent-facing product contract: `web/public/skill.md` (canonical served file; keep in sync after protocol/product changes; do not create a duplicate root `SKILL.md`).
 
@@ -27,6 +28,7 @@ This file is the operating manual for any model working in this repo. `CLAUDE.md
 4. **GitHub identity**: `gh auth status` — the active account must be `dirtybits`. Session resume can silently flip it to a secondary managed (EMU) account that cannot create PRs here; fix with `gh auth switch --user dirtybits`. Keep the repo-local Git author on the verified `dirtybits` identity even when other logins exist on the machine.
 5. **Branching**: one phase/feature = one PR off current `main` (`feat/<topic>` or `feat/base-port-phase-<N>`). Per-agent branches (`claude/…`, `cursor/…`, `codex/…`) are scratch that rebase/reset onto the shared feature branch.
 6. **If resuming plan work**: read the plan frontmatter todos AND the dated sequencing notes (dated notes override frontmatter order when they say so). Set the todo `in_progress` when you start.
+7. **If doing chain-tagged protocol, contract, ABI, adapter, deployment, or readiness work**: read `docs/CHAIN_CAPABILITY_MAP.md` and run `npm run verify:chain-map`. Static parity does not prove deployment; re-run the recorded live selector check before changing a deployed-status claim.
 
 ## 2. Conventions
 
