@@ -3,6 +3,22 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 describe("settings page source", () => {
+  it("sends signed API-key list auth in a header rather than a GET body", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/settings/page.tsx"),
+      "utf8"
+    );
+
+    const start = source.indexOf("const loadKeys");
+    const end = source.indexOf("const loadIdentity");
+    const loadKeysSource = source.slice(start, end);
+
+    expect(loadKeysSource).toContain(
+      'headers: { "X-AgentVouch-Auth": JSON.stringify(auth) }'
+    );
+    expect(loadKeysSource).not.toContain("body:");
+  });
+
   it("lets wallet owners edit usernames and link GitHub profiles", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/settings/page.tsx"),

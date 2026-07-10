@@ -98,10 +98,23 @@ export async function GET(request: NextRequest) {
     const body = await request.json().catch(() => null);
 
     const authHeader = request.headers.get("authorization");
+    const signedAuthHeader = request.headers.get("x-agentvouch-auth");
     let pubkey: string | null = null;
 
-    if (body?.auth) {
-      const verification = verifyWalletSignature(body.auth);
+    let signedAuth = body?.auth as AuthPayload | undefined;
+    if (signedAuthHeader) {
+      try {
+        signedAuth = JSON.parse(signedAuthHeader) as AuthPayload;
+      } catch {
+        return NextResponse.json(
+          { error: "Malformed X-AgentVouch-Auth header" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (signedAuth) {
+      const verification = verifyWalletSignature(signedAuth);
       if (!verification.valid || !verification.pubkey) {
         return NextResponse.json(
           { error: verification.error || "Invalid signature" },

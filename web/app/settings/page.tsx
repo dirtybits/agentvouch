@@ -132,9 +132,7 @@ export default function SettingsPage() {
     try {
       const auth = await signAuth("list-keys");
       const res = await fetch("/api/keys", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auth }),
+        headers: { "X-AgentVouch-Auth": JSON.stringify(auth) },
       });
 
       if (!res.ok) {
