@@ -57,10 +57,12 @@ Status meanings:
 
 Do not put these functions in the current-surface table until their implementation reaches `main`.
 
+<!-- BEGIN BLOCKED A1 SURFACE -->
 | Work | Verified location | Status | Public surface | Meaning |
 | --- | --- | --- | --- | --- |
 | Full Base A1 port | `a2a/base-a1-voucher-slashing-port-20260709` at `47ec443` | `PARTIAL_SOURCE_BLOCKED_EIP170` | `openFinancialReport`, `slashReportVouches`, `claimFinancialReportRefund(uint64,bytes32)`, `closeFinancialReportReserve` | Runtime measured 27,931 bytes, 3,355 bytes over EIP-170. Not merged, deployed, smoked, or security-reviewed. |
 | Base A1-lite memo | Same branch at `47ec443` | `PROPOSED_UNAPPROVED` | Proposed `claimFinancialReportRefund(uint64)` and `claimFinancialReportTreasuryCredit(uint64)` | Decision memo only. Locked economics and the legacy ABI cannot change without operator approval. |
+<!-- END BLOCKED A1 SURFACE -->
 
 ## Verification
 
@@ -76,6 +78,8 @@ The checker compares:
 2. the 25 instructions in `web/agentvouch.json`;
 3. this table's Solana mappings; and
 4. every state-changing `public` or `external` function defined by `contracts/base-poc/src/AgentVouchEvm.sol` against this table's Base mappings.
+
+On a worktree that carries the blocked full-A1 source, the verifier additionally permits only the complete four-function `PARTIAL_SOURCE_BLOCKED_EIP170` surface recorded above. It still rejects an undocumented public state-changing function, and it never treats those selectors as current Base `main` or deployed behavior.
 
 It deliberately does not make network requests. For a claim about what is deployed, recheck the recorded address and selector surface against Base Sepolia, for example:
 
