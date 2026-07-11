@@ -3,22 +3,22 @@ name: base-a1-voucher-slashing-port
 overview: "Port the A1 voucher-slashing mechanism (live on Solana devnet since 2026-06-10) into the Base v1 candidate contract, EVM-simplified but invariant-preserving, so upheld paid-listing reports slash linked vouch stake — landing BEFORE the Phase 9c external security review so one review covers the complete mechanism. Approved 2026-07-06 (supersedes the base-port plan's disputes/slashing deferral for Base v1)."
 todos:
   - id: design-lock-a1-evm
-    content: "DONE 2026-07-06 — design locked and acked (founder delegated the ack in-session after merging PR #81). Resolutions recorded in the 'Design-lock resolutions' section, grounded in contract recon: Base vouching is AUTHOR-WIDE (no link_vouch_to_listing exists; Vouch.linkedListingCount is vestigial), there is NO on-chain vouch enumeration (only totalVouchStakeReceivedUsdcMicros), and revokeVouch already carries the openDisputes>0 DisputeLocked exit lock. Decisions: (1) optional paid-listing + verified-purchase reference on reports splits the financial branch (bond-first then author-wide voucher slash) from reputation-only; (2) buyer-first routing with minimal on-chain refund claim, residual to treasury, capped reporter reward from author proceeds only; (3) config slashPercentage snapshotted at resolution, no resolver discretion; (4) park + permissionless calldata-driven crank as the ONLY slash path, completeness proven by stake accounting, with a new vouch() open-report lock freezing membership symmetrically."
+    content: "DONE 2026-07-06, amended and founder-acked 2026-07-10 — Base vouching is AUTHOR-WIDE (no link_vouch_to_listing exists), financial reports bind one verified paid purchase, slashPercentage is snapshotted with no resolver discretion, and park + permissionless calldata-driven crank is the only slash path. The 2026-07-10 settlement amendment supersedes the original reporter-reward/shared-pool routing: the initiating buyer is the sole A1 refund beneficiary; there is no additional reporter reward and author proceeds are untouched; claims use a finite window; excess slash and expired buyer entitlement become pull-based credit for a dedicated restitution reserve recipient, never unrestricted operating-treasury revenue."
     status: completed
   - id: implement-contract
-    content: "Implement in contracts/base-poc/src/AgentVouchEvm.sol (+ AgentVouchTypes.sol) per the locked design: optional listingId + purchase reference on AuthorReport (financial vs reputation-only branch); vouch() lock while vouchee has open reports (symmetric to the existing revokeVouch DisputeLocked guard); resolveReport(Upheld) O(1) parking with snapshot of slashPercentage/reward caps and totalVouchStakeReceivedUsdcMicros; permissionless slashReportVouches(reportId, vouchers[]) crank verifying eligibility per vouch, slashing at the snapshotted percentage into a ring-fenced refund-only bucket, setting VouchStatus.Slashed dead positions (accrual-excluded), and closing the report when accounted stake equals the snapshot; minimal refund claim for verified buyers of the referenced listing with claim window; residual-to-treasury close path with events; residual voucher stake reclaimable via revokeVouch after close."
+    content: "Implement the locked design in contracts/base-poc/src/AgentVouchEvm.sol + libraries/AgentVouchTypes.sol + new linked external library libraries/A1Settlement.sol: keep storage, public selectors/modifiers, financial-report opening validation, legacy report flow, and commerce on the facade; delegate financial resolve/park, slash-crank, final allocation, initiating-buyer claim, expiry close, and restitution-reserve claim to A1Settlement without changing storage order. Enable via_ir at optimizer runs=200; keep the live getAuthorReport legacy getter; remove all active reporter-reward accounting; leave author proceeds untouched; calculate buyerEntitlement=min(totalSlash, initiatingPurchasePrice), credit excess/expired entitlement to the dedicated restitution reserve, and keep every payout pull-based."
     status: in_progress
   - id: forge-tests
-    content: "Forge suite mirroring the Solana A1 coverage under the locked design: slash math at snapshot percentage, multi-voucher crank across multiple calls, stake-accounting completeness (report closes only when accounted == snapshot), two-sided membership lock (vouch() and revokeVouch both revert mid-report; totalVouchStakeReceived frozen), revision/listing dodge blocks, per-(report,voucher) double-slash guard, ring-fence (slash bucket never author-withdrawable, never in reporter-reward base), buyer-first refund claim + one-claim-per-purchase + window expiry + residual-to-treasury, reputation-only branch (no listing/purchase ref => no voucher slash, locks clear), reward-vault solvency with Slashed positions, zero-vouch path, pause interaction, reentrancy on USDC moves, gas snapshot for the recommended crank page size; once listing-referenced reports set `lockedByDispute`, add the updateSkillListing bump-guard flag-path test (flag set → bump reverts DisputeLocked even with `openDisputes == 0`)."
+    content: "Forge suite for the final economics and split architecture: slash math, multi-call crank, completeness, two-sided membership lock, revision/listing dodge blocks, per-(report,voucher) idempotency, dead-position reward solvency, zero-vouch path, pause and reentrancy behavior; initiating purchase is the only eligible refund, entitlement is price-capped and may be partial, no reporter reward or author-proceeds debit occurs, excess slash is reserve credit, expiry moves only unclaimed entitlement to reserve credit, buyer/reserve claims are independent and pull-based, and no arbitrary caller can redirect funds. Add runtime-size assertions for both AgentVouchEvm and A1Settlement and retain the lockedByDispute flag-path regression."
     status: in_progress
   - id: sync-artifacts
-    content: "Sync Deploy.s.sol config, contracts/base-poc/ui/src/abi.ts, harness ABI fragments, and web/lib/adapters/agentVouchEvmAbi.ts + baseAuthorTrust.ts read surfaces (slashed-stake counters, report exposure) — keeping BaseAdapter server-safe."
+    content: "Sync Deploy.s.sol for library-first deployment/linking and explicit nonzero claim-window/slash/restitution-recipient inputs; record and verify both deployed artifacts; sync contracts/base-poc/ui/src/abi.ts, harness ABI fragments, web/lib/adapters/agentVouchEvmAbi.ts, baseAuthorTrust.ts, and chain-map expectations. Preserve the deployed legacy getConfig/getProfile/getAuthorReport read ABI, keep inactive legacy reward fields zero, and keep BaseAdapter server-safe."
     status: in_progress
   - id: web-trust-surfaces
     content: "Expose slashing honestly in web reads: Base skill/author trust shows stake-at-risk and slash history; no synthesized trust; chain-qualified joins preserved. UI actions (vouch/report) remain the Phase 9 report/vouch UI todo — this plan only guarantees the read surfaces reflect the new mechanism."
     status: in_progress
   - id: verify-and-record
-    content: "Full gate: forge test --root contracts/base-poc, web format/lint/typecheck/vitest, next build --webpack; deploy a fresh Sepolia candidate, run a scripted backed-purchase -> upheld-report -> slash -> residual-reclaim smoke with recorded tx hashes and USDC deltas; update MAINNET_READINESS Base track, the phase-9/10 plans, and web/public/skill.md if product semantics change."
+    content: "Full gate: forge test and forge build --sizes with AgentVouchEvm <=23,500 runtime bytes and both artifacts <=24,576; web format/lint/typecheck/vitest and next build --webpack; deploy and verify a fresh linked Sepolia library+facade candidate; run backed-purchase -> upheld-report -> multi-call slash -> buyer claim -> expiry/reserve-credit -> reserve claim -> residual-vouch reclaim with tx hashes and USDC deltas; update CHAIN_CAPABILITY_MAP, MAINNET_READINESS, phase-9/10 plans, BASE_DEPLOY, and web/public/skill.md. No Base mainnet enablement."
     status: in_progress
 isProject: false
 ---
@@ -146,6 +146,15 @@ implementation-time divergence from these gets a dated note here, not a silent c
    behavior): bond-bounded author slash, no voucher slashing, no refund pool, locks clear at
    resolution (A2 findings 3 + 7: the branches must be mutually exclusive and the no-purchase
    branch must not strand locks). Do NOT port the Solana listing-link machinery.
+
+   > **Founder clarification (2026-07-10):** author-wide exposure is a deliberate reputation
+   > model, not merely an artifact of the current Base contract. A voucher underwrites the
+   > author/agent's portfolio: it shares in reward upside across the author's work and accepts
+   > qualifying downside across that work. Product and protocol copy must state that the vouch
+   > covers existing and future author work until revoked, rather than implying the voucher
+   > reviewed or insured one listing. Do not replace this with listing-scoped allocation in the
+   > Base A1 port.
+
 2. **Routing — RESOLVED: buyer-first, minimal on-chain refund claim, capped reporter reward.**
    This answers PR #78's open "reporter-vs-treasury bounty routing" question with the P0.2
    lesson. Slash buckets are refund-only: verified buyers of the referenced listing claim from
@@ -545,8 +554,9 @@ leaving 3,913 bytes below the EIP-170 limit.
 
 1. `Deploy.s.sol` must hard-revert unless `block.chainid == 84532`; a hard-coded
    `eip155:84532` config string alone does not prevent an accidental Base mainnet broadcast.
-   Do not introduce a proxy, `via_ir`, or build-toolchain change as a code-size workaround without
-   explicit approval.
+   Do not introduce a proxy or any unapproved build-toolchain change. **Superseded 2026-07-10:
+   `via_ir = true` at optimizer runs=200 is explicitly approved by the scope amendment below; the
+   proxy prohibition remains absolute.**
 
 2. Require explicit non-placeholder A1 deployment inputs for the claim window, reward bps/cap,
    slash percentage, and nonzero treasury recipient. Record the selected values and role holders
@@ -654,6 +664,12 @@ conflated — **code size is an engineering problem, and it should not force an 
 decision** — and resolves them independently. It supersedes the memo (which is retained as a
 historical record, banner added).
 
+**Implementation precedence:** this amendment plus the current frontmatter override every earlier
+reference in this plan to a shared/multi-buyer A1 claim pool, reporter reward, author-proceeds
+reward source, unrestricted `treasuryRecipient`, dropping `getAuthorReport`, or requiring new
+approval for `via_ir`. Those earlier passages remain as dated review history and must not be
+implemented.
+
 **Measured before deciding** (forge 1.7.1, on this branch; only `out/`+`cache` touched):
 
 | Config                | Runtime bytes | Over cap |
@@ -670,64 +686,147 @@ is packaging, not economics.
 
 1. **Extract the A1 settlement internals into an external `library` (delegatecall).** A linked
    library gets its own 24 KB budget, so moving the financial-report settlement bodies
-   (`slashReportVouches` crank math, refund-bucket accounting, treasury-credit computation,
+   (`slashReportVouches` crank math, refund-bucket accounting, restitution-reserve computation,
    report close) into `library A1Settlement` operating on passed storage refs should land the
-   core contract at ~22–23 KB with headroom. This preserves the locked economics and ABI
-   byte-for-byte in behavior; it adds a link step and one more artifact to the Phase 9c review
-   surface. Verify by measurement, not intuition.
+   core contract at ~22–23 KB with headroom. This preserves all deployed legacy ABI and the final
+   economics locked below; the additive, not-yet-deployed A1 ABI may change to match the final
+   fixed-entitlement/reserve lifecycle. It adds a link step and one more artifact to the Phase 9c
+   review surface. Verify by measurement, not intuition.
 2. **Set `via_ir = true` permanently in `contracts/base-poc/foundry.toml`.** Keep `runs` at 200
    unless a measured reason to drop it appears; the headroom is worth more than marginal runtime
    gas here.
-3. **Drop the `LegacyAuthorReport` compatibility getter** unless a live on-chain/indexer consumer
-   is identified — dead weight on a fresh-deploy candidate.
+3. **Keep the `LegacyAuthorReport` compatibility getter.** Recon on 2026-07-10 found live
+   consumers in the Base UI/harness ABI, web adapter ABI and phase-8 boundary test, Forge report
+   tests, deploy verification, and the currently deployed Sepolia report smoke. Removing it would
+   break a deployed legacy read surface; recover size through the library split instead.
 4. **Add a runtime-size CI gate** (`forge build --sizes` assertion) so a candidate can never
    again exceed EIP-170 silently.
-5. **Keep the branch's pull-based finalization** (buyer/treasury credits claimed, not pushed at
-   close) — a blacklisted/ reverting USDC recipient must not be able to brick report
-   finalization or listing unlock. This is retained on its merits regardless of A/B outcome.
+5. **Use pull-based finalization** (buyer/restitution-reserve credits claimed independently; no
+   transfer during finalization or expiry close) so a blacklisted or reverting recipient cannot
+   brick report finalization or listing unlock.
 
-If step 1 lands the full-locked mechanism at ≤ 23.5 KB (near-certain), **the size blocker is
-gone and the locked economics ship unchanged** — the economics gates in section B below then
-only decide whether to _additionally_ simplify, not whether size forces a cut.
+#### A1Settlement extraction map (locked 2026-07-10)
 
-### B — Economics changes (DECISION NEEDED — founder; do NOT implement before ack)
+- Add `contracts/base-poc/src/libraries/A1Settlement.sol` as a linked external library. Its
+  state-mutating public library calls must compile to `DELEGATECALL`; do not use an all-`internal`
+  library whose code is merely inlined back into `AgentVouchEvm`.
+- `AgentVouchEvm` remains the sole storage/custody owner and the only user-facing contract address.
+  Keep all existing mappings and fields in their current order; do not consolidate them into a new
+  root storage struct or introduce proxy-style storage slots.
+- Keep on the facade: initialization and roles, pause/reentrancy modifiers, registration, bonds,
+  vouch/revoke, listings, purchase/x402 lanes, author/voucher withdrawals, ID helpers, deployed
+  legacy getters/events, `openReport`, the reputation-only resolve branch, and
+  `openFinancialReport` validation plus lock-on-open.
+- Keep thin facade entry points for `resolveReport`, `slashReportVouches`,
+  `claimFinancialReportRefund`, `closeFinancialReportReserve`, and the new fixed-destination
+  restitution-reserve claim. `resolveReport` performs the role check and dispatches legacy versus
+  financial behavior; every USDC-moving public entry retains the facade's `nonReentrant` guard.
+- Move into the linked library: financial upheld/dismissed resolution and parking, author-bond
+  first-loss accounting for the financial branch, the voucher slash loop and completeness check,
+  final fixed-credit allocation, initiating-buyer claim accounting/transfer, expiry close that
+  converts an unclaimed buyer entitlement into reserve credit, and reserve-recipient claim
+  accounting/transfer. Keep finalization as an internal helper inside the library.
+- Pass the existing concrete `storage` references/mappings plus the facade's immutable USDC value
+  into library calls. Under `DELEGATECALL`, `msg.sender`, `address(this)`, token custody, and emitted
+  log address must remain those of `AgentVouchEvm`.
+- Keep reward-index accrual single-sourced: a small `internal` storage-ref helper in
+  `A1Settlement` may be inlined into both artifacts, but do not copy two independently maintained
+  accrual formulas or introduce an external self-call back into the facade.
+- Preserve custom-error and event selectors in synced ABIs. Events emitted by delegated library
+  code must appear from the facade address and must not be double-emitted by wrappers.
+- Update `Deploy.s.sol` to deploy/link the library before the facade. Record both addresses,
+  bytecode hashes, compiler settings, and verified source/link metadata in `docs/BASE_DEPLOY.md`;
+  application env continues to point only at the facade.
+- Acceptance gate: `via_ir = true`, optimizer runs=200, `AgentVouchEvm` runtime ≤23,500 bytes, and
+  both facade and library runtime ≤24,576 bytes. A breach stops implementation; it does not
+  authorize a proxy or another economics cut.
 
-These change locked economics, so they follow the same gate discipline the lite memo used and the
-`MAINNET_READINESS.md` Launch Trust Bar requires. Recommended on their own merits, independent of
-size:
+The economics below were decided independently of code size. The library split resolves the size
+blocker; it does not justify weakening the final settlement rules.
 
-- **B1 — Delete the reporter/challenger reward from financial reports.** The branch already
+### B — Economics decisions (FOUNDER-ACKED 2026-07-10)
+
+These decisions supersede only the financial-settlement routing from the 2026-07-06 lock and the
+superseded A1-lite memo. Voucher downside, author-wide slash scope, snapshot completeness,
+two-sided locks, dead-position semantics, and permissionless cranking remain unchanged.
+
+- **B1 — APPROVED: delete the reporter/challenger reward from financial reports.** The branch
   collapsed reporter == initiating buyer (`openFinancialReport` requires
   `purchase.buyer == msg.sender`), so the refund IS the reporting incentive and a separate reward
   is redundant. Deleting it **removes** the P0.2 resolver+challenger collusion vector entirely
-  rather than merely capping it — a mechanism improvement, not a descope. Removes
-  `CHALLENGER_REWARD_BPS` / `CHALLENGER_REWARD_CAP_USDC_MICROS` from the A1 surface.
-- **B2 — Initiating-purchase-only refund for capped alpha; multi-buyer pool deferred to A4.**
+  rather than merely capping it. The upheld report bond principal returns, but there is no profit
+  bounty, no debit to author proceeds, and no active A1 reward bps/cap. A separately funded,
+  opt-in bug-bounty mechanism is future scope and must not draw from disputed stake.
+- **B2 — APPROVED: initiating-purchase-only refund for capped alpha; multi-buyer claims deferred
+  to A4.**
   The branch already refunds only the initiating purchase (no multi-buyer pool was ever built).
-  Accept that for alpha **on the condition** that slash value above the single buyer entitlement
-  is earmarked in the A4 reserve policy as _restitution reserve for other harmed buyers of the
-  same listing_, not free treasury — so Launch Trust Bar condition 2 (harmed-party-first) stays
-  honest and the deferred buyers have a funded path in A4. Record the deferral as a dated note;
-  do not silently narrow "harmed buyers" to one.
-- **B3 — Reject the lite memo's other narrowings** (perpetual no-expiry entitlement, excess
-  unconditionally to treasury) unless B2's restitution-reserve earmark is impossible; they trade
-  correctness for a size saving that section A already provides.
+  The initiating purchase is the sole enforceable Base A1 claim. Other buyers are an explicit A4
+  obligation; product/docs must not imply that A1 refunds every harmed buyer. Slash above the
+  initiating entitlement is credit for a dedicated, custody-approved restitution reserve
+  recipient, never unrestricted operating-treasury revenue. The founder explicitly accepts for
+  capped alpha that the configured author-wide slash can exceed one purchase price; that excess is
+  a reputation penalty reserved for restitution, not protocol income. This does not complete the
+  A4 mainnet-alpha gate.
+- **B3 — APPROVED: reject perpetual claims and unrestricted treasury ownership.** Use a finite,
+  nonzero deployment-configured buyer claim window. Finalization records credits and unlocks
+  without transferring USDC. The buyer pulls during the window; after expiry, a permissionless
+  close converts any unclaimed buyer entitlement into restitution-reserve credit without
+  transferring it. The immutable restitution reserve recipient pulls its credit independently.
+  A blacklisted/reverting buyer or reserve recipient can never block report finalization, listing
+  unlock, or the other claimant.
+
+#### Locked financial settlement lifecycle
+
+1. On upheld resolution, return the reporter's original bond principal, slash the author bond
+   first, snapshot the author-wide voucher stake and configured slash percentage, and park when
+   voucher processing remains.
+2. On final crank (or immediately when the backing snapshot is zero), compute:
+   `totalSlash = slashedAuthorBond + slashedVoucherStake`;
+   `buyerEntitlement = min(totalSlash, initiatingPurchase.priceUsdcMicros)`; and
+   `restitutionReserveCredit = totalSlash - buyerEntitlement`.
+3. Record the fixed buyer entitlement, finite deadline, and reserve credit; finalize accounting,
+   clear protocol locks, and perform no external transfer.
+4. Only the initiating purchase buyer can pull the entitlement, once, while the claim window is
+   open. A shortfall is an explicitly partial refund; A1 provides no protocol backstop.
+5. After the deadline, anyone may close the claim window. Close moves any unclaimed buyer
+   entitlement into restitution-reserve credit and performs no transfer.
+6. Only the immutable, nonzero, custody-approved restitution reserve recipient can pull reserve
+   credit; no resolver, closer, arbitrary caller, author, or operating treasury can redirect it.
+7. Buyer claim, close, reserve claim, resolve, and slash-crank remain callable while paused as
+   liveness paths. Dismissed-report bond forfeit/return behavior remains unchanged and creates no
+   refund or reserve credit.
+
+The inactive legacy challenger-reward fields may remain zero-valued only where required to
+preserve deployed legacy tuple/selectors; they are not deployment inputs, snapshots, accounting
+fields, events, or payout paths for Base A1. Rename the A1-only appended destination/getter from
+generic treasury terminology to restitution-reserve terminology so code and docs cannot treat
+dispute-derived funds as operating revenue.
 
 ### Net scope after this amendment
 
 Locked mechanism (author-wide slash, ring-fenced bucket, two-sided membership lock, snapshot
 completeness, `lockedByDispute` set-at-open + `withdrawAuthorProceeds` freeze + `Slashed` revoke
-branch from the pre-loop review) **− reporter reward (B1)** **− multi-buyer pool now, deferred to
-A4 (B2)** **+ library packaging + `via_ir` + size gate + pull-based close (A)**. That is ~90% of
-the lite memo's simplification with none of its "reopen the lock under size pressure" framing.
+branch from the pre-loop review) **− reporter reward** **− multi-buyer pool now, deferred to A4**
+**+ fixed initiating-buyer entitlement** **+ dedicated restitution-reserve credit** **+ library
+packaging + `via_ir` + size gate + pull-based claim/close paths**.
+
+### Solana A1 boundary (verified 2026-07-10)
+
+These B decisions are Base-only and do not authorize edits to the deployed Solana program. Solana
+devnet A1 is already live and uses listing-linked vouch positions, ≤4-position permissionless
+slash pages, per-dispute/vouch PDA double-slash guards, and
+`ListingSettlement.slashed_deposit_usdc_micros` ring-fenced for
+`create_refund_pool`/`claim_purchase_refund`. Its current challenger/author-bond routing and broader
+reserve/governance gaps remain Solana A2/A4 work if Solana becomes a mainnet target; do not
+silently retrofit Base B1–B3 into the Solana rollback path.
 
 ### Todo deltas
 
-- `implement-contract`: stays `in_progress`; add the section-A directives (library extraction,
-  `via_ir`, drop legacy getter, pull-based close) and, only after B is acked, the B1/B2 economics
-  edits.
-- New implicit gate: the EIP-170 stop is resolved by section A, not by an economics change — so
-  the `verify-and-record` size gate is now "≤ EIP-170 via library extraction," not "operator
-  approves an economics cut."
-- Section B is blocked on founder ack (B1, B2). Until then the implementer does section A only
-  and leaves the reward/refund economics exactly as the locked plan specifies.
+- `implement-contract`: remains `in_progress`; implement the extraction map and all founder-acked
+  B1–B3 settlement decisions together. Keep the legacy report getter; remove active reporter
+  reward behavior and generic treasury ownership.
+- `forge-tests`, `sync-artifacts`, and `verify-and-record`: remain `in_progress` and must validate
+  the final fixed-entitlement/restitution-reserve lifecycle, linked deployment, and dual-artifact
+  size gates before Phase 9c review.
+- The EIP-170 stop is resolved only when measured section-A gates pass. No economics decision,
+  compiler flag alone, or source-level estimate makes the candidate deployable.
