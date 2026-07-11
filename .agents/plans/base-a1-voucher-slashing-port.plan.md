@@ -171,11 +171,11 @@ implementation-time divergence from these gets a dated note here, not a silent c
    is proven by stake accounting**: the report closes when accounted (slashed-from) stake equals
    the snapshot — sound because the two-sided membership lock (row 5: existing revoke exit lock
    - new `vouch()` entry lock) freezes `totalVouchStakeReceivedUsdcMicros` for the vouchee while
-   a report is open. No inline-slash fast path: one mechanism, one audit surface; gas per crank
-   call is bounded by the caller's array (forge gas snapshot informs the recommended page size
-   in docs, not a contract constant). Rejected alternative: an on-chain voucher enumeration
-   array — more storage and a new growth-unbounded structure for no gain over calldata + the
-   accounting proof.
+     a report is open. No inline-slash fast path: one mechanism, one audit surface; gas per crank
+     call is bounded by the caller's array (forge gas snapshot informs the recommended page size
+     in docs, not a contract constant). Rejected alternative: an on-chain voucher enumeration
+     array — more storage and a new growth-unbounded structure for no gain over calldata + the
+     accounting proof.
 
 Consequence noted for UX copy: blocking new `vouch()` during an open report is also buyer/voucher
 protection (no staking into an active dispute), but the UI must say why vouching is temporarily
@@ -387,7 +387,7 @@ human gates on `verify-and-record`; they do not block contract code.
    revision), narrow-claim formula, no exposure counters.** Per-claim =
    `min(remaining bucket, that purchase's paid price)`, one claim per purchase id, inside the
    window — design-lock resolution 2 verbatim and the `7f63a13` todo text. No purchase
-   enumeration or exposure snapshot is needed because buyer-first is proven by *sequencing*
+   enumeration or exposure snapshot is needed because buyer-first is proven by _sequencing_
    (decision 2), not by counters. Docs must state the cohort explicitly: claims-on-demand,
    first-come within the window.
 2. **Funding order and reporter payout — RESOLVED: window-expiry sequencing; financial-branch
@@ -396,13 +396,12 @@ human gates on `verify-and-record`; they do not block contract code.
    bucket as first-loss buyer protection (invariant 9), NOT to the reporter. The reputation-only
    branch keeps the current PR #78 routing (slashed bond → reporter) unchanged. The reporter
    reward becomes payable only after the refund claim window expires — buyer exposure is then
-   satisfied by construction — computed as `min(snapshotted bps × total slashed amount,
-   snapshotted absolute cap, available non-slashed author proceeds of the referenced listing)`
+   satisfied by construction — computed as `min(snapshotted bps × total slashed amount, snapshotted absolute cap, available non-slashed author proceeds of the referenced listing)`
    and funded solely from those proceeds (preserved mid-report by Implementer Review amendment
    4's `withdrawAuthorProceeds` dispute-lock), followed by the one-time residual sweep to the
    treasury recipient. The financial-branch bond-routing change is a dated divergence from
    design-lock resolution 1's "existing `min(authorBond, reportBond)` behavior" phrase (which
-   locked the *amount*, not the *destination*) — flag it explicitly in the PR description for
+   locked the _amount_, not the _destination_) — flag it explicitly in the PR description for
    founder veto.
 3. **Treasury recipient — RESOLVED as mechanism, human-gated as value.** Add
    `treasuryRecipient` to the `Config` struct, validated non-zero in `initializeConfig`,
@@ -645,3 +644,90 @@ Not claimed:
 - The A1 Forge suite, web trust surfaces, existing-receipt-under-lock regression, docs/cutover
   updates, full web gate, or human wallet smoke is complete.
 - Base mainnet (`eip155:8453`) was enabled or any live transaction was sent.
+
+## Scope Amendment (2026-07-10 — post-EIP-170 review)
+
+The 2026-07-09 implementation hit the EIP-170 stop gate: full A1 compiled to 27,931 runtime
+bytes, 3,355 over the 24,576 cap. The `base-a1-lite-economics-decision` memo proposed reopening
+the locked economics to shrink the contract. This amendment separates the two things that memo
+conflated — **code size is an engineering problem, and it should not force an economics
+decision** — and resolves them independently. It supersedes the memo (which is retained as a
+historical record, banner added).
+
+**Measured before deciding** (forge 1.7.1, on this branch; only `out/`+`cache` touched):
+
+| Config                | Runtime bytes | Over cap |
+| --------------------- | ------------- | -------- |
+| current (`runs=200`)  | 27,931        | +3,355   |
+| `runs=1`              | 27,465        | +2,889   |
+| `via_ir` (`runs=200`) | 26,545        | +1,969   |
+| `via_ir` + `runs=1`   | 26,308        | +1,732   |
+
+Compiler levers alone do not fit. This is architectural — but the standard architectural answer
+is packaging, not economics.
+
+### A — Size architecture (engineering directives; no approval needed)
+
+1. **Extract the A1 settlement internals into an external `library` (delegatecall).** A linked
+   library gets its own 24 KB budget, so moving the financial-report settlement bodies
+   (`slashReportVouches` crank math, refund-bucket accounting, treasury-credit computation,
+   report close) into `library A1Settlement` operating on passed storage refs should land the
+   core contract at ~22–23 KB with headroom. This preserves the locked economics and ABI
+   byte-for-byte in behavior; it adds a link step and one more artifact to the Phase 9c review
+   surface. Verify by measurement, not intuition.
+2. **Set `via_ir = true` permanently in `contracts/base-poc/foundry.toml`.** Keep `runs` at 200
+   unless a measured reason to drop it appears; the headroom is worth more than marginal runtime
+   gas here.
+3. **Drop the `LegacyAuthorReport` compatibility getter** unless a live on-chain/indexer consumer
+   is identified — dead weight on a fresh-deploy candidate.
+4. **Add a runtime-size CI gate** (`forge build --sizes` assertion) so a candidate can never
+   again exceed EIP-170 silently.
+5. **Keep the branch's pull-based finalization** (buyer/treasury credits claimed, not pushed at
+   close) — a blacklisted/ reverting USDC recipient must not be able to brick report
+   finalization or listing unlock. This is retained on its merits regardless of A/B outcome.
+
+If step 1 lands the full-locked mechanism at ≤ 23.5 KB (near-certain), **the size blocker is
+gone and the locked economics ship unchanged** — the economics gates in section B below then
+only decide whether to _additionally_ simplify, not whether size forces a cut.
+
+### B — Economics changes (DECISION NEEDED — founder; do NOT implement before ack)
+
+These change locked economics, so they follow the same gate discipline the lite memo used and the
+`MAINNET_READINESS.md` Launch Trust Bar requires. Recommended on their own merits, independent of
+size:
+
+- **B1 — Delete the reporter/challenger reward from financial reports.** The branch already
+  collapsed reporter == initiating buyer (`openFinancialReport` requires
+  `purchase.buyer == msg.sender`), so the refund IS the reporting incentive and a separate reward
+  is redundant. Deleting it **removes** the P0.2 resolver+challenger collusion vector entirely
+  rather than merely capping it — a mechanism improvement, not a descope. Removes
+  `CHALLENGER_REWARD_BPS` / `CHALLENGER_REWARD_CAP_USDC_MICROS` from the A1 surface.
+- **B2 — Initiating-purchase-only refund for capped alpha; multi-buyer pool deferred to A4.**
+  The branch already refunds only the initiating purchase (no multi-buyer pool was ever built).
+  Accept that for alpha **on the condition** that slash value above the single buyer entitlement
+  is earmarked in the A4 reserve policy as _restitution reserve for other harmed buyers of the
+  same listing_, not free treasury — so Launch Trust Bar condition 2 (harmed-party-first) stays
+  honest and the deferred buyers have a funded path in A4. Record the deferral as a dated note;
+  do not silently narrow "harmed buyers" to one.
+- **B3 — Reject the lite memo's other narrowings** (perpetual no-expiry entitlement, excess
+  unconditionally to treasury) unless B2's restitution-reserve earmark is impossible; they trade
+  correctness for a size saving that section A already provides.
+
+### Net scope after this amendment
+
+Locked mechanism (author-wide slash, ring-fenced bucket, two-sided membership lock, snapshot
+completeness, `lockedByDispute` set-at-open + `withdrawAuthorProceeds` freeze + `Slashed` revoke
+branch from the pre-loop review) **− reporter reward (B1)** **− multi-buyer pool now, deferred to
+A4 (B2)** **+ library packaging + `via_ir` + size gate + pull-based close (A)**. That is ~90% of
+the lite memo's simplification with none of its "reopen the lock under size pressure" framing.
+
+### Todo deltas
+
+- `implement-contract`: stays `in_progress`; add the section-A directives (library extraction,
+  `via_ir`, drop legacy getter, pull-based close) and, only after B is acked, the B1/B2 economics
+  edits.
+- New implicit gate: the EIP-170 stop is resolved by section A, not by an economics change — so
+  the `verify-and-record` size gate is now "≤ EIP-170 via library extraction," not "operator
+  approves an economics cut."
+- Section B is blocked on founder ack (B1, B2). Until then the implementer does section A only
+  and leaves the reward/refund economics exactly as the locked plan specifies.

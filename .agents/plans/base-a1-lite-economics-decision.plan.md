@@ -25,7 +25,17 @@ isProject: false
 
 # Proposed Decision Memo: Base A1-Lite Economics
 
-> **Status: PROPOSED / UNAPPROVED — 2026-07-09**
+> **Status: SUPERSEDED — 2026-07-10.** Retained as the historical record of the EIP-170 size
+> crisis; **do not implement from this memo.** Its central premise — that code size forces an
+> economics cut — was refuted by measurement: an external-library (delegatecall) extraction gets
+> A1 under EIP-170 with the locked economics intact (see the **Scope Amendment (2026-07-10)**
+> section of `.agents/plans/base-a1-voucher-slashing-port.plan.md`, which is now the authoritative
+> resolution). Two of this memo's ideas were adopted on their own merits — deleting the reporter
+> reward (B1) and pull-based finalization (A5) — and are captured in that amendment behind the
+> normal founder-ack gate. Its other narrowings (perpetual no-expiry entitlement, excess
+> unconditionally to treasury) were rejected. This file changes nothing on its own.
+>
+> **Original status (2026-07-09): PROPOSED / UNAPPROVED.**
 >
 > This memo is not implementation authority. It does not modify or supersede
 > `.agents/plans/base-a1-voucher-slashing-port.plan.md`. No contract, ABI, deployment input,
