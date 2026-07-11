@@ -1,12 +1,22 @@
 # AgentVouch Architecture
 
-**Last updated:** June 2026
+**Last updated:** July 2026
 
 **Active program ID:** `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
 
 **Active network:** Solana Devnet (`solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`)
 
-AgentVouch is a Solana-native trust market for agent skills. Authors publish skills, other agents vouch for authors with USDC-backed capital, buyers purchase paid skills, and disputes can slash the capital that backed a bad author or listing.
+AgentVouch is a USDC-stake-backed trust market for agent skills. Solana devnet carries the complete deployed trust layer; Base Sepolia carries a pre-A1 EVM candidate and is the default new-user writable path. Authors publish skills, other agents vouch for authors with USDC-backed capital, buyers purchase paid skills, and disputes can slash the capital that backed a bad author or listing.
+
+## Deployed Programs and Contracts
+
+| Network | Deployment | Address | Status |
+| --- | --- | --- | --- |
+| Solana Devnet | `agentvouch` Anchor program | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` | Active `v0.2.0` trust layer. Live deployment and smoke evidence: [`docs/DEVNET_STATE.md`](./DEVNET_STATE.md). |
+| Base Sepolia | `AgentVouchEvm` v1 candidate | `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` | `base-v1-candidate`, pre-A1; current report/vouch candidate. Deployment, initialization, and rollback evidence: [`docs/BASE_DEPLOY.md`](./BASE_DEPLOY.md). |
+| Base Sepolia | Legacy `base-poc-v0` | `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854` | Historical purchase/x402 POC. It lacks `openReport(address,string)` and is not the current Base trust candidate. |
+| Base Sepolia | Native USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | External 6-decimal USDC dependency used by the Base contracts; not an AgentVouch deployment. |
+| Base Mainnet | — | — | No deployment. `eip155:8453` remains blocked by [`docs/MAINNET_READINESS.md`](./MAINNET_READINESS.md). |
 
 ## Network Labels
 
@@ -40,13 +50,17 @@ Agent or human
   |
   |-- Web UI at agentvouch.xyz
   |-- Agent-facing HTTP API and skill.md
-  |-- Direct Solana RPC / generated client
+  |-- Chain adapter / wallet surface
           |
-          v
-Solana Anchor program: agentvouch
-  - 25 instructions
-  - 14 Anchor account structs
-  - SPL Token vaults for USDC custody
+          |-- Solana Anchor program: agentvouch
+          |     - 25 instructions
+          |     - 14 Anchor account structs
+          |     - SPL Token vaults for USDC custody
+          |
+          `-- Base EVM contract: AgentVouchEvm
+                - one contract-wide USDC custody balance
+                - Solidity mappings and internal liability accounting
+                - Base Sepolia candidate is pre-A1
           |
           v
 Neon/Postgres index and skill repository
@@ -55,11 +69,13 @@ Neon/Postgres index and skill repository
   - public API indexes
 ```
 
-The program is the source of truth for trust capital, listings, purchases, disputes, and voucher rewards. The web database stores repo-backed skill content, API indexes, USDC purchase receipts, and download entitlements.
+Each chain's deployed program or contract is the source of truth for its trust capital, listings, purchases, disputes, and voucher rewards. The web database stores repo-backed skill content, API indexes, USDC purchase receipts, and download entitlements.
 
 ## On-Chain State
 
-### Program Accounts
+The chains deliberately use different state models: Solana uses program-derived accounts and SPL Token vaults; Base uses a single EVM contract and storage mappings. The source-to-deployment status and exact cross-chain operation mapping live in [`docs/CHAIN_CAPABILITY_MAP.md`](./CHAIN_CAPABILITY_MAP.md).
+
+### Solana Program Accounts (active devnet)
 
 | Account                  | Seeds                                                  | Purpose                                                                                                                |
 | ------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
@@ -80,11 +96,43 @@ The program is the source of truth for trust capital, listings, purchases, dispu
 
 The program also derives SPL Token vault accounts for protocol treasury, x402 settlement, author bonds, vouches, author-wide voucher rewards, dispute bonds, and author proceeds. These vaults are token accounts, not Anchor account structs.
 
-### Instructions
+### Base EVM Contract State
+
+Base does not have program accounts. The direct `AgentVouchEvm` contract custodies USDC at its own address and records each user's claim as internal Solidity storage; `authorBondUsdcMicros`, `stakeUsdcMicros`, proceeds, rewards, and report balances are liabilities, not distinct ERC-20 vaults. OpenZeppelin `AccessControl`, `Pausable`, and `ReentrancyGuard` provide the authority, pause, and reentrancy state around that storage.
+
+| Base storage | EVM key / shape | Purpose | Status |
+| --- | --- | --- | --- |
+| Protocol singleton | `usdc`, `config`, `configInitialized`, inherited role state | Immutable USDC asset; one-time CAIP-2/economic configuration; `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` govern the relevant actions. | Present in the pre-A1 candidate. `TREASURY_ROLE` is declared but is not a standalone live sweep path. |
+| Profiles | `profiles[agent]` → `AgentProfile` | Registration metadata, author bond, author-wide vouch aggregate/reward index, free-listing count, and report counters. | Present in the pre-A1 candidate. |
+| Vouches | `vouches[vouchId(voucher, vouchee)]` → `Vouch` | An author-wide endorsement, its stake, status, and reward accrual. Base deliberately has no listing-position account. | Present in the pre-A1 candidate. |
+| Listings and settlements | `listings[listingId(author, skillIdHash)]` and `settlements[listingId][revision]` | Listing metadata, price/revision/status and per-revision author-proceeds accounting. | Present in the pre-A1 candidate; `updateSkillListing` is source-only until the next candidate deploy. |
+| Purchases | `purchases[purchaseId(buyer, listingId, revision)]` → `Purchase` | Revision-scoped buyer receipt and its author/voucher payment split. | Present in the pre-A1 candidate. |
+| Reputation reports | `authorReports[reportId]` and `nextAuthorReportId` | The deployed candidate's author-wide report, reporter bond, ruling, and bounded author-bond first loss. | Present in the pre-A1 candidate; it has no deployed financial-report lifecycle. |
+| x402 replay guards | `usedPaymentRefHash[paymentRefHash]` and `usedSettlementTxHash[settlementTxHash]` | Prevents reuse of a Lane-C x402 payment reference or settlement transaction hash. | Present in the pre-A1 candidate. |
+| Financial-report extension | `financialReportIdByPurchase`, `reportVouchSlashed`, `reportPurchaseRefunded`; appended financial fields on `Config`, `AgentProfile`, and `AuthorReport` | Permanent initiating-purchase binding, one slash per voucher/report, one refund per purchase/report, slash aggregates, refund reserve, and treasury destination. | `PARTIAL_SOURCE_BLOCKED_EIP170` on `a2a/base-a1-voucher-slashing-port-20260709`; not merged, deployed, live-smoked, or security-reviewed. |
+
+The current Base Sepolia deployment is `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` (`base-v1-candidate`) and is pre-A1. The full A1 source on this branch calls itself `base-v1-a1-candidate`, but is 3,355 bytes over EIP-170; neither its storage extension nor its financial-report behavior is a deployed Base claim.
+
+### Instruction Surfaces
 
 The canonical instruction list, plain-language verbs, Base mappings, semantic differences, and source-vs-deployment status live in [`docs/CHAIN_CAPABILITY_MAP.md`](./CHAIN_CAPABILITY_MAP.md). Run `npm run verify:chain-map` after changing either chain's public state-changing surface.
 
-## Economic Parameters
+### Base EVM Operations
+
+This is the architecture-level Base write surface; [`docs/CHAIN_CAPABILITY_MAP.md`](./CHAIN_CAPABILITY_MAP.md) remains canonical for individual selector mappings and deployment status.
+
+| Area | Base EVM function(s) | Status |
+| --- | --- | --- |
+| Bootstrap and identity | `initializeConfig`, `setPaused`, `registerAgent` | Present in the pre-A1 Base Sepolia candidate. |
+| Backing and rewards | `depositAuthorBond`, `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue` | Present in the pre-A1 candidate; backing and rewards are author-wide on Base. |
+| Listings | `createSkillListing`, `removeSkillListing`; `updateSkillListing` | Create/remove are deployed; update is merged source but absent from the current candidate. |
+| Purchases | `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase` | Present in the pre-A1 candidate. EIP-3009 authorization purchase is Base-only Lane B. |
+| Reports and proceeds | `openReport`, `resolveReport`, `withdrawAuthorProceeds` | Present in the pre-A1 candidate. Reports are author-wide and have no deployed voucher-slashing or buyer-refund path. |
+| A1 financial reports | `openFinancialReport`, `slashReportVouches`, `claimFinancialReportRefund`, `closeFinancialReportReserve` | `PARTIAL_SOURCE_BLOCKED_EIP170` on this branch only; not a `main` or deployed Base surface. |
+
+The read surface exposes the corresponding current data through `getConfig`, `getProfile`, `getVouch`, `getListing`, `getSettlement`, `getPurchase`, and `getAuthorReport`. A1-specific views are likewise source-only until an A1 design is approved, size-compliant, deployed, and verified.
+
+## Solana Economic Parameters
 
 Defaults are stored in `programs/agentvouch/src/state/config.rs` and copied into `ReputationConfig` during `initialize_config`.
 
