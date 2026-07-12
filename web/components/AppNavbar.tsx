@@ -17,7 +17,7 @@ type NavItem = {
   match: (pathname: string) => boolean;
 };
 
-const navItems: NavItem[] = [
+export const navItems: NavItem[] = [
   {
     href: "/skills",
     label: "Marketplace",
@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
   {
     href: "/docs",
     label: "Docs",
-    match: (pathname) => pathname === "/docs",
+    match: (pathname) => pathname === "/docs" || pathname.startsWith("/docs/"),
   },
   {
     href: "/blog",
