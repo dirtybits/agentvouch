@@ -56,4 +56,17 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain("@/lib/repoUrls");
     expect(source).not.toContain("@/lib/mirror/connectedRepos");
   });
+
+  it("shows every chain-backed skill's canonical network label", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/SkillPreviewCard.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("getChainDisplayLabel(skill.chain_context)");
+    expect(source).toContain("Listed on ${chainLabel}.");
+    expect(source).toContain("FiLayers");
+    expect(source).toContain("--solana-purple");
+    expect(source).toContain("--base-blue");
+  });
 });
