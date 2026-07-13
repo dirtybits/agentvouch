@@ -18,7 +18,11 @@ import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
-import { getChainBadge, type ChainBadgeTone } from "@/lib/chainBadge";
+import {
+  getChainBadge,
+  isEvmListedSkill,
+  type ChainBadgeTone,
+} from "@/lib/chainBadge";
 import { shortenChainAddress } from "@/lib/chainAddress";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
@@ -321,9 +325,10 @@ export default function SkillPreviewCard({
     onChainAddress: skill.on_chain_address,
     evmListingId: skill.evm_listing_id,
   });
-  const isReadOnlyEvmListing = Boolean(
-    skill.evm_listing_id && chainBadge?.chainContext.startsWith("eip155:")
-  );
+  const isReadOnlyEvmListing = isEvmListedSkill({
+    chainContext: skill.chain_context,
+    evmListingId: skill.evm_listing_id,
+  });
   const chainLabel = chainBadge?.label ?? null;
   const walletAuthorLabel = skill.author_pubkey
     ? isReadOnlyEvmListing

@@ -13,6 +13,15 @@ export interface ChainBadge {
   tone: ChainBadgeTone;
 }
 
+export function isEvmListedSkill(input: {
+  chainContext: string | null | undefined;
+  evmListingId: string | null | undefined;
+}): boolean {
+  return Boolean(
+    input.evmListingId && /^eip155:\d+$/.test(input.chainContext?.trim() ?? "")
+  );
+}
+
 export function getChainBadge(input: {
   chainContext: string | null | undefined;
   onChainAddress: string | null | undefined;
@@ -22,7 +31,10 @@ export function getChainBadge(input: {
   // advertise a network listing when there is an actual Solana or EVM listing.
   if (!input.onChainAddress && !input.evmListingId) return null;
 
-  const chainContext = normalizeInputChainContext(input.chainContext);
+  const rawChainContext = input.chainContext?.trim();
+  const chainContext =
+    normalizeInputChainContext(rawChainContext) ??
+    (isEvmListedSkill(input) ? rawChainContext : null);
   if (!chainContext) return null;
 
   return {

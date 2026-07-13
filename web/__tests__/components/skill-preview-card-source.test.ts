@@ -64,6 +64,7 @@ describe("SkillPreviewCard source", () => {
     );
 
     expect(source).toContain("getChainBadge");
+    expect(source).toContain("isEvmListedSkill");
     expect(source).toContain("on_chain_address?: string | null");
     expect(source).toContain("Listed on ${chainLabel}.");
     expect(source).toContain("FiLayers");

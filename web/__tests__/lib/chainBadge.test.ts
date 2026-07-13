@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getChainBadge } from "@/lib/chainBadge";
+import { getChainBadge, isEvmListedSkill } from "@/lib/chainBadge";
 import {
   BASE_SEPOLIA_CHAIN_CONTEXT,
   SOLANA_DEVNET_CHAIN_CONTEXT,
@@ -43,5 +43,33 @@ describe("getChainBadge", () => {
       label: "Base Sepolia",
       tone: "base",
     });
+  });
+
+  it("keeps listed EVM chains outside the local alias table visible and read-only", () => {
+    const input = {
+      chainContext: "eip155:10",
+      onChainAddress: null,
+      evmListingId:
+        "0x0000000000000000000000000000000000000000000000000000000000000002",
+    };
+
+    expect(getChainBadge(input)).toEqual({
+      chainContext: "eip155:10",
+      label: "eip155:10",
+      tone: "default",
+    });
+    expect(isEvmListedSkill(input)).toBe(true);
+  });
+
+  it("does not treat malformed EVM-like contexts as listed EVM skills", () => {
+    const input = {
+      chainContext: "eip155:not-a-chain-id",
+      onChainAddress: null,
+      evmListingId:
+        "0x0000000000000000000000000000000000000000000000000000000000000003",
+    };
+
+    expect(getChainBadge(input)).toBeNull();
+    expect(isEvmListedSkill(input)).toBe(false);
   });
 });
