@@ -518,3 +518,284 @@ block deployment and must be recorded in `docs/BASE_DEPLOY.md` and readiness evi
 
 Solana devnet remains unchanged. Any convergence of Base author-wide liability semantics back into
 Solana requires a separate clean-break plan and explicit approval.
+
+## Implementer Review — 2026-07-11
+
+### Blocking clarifications before contract edits
+
+1. **Resolve the zero-slash bond contradiction.** The lifecycle says an upheld report preserves the 5 USDC bond for the buyer, while another statement says a zero-total-slash outcome creates no buyer credit. The recommended interpretation is: zero enforcement slash still creates exactly 5 USDC of buyer bond-return credit; buyer restitution and reserve excess are zero. Record this explicitly and test it before implementing accounting.
+
+2. **Freeze a complete terminal-state ABI.** `Pending/Open/SlashingVouchers/Resolved` cannot distinguish Rejected, Expired, Dismissed, and Upheld. Reusing `Ruling` is unsafe because `Upheld` is currently the zero value and rejection/expiry are not rulings. Define a zero-safe terminal outcome field and freeze exact getter tuples, event fields/indexing, errors, selectors, and `PROTOCOL_VERSION` before synchronizing clients.
+
+3. **Decide which purchase lanes qualify for A1.** `settleX402Purchase` records a paid `Purchase` without pulling or proving funds, and `Purchase` stores no provenance. Treating every receipt as A1-eligible elevates `SETTLEMENT_ROLE` into part of the slashing trust boundary. Obtain approval either to exclude Lane-C receipts or to record provenance and explicitly accept that authority, with underfunded/forged-settlement adversarial tests and monitoring.
+
+4. **Decide whether acceptance locks author proceeds.** The approved freeze list does not name author-proceeds withdrawal, but the current `lockedByDispute` check in `withdrawAuthorProceeds` blocks every revision of the referenced listing. Because proceeds are no longer a penalty or reward source, do not inherit this WIP behavior accidentally; record and test the intended outcome.
+
+### Required implementation enhancements
+
+- Add an explicit transition-boundary table. At the Pending deadline, both acceptance and rejection must revert while permissionless expiry succeeds, preventing a resolver from routing the bond to reserve immediately before expiry. Define complementary exact comparisons for filing, cooldown release, buyer claim, and reserve conversion. Include expiry when clearing active buyer/listing slots.
+
+- Add a function-by-function lock/pause matrix covering the referenced listing versus other listings, all three purchase lanes, create/update/remove, author-bond deposit/withdrawal, vouch/revoke, voucher-revenue claims, proceeds withdrawal, and removed-listing reports. Because `reviewPaidPurchaseReport(uint64,bool)` combines two transitions, pause must block acceptance without blocking terminal rejection; test the branch-specific behavior.
+
+- Split historical receipt verification from current purchasability in `web/lib/basePurchaseVerification.ts`. Its shared `fetchLiveListing` currently rejects locked or removed listings for both `verifyBaseDirectPurchase` and `verifyBaseExistingPurchase`. Add the race regression: purchase succeeds, acceptance/removal occurs before DB receipt recording, historical verification and authenticated raw download still succeed, and a non-buyer remains rejected while every new purchase lane fails.
+
+- Retire the active legacy Base report UI without adding the out-of-scope paid-report write. Remove or version-gate `OPEN_REPORT_SELECTOR` and `openBaseAuthorReport` in `web/lib/adapters/baseWallet.ts`, the Base author-page submission in `web/app/author/[pubkey]/page.tsx`, and the Base “Report Author” link in `SkillDetailClient.tsx`. Preserve the `ChainWallet` interface unless separately approved; the Base implementation should fail closed and the UI should not advertise an unavailable selector.
+
+- Make the Base trust behavior mechanically Review-capped. `buildAgentTrustSummary` and `recommendedActionFromSignals` can currently return `allow` for a backed Base author. Add chain-aware tests across marketplace/detail/author APIs and `/api/index/trusted-authors`, retaining `avoid` for adverse evidence but preventing Base from becoming `allow`. Define whether `totalVouchesReceived` is active or lifetime—the current Base counter never decrements—before presenting it as an active trust aggregate.
+
+- Replace Base copy that says zero-backing recovery depends on locked author proceeds. The new mechanism has no proceeds debit or backstop. Keep Solana refund-pool wording chain-qualified and state for Base that enforcement restitution can be zero when author bond and active vouch backing are zero.
+
+- Make cranking operationally bounded, not merely calldata-driven. Add a named maximum page size, max-plus-one revert, and worst-case max-page gas assertion. Because vouches are stored in non-enumerable mappings, add a checkpointed operator tool/runbook that reconstructs candidates from deployment-block events, validates their live stake sum against the snapshot, submits restart-safe pages, and handles Base Sepolia log queries in at most 1,999-block chunks. An accepted-report age alarm, resolver recovery procedure, and named fallback operator are deployment gates because accepted reports have no timeout.
+
+- Lock executable linked-deployment mechanics. Foundry linkage is compile-time, so specify and test either a two-stage library-deploy/prelinked-facade flow or a deterministic CREATE2 flow. Verify artifact link references, linked runtime code hashes, and that delegated events/errors remain present in the facade-facing ABI. The current non-deployer-admin path silently skips initialization; rehearsal must instead prove explicit initialization, least-privilege role handoff, and final role ownership.
+
+- Normalize deployment defaults to the repo-approved economics while rewriting `Deploy.s.sol`: 1 USDC minimum vouch, 1 USDC free-listing author-bond floor, 0.01 USDC paid-listing floor, 60/40 split, and 5 USDC report bond. The current script carries stale 10 USDC and 1 USDC listing floors.
+
+- Define merge/cutover ordering. Contract deployment is separately human-gated, while merging web ABI/profile changes can immediately redeploy against the current `base-v1-candidate`. Keep the web read path compatible through `PROTOCOL_VERSION` dispatch or hold production activation behind an explicit cutover gate; verify both the old configured candidate and the fresh A1 candidate before changing the shared address. Candidate-only behavior in `web/public/skill.md` must remain labeled WIP until deployment.
+
+- Commit machine-checkable ABI, storage-layout, and link-reference snapshots. Scope stale-selector checks to active source, artifacts, clients, and operational docs: the current plan and historical Phase 9/A1 decision records intentionally retain old names and must be allowlisted rather than rewritten. Include `docs/ARCHITECTURE.md`, `contracts/base-poc/README.md`, and affected source-assertion tests in the active-surface sweep.
+
+## Reviewer Follow-up — 2026-07-11 (plan gate)
+
+The plan is near-ready but cannot be approved while its own "Blocking clarifications before contract edits" remain open. The design-lock claim ("no protocol-interface or economics question remains open") is contradicted by Implementer Review items 1–4. Convert each into a dated DECISION entry in this file before implementation begins:
+
+1. **Zero-slash upheld outcome (item 1).** Adopt the recommended interpretation as the locked rule: an upheld report with zero total slash still creates exactly the 5 USDC bond-return buyer credit with the standard 30-day claim; buyer restitution and reserve excess are zero. Amend the lifecycle sentence "A zero-total-slash outcome creates no buyer or reserve credit" to say "no restitution or reserve credit" so the table and ledger sections agree.
+
+2. **Terminal-outcome ABI (item 2).** Lock a zero-safe outcome field now, e.g. `PaidPurchaseReportOutcome { None, Rejected, Expired, Dismissed, Upheld }` stored separately from status, and freeze the exact getter tuples, event fields/indexing, errors, selectors, and `PROTOCOL_VERSION` bump as a dated addendum before any client sync work.
+
+3. **A1-eligible purchase lanes (item 3) — operator decision required.** This changes the slashing trust boundary and cannot be defaulted by the implementer. Recommended MVP arm, consistent with the ship-minimal bias: exclude `settleX402Purchase` (Lane-C / `SETTLEMENT_ROLE`-recorded) receipts from `openPaidPurchaseReport` eligibility for this deployment, with a revert test, and defer provenance-recorded Lane-C eligibility to a future dated approval. Record whichever arm is chosen with a date.
+
+4. **Author-proceeds lock on acceptance (item 4).** Record the intended freeze-list answer explicitly. Recommended: acceptance does **not** block `withdrawAuthorProceeds` (proceeds are no longer a penalty or restitution source under the locked ledgers); do not inherit the WIP `lockedByDispute` behavior. Add the corresponding lock/pause-matrix row and test either way.
+
+No other changes requested. The remaining Implementer Review enhancements (transition-boundary table, lock/pause matrix, page-size bound, linked-deploy mechanics, cutover ordering, snapshot checks) are executable as written and do not block approval once items 1–4 carry dated decisions.
+
+## Implementation Enhancements — 2026-07-11 (second implementer pass)
+
+### Readiness verdict
+
+Do not begin contract edits. The prior four design decisions remain unresolved, and this pass found four additional blockers.
+
+### Additional blockers
+
+1. **Re-establish the implementation base.** The plan records `HEAD=588fc96e`, but the checkout is at `2b908eb9`. Local `main` is `dfe858ff`, while `origin/main` is `0cdc9dff`; that newer commit changes `web/lib/baseAuthorTrust.ts`, which this plan also changes. Before editing, integrate current `origin/main` without rewriting shared history, preserve the `492f7a06` WIP lineage explicitly, record the new HEAD and merge-base, and rerun the contract/size baseline.
+
+2. **Widen protocol-version database columns through an approved migration.** `skills.on_chain_protocol_version`, `usdc_purchase_receipts.protocol_version`, and `usdc_purchase_entitlements.protocol_version` are `VARCHAR(16)`. The deployed `base-v1-candidate` is 17 characters and the WIP `base-v1-a1-candidate` is 20, so listing linkage or receipt recording can fail after a successful on-chain transaction. Add an `EXPECTED_DATABASE_HOST`-guarded one-shot migration with read-only preflight, disposable production-derived Neon rehearsal, `VARCHAR(64)` or `TEXT` widening, post-migration verification, and matching fresh-schema definitions. Do not place `ALTER COLUMN TYPE` in request-time initializers. Because this is non-additive schema work, obtain the approval required by `AGENTS.md` before running it.
+
+3. **Record the Pending collateral-escape decision.** The approved no-lock Pending state leaves `withdrawAuthorBond` and `revokeVouch` available for up to three days after a public filing. An author and its vouchers can therefore exit before resolver acceptance, leaving an upheld report with no enforcement assets. Either reopen the lock/unbonding design or append a dated decision explicitly accepting best-effort exposure, qualify the “enforceable downside” claim, define resolver monitoring/SLA, and add the adversarial sequence `file → withdraw/revoke all → accept → uphold → zero enforcement`.
+
+4. **Resolve cross-listing reward behavior during paged slashing.** The plan blocks purchases only on the referenced listing, while Base rewards and backing are author-wide. Each crank page removes processed stake from the reward denominator, so a purchase on another author listing between pages makes reward allocation depend on cranker ordering. Decide whether to freeze every purchase lane for the author until finalization or explicitly accept this ordering. If retained, test two vouchers and two listings with an inter-page purchase, opposite crank orders, reward claims, and full liability conservation.
+
+### Required implementation additions
+
+- Enforce locked economics inside initialization, not only in `Deploy.s.sol`: exact 60/40/0 split, approved floors, exact Base Sepolia chain context, matching USDC, and `1 <= slashPercentage <= 100`. Hardcode fixed values and leave only explicitly approved deploy-time choices configurable. Add misconfiguration rejection tests.
+
+- Define a concrete single-source reward-accrual extraction. The linked library cannot call the facade’s internal `_accrueAuthorRewards`, and external self-calls are forbidden. Use one shared internal helper from facade claim/revoke paths and the linked-library crank, then prove identical pre-slash accrual and pending-reward preservation.
+
+- Treat `PROTOCOL_VERSION()` as live contract attestation during listing linkage/update and new receipt verification. Compare it with stored metadata and fail closed on mismatch or unsupported versions; stored values must not bypass the read. Already-recorded entitlement redemption must remain network-independent.
+
+- Make reads deployment-bound, not global-address-bound. Use a supported-deployment registry keyed by `(chain_context, lowercase contract, exact protocol version)`, keep writes pinned to the active candidate, and hydrate historical rows from their recorded contract. Add a two-contract regression with identical author/listing IDs and prove old entitlement redemption after an environment cutover. If this requires expanding `ChainAdapter`, stop for the approval required by `AGENTS.md`; otherwise use a dedicated Base row reader.
+
+- Carry deployment identity through trust resolution and recommendation logic. Unsupported or unreadable A1 data must be `unavailable`, not a genuine zero or a Solana fallback. Freeze A1 stats that distinguish upheld paid-report count, cumulative author-bond slash, and cumulative voucher slash; test bond-only, voucher, and zero-slash outcomes plus old-candidate getter absence. Update public schemas and discovery versioning if the response shape changes.
+
+- Make build identity and CI reproducible:
+
+  - Pin Forge 1.7.1, solc 0.8.28, `via_ir`, optimizer runs, metadata settings, and an explicit Base-supported EVM target; the current unpinned toolchain resolves `prague`.
+  - Align `contracts/base-poc/setup.sh` dependency tags with CI.
+  - Add CI gates for `forge fmt --check`, Forge tests, hard/soft linked-artifact sizes, `verify:chain-map`, and pinned fuzz/invariant runs and depth.
+  - Compile the isolated consumers with `npm run build --prefix contracts/base-poc/ui` and `npm run typecheck --prefix contracts/base-poc/harness`; root workspace gates do not cover them.
+  - Make the rehearsal executable with Anvil chain ID `84532` plus `MockUSDC`, or a Base Sepolia fork. Separately prove the wrong-chain rejection and validate deployed USDC code and six decimals.
+
+- Add `MAX_REPORT_EVIDENCE_URI_BYTES` with exact-boundary tests before any token pull or state write.
+
+- Remove the unused `TREASURY_ROLE` and stale treasury terminology unless a concrete authority is approved. Add `contracts/base-poc/setup.sh` and `docs/PRODUCTION_RUNBOOK.md` to the file sweep; the runbook still names `base-v1-candidate`, `openReport`, `resolveReport`, and `TREASURY_ROLE`.
+
+- Treat the active contract address, deploy block, event-scan setting, protocol version, and reserve/role ownership as one cutover/rollback tuple. Before completing the web todo, run the required human Base passkey regression against the still-configured candidate; after any approved deployment, repeat it against the A1 candidate and run the shared Solana trust/purchase regression.
+
+### Review evidence
+
+Read-only checks passed for the current Forge suite, `npm run verify:chain-map`, both isolated TypeScript typechecks, and `git diff --check`. `forge build --sizes` reproduced the expected 27,931-byte facade and EIP-170 failure; this is baseline evidence, not implementation completion.
+
+## Reviewer Follow-up — 2026-07-11 (plan gate, second pass)
+
+Verified independently: the `VARCHAR(16)` protocol-version columns (`web/lib/db.ts:655`, `web/lib/db.ts:781`) versus the 17-char `base-v1-candidate` string, and the stale-baseline claim (checkout HEAD is `2b908eb9`, not the recorded `588fc96e`). The second implementer pass's blockers are factually grounded, and its verdict — do not begin contract edits — stands.
+
+Approval is blocked on one thing: the "Design lock complete — 2026-07-11" claim is contradicted by eight open items. Append **one dated decision addendum** resolving all of them; no other work is required to pass this gate.
+
+**Operator decisions (cannot be defaulted by the implementer):**
+
+1. **A1-eligible purchase lanes** (first review, item 3). Recommended arm unchanged: exclude `settleX402Purchase`/Lane-C receipts for this deployment, revert test included, provenance-based eligibility deferred to a future dated approval.
+2. **Pending collateral-escape** (second pass, blocker 3). The no-lock Pending window lets `withdrawAuthorBond`/`revokeVouch` drain all enforcement assets before acceptance, hollowing the core safety claim. Either (a) accept best-effort exposure explicitly — qualify the "enforceable downside" wording, set a resolver acceptance SLA, and add the `file → exit-all → accept → uphold → zero enforcement` adversarial test, or (b) reopen the lock/unbonding design (which reopens the design lock more broadly). Recommended for MVP: arm (a), consistent with the ship-minimal bias.
+3. **Cross-listing reward ordering during paged slashing** (second pass, blocker 4). Either freeze all author purchase lanes until finalization or accept cranker-order-dependent reward allocation with the specified two-voucher/two-listing/inter-page-purchase conservation test. Recommended: freeze all lanes — it is the smaller correctness surface and settlement windows are short.
+4. **Protocol-version column widening** (second pass, blocker 2). Non-additive DDL requiring the AGENTS.md-mandated approval and guarded-migration procedure. Approve the migration (or an alternative such as shortening the new version string to ≤16 chars, e.g. `base-v2-a1-cand`, which would avoid the migration entirely — pick one arm and date it).
+
+**Implementer-resolvable, but must be recorded as dated decisions in the same addendum:**
+
+5. **Zero-slash upheld outcome** (first review, item 1) — adopt the already-recommended rule: bond-return credit only, no restitution or reserve credit; fix the contradictory lifecycle sentence via addendum, not rewrite.
+6. **Terminal-outcome ABI** (first review, item 2) — lock the zero-safe `PaidPurchaseReportOutcome { None, Rejected, Expired, Dismissed, Upheld }` field plus frozen getters/events/errors/selectors/`PROTOCOL_VERSION`.
+7. **Author-proceeds lock on acceptance** (first review, item 4) — record the recommended answer (acceptance does not block `withdrawAuthorProceeds`) and add the lock/pause-matrix row.
+8. **Baseline re-establishment** (second pass, blocker 1) — integrate current `origin/main` (which touches `web/lib/baseAuthorTrust.ts`, also in this plan's file list), record new HEAD/merge-base, rerun the 27,931-byte size baseline, and update the "Current branch baseline" facts via addendum.
+
+Everything else in both implementer passes (transition-boundary table, lock/pause matrix, page-size bound, reward-accrual extraction, deployment-registry reads, CI pinning, evidence-URI cap, runbook sweep) is executable as written and does not block the gate. Once the dated addendum covering items 1–8 is appended, this plan is approvable without a further design pass.
+
+## Implementer Review — 2026-07-11 (third pass)
+
+### Additional plan gates
+
+Do not begin contract edits until these two semantics receive dated decisions:
+
+1. **Free-listing collateral after author-bond first loss.** A paid A1 ruling can slash the same author bond that enforces the free-listing floor, leaving an active free listing with no self-stake. Choose: reserve the floor from A1 slashing, suspend/remove affected free listings, or define the floor as creation-time-only and correct trust/copy. Test an author at the floor with one free and one paid listing through an upheld paid report.
+
+2. **Define “metadata-only” while accepted.** The current implementation treats URI and price changes as revision changes; the plan leaves the allowed metadata set ambiguous. Recommended lock: allow name/description-only changes, while URI, price, and free/paid transitions revert without changing revision or settlement state. Record and test that boundary.
+
+### Required implementation enhancements
+
+- Replace the fixed solvency scenario with a stateful `StdInvariant` handler across multiple reports, vouchers, claims, pauses, pending expiry, dismissal, partial cranks, and residual reclaim. Assert the contract balance covers author bonds, active/residual stake, proceeds, voucher revenue, pending bonds, buyer credits, and reserve credits; all credits must be single-spend.
+
+- Lock stale crank-page behavior. Historical `Vouched` logs include revoked/re-vouched candidates, while the WIP reverts an entire page for non-active entries. Specify skip versus revert semantics (recommended: skip stale/non-active candidates, reject a wrong vouchee) and test mixed active/stale/duplicate pages without overcounting or premature finalization.
+
+- Extend the size/link gate beyond EIP-170 runtime. Validate post-link facade and library runtime sizes, plus actual creation input—including constructor arguments—against EIP-3860’s 49,152-byte initcode cap. Current Forge output is 27,931-byte runtime and 28,866-byte initcode for the unsplit facade. Normalize Solidity’s deployed-library self-address patch before code-hash comparison. Test that a raw mutating `CALL` to the library reverts, the facade `DELEGATECALL` path succeeds, and no unprivileged facade route reaches settlement logic; do not add a redundant custom library-call guard.
+
+- Treat `verify:chain-map` as a name-map only. Add compiled-ABI parity snapshots for signatures/selectors, events, errors, compact getters, client fragments, link references, and active stale-selector absence. Update the blocked-source table atomically, but do not use a green 26-row map as clean-break ABI proof.
+
+- Complete the existing deployment-bound read requirement with `(chain_context, lowercase facade, author)` keys through trust caches, marketplace/hydration maps, detail reads, and public feeds. Add a chain-scoped optional Base-A1 aggregate object for author-bond slash, voucher slash, and upheld-report counts; old/unsupported candidates must be `unavailable`, never zero or Solana-derived. Test two contracts with the same author/listing IDs for cache and trust isolation.
+
+- Preserve the stated historical-receipt guarantee without relying on `MAX_REVISION_SCAN = 20`. Add an exact purchase-ID or transaction-proof path, or explicitly limit the guarantee to already-recorded entitlements. Test a revision-1 purchase after more than 20 revisions, then removal/acceptance, ensuring verification and signed raw access still work.
+
+- Add an executable A1 smoke driver: local Anvil on 84532 with `MockUSDC` and time-warp, plus a human-gated Sepolia mode that emits machine-readable transaction, block, role, code-hash, and explicit-block balance evidence. Retire obsolete `openReport` smoke instructions. Include `contracts/base-poc/ui/src/config.ts`, `ui/.env.example`, and harness examples in the sweep: they currently target the old POC and a 1-USDC floor. Keep A1 testing isolated-preview-only until explicit cutover approval; retain CDP paymaster allowlist checks and keep Base mainnet readiness pending after any Sepolia smoke.
+
+## Reviewer Follow-up — 2026-07-11 (plan gate, third pass)
+
+Verified independently: the third pass's two new gates are factually grounded. The free-listing bond floor is enforced only in `withdrawAuthorBond` and listing create/update (`contracts/base-poc/src/AgentVouchEvm.sol:289`, `:391`, `:434`); an A1 author-bond slash bypasses those checks and can leave active free listings below `minAuthorBondForFreeListingUsdcMicros`. Listing updates treat URI/price as revision-changing (`AgentVouchEvm.sol:460-461`), so the plan's "metadata-only updates may remain allowed" is genuinely undefined.
+
+The blocking condition is unchanged from the second-pass gate and remains unmet: **no dated decision addendum has been appended.** The eight items enumerated in "Reviewer Follow-up — 2026-07-11 (plan gate, second pass)" are all still open, and the "Design lock complete — 2026-07-11" claim remains contradicted. The third pass adds two items to the same addendum, making ten total:
+
+9. **Free-listing collateral after author-bond first loss** (third pass, gate 1) — operator decision. Recommended MVP arm, consistent with the Pending collateral-escape arm (a) and ship-minimal bias: define the floor as a withdrawal/creation gate only — an A1 slash may push the bond below it, the floor continues to block further withdrawals and new free listings, and trust surfaces/copy state that free-listing self-stake is best-effort after enforcement. Add the specified test (author at floor, one free + one paid listing, upheld paid report). The suspend/remove-listings arm is a larger correctness surface; reserving the floor from slashing weakens the penalty. Record whichever arm is chosen with a date.
+
+10. **Metadata-only boundary while accepted** (third pass, gate 2) — implementer-resolvable; adopt the pass's recommended lock (name/description-only changes allowed; URI, price, and free/paid transitions revert without changing revision or settlement state) and record it dated, with the boundary test.
+
+Nothing else blocks. All third-pass "Required implementation enhancements" (stateful invariant handler, stale-page skip semantics, EIP-3860 initcode gate, ABI parity snapshots, deployment-bound reads, revision-scan-independent receipt proof, executable smoke driver) are executable as written and join the existing non-blocking work. Once one dated addendum covering items 1–10 is appended, this plan passes the gate without a further design pass.
+
+## Implementer Review — 2026-07-11 (fourth pass)
+
+### Additional plan gates
+
+The existing ten-item dated-decision addendum remains required. Add these two economic decisions as well; do not infer them from the WIP.
+
+1. **Make Base Sepolia an on-chain invariant.** `block.chainid` appears only in `Deploy.s.sol`; the facade itself accepts arbitrary constructor USDC and config `chainContext`, so a direct deployment bypasses the script guard. Add a facade-level `84532` guard, canonical chain-context validation, and production-script pinning to Circle Base Sepolia USDC. Test direct wrong-chain deployment/initialization failure, while using an explicit `84532` Anvil fixture for local `MockUSDC` tests.
+
+2. **Define the author-bond first-loss cap and snapshot point.** The enforcement formula references undefined `snapshottedReportBond`; the WIP silently caps author slashing at `config.disputeBondUsdcMicros`. Lock whether the cap is 5 USDC, purchase price, full author bond, or another value, and whether author-bond balance is read at acceptance or uphold. Test 4/5/above-5-USDC bonds plus a post-acceptance deposit, with exact buyer and reserve credits.
+
+3. **Assign reward-index rounding dust.** `_recordPurchase` books the full voucher pool, while per-vouch accrual floors independently. With three 1-USDC vouches and a 1-USDC purchase, 400,000 micros are booked but only 399,999 are claimable, leaving one permanently unclaimable micro after all vouchers claim/revoke. Choose and document its owner/accounting treatment; add a claimability/conservation test so `unclaimedVoucherRevenue` cannot become a stranded liability.
+
+### Read-only evidence
+
+`forge test --root contracts/base-poc` passed 85 legacy tests; `forge build --sizes` reproduced the 27,931-byte EIP-170 failure; `npm run verify:chain-map` passed (26 mapped rows).
+
+## Reviewer Follow-up — 2026-07-12 (plan gate, fourth pass)
+
+Verified independently against the branch source: (1) `block.chainid` is checked only in `Deploy.s.sol:32-33`, so the facade has no on-chain chain guard; (2) `_slashAuthorBond` (`AgentVouchEvm.sol:857-861`) caps first loss at `config.disputeBondUsdcMicros` while the plan's ledger references an undefined `snapshottedReportBond`; (3) `_recordPurchase` books the full `voucherPool` as unclaimed revenue while index-delta and per-vouch accrual both floor, so booked liability can permanently exceed claimable. All three fourth-pass gates are factually grounded.
+
+The blocking condition is unchanged from the second- and third-pass gates: **the single dated decision addendum has still not been appended**, and the "Design lock complete — 2026-07-11" claim remains contradicted. The fourth pass extends the addendum from ten items to thirteen:
+
+11. **Facade-level Base Sepolia invariant** (fourth pass, gate 1) — implementer-resolvable; adopt as written: constructor/init guard requiring `block.chainid == 84532` and canonical chain-context, production-script pinning to Circle Base Sepolia USDC, direct wrong-chain deployment/initialization failure tests, and an explicit-`84532` Anvil fixture for local `MockUSDC` tests. Record it dated.
+
+12. **Author-bond first-loss cap and snapshot point** (fourth pass, gate 2) — operator/economics decision; cannot be defaulted by the implementer. Recommended arm: cap the author-bond first loss at the fixed 5 USDC report bond (this is the apparent intent of the ledger's `min(authorBond, snapshottedReportBond)` and matches WIP behavior when the dispute bond is 5 USDC), with the author-bond balance read at uphold — safe because acceptance already freezes author-bond withdrawal. Rename `snapshottedReportBond` in the ledger to the chosen constant. Add the specified 4/5/above-5-USDC and post-acceptance-deposit tests with exact buyer and reserve credits. Record whichever value/read-point is chosen with a date.
+
+13. **Reward-index rounding dust** (fourth pass, gate 3) — implementer-resolvable; record one dated rule. Recommended arm: at purchase time, book only the distributable amount (`indexDelta * activeVouchStake / REWARD_INDEX_SCALE`) into `unclaimedVoucherRevenueUsdcMicros` and assign the remainder to author share, so booked liability always equals the sum of claimable accruals. Add the three-1-USDC-voucher/1-USDC-purchase conservation test proving `unclaimedVoucherRevenue` reaches exactly zero after all claims/revokes.
+
+Nothing else blocks. Once one dated addendum covering items 1–13 is appended, this plan passes the gate without a further design pass.
+
+## Decision Addendum — 2026-07-12 (items 1–13, operator-acked)
+
+Resolves every open item from the 2026-07-11 plan-review rounds. Operator-level items (3, 4, 6,
+7, 12) are decided here under the founder's standing in-session delegation; items 4, 7, and 12
+diverge from a prior directive or the loop's recommended arm and are flagged as such in the
+handoff summary for explicit veto. Facts cited below were re-verified against the checkout on
+2026-07-12.
+
+1. **Zero-slash upheld outcome — DECIDED (as recommended).** An upheld report with zero total
+   slash still creates exactly the report-bond-return buyer credit (config `disputeBondUsdcMicros`,
+   5 USDC on Sepolia) with the standard claim window; restitution and reserve credits are zero.
+   Amend the contradictory lifecycle sentence to "no restitution or reserve credit." Test both
+   ledger lines.
+2. **Terminal-outcome ABI — DECIDED (as recommended).** Add zero-safe
+   `PaidPurchaseReportOutcome { None, Rejected, Expired, Dismissed, Upheld }` stored separately
+   from status. Freeze getter tuples, event fields/indexing, errors, selectors, and the
+   `PROTOCOL_VERSION` bump in one dated addendum before any client sync. (`Ruling` reuse rejected:
+   `Upheld` as the zero value is a footgun.)
+3. **A1-eligible purchase lanes — DECIDED (operator): exclude Lane-C.** `settleX402Purchase`
+   receipts are NOT eligible for `openPaidPurchaseReport` in this deployment, with a revert test.
+   Rationale: Lane-C records a paid purchase on `SETTLEMENT_ROLE`'s attestation without proving
+   funds (documented since `docs/BASE_POC_INTERIM.md`); admitting it would let a compromised or
+   sloppy settlement key mint refund-eligible purchases and pull slashed voucher funds — quietly
+   promoting that key into the slashing trust boundary. Direct `purchaseSkill` and Lane-B
+   `purchaseWithAuthorization` (both ECDSA-verified fund movement) qualify. Provenance-recorded
+   Lane-C eligibility is deferred to a future dated approval.
+4. **Author-proceeds lock on acceptance — DECIDED (operator): acceptance does NOT freeze
+   `withdrawAuthorProceeds`.** This deliberately supersedes the 2026-07-09 pre-loop directive
+   ("add a lockedByDispute check to withdrawAuthorProceeds"), whose rationale died with the
+   Scope Amendment: B1 removed the reporter reward (the only proceeds-funded outflow) and buyer
+   restitution is funded from the slash bucket, so proceeds are no longer a funding source; item
+   8's author-wide purchase freeze means no new proceeds accrue during a report anyway. Remove
+   the WIP check deliberately, add the lock/pause-matrix row, and test that withdrawal of
+   pre-report proceeds succeeds during an accepted report.
+5. **Zero-slash lifecycle wording** — folded into item 1 (single dated amendment, not a rewrite).
+6. **Protocol-version column widening — DECIDED (operator): both arms, decoupled.**
+   (a) The `VARCHAR(16)` columns are a live latent bug on `main` TODAY, independent of A1:
+   PR #90 stamps the live-read `base-v1-candidate` (17 chars) into six 16-char columns
+   (`web/lib/db.ts:655,781`; `web/lib/usdcPurchases.ts:73,132,259,320`; verified 2026-07-12), so
+   fresh Base listing links/receipts against the v1 candidate fail their insert. Approve the
+   guarded one-shot widening to `VARCHAR(64)` on `main` per the guarded-db-migration pattern
+   (read-only preflight, `EXPECTED_DATABASE_HOST` gate, disposable Neon rehearsal on
+   `agentvouch-postgres`, post-run catalog check + API smoke) as a separate hotfix PR — not part
+   of this plan's diff. (b) Independently, A1's version string is `base-v1-a1` (10 chars) so the
+   A1 deploy never depends on migration timing. Never put `ALTER COLUMN TYPE` in request-time
+   initializers.
+7. **Pending collateral escape — DECIDED (operator): REJECT the no-lock Pending window; locks
+   engage at filing.** This overrides the loop's recommended arm (a). The shipped contract
+   already locks at open — `openDisputes > 0` gates `withdrawAuthorBond`, `vouch`, `revokeVouch`,
+   and revision bumps (verified 2026-07-12: AgentVouchEvm.sol:287,309,350,444) — and the
+   PR #78 `forfeitReporterBond` dismissal lever exists precisely to make lock-griefing costly
+   (dismissed griefers forfeit the 5 USDC bond to the author). A public no-lock window makes the
+   filing a fire alarm: `file → withdraw/revoke all → accept → uphold → zero enforcement` defeats
+   A1's entire purpose. Keep lock-at-file; keep the forfeit lever as the griefing counterweight;
+   add the adversarial exit-attempt test proving the escape reverts. If a Pending/acceptance
+   state survives for resolver-workflow reasons, it carries the same locks as Open.
+8. **Cross-listing reward ordering — DECIDED (as recommended): freeze all of the author's
+   purchase lanes** from financial-report acceptance until finalization, so paged slashing can
+   never race a purchase into a moving reward denominator. Smaller correctness surface; windows
+   are short; alpha caps bound the UX cost. Two-voucher/two-listing/inter-page-purchase
+   conservation test required.
+9. **Free-listing floor after slash — DECIDED (as recommended).** The floor is a
+   withdrawal/creation gate only: an A1 slash may push the bond below it; the floor keeps
+   blocking further withdrawals and new free listings; trust surfaces say free-listing self-stake
+   is best-effort after enforcement. Test: author at floor, one free + one paid listing, upheld
+   paid report.
+10. **Metadata-only boundary while accepted — DECIDED (as recommended).** Name/description-only
+    edits allowed; URI, price, and free/paid transitions revert without touching revision or
+    settlement state. Matches the #86 parity choice. Boundary test required.
+11. **Facade-level Base Sepolia invariant — DECIDED (as recommended).** Constructor/init guard on
+    `block.chainid == 84532` + canonical chain-context validation + production-script pinning to
+    Circle Base Sepolia USDC; wrong-chain deploy/init failure tests; explicit-84532 Anvil fixture
+    for MockUSDC tests. Note for Phase 10: this constant is part of the parameterization sweep —
+    the mainnet v1 deploy replaces it deliberately, never by ad-hoc edit.
+12. **Author-bond first-loss cap and snapshot — DECIDED (operator): snapshotted `slashPercentage`
+    of the author bond, NOT min(bond, report bond).** This overrides the loop's recommended arm.
+    Solana A1 parity slashes the bond at `slash_percentage` (the 2026-06-11 devnet smoke:
+    500_000-micro bond slash alongside the 500_000-micro voucher slash); capping the author's
+    first loss at a fixed 5 USDC while vouchers bleed percentage-of-stake would make the author
+    the least-exposed party on their own listing — inverted incentives. Author bond slashes
+    first at the snapshotted percentage, then vouchers at the same percentage; buyer restitution
+    capped at purchase price; excess to the A4-earmarked reserve. Balance read at uphold (safe:
+    withdrawals frozen from filing per item 7). Rename `snapshottedReportBond` accordingly. Tests:
+    bond below/at/above the slash amount plus a post-filing deposit attempt, with exact buyer and
+    reserve credits.
+13. **Reward-index rounding dust — DECIDED (as recommended).** Book only the distributable amount
+    into `unclaimedVoucherRevenueUsdcMicros`; the remainder joins the author share (consistent
+    with the documented Base dust-to-author divergence in `docs/BASE_POC_INTERIM.md`).
+    Three-voucher conservation test proving unclaimed revenue reaches exactly zero.
+
+With this addendum the plan-review gate's stated condition ("one dated addendum covering items
+1–13") is satisfied. Implementation order reminder: first act is still the Scope Amendment
+section-A library-extraction spike (measure ≤ 23.5 KB), plus the item-6 baseline steps
+(integrate `origin/main`, record new HEAD/merge-base, rerun the size baseline).
