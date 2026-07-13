@@ -16,7 +16,22 @@ describe("settings page source", () => {
     expect(loadKeysSource).toContain(
       'headers: { "X-AgentVouch-Auth": JSON.stringify(auth) }'
     );
+    expect(loadKeysSource).toContain('signApiKeyAuth("list-keys")');
     expect(loadKeysSource).not.toContain("body:");
+  });
+
+  it("binds fresh nonces and exact API-key objects before signing", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/settings/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("buildApiKeyAuthMessage");
+    expect(source).toContain("crypto.randomUUID()");
+    expect(source).toContain("audience: window.location.origin");
+    expect(source).toContain('signApiKeyAuth("create-key", { keyName })');
+    expect(source).toContain("body: JSON.stringify({ auth, name: keyName })");
+    expect(source).toContain('signApiKeyAuth("revoke-key", { keyId })');
   });
 
   it("lets wallet owners edit usernames and link GitHub profiles", () => {

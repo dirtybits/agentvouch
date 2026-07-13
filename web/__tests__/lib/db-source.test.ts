@@ -47,4 +47,14 @@ describe("db schema bootstrap source", () => {
     expect(source).toContain("idx_skill_download_events_skill_created");
     expect(source).toContain("idx_skill_download_events_wallet_created");
   });
+
+  it("initializes the API-key wallet-auth replay ledger additively", () => {
+    const source = readFileSync(join(process.cwd(), "lib/db.ts"), "utf8");
+
+    expect(source).toContain("CREATE TABLE IF NOT EXISTS api_key_auth_nonces");
+    expect(source).toContain("PRIMARY KEY (owner_pubkey, nonce)");
+    expect(source).toContain(
+      "CREATE INDEX IF NOT EXISTS idx_api_key_auth_nonces_expiry"
+    );
+  });
 });

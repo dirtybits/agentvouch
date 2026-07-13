@@ -18,7 +18,7 @@ type ApiKeyLookupRow = {
   permissions: string[] | null;
 };
 
-const AUTH_PAYLOAD_MAX_AGE_MS = 5 * 60_000;
+export const AUTH_PAYLOAD_MAX_AGE_MS = 5 * 60_000;
 const addressCodec = getAddressCodec();
 
 export function verifyWalletSignature(payload: AuthPayload): {

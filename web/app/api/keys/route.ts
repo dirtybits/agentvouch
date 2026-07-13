@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql, initializeDatabase } from "@/lib/db";
+import { AUTH_PAYLOAD_MAX_AGE_MS, verifyWalletSignature } from "@/lib/auth";
 import {
-  assertPublisherAuthMessageScope,
-  verifyWalletSignature,
-  type AuthPayload,
-} from "@/lib/auth";
+  assertApiKeyAuthMessageScope,
+  normalizeApiKeyName,
+  normalizeApiKeyUuid,
+  type ApiKeyAuthAction,
+  type ApiKeyAuthPayload,
+} from "@/lib/apiKeyAuth";
 import { randomBytes, createHash } from "crypto";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -26,6 +29,7 @@ type ApiKeyListRow = {
   last_used_at: string | null;
   revoked_at: string | null;
 };
+type ApiKeyAuthNonceRow = { nonce: string };
 
 function hashKey(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
@@ -36,11 +40,59 @@ function generateApiKey(): string {
   return `sk_${bytes.toString("hex")}`;
 }
 
+async function consumeApiKeyAuthNonce(input: {
+  ownerPubkey: string;
+  auth: ApiKeyAuthPayload;
+  action: ApiKeyAuthAction;
+}): Promise<boolean> {
+  const expiresAt = new Date(
+    input.auth.timestamp + AUTH_PAYLOAD_MAX_AGE_MS
+  ).toISOString();
+  const rows = await sql()<ApiKeyAuthNonceRow>`
+    WITH expired_nonces AS (
+      DELETE FROM api_key_auth_nonces
+      WHERE ctid IN (
+        SELECT ctid
+        FROM api_key_auth_nonces
+        WHERE expires_at < NOW() - INTERVAL '5 minutes'
+        ORDER BY expires_at ASC
+        LIMIT 100
+      )
+      RETURNING nonce
+    )
+    INSERT INTO api_key_auth_nonces (
+      owner_pubkey,
+      nonce,
+      action,
+      expires_at
+    )
+    VALUES (
+      ${input.ownerPubkey},
+      ${input.auth.nonce}::uuid,
+      ${input.action},
+      ${expiresAt}::timestamptz
+    )
+    ON CONFLICT (owner_pubkey, nonce) DO NOTHING
+    RETURNING nonce::text
+  `;
+  return rows.length === 1;
+}
+
+function replayResponse() {
+  return NextResponse.json(
+    { error: "API key signature nonce already used" },
+    { status: 409 }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     await initializeDatabase();
     const body = await request.json();
-    const { auth, name } = body as { auth: AuthPayload; name?: string };
+    const { auth, name } = body as {
+      auth: ApiKeyAuthPayload;
+      name?: unknown;
+    };
 
     if (!auth) {
       return NextResponse.json(
@@ -48,6 +100,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const keyNameResult = normalizeApiKeyName(name);
+    if (!keyNameResult.ok) {
+      return NextResponse.json({ error: keyNameResult.error }, { status: 400 });
+    }
+    const keyName = keyNameResult.value;
 
     const verification = verifyWalletSignature(auth);
     if (!verification.valid || !verification.pubkey) {
@@ -57,13 +115,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const scope = assertPublisherAuthMessageScope({
-      message: auth.message,
-      timestamp: auth.timestamp,
+    const scope = assertApiKeyAuthMessageScope({
+      auth,
       expectedAction: "create-key",
+      expectedAudience: request.nextUrl.origin,
+      keyName,
     });
     if (!scope.ok) {
       return NextResponse.json({ error: scope.error }, { status: 401 });
+    }
+    if (
+      !(await consumeApiKeyAuthNonce({
+        ownerPubkey: verification.pubkey,
+        auth,
+        action: "create-key",
+      }))
+    ) {
+      return replayResponse();
     }
 
     const existing = await sql()<ApiKeyIdRow>`
@@ -83,8 +151,6 @@ export async function POST(request: NextRequest) {
     const rawKey = generateApiKey();
     const keyHash = hashKey(rawKey);
     const keyPrefix = rawKey.slice(0, 12);
-    const keyName = name?.trim() || "default";
-
     const [row] = await sql()<ApiKeyInsertRow>`
       INSERT INTO api_keys (owner_pubkey, key_hash, key_prefix, name)
       VALUES (${verification.pubkey}, ${keyHash}, ${keyPrefix}, ${keyName})
@@ -114,10 +180,10 @@ export async function GET(request: NextRequest) {
     const signedAuthHeader = request.headers.get("x-agentvouch-auth");
     let pubkey: string | null = null;
 
-    let signedAuth = body?.auth as AuthPayload | undefined;
+    let signedAuth = body?.auth as ApiKeyAuthPayload | undefined;
     if (signedAuthHeader) {
       try {
-        signedAuth = JSON.parse(signedAuthHeader) as AuthPayload;
+        signedAuth = JSON.parse(signedAuthHeader) as ApiKeyAuthPayload;
       } catch {
         return NextResponse.json(
           { error: "Malformed X-AgentVouch-Auth header" },
@@ -134,13 +200,22 @@ export async function GET(request: NextRequest) {
           { status: 401 }
         );
       }
-      const scope = assertPublisherAuthMessageScope({
-        message: signedAuth.message,
-        timestamp: signedAuth.timestamp,
+      const scope = assertApiKeyAuthMessageScope({
+        auth: signedAuth,
         expectedAction: "list-keys",
+        expectedAudience: request.nextUrl.origin,
       });
       if (!scope.ok) {
         return NextResponse.json({ error: scope.error }, { status: 401 });
+      }
+      if (
+        !(await consumeApiKeyAuthNonce({
+          ownerPubkey: verification.pubkey,
+          auth: signedAuth,
+          action: "list-keys",
+        }))
+      ) {
+        return replayResponse();
       }
       pubkey = verification.pubkey;
     } else if (authHeader?.startsWith("Bearer sk_")) {
@@ -184,7 +259,10 @@ export async function DELETE(request: NextRequest) {
   try {
     await initializeDatabase();
     const body = await request.json();
-    const { auth, key_id } = body as { auth: AuthPayload; key_id: string };
+    const { auth, key_id } = body as {
+      auth: ApiKeyAuthPayload;
+      key_id: unknown;
+    };
 
     if (!auth || !key_id) {
       return NextResponse.json(
@@ -192,6 +270,12 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const keyIdResult = normalizeApiKeyUuid(key_id, "key id");
+    if (!keyIdResult.ok) {
+      return NextResponse.json({ error: keyIdResult.error }, { status: 400 });
+    }
+    const keyId = keyIdResult.value;
 
     const verification = verifyWalletSignature(auth);
     if (!verification.valid || !verification.pubkey) {
@@ -201,18 +285,28 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const scope = assertPublisherAuthMessageScope({
-      message: auth.message,
-      timestamp: auth.timestamp,
+    const scope = assertApiKeyAuthMessageScope({
+      auth,
       expectedAction: "revoke-key",
+      expectedAudience: request.nextUrl.origin,
+      keyId,
     });
     if (!scope.ok) {
       return NextResponse.json({ error: scope.error }, { status: 401 });
     }
+    if (
+      !(await consumeApiKeyAuthNonce({
+        ownerPubkey: verification.pubkey,
+        auth,
+        action: "revoke-key",
+      }))
+    ) {
+      return replayResponse();
+    }
 
     const rows = await sql()<ApiKeyIdRow & ApiKeyOwnerRow>`
       SELECT id, owner_pubkey FROM api_keys
-      WHERE id = ${key_id}::uuid AND revoked_at IS NULL
+      WHERE id = ${keyId}::uuid AND revoked_at IS NULL
     `;
     if (rows.length === 0) {
       return NextResponse.json(
@@ -225,10 +319,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     await sql()`
-      UPDATE api_keys SET revoked_at = NOW() WHERE id = ${key_id}::uuid
+      UPDATE api_keys SET revoked_at = NOW() WHERE id = ${keyId}::uuid
     `;
 
-    return NextResponse.json({ success: true, revoked: key_id });
+    return NextResponse.json({ success: true, revoked: keyId });
   } catch (error: unknown) {
     console.error("DELETE /api/keys error:", error);
     return NextResponse.json(
