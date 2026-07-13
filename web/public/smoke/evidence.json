@@ -1,0 +1,4 @@
+{
+  "kind": "agentvouch-devnet-smoke-evidence",
+  "summary": "Stable evidence fixture for the optional dispute phase of the USDC devnet smoke harness."
+}

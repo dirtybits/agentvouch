@@ -1733,10 +1733,7 @@ export default function SkillDetailPage({
             >
               <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                 Recommended action
-                <InfoTip
-                  label="How the recommended action is derived"
-                  align="left"
-                >
+                <InfoTip label="How the recommended action is derived">
                   Rolled up from the independent trust signals below. Only
                   staked on-chain trust earns &ldquo;Trusted&rdquo; — the
                   automated scan can flag risk but never grants it.

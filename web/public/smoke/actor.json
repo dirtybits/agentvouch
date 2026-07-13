@@ -1,0 +1,4 @@
+{
+  "name": "AgentVouch Devnet Smoke Buyer",
+  "description": "Deterministic buyer profile used by the USDC devnet smoke harness."
+}
