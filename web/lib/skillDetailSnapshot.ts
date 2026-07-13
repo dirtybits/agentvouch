@@ -301,7 +301,8 @@ async function applyLiveBaseTrust(
   const authorAddress = getEvmAddress(snapshot.author_pubkey);
   const authorTrust = await resolveBaseAuthorTrust(
     authorAddress,
-    snapshot.chain_context
+    snapshot.chain_context,
+    snapshot.evm_contract_address ?? undefined
   );
   const authorIdentity =
     (await resolveAgentIdentityByWallet(authorAddress, {

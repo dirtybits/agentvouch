@@ -102,7 +102,8 @@ function profileToTrust(profile: BaseAgentProfile): AuthorTrust {
 }
 
 async function fetchBaseAgentProfile(
-  authorAddress: Address
+  authorAddress: Address,
+  contractAddress: Address
 ): Promise<BaseAgentProfile> {
   const publicClient = createPublicClient({
     transport: http(BASE_SEPOLIA_RPC_URL),
@@ -115,7 +116,7 @@ async function fetchBaseAgentProfile(
   }
 
   const protocolVersion = await publicClient.readContract({
-    address: getAddress(BASE_AGENTVOUCH_CONTRACT_ADDRESS),
+    address: contractAddress,
     abi: parseAbi(["function PROTOCOL_VERSION() view returns (string)"]),
     functionName: "PROTOCOL_VERSION",
   });
@@ -125,7 +126,7 @@ async function fetchBaseAgentProfile(
       : AGENTVOUCH_EVM_READ_ABI;
 
   return (await publicClient.readContract({
-    address: getAddress(BASE_AGENTVOUCH_CONTRACT_ADDRESS),
+    address: contractAddress,
     abi: parseAbi([...readAbi]),
     functionName: "getProfile",
     args: [authorAddress],
@@ -134,17 +135,20 @@ async function fetchBaseAgentProfile(
 
 export async function resolveBaseAuthorTrust(
   authorAddress: string,
-  chainContext = BASE_SEPOLIA_CHAIN_CONTEXT
+  chainContext = BASE_SEPOLIA_CHAIN_CONTEXT,
+  contractAddress = BASE_AGENTVOUCH_CONTRACT_ADDRESS
 ): Promise<AuthorTrust> {
   if (
     chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT ||
-    !isAddress(authorAddress)
+    !isAddress(authorAddress) ||
+    !isAddress(contractAddress)
   ) {
     return defaultTrust();
   }
 
   const normalizedAddress = getAddress(authorAddress);
-  const cacheKey = `${chainContext}:${normalizedAddress}`;
+  const normalizedContractAddress = getAddress(contractAddress);
+  const cacheKey = `${chainContext}:${normalizedContractAddress}:${normalizedAddress}`;
   const now = Date.now();
   const cached = cache.get(cacheKey);
   if (cached && cached.expires > now) {
@@ -153,7 +157,7 @@ export async function resolveBaseAuthorTrust(
 
   try {
     const trust = profileToTrust(
-      await fetchBaseAgentProfile(normalizedAddress)
+      await fetchBaseAgentProfile(normalizedAddress, normalizedContractAddress)
     );
     cache.set(cacheKey, { data: trust, expires: now + CACHE_TTL_MS });
     return trust;
