@@ -168,7 +168,7 @@ export default function AuthorProfilePage() {
   );
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [vouchAmount, setVouchAmount] = useState("1");
+  const [vouchAmount, setVouchAmount] = useState(isEvmAuthor ? "1" : "0.1");
   const [vouching, setVouching] = useState(false);
   const [vouchStatus, setVouchStatus] = useState("");
   const [vouchTx, setVouchTx] = useState<string | null>(null);

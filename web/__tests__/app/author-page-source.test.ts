@@ -86,7 +86,7 @@ describe("author page source", () => {
     expect(source).toContain("setVouchTxExplorerUrl(result.explorerUrl)");
     expect(source).toContain("setClaimTxExplorerUrl(result.explorerUrl)");
     expect(source).toContain(
-      'const [vouchAmount, setVouchAmount] = useState("1")'
+      'const [vouchAmount, setVouchAmount] = useState(isEvmAuthor ? "1" : "0.1")'
     );
     expect(source).toContain('min={isEvmAuthor ? "1" : "0.01"}');
     expect(source).toContain("BASE_MIN_VOUCH_USDC_MICROS");
