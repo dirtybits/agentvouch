@@ -799,3 +799,23 @@ With this addendum the plan-review gate's stated condition ("one dated addendum 
 1–13") is satisfied. Implementation order reminder: first act is still the Scope Amendment
 section-A library-extraction spike (measure ≤ 23.5 KB), plus the item-6 baseline steps
 (integrate `origin/main`, record new HEAD/merge-base, rerun the size baseline).
+
+## Next-Run Scope (2026-07-12 — founder-acked; binding on the next resumed run)
+
+The next resumed a2a run implements ONLY the size-spike slice, then stops with a closeout:
+
+1. Baseline re-establishment (addendum item 8): integrate current `origin/main` without
+   rewriting shared history, record the new HEAD and merge-base in this plan, and rerun the
+   contract size baseline.
+2. Section-A library extraction (Scope Amendment): move the A1 settlement internals into the
+   external delegatecall library, set `via_ir = true` in `foundry.toml`, drop the
+   `LegacyAuthorReport` getter, add the runtime-size CI gate, and produce a **measured**
+   `forge build --sizes` table proving the full locked mechanism fits at ≤ 23.5 KB
+   (hard cap 24,576).
+
+STOP after the size evidence is recorded — do not begin the behavioral mechanism, tests beyond
+what the spike itself needs, web surfaces, or deploy work in that run. If the library extraction
+does NOT fit under EIP-170, stop and escalate: the implementation architecture question reopens
+and the founder decides before any further code. The mechanism implementation (decision addendum
+items 1–13, full forge matrix, web reads, Sepolia deploy + combined smoke) is the run after,
+resumed against the measured size result.
