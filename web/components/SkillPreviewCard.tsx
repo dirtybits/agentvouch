@@ -18,11 +18,7 @@ import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
-import {
-  BASE_CHAIN_CONTEXT,
-  BASE_SEPOLIA_CHAIN_CONTEXT,
-  getChainDisplayLabel,
-} from "@/lib/chains";
+import { getChainBadge, type ChainBadgeTone } from "@/lib/chainBadge";
 import { shortenChainAddress } from "@/lib/chainAddress";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
@@ -61,6 +57,7 @@ interface SkillPreviewCardSkill {
   security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
   chain_context?: string | null;
+  on_chain_address?: string | null;
   evm_listing_id?: string | null;
   payment_flow?:
     | "free"
@@ -96,6 +93,14 @@ interface SkillPreviewCardProps {
 }
 
 type Verdict = "allow" | "review" | "avoid" | "unknown";
+
+const CHAIN_BADGE_CLASS: Record<ChainBadgeTone, string> = {
+  solana:
+    "border-[var(--solana-purple-border)] bg-[var(--solana-purple-soft)] text-[var(--solana-purple)]",
+  base: "border-[var(--base-blue-border)] bg-[var(--base-blue-soft)] text-[var(--base-blue)]",
+  default:
+    "border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)]",
+};
 
 function truncateAtWord(value: string, maxChars: number): string {
   if (value.length <= maxChars) {
@@ -311,20 +316,15 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
+  const chainBadge = getChainBadge({
+    chainContext: skill.chain_context,
+    onChainAddress: skill.on_chain_address,
+    evmListingId: skill.evm_listing_id,
+  });
   const isReadOnlyEvmListing = Boolean(
-    skill.evm_listing_id && skill.chain_context?.startsWith("eip155:")
+    skill.evm_listing_id && chainBadge?.chainContext.startsWith("eip155:")
   );
-  const chainLabel = skill.chain_context
-    ? getChainDisplayLabel(skill.chain_context)
-    : null;
-  const isBaseListing =
-    skill.chain_context === BASE_CHAIN_CONTEXT ||
-    skill.chain_context === BASE_SEPOLIA_CHAIN_CONTEXT;
-  const chainBadgeClass = skill.chain_context?.startsWith("solana:")
-    ? "border-[var(--solana-purple-border)] bg-[var(--solana-purple-soft)] text-[var(--solana-purple)]"
-    : isBaseListing
-    ? "border-[var(--base-blue-border)] bg-[var(--base-blue-soft)] text-[var(--base-blue)]"
-    : "border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)]";
+  const chainLabel = chainBadge?.label ?? null;
   const walletAuthorLabel = skill.author_pubkey
     ? isReadOnlyEvmListing
       ? shortenChainAddress({
@@ -498,9 +498,11 @@ export default function SkillPreviewCard({
         {/* Signals + tags. Mirror provenance is shown in the author byline
             ("Mirror · @handle"), so it is intentionally not repeated here. */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {chainLabel && (
+          {chainBadge && (
             <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${chainBadgeClass}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                CHAIN_BADGE_CLASS[chainBadge.tone]
+              }`}
               title={`Listed on ${chainLabel}.`}
             >
               <FiLayers className="h-3 w-3" />
