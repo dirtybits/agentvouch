@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   createPublicClient,
   createWalletClient,
@@ -12,13 +12,13 @@ import {
   parseAbiParameters,
   parseSignature,
   stringToHex,
-  type Address,
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
 function loadEnvFile(path: string) {
+  if (!existsSync(path)) return;
   for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
     const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
     if (!match || process.env[match[1]]) continue;
@@ -28,7 +28,9 @@ function loadEnvFile(path: string) {
 }
 
 loadEnvFile("web/.env.local");
-loadEnvFile("contracts/base-poc/harness/.env");
+loadEnvFile(
+  process.env.AGENTVOUCH_HARNESS_ENV ?? "contracts/base-poc/harness/.env"
+);
 
 const ORIGIN = process.env.AGENTVOUCH_SMOKE_ORIGIN ?? "http://localhost:3003";
 const PRICE = 1_000_000n;
@@ -76,7 +78,9 @@ async function parseJson(response: Response) {
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
-    throw new Error(`Expected JSON (${response.status}): ${text.slice(0, 600)}`);
+    throw new Error(
+      `Expected JSON (${response.status}): ${text.slice(0, 600)}`
+    );
   }
 }
 
@@ -122,12 +126,18 @@ async function main() {
   assert(capabilityResponse.ok, "Local x402 capability endpoint failed");
   const capability = await parseJson(capabilityResponse);
   const base = capability.base as Record<string, unknown>;
-  assert(base.chain_context === "eip155:84532", "Local server is not advertising Base Sepolia");
+  assert(
+    base.chain_context === "eip155:84532",
+    "Local server is not advertising Base Sepolia"
+  );
   assert(
     String(base.contract).toLowerCase() === CONTRACT.toLowerCase(),
     "Local server does not point to the v1 candidate"
   );
-  assert(protocolVersion === "base-v1-candidate", "Unexpected Base protocol version");
+  assert(
+    protocolVersion === "base-v1-candidate",
+    "Unexpected Base protocol version"
+  );
 
   const marker = `base-x402-v1-e2e-${Date.now()}`;
   const content = `# Base x402 v1 E2E smoke\n\nFixture: ${marker}\n`;
@@ -146,7 +156,10 @@ async function main() {
     }),
   });
   const created = await parseJson(createResponse);
-  assert(createResponse.status === 201, `Skill creation failed: ${JSON.stringify(created)}`);
+  assert(
+    createResponse.status === 201,
+    `Skill creation failed: ${JSON.stringify(created)}`
+  );
   const skillDbId = String(created.id);
   assert(/^[0-9a-f-]{36}$/i.test(skillDbId), "Skill creation returned no UUID");
 
@@ -166,7 +179,10 @@ async function main() {
   const listingReceipt = await publicClient.waitForTransactionReceipt({
     hash: listingTx,
   });
-  assert(listingReceipt.status === "success", "On-chain listing creation reverted");
+  assert(
+    listingReceipt.status === "success",
+    "On-chain listing creation reverted"
+  );
 
   let linked: Record<string, unknown> | null = null;
   let linkFailure = "";
@@ -193,27 +209,50 @@ async function main() {
     linkFailure = `${linkResponse.status}: ${JSON.stringify(body)}`;
     await sleep(1_500);
   }
-  assert(linked, `Could not link Base listing after RPC propagation: ${linkFailure}`);
-  const listingId = String(linked.evm_listing_id) as Hex;
-  assert(/^0x[0-9a-f]{64}$/i.test(listingId), "Linked skill has no EVM listing id");
   assert(
-    String(linked.evm_contract_address).toLowerCase() === CONTRACT.toLowerCase(),
+    linked,
+    `Could not link Base listing after RPC propagation: ${linkFailure}`
+  );
+  const listingId = String(linked.evm_listing_id) as Hex;
+  assert(
+    /^0x[0-9a-f]{64}$/i.test(listingId),
+    "Linked skill has no EVM listing id"
+  );
+  assert(
+    String(linked.evm_contract_address).toLowerCase() ===
+      CONTRACT.toLowerCase(),
     "Linked skill contract is not v1"
   );
 
   const rawUrl = `${ORIGIN}/api/skills/${skillDbId}/raw`;
   const requiredResponse = await fetch(rawUrl);
   const required = await parseJson(requiredResponse);
-  assert(requiredResponse.status === 402, "Unsigned raw access did not require payment");
+  assert(
+    requiredResponse.status === 402,
+    "Unsigned raw access did not require payment"
+  );
   const accepts = required.accepts as Array<Record<string, unknown>>;
-  assert(Array.isArray(accepts) && accepts.length === 1, "Missing x402 payment requirement");
+  assert(
+    Array.isArray(accepts) && accepts.length === 1,
+    "Missing x402 payment requirement"
+  );
   const requirement = accepts[0];
-  assert(requirement.network === "eip155:84532", "x402 requirement network mismatch");
-  assert(requirement.amount === PRICE.toString(), "x402 requirement price mismatch");
-  assert(String(requirement.payTo).toLowerCase() === CONTRACT.toLowerCase(), "x402 payTo mismatch");
+  assert(
+    requirement.network === "eip155:84532",
+    "x402 requirement network mismatch"
+  );
+  assert(
+    requirement.amount === PRICE.toString(),
+    "x402 requirement price mismatch"
+  );
+  assert(
+    String(requirement.payTo).toLowerCase() === CONTRACT.toLowerCase(),
+    "x402 payTo mismatch"
+  );
   const requirementExtra = requirement.extra as Record<string, unknown>;
   assert(
-    String(requirementExtra.agentvouch_listing_id).toLowerCase() === listingId.toLowerCase(),
+    String(requirementExtra.agentvouch_listing_id).toLowerCase() ===
+      listingId.toLowerCase(),
     "x402 requirement listing mismatch"
   );
 
@@ -235,7 +274,9 @@ async function main() {
   });
   const structHash = keccak256(
     encodeAbiParameters(
-      parseAbiParameters("bytes32,address,address,uint256,uint256,uint256,bytes32"),
+      parseAbiParameters(
+        "bytes32,address,address,uint256,uint256,uint256,bytes32"
+      ),
       [
         RECEIVE_WITH_AUTHORIZATION_TYPEHASH,
         agent.address,
@@ -263,20 +304,26 @@ async function main() {
       validAfter: validAfter.toString(),
       validBefore: validBefore.toString(),
       nonce,
-      signature: `0x${eip3009Signature.r.slice(2)}${eip3009Signature.s.slice(2)}${(
-        eip3009Signature.v ?? Number(eip3009Signature.yParity) + 27
-      )
+      signature: `0x${eip3009Signature.r.slice(2)}${eip3009Signature.s.slice(
+        2
+      )}${(eip3009Signature.v ?? Number(eip3009Signature.yParity) + 27)
         .toString(16)
         .padStart(2, "0")}`,
     },
   };
-  const paymentHeader = Buffer.from(JSON.stringify(paymentPayload), "utf8").toString("base64");
+  const paymentHeader = Buffer.from(
+    JSON.stringify(paymentPayload),
+    "utf8"
+  ).toString("base64");
   const paidResponse = await fetch(rawUrl, {
     headers: { "PAYMENT-SIGNATURE": paymentHeader },
   });
   const paidContent = await paidResponse.text();
   assert(paidResponse.status === 200, `Paid raw access failed: ${paidContent}`);
-  assert(paidContent === content, "Paid raw content does not match the stored skill");
+  assert(
+    paidContent === content,
+    "Paid raw content does not match the stored skill"
+  );
   const paymentResponse = paidResponse.headers.get("payment-response");
   assert(paymentResponse, "Paid raw response lacks PAYMENT-RESPONSE");
   const paymentResult = JSON.parse(
@@ -284,14 +331,23 @@ async function main() {
   ) as Record<string, unknown>;
   const paymentExtensions = paymentResult.extensions as Record<string, unknown>;
   const purchaseId = String(paymentExtensions.evm_purchase_id) as Hex;
-  assert(/^0x[0-9a-f]{64}$/i.test(purchaseId), "Payment response has no EVM purchase id");
+  assert(
+    /^0x[0-9a-f]{64}$/i.test(purchaseId),
+    "Payment response has no EVM purchase id"
+  );
 
   const duplicateResponse = await fetch(rawUrl, {
     headers: { "PAYMENT-SIGNATURE": paymentHeader },
   });
   const duplicateContent = await duplicateResponse.text();
-  assert(duplicateResponse.status === 200, "Duplicate x402 retry did not return existing access");
-  assert(duplicateContent === content, "Duplicate x402 retry returned wrong content");
+  assert(
+    duplicateResponse.status === 200,
+    "Duplicate x402 retry did not return existing access"
+  );
+  assert(
+    duplicateContent === content,
+    "Duplicate x402 retry returned wrong content"
+  );
 
   const downloadTimestamp = Date.now();
   const downloadMessage = `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${skillDbId}\nListing: ${listingId}\nTimestamp: ${downloadTimestamp}`;
@@ -305,8 +361,14 @@ async function main() {
     headers: { "X-AgentVouch-Auth": JSON.stringify(signedDownload) },
   });
   const redownloadContent = await redownloadResponse.text();
-  assert(redownloadResponse.status === 200, `Signed re-download failed: ${redownloadContent}`);
-  assert(redownloadContent === content, "Signed re-download returned wrong content");
+  assert(
+    redownloadResponse.status === 200,
+    `Signed re-download failed: ${redownloadContent}`
+  );
+  assert(
+    redownloadContent === content,
+    "Signed re-download returned wrong content"
+  );
 
   const receipts = await db`
     SELECT
@@ -335,17 +397,44 @@ async function main() {
     FROM usdc_purchase_entitlements
     WHERE skill_db_id = ${skillDbId}::uuid
   `;
-  assert(receipts.length === 1, `Expected one receipt, found ${receipts.length}`);
-  assert(entitlements.length === 1, `Expected one entitlement, found ${entitlements.length}`);
+  assert(
+    receipts.length === 1,
+    `Expected one receipt, found ${receipts.length}`
+  );
+  assert(
+    entitlements.length === 1,
+    `Expected one entitlement, found ${entitlements.length}`
+  );
   for (const row of [...receipts, ...entitlements]) {
-    assert(row.buyer_chain_context === "eip155:84532", "Persisted buyer chain mismatch");
-    assert(row.buyer_address === agent.address.toLowerCase(), "Persisted buyer address mismatch");
+    assert(
+      row.buyer_chain_context === "eip155:84532",
+      "Persisted buyer chain mismatch"
+    );
+    assert(
+      row.buyer_address === agent.address.toLowerCase(),
+      "Persisted buyer address mismatch"
+    );
     assert(row.amount_micros === PRICE.toString(), "Persisted amount mismatch");
-    assert(row.payment_flow === "base-x402-purchase-skill", "Persisted payment flow mismatch");
-    assert(row.protocol_version === "base-v1-candidate", "Persisted protocol version mismatch");
-    assert(String(row.evm_listing_id).toLowerCase() === listingId.toLowerCase(), "Persisted listing mismatch");
-    assert(String(row.evm_purchase_id).toLowerCase() === purchaseId.toLowerCase(), "Persisted purchase mismatch");
-    assert(row.listing_revision === revision.toString(), "Persisted listing revision mismatch");
+    assert(
+      row.payment_flow === "base-x402-purchase-skill",
+      "Persisted payment flow mismatch"
+    );
+    assert(
+      row.protocol_version === "base-v1-candidate",
+      "Persisted protocol version mismatch"
+    );
+    assert(
+      String(row.evm_listing_id).toLowerCase() === listingId.toLowerCase(),
+      "Persisted listing mismatch"
+    );
+    assert(
+      String(row.evm_purchase_id).toLowerCase() === purchaseId.toLowerCase(),
+      "Persisted purchase mismatch"
+    );
+    assert(
+      row.listing_revision === revision.toString(),
+      "Persisted listing revision mismatch"
+    );
   }
 
   console.log(`skillDbId=${skillDbId}`);
@@ -353,7 +442,9 @@ async function main() {
   console.log(`listingId=${listingId}`);
   console.log(`settlementTx=${paymentResult.transaction}`);
   console.log(`purchaseId=${purchaseId}`);
-  console.log(`receiptCount=${receipts.length} entitlementCount=${entitlements.length}`);
+  console.log(
+    `receiptCount=${receipts.length} entitlementCount=${entitlements.length}`
+  );
   console.log("result=PASS DB-linked Base v1 x402 raw-to-entitlement flow");
 }
 

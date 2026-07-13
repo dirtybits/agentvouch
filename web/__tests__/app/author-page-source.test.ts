@@ -85,6 +85,16 @@ describe("author page source", () => {
     expect(source).toContain("isEvmAddress(pubkey)");
     expect(source).toContain("setVouchTxExplorerUrl(result.explorerUrl)");
     expect(source).toContain("setClaimTxExplorerUrl(result.explorerUrl)");
+    expect(source).toContain(
+      'const [vouchAmount, setVouchAmount] = useState("1")'
+    );
+    expect(source).toContain('min={isEvmAuthor ? "1" : "0.01"}');
+    expect(source).toContain("BASE_MIN_VOUCH_USDC_MICROS");
+    expect(source).toContain("BASE_PASSKEY_WALLET_SOURCE");
+    expect(source).toContain("Base vouches require at least 1.00 USDC.");
+    expect(source).toContain(
+      "Base vouching currently requires Coinbase Smart Wallet."
+    );
   });
 
   it("renders Base author trust from chain-neutral trustData instead of Solana profile state", () => {
