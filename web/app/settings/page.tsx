@@ -24,6 +24,11 @@ import {
   FiUser,
 } from "react-icons/fi";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  buildApiKeyAuthMessage,
+  normalizeApiKeyName,
+  type ApiKeyAuthAction,
+} from "@/lib/apiKeyAuth";
 
 interface ApiKeyRow {
   id: string;
@@ -126,11 +131,34 @@ export default function SettingsPage() {
     [walletAddress, signMessage]
   );
 
+  const signApiKeyAuth = useCallback(
+    async (
+      action: ApiKeyAuthAction,
+      object: { keyName?: string; keyId?: string } = {}
+    ) => {
+      if (!walletAddress || !signMessage)
+        throw new Error("Wallet not connected");
+      const timestamp = Date.now();
+      const nonce = crypto.randomUUID();
+      const message = buildApiKeyAuthMessage({
+        action,
+        audience: window.location.origin,
+        timestamp,
+        nonce,
+        ...object,
+      });
+      const sigBytes = await signMessage(new TextEncoder().encode(message));
+      const signature = encodeBase64(sigBytes);
+      return { pubkey: walletAddress, signature, message, timestamp, nonce };
+    },
+    [walletAddress, signMessage]
+  );
+
   const loadKeys = useCallback(async () => {
     if (!connected || !walletAddress || !signMessage) return;
     setLoading(true);
     try {
-      const auth = await signAuth("list-keys");
+      const auth = await signApiKeyAuth("list-keys");
       const res = await fetch("/api/keys", {
         headers: { "X-AgentVouch-Auth": JSON.stringify(auth) },
       });
@@ -147,8 +175,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, walletAddress]);
+  }, [connected, walletAddress, signMessage, signApiKeyAuth]);
 
   const loadIdentity = useCallback(async () => {
     if (!connected || !walletAddress) return;
@@ -219,11 +246,14 @@ export default function SettingsPage() {
     setError(null);
     setNewKey(null);
     try {
-      const auth = await signAuth("create-key");
+      const keyNameResult = normalizeApiKeyName(newKeyName);
+      if (!keyNameResult.ok) throw new Error(keyNameResult.error);
+      const keyName = keyNameResult.value;
+      const auth = await signApiKeyAuth("create-key", { keyName });
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auth, name: newKeyName || "default" }),
+        body: JSON.stringify({ auth, name: keyName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create key");
@@ -243,7 +273,7 @@ export default function SettingsPage() {
     setRevoking(keyId);
     setError(null);
     try {
-      const auth = await signAuth("revoke-key");
+      const auth = await signApiKeyAuth("revoke-key", { keyId });
       const res = await fetch("/api/keys", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },

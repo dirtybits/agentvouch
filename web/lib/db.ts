@@ -1039,6 +1039,22 @@ async function runCoreSchemaDdl() {
     CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)
   `;
 
+  await db`
+    CREATE TABLE IF NOT EXISTS api_key_auth_nonces (
+      owner_pubkey VARCHAR(44) NOT NULL,
+      nonce UUID NOT NULL,
+      action VARCHAR(32) NOT NULL,
+      consumed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (owner_pubkey, nonce)
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_api_key_auth_nonces_expiry
+    ON api_key_auth_nonces(expires_at)
+  `;
+
   // First-party "connected repos": a wallet authorizes a GitHub repo it owns to
   // be kept in sync as its own listings (distinct from community mirrors, which
   // are hardcoded in lib/mirror/sources.ts and attributed to a synthetic GitHub
