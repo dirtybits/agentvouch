@@ -799,3 +799,138 @@ With this addendum the plan-review gate's stated condition ("one dated addendum 
 1–13") is satisfied. Implementation order reminder: first act is still the Scope Amendment
 section-A library-extraction spike (measure ≤ 23.5 KB), plus the item-6 baseline steps
 (integrate `origin/main`, record new HEAD/merge-base, rerun the size baseline).
+
+## Reconciliation Addendum — 2026-07-12 (operator-approved)
+
+This section supersedes only the conflicting portions of the lifecycle text and Decision Addendum
+items 7, 8, and 13. It resolves the valid fifth- and sixth-pass findings recovered from run
+`20260711-213201-708011`; the generated reviewer transcripts are intentionally not copied into this
+canonical plan. No contract edits may begin until the branch has integrated current `origin/main`
+and the production-profile runtime baseline has been re-recorded.
+
+The previously operator-approved buyer claim window is seven days, not thirty. Every earlier
+reference in this plan to a 30-day buyer bond/credit claim window or deadline is superseded by a
+seven-day window measured from expiry or finalization, as applicable. Closing an unclaimed credit
+after that deadline still converts it to restitution-reserve credit exactly once.
+
+### Filing, acceptance, terminal transitions, and anti-grief bound
+
+- There is at most one nonterminal `PaidPurchaseReport` per author, not merely one accepted report.
+  Filing atomically occupies the buyer, listing, purchase, and author slots. Multiple Pending
+  reports for one author are not allowed.
+- Filing starts the author collateral-membership lock. Until that report terminates,
+  `withdrawAuthorBond`, `vouch`, `revokeVouch`, listing removal, URI/price changes, free/paid
+  transitions, and revision changes revert. Name/description-only edits, author-proceeds
+  withdrawal, voucher-revenue claims, and historical-receipt verification remain available.
+- `depositAuthorBond` remains available while a report is Pending or accepted. Deposits are
+  voluntary additions to the author-bond balance and enter the uphold-time slash base. The author
+  bond is read at upheld resolution and slashed by the snapshotted `slashPercentage`.
+- New purchases remain available while Pending. Acceptance atomically freezes all three purchase
+  lanes across every listing by that author; this author-wide purchase freeze remains through
+  voucher settlement and finalization. Acceptance does not create a second lock count.
+- Rejection, permissionless Pending expiry, dismissal, and finalization each clear the four filing
+  slots and collateral lock exactly once. With one author slot, one terminal report cannot unlock
+  another live report.
+- Pending review still expires exactly three days after filing. Expiry returns the five-USDC bond
+  through the normal pull-credit path and permanently consumes the initiating receipt, but now
+  sets an author-level report cooldown through `expiredAt + 7 days`. No buyer can file another
+  report against that author during this interval. This bounds resolver-inactivity grief to three
+  locked days followed by seven guaranteed unlocked days; it deliberately trades seven days of
+  report availability after an operational miss for bounded author liveness.
+- Rejected and dismissed report bonds route deterministically to the restitution reserve. Remove
+  `forfeitReporterBond` and every resolver-selected payout destination from the clean-break ABI.
+  Existing rejected/dismissed buyer cooldown rules remain. Expiry is the only non-upheld terminal
+  path that returns the bond.
+
+Required transition tests cover filing at every cooldown boundary, a second buyer and revision,
+resolver inactivity, acceptance at `deadline - 1` and rejection at/after `deadline`, expiry exactly
+at the deadline, duplicate terminal calls, all lock-counter decrements, purchase availability while
+Pending, author-wide purchase rejection after acceptance, voluntary post-filing bond deposits, and
+proof that fully refundable reports cannot keep an author continuously locked.
+
+### Purchase-lane provenance
+
+Add a permanent zero-safe purchase provenance field written atomically by every purchase path:
+`PurchaseLane { None, Direct, Authorization, Settlement }`. Direct `purchaseSkill` and
+`purchaseWithAuthorization` receipts are A1-eligible. `settleX402Purchase` receipts are not.
+Eligibility is derived only from stored provenance; callers cannot supply or override the lane.
+Test all three lanes plus nonexistent/default provenance and every alternate receipt-construction
+path.
+
+### Exact voucher-revenue rounding ownership
+
+Decision Addendum item 13's single aggregate is insufficient for unequal stakes. Replace it with
+two conserved ledgers:
+
+- `voucherRevenuePendingDistributionUsdcMicros`: whole micros funded for the reward index but not
+  yet materialized into per-voucher accruals;
+- `voucherRevenueClaimableUsdcMicros`: the exact sum of whole micros already materialized into
+  voucher accrual balances and not yet paid.
+
+At purchase, compute the index-level distributable amount; credit the index-division remainder to
+author proceeds and book only the distributable amount as pending distribution. Whenever a
+position accrues, move exactly its newly floored whole-micro accrual from pending distribution to
+claimable. Claims decrement claimable by the exact transfer. Before a position leaves Active—by
+revoke or slash—it must accrue once. When the last active position has accrued and active stake
+becomes zero, atomically credit the remaining pending-distribution residue to author proceeds and
+zero it; already-materialized voucher claims remain claimable and cannot be swept. Fuzz unequal
+stakes, repeated purchases, arbitrary claim/revoke/slash orders, and final-position exit. Assert
+that both aggregates plus author proceeds and paid voucher claims conserve every purchase micro.
+
+### Frozen clean-break A1 ABI
+
+The exact protocol version for this deployment is `base-v1-a1`. Solidity enum parameters use their
+canonical ABI integer type (`uint8`). The final A1 source surface is:
+
+| Purpose           | Exact Solidity signature                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| File              | `openPaidPurchaseReport(address,bytes32,bytes32,string) returns (uint64)`                                             |
+| Accept/reject     | `reviewPaidPurchaseReport(uint64,bool)`                                                                               |
+| Uphold/dismiss    | `resolvePaidPurchaseReport(uint64,uint8)`                                                                             |
+| Voucher page      | `slashPaidPurchaseReportVouches(uint64,address[])`                                                                    |
+| Buyer pull        | `claimPaidPurchaseReportCredit(uint64)`                                                                               |
+| Expire buyer pull | `closePaidPurchaseReportCredit(uint64)`                                                                               |
+| Reserve pull      | `claimRestitutionReserve()`                                                                                           |
+| Core read         | `getPaidPurchaseReportCore(uint64) returns (address,address,bytes32,bytes32,uint64,uint64,uint64,uint64,uint8,uint8)` |
+| Settlement read   | `getPaidPurchaseReportSettlement(uint64) returns (uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint64,bool)` |
+| Evidence read     | `getPaidPurchaseReportEvidence(uint64) returns (string)`                                                              |
+
+Core-read order is buyer, author, listing ID, purchase ID, filed timestamp, review deadline,
+accepted timestamp, terminal timestamp, status, outcome. Status is
+`PaidPurchaseReportStatus { None, Pending, Accepted, SlashingVouchers, Terminal }`; outcome is
+`PaidPurchaseReportOutcome { None, Rejected, Expired, Dismissed, Upheld }`. Settlement-read order
+is snapshotted slash percentage, snapshotted active-vouch stake, processed pre-slash stake,
+author-bond slash, voucher slash, buyer entitlement, funded buyer credit, claim deadline, and
+claimed-or-expired flag. Missing IDs revert rather than returning an all-zero tuple.
+
+Freeze these A1 events and indexed fields before client generation:
+
+- `PaidPurchaseReportOpened(uint64 indexed reportId,address indexed buyer,address indexed author,bytes32 listingId,bytes32 purchaseId,uint256 bond,uint64 reviewDeadline,string evidenceUri)`
+- `PaidPurchaseReportAccepted(uint64 indexed reportId,address indexed resolver,address indexed author,uint64 acceptedAt)`
+- `PaidPurchaseReportRejected(uint64 indexed reportId,address indexed resolver,address indexed buyer,uint256 reserveCredit,uint64 buyerCooldownUntil)`
+- `PaidPurchaseReportExpired(uint64 indexed reportId,address indexed buyer,address indexed author,uint256 buyerCredit,uint64 claimDeadline,uint64 authorCooldownUntil)`
+- `PaidPurchaseReportParked(uint64 indexed reportId,address indexed resolver,address indexed author,uint8 slashPercentage,uint256 activeVouchStake,uint256 authorBondSlash)`
+- `PaidPurchaseReportVouchSlashed(uint64 indexed reportId,address indexed voucher,uint256 preSlashStake,uint256 slashAmount,uint256 processedPreSlashStake)`
+- `PaidPurchaseReportDismissed(uint64 indexed reportId,address indexed resolver,address indexed author,uint256 reserveCredit,uint64 buyerCooldownUntil)`
+- `PaidPurchaseReportFinalized(uint64 indexed reportId,address indexed author,address indexed buyer,uint256 buyerEntitlement,uint256 buyerCredit,uint256 reserveCredit,uint64 claimDeadline)`
+- `PaidPurchaseReportCreditClaimed(uint64 indexed reportId,address indexed buyer,uint256 amount)`
+- `PaidPurchaseReportCreditExpired(uint64 indexed reportId,uint256 reserveCredit)`
+- `RestitutionReserveClaimed(address indexed recipient,uint256 amount)`
+
+The A1-specific custom-error set is frozen as `PaidPurchaseReportNotFound`,
+`PaidPurchaseReportInvalidState`, `PaidPurchaseReceiptIneligible`, `PaidPurchaseReceiptConsumed`,
+`PaidPurchaseBuyerBusy`, `PaidPurchaseListingBusy`, `PaidPurchaseAuthorBusy`,
+`PaidPurchaseBuyerCooldown`, `PaidPurchaseAuthorCooldown`, `PaidPurchaseReviewExpired`,
+`PaidPurchaseReviewOpen`, `PaidPurchaseEvidenceTooLong`, `PaidPurchaseSlashPageTooLarge`,
+`PaidPurchaseSlashSnapshotIncomplete`, `PaidPurchaseCreditNotFunded`,
+`PaidPurchaseCreditExpired`, `PaidPurchaseCreditOpen`, `PaidPurchaseCreditAlreadyHandled`, and
+`PurchaseLaneIneligible`. Existing general errors may remain where their meaning is unchanged;
+removed legacy/FinancialReport errors and selectors must be absent from compiled ABI parity checks.
+
+### Re-established execution gate
+
+The canonical plan now contains both the operator-acked items 1–13 and this superseding
+reconciliation. The old run ledger must not be resumed: start a fresh run after integrating
+`origin/main`, recording HEAD/merge-base, rebuilding with the production profile, and confirming
+the measured runtime baseline. One validation-only plan review is sufficient; any reviewer request
+for an operator decision must block immediately rather than consume another autonomous round.
