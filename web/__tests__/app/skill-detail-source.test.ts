@@ -35,6 +35,8 @@ describe("skill detail source", () => {
     expect(source).toContain("getConfiguredSolanaExplorerAddressUrl");
     expect(source).toContain("View PDA");
     expect(source).toContain("Sign & Download");
+    expect(source).toContain("Paid content");
+    expect(source).toContain("sign with the buyer wallet to retrieve SKILL.md");
     expect(source).toContain("buildDownloadRawMessage");
     expect(source).toContain("buildStripeCheckoutMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");

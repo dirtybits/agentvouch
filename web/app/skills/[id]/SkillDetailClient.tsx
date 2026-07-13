@@ -85,6 +85,7 @@ import {
   FiTerminal,
   FiChevronDown,
   FiCreditCard,
+  FiLock,
 } from "react-icons/fi";
 
 interface SkillVersion {
@@ -1840,14 +1841,27 @@ export default function SkillDetailPage({
               </div>
             ) : (
               isChainOnly &&
-              skill.skill_uri && (
-                <div className="rounded-sm border border-yellow-200 dark:border-yellow-800/50 bg-yellow-50 dark:bg-yellow-900/10 p-4 mb-6">
+              skill.skill_uri &&
+              (isPaidSkill ? (
+                <div className="mb-6 rounded-lg border border-gray-200 bg-white/70 p-6 text-center dark:border-gray-800 dark:bg-gray-900/50">
+                  <FiLock className="mx-auto h-6 w-6 text-gray-400" />
+                  <h2 className="font-display mt-3 text-xl text-gray-900 dark:text-white">
+                    Paid content
+                  </h2>
+                  <p className="font-article mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                    {buyerHasPurchased
+                      ? "Purchase verified. Use Sign & Download in the purchase panel to retrieve SKILL.md."
+                      : `Complete the ${usdcPriceLabel} purchase, then sign with the buyer wallet to retrieve SKILL.md.`}
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-6 rounded-sm border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800/50 dark:bg-yellow-900/10">
                   <p className="text-sm text-yellow-700 dark:text-yellow-400">
                     Content could not be loaded from the source URL. The file
                     may have been moved or is temporarily unavailable.
                   </p>
                 </div>
-              )
+              ))
             )}
             {/* Developer & API (collapsed by default) */}
             <details className="group/dev mb-6 rounded-lg border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-gray-900/50">
