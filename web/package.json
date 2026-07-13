@@ -11,6 +11,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "db:cutover": "tsx scripts/db-cutover.ts",
     "db:phase6-chain-identity": "tsx scripts/phase6-chain-identity-migration.ts",
+    "db:widen-protocol-version": "tsx scripts/widen-protocol-version-columns.ts",
     "x402:bridge-poc": "tsx scripts/x402-bridge-poc.ts",
     "test": "vitest run",
     "test:watch": "vitest"
