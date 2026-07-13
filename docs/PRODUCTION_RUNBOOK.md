@@ -122,9 +122,11 @@ Record the authority pubkeys for each environment before production changes:
 
 ## Base V1 Candidate Operations
 
-The Base contract surface under `contracts/base-poc` is now a **Base v1 candidate**, not a mainnet
-release. It includes `PROTOCOL_VERSION = "base-v1-candidate"`, USDC purchase/x402 flows,
-author bonds, vouch/revoke, and founder/admin-resolved author reports.
+The deployed Base Sepolia contract is a **pre-A1 Base v1 candidate**, not a mainnet release. It reports
+`PROTOCOL_VERSION = "base-v1-candidate"` and includes USDC purchase/x402 flows, author bonds,
+vouch/revoke, and founder/admin-resolved generic author reports. The local clean-break A1 source reports
+`base-v1-a1`, removes those generic reports, and adds centrally adjudicated paid-purchase reports through
+an immutably linked settlement library. It is not deployed or approved for broadcast.
 
 Use `docs/BASE_DEPLOY.md` for Base Sepolia v1-candidate deploys, env pointer updates, selector
 verification, and the fresh-state report smoke. `docs/DEPLOY.md` is Solana-only.
@@ -133,8 +135,10 @@ Before any Base mainnet deployment:
 
 1. Use a fresh non-upgradeable deployment unless a concrete operational need justifies a proxy.
 2. Put every privileged role behind documented custody, preferably a multisig:
-   `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `TREASURY_ROLE`, `SETTLEMENT_ROLE`, and
-   `PAUSE_ROLE`.
+   `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE`.
+   The clean-break A1 candidate has no `TREASURY_ROLE`; separately approve the immutable restitution-
+   reserve recipient. If the pre-A1 deployment remains reachable, document custody for its legacy
+   `TREASURY_ROLE` as well.
 3. Keep the x402 relayer as a dedicated low-privilege funded EOA. It must not be the deployer,
    default admin, resolver, treasury, or pause key.
 4. Record role holders, threshold/signers, emergency rotation, and revocation procedure in the
@@ -143,7 +147,9 @@ Before any Base mainnet deployment:
 6. Run internal review plus an external security pass over every USDC-moving path before Phase 10:
    `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase`, `depositAuthorBond`,
    `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue`, `withdrawAuthorProceeds`,
-   `updateSkillListing`, `openReport`, and `resolveReport`.
+   `updateSkillListing`, every paid-purchase report transition and crank, buyer-credit claims, and
+   restitution-reserve claims. Review the deployed pre-A1 `openReport`/`resolveReport` path separately
+   for as long as that contract remains reachable.
 7. **Publisher auth message scope (fixed 2026-07-08):** wallet signature verification alone is
    not sufficient. `POST /api/skills`, `PATCH /api/skills/[id]`, and
    `POST /api/skills/[id]/versions` require the signed message's `Action:` (and `Skill id:` for

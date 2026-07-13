@@ -25,6 +25,7 @@ contract X402Test is Test {
     bytes32 internal listingId;
 
     function setUp() public {
+        vm.chainId(84532);
         buyer = vm.addr(BUYER_PK);
         usdc = new MockUSDC();
         av = new AgentVouchEvm(address(usdc), admin);
@@ -46,12 +47,14 @@ contract X402Test is Test {
         c.chainContext = "eip155:84532";
         c.minVouchStakeUsdcMicros = MIN_VOUCH;
         c.disputeBondUsdcMicros = 5_000_000;
-        c.minAuthorBondForFreeListingUsdcMicros = 10_000_000;
-        c.minPaidListingPriceUsdcMicros = MIN_VOUCH;
+        c.minAuthorBondForFreeListingUsdcMicros = 1_000_000;
+        c.minPaidListingPriceUsdcMicros = 10_000;
         c.authorShareBps = 6000;
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
+        c.refundClaimWindowSeconds = 7 days;
+        c.treasuryRecipient = address(0xD00D);
     }
 
     function _register(address a) internal {
@@ -109,7 +112,7 @@ contract X402Test is Test {
         AgentVouchTypes.Purchase memory p = av.getPurchase(pId);
         assertEq(p.authorShareUsdcMicros, 6_000_000);
         assertEq(p.voucherPoolUsdcMicros, 4_000_000);
-        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 4_000_000);
+        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 0);
         assertEq(usdc.balanceOf(address(av)), MIN_VOUCH * 4 + PRICE);
     }
 
@@ -255,7 +258,7 @@ contract X402Test is Test {
         usdc.mint(address(av), PRICE); // facilitator delivered the funds
         vm.prank(admin);
         av.settleX402Purchase(listingId, buyer, PRICE, keccak256("ref1"), keccak256("tx1"));
-        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 4_000_000);
+        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 0);
         uint256 bal = usdc.balanceOf(voucher);
         vm.prank(voucher);
         av.claimVoucherRevenue(author);
@@ -270,7 +273,7 @@ contract X402Test is Test {
         av.settleX402Purchase(listingId, buyer, PRICE, keccak256("ref1"), keccak256("tx1"));
         uint256 liabilities = av.getProfile(author).totalVouchStakeReceivedUsdcMicros
             + av.getSettlement(listingId, 1).authorProceedsUsdcMicros
-            + av.getProfile(author).unclaimedVoucherRevenueUsdcMicros;
+            + av.getPurchase(av.purchaseId(buyer, listingId, 1)).voucherPoolUsdcMicros;
         assertEq(usdc.balanceOf(address(av)), liabilities);
     }
 

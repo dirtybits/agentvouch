@@ -7,213 +7,219 @@ import {AgentVouchTypes} from "../src/libraries/AgentVouchTypes.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract ReportsTest is Test {
-    AgentVouchEvm internal av;
-    MockUSDC internal usdc;
-    address internal admin = address(0xA11CE);
-    address internal author = address(0xA0);
-    address internal reporter = address(0xB0);
-    address internal voucher = address(0xC0);
+    uint256 internal constant PRICE = 10_000_000;
+    uint256 internal constant BOND = 5_000_000;
+    address internal constant ADMIN = address(0xA11CE);
+    address internal constant AUTHOR = address(0xA0);
+    address internal constant BUYER = address(0xB0);
+    address internal constant BUYER_TWO = address(0xB2);
+    address internal constant VOUCHER = address(0xC0);
+    address internal constant RESERVE = address(0xD00D);
+    address internal constant RESOLVER_TWO = address(0xE2);
 
-    uint256 constant DISPUTE_BOND = 5_000_000;
-    uint256 constant AUTHOR_BOND = 10_000_000;
-    uint256 constant MIN_VOUCH = 1_000_000;
+    MockUSDC internal usdc;
+    AgentVouchEvm internal av;
+    bytes32 internal listing;
+    bytes32 internal purchase;
 
     function setUp() public {
+        vm.chainId(84532);
         usdc = new MockUSDC();
-        av = new AgentVouchEvm(address(usdc), admin);
-        vm.prank(admin);
+        av = new AgentVouchEvm(address(usdc), ADMIN);
+        vm.prank(ADMIN);
         av.initializeConfig(_cfg());
 
-        _setupActor(author);
-        _setupActor(reporter);
-        _setupActor(voucher);
+        _seed(AUTHOR);
+        _seed(BUYER);
+        _seed(BUYER_TWO);
+        _seed(VOUCHER);
+
+        vm.prank(AUTHOR);
+        listing = av.createSkillListing(keccak256("paid"), "ipfs://paid", "paid", "desc", PRICE);
+        vm.prank(BUYER);
+        purchase = av.purchaseSkill(listing);
     }
 
     function _cfg() internal view returns (AgentVouchTypes.Config memory c) {
         c.usdc = address(usdc);
         c.chainContext = "eip155:84532";
-        c.minVouchStakeUsdcMicros = MIN_VOUCH;
-        c.disputeBondUsdcMicros = DISPUTE_BOND;
-        c.minAuthorBondForFreeListingUsdcMicros = AUTHOR_BOND;
-        c.minPaidListingPriceUsdcMicros = 1_000_000;
-        c.authorShareBps = 6000;
-        c.voucherShareBps = 4000;
-        c.protocolFeeBps = 0;
-        c.slashPercentage = 100;
+        c.minVouchStakeUsdcMicros = 1_000_000;
+        c.disputeBondUsdcMicros = BOND;
+        c.minAuthorBondForFreeListingUsdcMicros = 1_000_000;
+        c.minPaidListingPriceUsdcMicros = 10_000;
+        c.authorShareBps = 6_000;
+        c.voucherShareBps = 4_000;
+        c.slashPercentage = 50;
+        c.refundClaimWindowSeconds = 7 days;
+        c.treasuryRecipient = RESERVE;
     }
 
-    function _setupActor(address actor) internal {
-        usdc.mint(actor, 1_000_000_000);
-        vm.startPrank(actor);
+    function _seed(address who) internal {
+        usdc.mint(who, 1_000_000_000);
+        vm.startPrank(who);
         usdc.approve(address(av), type(uint256).max);
         av.registerAgent("ipfs://agent");
         vm.stopPrank();
     }
 
-    function test_protocolVersionMarksV1Candidate() public view {
-        assertEq(av.PROTOCOL_VERSION(), "base-v1-candidate");
+    function _open() internal returns (uint64 reportId) {
+        vm.prank(BUYER);
+        reportId = av.openPaidPurchaseReport(AUTHOR, listing, purchase, "ipfs://evidence");
     }
 
-    function test_openReportBondsAndLocksAuthorExposure() public {
-        vm.prank(author);
-        av.depositAuthorBond(AUTHOR_BOND);
-        vm.prank(voucher);
-        av.vouch(author, MIN_VOUCH);
+    function test_openPaidPurchaseReportConsumesReceiptAndExposesCompactReads() public {
+        uint64 reportId = _open();
+        (
+            address buyer,
+            address author,
+            bytes32 listingId_,
+            bytes32 purchaseId_,,
+            uint64 reviewDeadline,,,
+            uint8 status,
+            uint8 outcome
+        ) = av.getPaidPurchaseReportCore(reportId);
+        assertEq(buyer, BUYER);
+        assertEq(author, AUTHOR);
+        assertEq(listingId_, listing);
+        assertEq(purchaseId_, purchase);
+        assertGt(reviewDeadline, block.timestamp);
+        assertEq(status, uint8(AgentVouchTypes.PaidPurchaseReportStatus.Pending));
+        assertEq(outcome, uint8(AgentVouchTypes.PaidPurchaseReportOutcome.None));
+        assertEq(av.getPaidPurchaseReportEvidence(reportId), "ipfs://evidence");
 
-        uint256 reporterBefore = usdc.balanceOf(reporter);
-        vm.prank(reporter);
-        uint64 reportId = av.openReport(author, "ipfs://evidence");
+        vm.prank(BUYER);
+        vm.expectRevert(AgentVouchEvm.PaidPurchaseReceiptConsumed.selector);
+        av.openPaidPurchaseReport(AUTHOR, listing, purchase, "ipfs://again");
+    }
 
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
-        assertTrue(report.exists);
-        assertEq(report.reporter, reporter);
-        assertEq(report.author, author);
-        assertEq(report.evidenceUri, "ipfs://evidence");
-        assertEq(report.bondUsdcMicros, DISPUTE_BOND);
-        assertEq(report.forfeitedReporterBondUsdcMicros, 0);
-        assertEq(uint8(report.status), uint8(AgentVouchTypes.ReportStatus.Open));
-        assertEq(av.getProfile(author).openDisputes, 1);
-        assertEq(usdc.balanceOf(reporter), reporterBefore - DISPUTE_BOND);
-
-        vm.prank(author);
-        vm.expectRevert(AgentVouchEvm.BondExposureLocked.selector);
-        av.withdrawAuthorBond(1);
-
-        vm.prank(voucher);
+    function test_pendingLocksCollateralButAllowsPurchases() public {
+        _open();
+        vm.prank(VOUCHER);
         vm.expectRevert(AgentVouchEvm.DisputeLocked.selector);
-        av.revokeVouch(author);
+        av.vouch(AUTHOR, 1_000_000);
+
+        vm.prank(BUYER_TWO);
+        av.purchaseSkill(listing);
     }
 
-    function test_dismissReportReturnsReporterBondAndUpdatesCounters() public {
-        vm.prank(reporter);
-        uint64 reportId = av.openReport(author, "ipfs://evidence");
+    function test_rejectRoutesBondToReserveAndStartsBuyerCooldown() public {
+        uint64 reportId = _open();
+        vm.prank(ADMIN);
+        av.reviewPaidPurchaseReport(reportId, false);
 
-        uint256 reporterBefore = usdc.balanceOf(reporter);
-        vm.prank(admin);
-        (uint256 returnedBond, uint256 forfeitedBond, uint256 slashedBond) =
-            av.resolveReport(reportId, AgentVouchTypes.Ruling.Dismissed, false);
-
-        assertEq(returnedBond, DISPUTE_BOND);
-        assertEq(forfeitedBond, 0);
-        assertEq(slashedBond, 0);
-        assertEq(usdc.balanceOf(reporter), reporterBefore + DISPUTE_BOND);
-
-        AgentVouchTypes.AgentProfile memory profile = av.getProfile(author);
-        assertEq(profile.openDisputes, 0);
-        assertEq(profile.dismissedDisputes, 1);
-        assertEq(profile.upheldDisputes, 0);
-
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
-        assertEq(uint8(report.status), uint8(AgentVouchTypes.ReportStatus.Resolved));
-        assertEq(uint8(report.ruling), uint8(AgentVouchTypes.Ruling.Dismissed));
-        assertEq(report.bondUsdcMicros, 0);
-        assertEq(report.forfeitedReporterBondUsdcMicros, 0);
+        uint256 beforeReserve = usdc.balanceOf(RESERVE);
+        vm.prank(RESERVE);
+        av.claimRestitutionReserve();
+        assertEq(usdc.balanceOf(RESERVE) - beforeReserve, BOND);
     }
 
-    function test_dismissReportCanForfeitReporterBondToAuthor() public {
-        vm.prank(reporter);
-        uint64 reportId = av.openReport(author, "ipfs://evidence");
-
-        uint256 reporterBefore = usdc.balanceOf(reporter);
-        uint256 authorBefore = usdc.balanceOf(author);
-        vm.prank(admin);
-        (uint256 returnedBond, uint256 forfeitedBond, uint256 slashedBond) =
-            av.resolveReport(reportId, AgentVouchTypes.Ruling.Dismissed, true);
-
-        assertEq(returnedBond, 0);
-        assertEq(forfeitedBond, DISPUTE_BOND);
-        assertEq(slashedBond, 0);
-        assertEq(usdc.balanceOf(reporter), reporterBefore);
-        assertEq(usdc.balanceOf(author), authorBefore + DISPUTE_BOND);
-
-        AgentVouchTypes.AgentProfile memory profile = av.getProfile(author);
-        assertEq(profile.openDisputes, 0);
-        assertEq(profile.dismissedDisputes, 1);
-        assertEq(profile.upheldDisputes, 0);
-
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
-        assertEq(uint8(report.status), uint8(AgentVouchTypes.ReportStatus.Resolved));
-        assertEq(uint8(report.ruling), uint8(AgentVouchTypes.Ruling.Dismissed));
-        assertEq(report.bondUsdcMicros, 0);
-        assertEq(report.forfeitedReporterBondUsdcMicros, DISPUTE_BOND);
-    }
-
-    function test_upheldReportSlashesBoundedAuthorBondToReporter() public {
-        vm.prank(author);
-        av.depositAuthorBond(AUTHOR_BOND);
-        vm.prank(reporter);
-        uint64 reportId = av.openReport(author, "ipfs://evidence");
-
-        uint256 reporterBefore = usdc.balanceOf(reporter);
-        vm.prank(admin);
-        (uint256 returnedBond, uint256 forfeitedBond, uint256 slashedBond) =
-            av.resolveReport(reportId, AgentVouchTypes.Ruling.Upheld, false);
-
-        assertEq(returnedBond, DISPUTE_BOND);
-        assertEq(forfeitedBond, 0);
-        assertEq(slashedBond, DISPUTE_BOND);
-        assertEq(usdc.balanceOf(reporter), reporterBefore + DISPUTE_BOND + DISPUTE_BOND);
-
-        AgentVouchTypes.AgentProfile memory profile = av.getProfile(author);
-        assertEq(profile.openDisputes, 0);
-        assertEq(profile.upheldDisputes, 1);
-        assertEq(profile.dismissedDisputes, 0);
-        assertEq(profile.authorBondUsdcMicros, AUTHOR_BOND - DISPUTE_BOND);
-
-        AgentVouchTypes.AuthorReport memory report = av.getAuthorReport(reportId);
-        assertEq(uint8(report.ruling), uint8(AgentVouchTypes.Ruling.Upheld));
-        assertEq(report.slashedAuthorBondUsdcMicros, DISPUTE_BOND);
-    }
-
-    function test_upheldReportSlashesOnlyAvailableAuthorBond() public {
-        vm.prank(author);
-        av.depositAuthorBond(1_000_000);
-        vm.prank(reporter);
-        uint64 reportId = av.openReport(author, "ipfs://evidence");
-
-        vm.prank(admin);
-        (,, uint256 slashedBond) = av.resolveReport(reportId, AgentVouchTypes.Ruling.Upheld, false);
-
-        assertEq(slashedBond, 1_000_000);
-        assertEq(av.getProfile(author).authorBondUsdcMicros, 0);
-    }
-
-    function test_onlyResolverCanResolveAndCannotResolveTwice() public {
-        vm.prank(reporter);
-        uint64 reportId = av.openReport(author, "ipfs://evidence");
-
-        vm.prank(reporter);
+    function test_resolverRoleCanBeHandedOffWithoutLeavingOldResolverAuthority() public {
+        uint64 reportId = _open();
+        vm.prank(BUYER);
         vm.expectRevert();
-        av.resolveReport(reportId, AgentVouchTypes.Ruling.Dismissed, false);
+        av.reviewPaidPurchaseReport(reportId, true);
 
-        vm.prank(admin);
-        av.resolveReport(reportId, AgentVouchTypes.Ruling.Dismissed, false);
-
-        vm.prank(admin);
-        vm.expectRevert(AgentVouchEvm.ReportNotOpen.selector);
-        av.resolveReport(reportId, AgentVouchTypes.Ruling.Dismissed, false);
-    }
-
-    function test_openReportRequiresValidRegisteredPartiesAndEvidence() public {
-        vm.prank(reporter);
-        vm.expectRevert(AgentVouchEvm.InvalidAuthor.selector);
-        av.openReport(reporter, "ipfs://evidence");
-
-        vm.prank(reporter);
-        vm.expectRevert(AgentVouchEvm.EmptyMetadata.selector);
-        av.openReport(author, "");
-
-        vm.prank(reporter);
-        vm.expectRevert(AgentVouchEvm.NotRegistered.selector);
-        av.openReport(address(0xDEAD), "ipfs://evidence");
-    }
-
-    function test_openReportBlockedWhilePaused() public {
-        vm.prank(admin);
-        av.setPaused(true);
-
-        vm.prank(reporter);
+        vm.startPrank(ADMIN);
+        av.grantRole(av.RESOLVER_ROLE(), RESOLVER_TWO);
+        av.revokeRole(av.RESOLVER_ROLE(), ADMIN);
         vm.expectRevert();
-        av.openReport(author, "ipfs://evidence");
+        av.reviewPaidPurchaseReport(reportId, true);
+        vm.stopPrank();
+
+        vm.prank(RESOLVER_TWO);
+        av.reviewPaidPurchaseReport(reportId, true);
+        (,,,,,, uint64 acceptedAt,, uint8 status,) = av.getPaidPurchaseReportCore(reportId);
+        assertGt(acceptedAt, 0);
+        assertEq(status, uint8(AgentVouchTypes.PaidPurchaseReportStatus.Accepted));
+    }
+
+    function test_expiryFundsBuyerPullAtReviewDeadline() public {
+        uint64 reportId = _open();
+        (,,,,, uint64 deadline,,,,) = av.getPaidPurchaseReportCore(reportId);
+        vm.warp(deadline);
+        av.closePaidPurchaseReportCredit(reportId);
+
+        uint256 beforeBuyer = usdc.balanceOf(BUYER);
+        vm.prank(BUYER);
+        av.claimPaidPurchaseReportCredit(reportId);
+        assertEq(usdc.balanceOf(BUYER) - beforeBuyer, BOND);
+    }
+
+    function test_acceptBlocksAuthorPurchasesAndDismissReleases() public {
+        uint64 reportId = _open();
+        vm.prank(ADMIN);
+        av.reviewPaidPurchaseReport(reportId, true);
+
+        vm.prank(BUYER_TWO);
+        vm.expectRevert(AgentVouchEvm.DisputeLocked.selector);
+        av.purchaseSkill(listing);
+
+        vm.prank(ADMIN);
+        av.resolvePaidPurchaseReport(reportId, uint8(AgentVouchTypes.PaidPurchaseReportRuling.Dismissed));
+        vm.prank(BUYER_TWO);
+        av.purchaseSkill(listing);
+    }
+
+    function test_upholdSlashesBondAndVouchThenBuyerClaims() public {
+        vm.startPrank(AUTHOR);
+        av.depositAuthorBond(10_000_000);
+        vm.stopPrank();
+        vm.prank(VOUCHER);
+        av.vouch(AUTHOR, 4_000_000);
+
+        uint64 reportId = _open();
+        vm.prank(ADMIN);
+        av.reviewPaidPurchaseReport(reportId, true);
+        vm.prank(ADMIN);
+        av.resolvePaidPurchaseReport(reportId, uint8(AgentVouchTypes.PaidPurchaseReportRuling.Upheld));
+
+        address[] memory page = new address[](1);
+        page[0] = VOUCHER;
+        av.slashPaidPurchaseReportVouches(reportId, page);
+        (
+            ,
+            uint256 snapshottedStake,
+            uint256 processedStake,
+            uint256 authorBondSlash,
+            uint256 voucherSlash,
+            uint256 entitlement,
+            uint256 credit,,
+        ) = av.getPaidPurchaseReportSettlement(reportId);
+        assertEq(snapshottedStake, 4_000_000);
+        assertEq(processedStake, 4_000_000);
+        assertEq(authorBondSlash, 5_000_000);
+        assertEq(voucherSlash, 2_000_000);
+        assertEq(entitlement, 7_000_000);
+        assertEq(credit, BOND + 7_000_000);
+
+        uint256 beforeBuyer = usdc.balanceOf(BUYER);
+        vm.prank(BUYER);
+        av.claimPaidPurchaseReportCredit(reportId);
+        assertEq(usdc.balanceOf(BUYER) - beforeBuyer, BOND + 7_000_000);
+
+        uint256 beforeVoucher = usdc.balanceOf(VOUCHER);
+        vm.prank(VOUCHER);
+        av.revokeVouch(AUTHOR);
+        assertEq(usdc.balanceOf(VOUCHER) - beforeVoucher, 2_000_000);
+    }
+
+    function test_invalidRulingAndSettlementLaneReceiptRevert() public {
+        vm.prank(AUTHOR);
+        bytes32 secondListing = av.createSkillListing(keccak256("settlement"), "u", "n", "d", PRICE);
+        bytes32 paymentRef = keccak256("payment");
+        bytes32 settlementTx = keccak256("tx");
+        vm.prank(ADMIN);
+        bytes32 laneCPurchase = av.settleX402Purchase(secondListing, BUYER_TWO, PRICE, paymentRef, settlementTx);
+
+        uint64 reportId = _open();
+        vm.prank(ADMIN);
+        av.reviewPaidPurchaseReport(reportId, true);
+        vm.prank(ADMIN);
+        vm.expectRevert(AgentVouchEvm.PaidPurchaseReportInvalidState.selector);
+        av.resolvePaidPurchaseReport(reportId, 0);
+
+        vm.prank(BUYER_TWO);
+        vm.expectRevert(AgentVouchEvm.PurchaseLaneIneligible.selector);
+        av.openPaidPurchaseReport(AUTHOR, secondListing, laneCPurchase, "evidence");
     }
 }

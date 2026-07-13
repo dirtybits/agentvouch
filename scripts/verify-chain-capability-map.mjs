@@ -27,20 +27,18 @@ function assertSameSet(label, actual, expected) {
   throw new Error(`${label} drifted (${details.join("; ")})`);
 }
 
-function identifiers(cell) {
-  return [...cell.matchAll(/`([A-Za-z_][A-Za-z0-9_]*)`/g)].map(
+function functionIdentifiers(cell) {
+  return [...cell.matchAll(/`([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^`]*\))?`/g)].map(
     (match) => match[1]
   );
 }
 
-function parseSurfaceMap(markdown) {
-  const begin = "<!-- BEGIN SURFACE MAP -->";
-  const end = "<!-- END SURFACE MAP -->";
+function parseMarkedTable(markdown, begin, end, expectedColumns, label) {
   const start = markdown.indexOf(begin);
   const finish = markdown.indexOf(end);
   if (start === -1 || finish === -1 || finish <= start) {
     throw new Error(
-      "CHAIN_CAPABILITY_MAP.md is missing ordered surface-map markers"
+      `CHAIN_CAPABILITY_MAP.md is missing ordered ${label} markers`
     );
   }
 
@@ -59,14 +57,40 @@ function parseSurfaceMap(markdown) {
       .map((cell) => cell.trim())
   );
   for (const [index, row] of rows.entries()) {
-    if (row.length !== 8) {
+    if (row.length !== expectedColumns) {
       throw new Error(
-        `surface map row ${index + 1} has ${row.length} columns; expected 8`
+        `${label} row ${index + 1} has ${
+          row.length
+        } columns; expected ${expectedColumns}`
       );
     }
   }
 
   return rows;
+}
+
+function parseSurfaceMap(markdown) {
+  return parseMarkedTable(
+    markdown,
+    "<!-- BEGIN SURFACE MAP -->",
+    "<!-- END SURFACE MAP -->",
+    8,
+    "surface-map"
+  );
+}
+
+function blockedA1Surface(markdown) {
+  const rows = parseMarkedTable(
+    markdown,
+    "<!-- BEGIN BLOCKED A1 SURFACE -->",
+    "<!-- END BLOCKED A1 SURFACE -->",
+    6,
+    "blocked-A1-surface"
+  );
+  return {
+    functions: new Set(rows.flatMap((row) => functionIdentifiers(row[3]))),
+    superseded: new Set(rows.flatMap((row) => functionIdentifiers(row[4]))),
+  };
 }
 
 function anchorInstructionNames(source) {
@@ -95,13 +119,52 @@ function baseStateChangingFunctionNames(source) {
   return names;
 }
 
+function assertBaseSurface(mappedBase, blockedA1, superseded, baseSource) {
+  const presentBlocked = new Set(
+    [...baseSource].filter((name) => blockedA1.has(name))
+  );
+  const effectiveMapped =
+    presentBlocked.size === 0
+      ? mappedBase
+      : new Set([...mappedBase].filter((name) => !superseded.has(name)));
+  const missingMapped = difference(effectiveMapped, baseSource);
+  const allowed = new Set([...effectiveMapped, ...blockedA1]);
+  const undocumented = difference(baseSource, allowed);
+  if (missingMapped.length > 0 || undocumented.length > 0) {
+    const details = [];
+    if (missingMapped.length > 0) {
+      details.push(`missing mapped functions: ${missingMapped.join(", ")}`);
+    }
+    if (undocumented.length > 0) {
+      details.push(`undocumented functions: ${undocumented.join(", ")}`);
+    }
+    throw new Error(
+      `chain map vs Base state-changing source drifted (${details.join("; ")})`
+    );
+  }
+
+  if (presentBlocked.size > 0) {
+    assertSameSet(
+      "blocked A1 table vs Base state-changing source",
+      presentBlocked,
+      blockedA1
+    );
+  }
+}
+
 try {
-  const rows = parseSurfaceMap(read("docs/CHAIN_CAPABILITY_MAP.md"));
+  const mapMarkdown = read("docs/CHAIN_CAPABILITY_MAP.md");
+  const rows = parseSurfaceMap(mapMarkdown);
   if (rows.length !== 26)
     throw new Error(`surface map has ${rows.length} rows; expected 26`);
 
-  const mappedSolana = new Set(rows.flatMap((row) => identifiers(row[2])));
-  const mappedBase = new Set(rows.flatMap((row) => identifiers(row[4])));
+  const mappedSolana = new Set(
+    rows.flatMap((row) => functionIdentifiers(row[2]))
+  );
+  const mappedBase = new Set(
+    rows.flatMap((row) => functionIdentifiers(row[4]))
+  );
+  const blockedA1Surface_ = blockedA1Surface(mapMarkdown);
   const anchorSource = anchorInstructionNames(
     read("programs/agentvouch/src/lib.rs")
   );
@@ -114,14 +177,15 @@ try {
 
   assertSameSet("Anchor source vs checked-in IDL", anchorSource, anchorIdl);
   assertSameSet("chain map vs Anchor source", mappedSolana, anchorSource);
-  assertSameSet(
-    "chain map vs Base state-changing source",
+  assertBaseSurface(
     mappedBase,
+    blockedA1Surface_.functions,
+    blockedA1Surface_.superseded,
     baseSource
   );
 
   console.log(
-    `Chain capability map verified: ${anchorSource.size} Solana instructions, ${baseSource.size} Base state-changing functions, ${rows.length} mapped rows.`
+    `Chain capability map verified: ${anchorSource.size} Solana instructions, ${baseSource.size} Base state-changing functions, ${blockedA1Surface_.functions.size} documented local A1 functions, ${rows.length} mapped rows.`
   );
 } catch (error) {
   console.error(`Chain capability map verification failed: ${error.message}`);

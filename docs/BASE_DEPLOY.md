@@ -1,6 +1,6 @@
 # AgentVouch Base Deploy Runbook
 
-This runbook covers the Base Sepolia `AgentVouchEvm` v1-candidate deployment under
+This runbook covers the Base Sepolia linked `AgentVouchEvm` `base-v1-a1` candidate under
 `contracts/base-poc`. It mirrors `docs/DEPLOY.md` for the Solana program, but this path is a fresh
 EVM contract deploy, not an in-place upgrade.
 
@@ -10,18 +10,20 @@ EVM contract deploy, not an in-place upgrade.
 - Contract source: `contracts/base-poc/src/AgentVouchEvm.sol`
 - Deploy script: `contracts/base-poc/script/Deploy.s.sol`
 - Base Sepolia USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
-- Expected protocol version after this deploy: `base-v1-candidate`
+- Linked library: `contracts/base-poc/src/libraries/PaidPurchaseSettlement.sol`
+- Expected protocol version after this deploy: `base-v1-a1`
 
-This is still **testnet only**. Do not deploy Base mainnet (`eip155:8453`) from this runbook. Base
+This is still **testnet only**, and the current A1 plan does not authorize even a Sepolia broadcast
+without a new explicit operator approval. Do not deploy Base mainnet (`eip155:8453`) from this runbook. Base
 mainnet remains blocked by the Phase 10 gate: custody, security review, chain parameterization, and
 mainnet-specific readiness must pass first.
 
-## What This Deploy Fixes
+## Current Deployment Status
 
-The earlier configured Base Sepolia contract address (`0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`)
-supports the purchase/x402 POC flow but does not contain the Phase 9 report selector
-`openReport(address,string)` (`0x92e928f4`). A v1-candidate redeploy is required before Base author
-reports can smoke successfully.
+The configured Base Sepolia contract remains `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`
+(`base-v1-candidate`, pre-A1). The local `base-v1-a1` source is size-feasible but has not been deployed,
+verified, live-smoked, or selected by web configuration. The clean break removes the generic
+`openReport`/`resolveReport` path; the replacement accepts only an eligible stored paid-purchase receipt.
 
 ## Preflight
 
@@ -52,6 +54,8 @@ Set deployment environment variables without printing secret values:
 export BASE_SEPOLIA_RPC_URL="https://..."
 export DEPLOYER_PRIVATE_KEY="0x..."
 export USDC_ADDRESS="0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+export SLASH_PERCENTAGE="<approved integer from 1 through 100>"
+export TREASURY_RECIPIENT="<approved immutable restitution-reserve recipient>"
 ```
 
 For the Phase 9 smoke deploy, leave `ADMIN_ADDRESS` unset unless you intentionally want an
@@ -76,13 +80,14 @@ Run the Base contract suite before any public broadcast:
 
 ```bash
 forge test --root contracts/base-poc -vv
+npm run verify:base-size
 ```
 
 Optionally inspect size and protocol-version references:
 
 ```bash
 forge build --root contracts/base-poc --sizes
-rg 'PROTOCOL_VERSION|openReport|resolveReport|getAuthorReport' contracts/base-poc/src contracts/base-poc/script
+rg 'PROTOCOL_VERSION|openPaidPurchaseReport|resolvePaidPurchaseReport|getPaidPurchaseReport' contracts/base-poc/src contracts/base-poc/script
 ```
 
 ## Dry Run
@@ -120,8 +125,9 @@ forge script script/Deploy.s.sol:Deploy \
   -vvvv
 ```
 
-Record:
+Record from the broadcast artifact:
 
+- deployed `PaidPurchaseSettlement` address and code hash
 - deployed `AgentVouchEvm` address
 - deploy transaction hash
 - block number
@@ -142,14 +148,12 @@ Confirm code exists and the Phase 9 selectors are present:
 
 ```bash
 cast code "$BASE_V1_AGENTVOUCH_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL" | wc -c
-cast sig 'openReport(address,string)'
-cast sig 'getAuthorReport(uint64)'
+OPEN_SELECTOR="$(cast sig 'openPaidPurchaseReport(address,bytes32,bytes32,string)')"
+CORE_READ_SELECTOR="$(cast sig 'getPaidPurchaseReportCore(uint64)')"
 
 CODE="$(cast code "$BASE_V1_AGENTVOUCH_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-case "$CODE" in
-  *92e928f4*) echo "openReport selector present" ;;
-  *) echo "openReport selector missing"; exit 1 ;;
-esac
+case "$CODE" in *"${OPEN_SELECTOR#0x}"*) ;; *) echo "paid report selector missing"; exit 1 ;; esac
+case "$CODE" in *"${CORE_READ_SELECTOR#0x}"*) ;; *) echo "paid report read selector missing"; exit 1 ;; esac
 ```
 
 Confirm version, pause state, and config:
@@ -170,13 +174,18 @@ cast call "$BASE_V1_AGENTVOUCH_ADDRESS" \
 
 Expected:
 
-- protocol version is `base-v1-candidate`
+- protocol version is `base-v1-a1`
 - paused is `false`
 - configInitialized is `true`
 
-## Web Env Pointer
+## Web Env Pointer — Separate Approval
 
-Point local web at the new Base Sepolia contract and restart the dev server:
+Do not repoint local, preview, or production web merely because deployment succeeds. First complete the
+fresh-state contract smoke and Base passkey regression, then obtain explicit cutover approval. The
+old-candidate and A1 profile tuples are selected by exact `PROTOCOL_VERSION`, so keeping the existing
+address preserves pre-A1 reads.
+
+After approval, point local web at the new Base Sepolia contract and restart the dev server:
 
 ```bash
 perl -0pi -e 's/^NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS=.*/NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS='"$BASE_V1_AGENTVOUCH_ADDRESS"'/m' web/.env.local
@@ -228,26 +237,20 @@ The web/passkey reporter can be registered by any UI flow that calls `registerAg
 Base paid publish path. If it is already registered on the new contract, duplicate registration will
 fail with `AlreadyRegistered()` and should be treated as harmless by ensure-registered flows.
 
-## Report Smoke
+## Paid-Purchase Report Smoke
 
-After local web points at the new contract:
-
-1. Open `/author/$TARGET_AUTHOR_ADDRESS` on `localhost:3000`.
-2. Connect the Coinbase/passkey Base wallet as the reporter.
-3. Vouch for the target author with a small stake (at least 1 USDC if using the contract default).
-4. Open a report with an evidence URI.
-5. Record:
-   - report transaction/userOp hash
-   - `AuthorReportOpened` event fields
-   - reporter USDC delta (`5` USDC bond by default)
-   - target author's `openDisputes` increment
-   - UI success message and explorer link
+There is deliberately no Base paid-report UI write in this change. Use the reviewed smoke driver required
+by the A1 plan. It must create a fresh paid listing and Direct or Authorization receipt, open the exact
+receipt within seven days, prove Pending purchases remain open, accept and freeze author-wide purchases,
+uphold, crank at least two voucher pages, claim buyer credit, pull reserve excess, and reclaim a slashed
+vouch residual. Record every transaction hash, block, deadline, event, role/config value, and explicit-block
+USDC delta. Lane-C receipts must be rejected.
 
 Read back the target profile:
 
 ```bash
 cast call "$BASE_V1_AGENTVOUCH_ADDRESS" \
-  'getProfile(address)((bool,string,uint256,uint64,uint64,uint256,uint256,uint64,uint64,uint64,uint64,uint256,uint256,uint64))' \
+  'getProfile(address)((bool,string,uint256,uint64,uint64,uint256,uint256,uint64,uint64,uint64,uint64,uint256,uint256,uint64,uint64,uint256,uint256))' \
   "$TARGET_AUTHOR_ADDRESS" \
   --rpc-url "$BASE_SEPOLIA_RPC_URL"
 ```
@@ -282,23 +285,23 @@ Preview/prod rollback:
 
 1. Restore the previous `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` value in Vercel.
 2. Redeploy or promote the last known-good deployment.
-3. Confirm Base report UI fails closed if the previous contract lacks report selectors.
+3. Confirm the web continues using the previous deployment identity and does not advertise the obsolete Base general-report path.
 
 Do not delete the new contract; it is immutable on-chain. Instead, stop pointing app envs at it and
 record why it was abandoned.
 
 ## Common Failure Modes
 
-### `openReport` Reverts Immediately / Selector Missing
+### Paid-Purchase Report Selector Missing
 
-The app is pointed at a contract that does not implement the Phase 9 report surface.
+The smoke tool is pointed at a contract that does not implement `base-v1-a1`.
 
 ```bash
-cast sig 'openReport(address,string)'
-cast code "$NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL" | grep -i 92e928f4
+cast sig 'openPaidPurchaseReport(address,bytes32,bytes32,string)'
+cast call "$NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS" 'PROTOCOL_VERSION()(string)' --rpc-url "$BASE_SEPOLIA_RPC_URL"
 ```
 
-If the selector is absent, deploy the v1-candidate contract or update the env pointer.
+Do not update an env pointer to compensate. Verify the linked deployment artifact and obtain cutover approval.
 
 ### `NotInitialized()`
 

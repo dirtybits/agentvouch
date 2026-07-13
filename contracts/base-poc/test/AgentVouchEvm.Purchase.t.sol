@@ -23,6 +23,7 @@ contract PurchaseTest is Test {
     bytes32 internal idNoBacking;
 
     function setUp() public {
+        vm.chainId(84532);
         usdc = new MockUSDC();
         av = new AgentVouchEvm(address(usdc), admin);
         vm.prank(admin);
@@ -48,12 +49,14 @@ contract PurchaseTest is Test {
         c.chainContext = "eip155:84532";
         c.minVouchStakeUsdcMicros = MIN_VOUCH;
         c.disputeBondUsdcMicros = 5_000_000;
-        c.minAuthorBondForFreeListingUsdcMicros = 10_000_000;
-        c.minPaidListingPriceUsdcMicros = MIN_VOUCH;
+        c.minAuthorBondForFreeListingUsdcMicros = 1_000_000;
+        c.minPaidListingPriceUsdcMicros = 10_000;
         c.authorShareBps = 6000;
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
+        c.refundClaimWindowSeconds = 7 days;
+        c.treasuryRecipient = address(0xD00D);
         c.authorProceedsLockSeconds = lockSeconds;
     }
 
@@ -83,7 +86,8 @@ contract PurchaseTest is Test {
         assertEq(p.authorShareUsdcMicros, (PRICE * 6000) / 10_000); // 6e6
         assertEq(p.voucherPoolUsdcMicros, (PRICE * 4000) / 10_000); // 4e6
         assertEq(av.getSettlement(idBacked, 1).authorProceedsUsdcMicros, 6_000_000);
-        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 4_000_000);
+        // Revenue stays in the pending-distribution ledger until a position accrues.
+        assertEq(av.getProfile(author).unclaimedVoucherRevenueUsdcMicros, 0);
         assertGt(av.getProfile(author).rewardIndexUsdcMicrosX1e12, 0);
         // contract holds the vouch stake + the full purchase
         assertEq(usdc.balanceOf(address(av)), MIN_VOUCH * 4 + PRICE);
@@ -279,16 +283,17 @@ contract PurchaseTest is Test {
         vm.prank(buyer);
         av.purchaseSkill(idBacked);
 
-        // liabilities = active stake + author proceeds + unclaimed voucher revenue
+        // The purchase's voucher pool is pending distribution until materialized.
+        uint256 pendingDistribution = av.getPurchase(av.purchaseId(buyer, idBacked, 1)).voucherPoolUsdcMicros;
         uint256 liabilities = av.getProfile(author).totalVouchStakeReceivedUsdcMicros
-            + av.getSettlement(idBacked, 1).authorProceedsUsdcMicros
-            + av.getProfile(author).unclaimedVoucherRevenueUsdcMicros;
+            + av.getSettlement(idBacked, 1).authorProceedsUsdcMicros + pendingDistribution;
         assertEq(usdc.balanceOf(address(av)), liabilities);
 
         vm.prank(voucher);
         av.claimVoucherRevenue(author);
+        pendingDistribution = 0;
         liabilities = av.getProfile(author).totalVouchStakeReceivedUsdcMicros
-            + av.getSettlement(idBacked, 1).authorProceedsUsdcMicros
+            + av.getSettlement(idBacked, 1).authorProceedsUsdcMicros + pendingDistribution
             + av.getProfile(author).unclaimedVoucherRevenueUsdcMicros;
         assertEq(usdc.balanceOf(address(av)), liabilities);
     }
@@ -359,16 +364,19 @@ contract PurchaseTest is Test {
         vm.prank(b1);
         a.purchaseSkill(id); // updatedAt = T
 
-        vm.warp(block.timestamp + 600); // < 1000s, still locked
+        // Query Foundry's clock directly: via-IR may cache block.timestamp across
+        // in-transaction cheatcode calls because production timestamps cannot change
+        // within one transaction.
+        vm.warp(vm.getBlockTimestamp() + 600); // < 1000s, still locked
         vm.prank(b2);
         a.purchaseSkill(id); // updatedAt rolls forward to T+600
 
-        vm.warp(block.timestamp + 600); // now T+1200; unlock = (T+600)+1000 = T+1600
+        vm.warp(vm.getBlockTimestamp() + 600); // now T+1200; unlock = (T+600)+1000 = T+1600
         vm.prank(au);
         vm.expectRevert(AgentVouchEvm.ProceedsTimeLocked.selector);
         a.withdrawAuthorProceeds(id, 1, PRICE);
 
-        vm.warp(block.timestamp + 400); // now T+1600 -> unlocked
+        vm.warp(vm.getBlockTimestamp() + 400); // now T+1600 -> unlocked
         vm.prank(au);
         a.withdrawAuthorProceeds(id, 1, 2 * PRICE);
         assertEq(a.getSettlement(id, 1).authorProceedsUsdcMicros, 0);

@@ -1,6 +1,6 @@
 # AgentVouch Chain Capability Map
 
-**Last verified:** 2026-07-09
+**Last verified:** 2026-07-13
 
 This is the canonical cross-chain instruction and capability map. Read it before changing chain-tagged protocol code, contract ABIs, adapters, deployment claims, or readiness status. Run `npm run verify:chain-map` after changing any mapped source surface.
 
@@ -57,10 +57,11 @@ Status meanings:
 
 Do not put these functions in the current-surface table until their implementation reaches `main`.
 
-| Work | Verified location | Status | Public surface | Meaning |
-| --- | --- | --- | --- | --- |
-| Full Base A1 port | `a2a/base-a1-voucher-slashing-port-20260709` at `47ec443` | `PARTIAL_SOURCE_BLOCKED_EIP170` | `openFinancialReport`, `slashReportVouches`, `claimFinancialReportRefund(uint64,bytes32)`, `closeFinancialReportReserve` | Runtime measured 27,931 bytes, 3,355 bytes over EIP-170. Not merged, deployed, smoked, or security-reviewed. |
-| Base A1-lite memo | Same branch at `47ec443` | `PROPOSED_UNAPPROVED` | Proposed `claimFinancialReportRefund(uint64)` and `claimFinancialReportTreasuryCredit(uint64)` | Decision memo only. Locked economics and the legacy ABI cannot change without operator approval. |
+<!-- BEGIN BLOCKED A1 SURFACE -->
+| Work | Verified location | Status | Public surface | Supersedes on branch | Meaning |
+| --- | --- | --- | --- | --- | --- |
+| Clean-break Base A1 candidate | `a2a/base-a1-voucher-slashing-port-20260709` working tree, 2026-07-13 | `LOCAL_IMPLEMENTATION_COMPLETE` | `openPaidPurchaseReport`, `reviewPaidPurchaseReport`, `resolvePaidPurchaseReport`, `slashPaidPurchaseReportVouches`, `claimPaidPurchaseReportCredit`, `closePaidPurchaseReportCredit`, `claimRestitutionReserve` | `openReport`, `resolveReport` | Local-only `base-v1-a1` candidate. Facade runtime is 23,487 bytes and linked-library runtime is 5,939 bytes; 116 Forge tests pass, including fuzz, stateful liability-invariant, reentrancy, adversarial-token, and linked-library code-hash coverage. A 31-transaction ephemeral Anvil rehearsal completed linked deployment, role handoff, purchase, report, resolution, paginated slashing, buyer credit, reserve claim, and voucher residual reclaim. An internal 2026-07-13 executable-diff review covered 50/50 surfaces and produced no reportable findings. It is not merged, publicly deployed, live-smoked, or externally security-reviewed; paid-report wallet/UI writes remain a separately gated activation surface. |
+<!-- END BLOCKED A1 SURFACE -->
 
 ## Verification
 
@@ -76,6 +77,11 @@ The checker compares:
 2. the 25 instructions in `web/agentvouch.json`;
 3. this table's Solana mappings; and
 4. every state-changing `public` or `external` function defined by `contracts/base-poc/src/AgentVouchEvm.sol` against this table's Base mappings.
+
+On a worktree that carries the clean-break A1 source, the verifier requires the complete local-only
+surface recorded above and permits the documented supersession of `openReport`/`resolveReport`. It still
+rejects an undocumented public state-changing function, and it never treats those selectors as current
+Base `main` or deployed behavior.
 
 It deliberately does not make network requests. For a claim about what is deployed, recheck the recorded address and selector surface against Base Sepolia, for example:
 

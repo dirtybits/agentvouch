@@ -110,7 +110,9 @@ describe("author page source", () => {
       "const registeredAt = Number(trustData?.registeredAt ?? 0);"
     );
     expect(source).toContain("{!authorIsRegistered ? (");
-    expect(source).toContain("{!isOwnProfile && authorIsRegistered && (");
+    expect(source).toContain(
+      "{!isEvmAuthor && !isOwnProfile && authorIsRegistered && ("
+    );
     expect(source).not.toContain("{!profile ? (");
     expect(source).not.toContain("{!isOwnProfile && profile && (");
   });

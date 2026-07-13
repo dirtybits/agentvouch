@@ -10,7 +10,6 @@ import {
 import {
   createPublicClient,
   decodeEventLog,
-  encodeFunctionData,
   erc20Abi,
   formatUnits,
   getAddress,
@@ -18,7 +17,6 @@ import {
   isAddress,
   parseAbi,
   parseUnits,
-  type Abi,
   type Address,
   type Hex,
 } from "viem";
@@ -68,9 +66,8 @@ export { computeListingId, skillIdHashFrom } from "./baseListing";
 
 const PASSKEY_STORAGE_KEY = "agentvouch:base-sepolia:passkey";
 const PASSKEY_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:passkey:active";
-const OPEN_REPORT_SELECTOR = "92e928f4";
 const BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE =
-  "Base author reports are not deployed on the configured Base contract yet. Deploy the Phase 9 Base v1 contract or update NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS before opening reports.";
+  "General Base author reports were removed in base-v1-a1. Paid-purchase reports are not exposed through the current wallet interface.";
 
 export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   ...AGENTVOUCH_EVM_READ_ABI,
@@ -83,7 +80,6 @@ export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   "function updateSkillListing(bytes32 id, string uri, string name, string description, uint256 priceUsdcMicros) returns (uint64)",
   "function removeSkillListing(bytes32 id)",
   "function purchaseSkill(bytes32 id) returns (bytes32)",
-  "function openReport(address author, string evidenceUri) returns (uint64)",
   "function claimVoucherRevenue(address author)",
   "function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount)",
   "function purchaseId(address buyer, bytes32 id, uint64 revision) pure returns (bytes32)",
@@ -288,7 +284,6 @@ export function findBaseWalletEvent(
     | "SkillListingUpdated"
     | "SkillListingRemoved"
     | "SkillPurchased"
-    | "AuthorReportOpened"
     | "VoucherRevenueClaimed"
     | "AuthorProceedsWithdrawn"
 ): {
@@ -1146,73 +1141,9 @@ export async function openBaseAuthorReport(
   account: BasePasskeySmartAccount,
   input: OpenAuthorReportInput
 ): Promise<OpenAuthorReportResult> {
-  const author = requireBaseEvmAddress(
-    input.authorAddress,
-    "Base report author"
-  );
-  const evidenceUri = input.evidenceUri.trim();
-  if (!evidenceUri) throw new Error("Base author report requires evidence.");
-
-  const config = requireBasePaymasterWriteConfig();
-  const publicClient = createBasePublicClient();
-  await assertBaseSepoliaChain(publicClient);
-  const deployedBytecode = await publicClient.getCode({
-    address: config.agentVouchAddress,
-  });
-  if (!deployedBytecode?.toLowerCase().includes(OPEN_REPORT_SELECTOR)) {
-    throw new Error(BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE);
-  }
-  const disputeBondUsdcMicros = await publicClient
-    .readContract({
-      address: config.agentVouchAddress,
-      abi: AGENTVOUCH_EVM_WRITE_ABI,
-      functionName: "getConfig",
-    })
-    .then((configTuple) => {
-      const record = configTuple as { disputeBondUsdcMicros?: bigint } & {
-        [index: number]: unknown;
-      };
-      return BigInt(String(record.disputeBondUsdcMicros ?? record[3] ?? 0));
-    });
-  await ensureBaseAgentRegistered(account, publicClient);
-
-  const result = await sendBaseUsdcPullWrite({
-    account,
-    amountUsdcMicros: disputeBondUsdcMicros,
-    purpose: "author report bond",
-    sequentialApproval: true,
-    contractCall: {
-      to: config.agentVouchAddress,
-      data: encodeFunctionData({
-        abi: AGENTVOUCH_EVM_WRITE_ABI as Abi,
-        functionName: "openReport",
-        args: [author, evidenceUri],
-      }),
-    },
-  });
-  const receipt = await waitForBaseTransactionReceipt(
-    publicClient,
-    result.txHash,
-    "Base author report"
-  );
-  const event = findBaseWalletEvent(
-    receipt.logs,
-    config.agentVouchAddress,
-    "AuthorReportOpened"
-  );
-  if (
-    !sameEvmAddress(event?.args.reporter, account.address) ||
-    !sameEvmAddress(event?.args.author, author)
-  ) {
-    throw new Error("Base report receipt did not match the submitted author.");
-  }
-  return {
-    ...result,
-    reportId:
-      event?.args.reportId === undefined
-        ? undefined
-        : String(event.args.reportId),
-  };
+  void account;
+  void input;
+  throw new Error(BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE);
 }
 
 export async function claimBaseVoucherRevenue(

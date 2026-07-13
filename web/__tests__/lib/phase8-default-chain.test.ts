@@ -238,13 +238,18 @@ describe("phase 8a: trust stays chain-qualified and honest after the flip", () =
     expect(browse).toContain("(b.author_trust?.reputationScore ?? 0)");
   });
 
-  it("Base v1 report counters stay readable through the EVM trust ABI", () => {
+  it("Base v1 A1 counters and compact reports stay readable through the EVM trust ABI", () => {
     const abi = read("lib/adapters/agentVouchEvmAbi.ts");
     expect(abi).toContain("function PROTOCOL_VERSION() view returns (string)");
-    expect(abi).toContain("AGENTVOUCH_EVM_AUTHOR_REPORT_TUPLE");
-    expect(abi).toContain("function getAuthorReport(uint64 reportId)");
-    expect(abi).toContain("event AuthorReportOpened");
-    expect(abi).toContain("event AuthorReportResolved");
+    expect(abi).toContain("uint64 slashingReportCount");
+    expect(abi).toContain("uint256 totalAuthorBondSlashedUsdcMicros");
+    expect(abi).toContain("uint256 totalVouchStakeSlashedUsdcMicros");
+    expect(abi).toContain(
+      "function getPaidPurchaseReportCore(uint64 reportId)"
+    );
+    expect(abi).toContain("event PaidPurchaseReportOpened");
+    expect(abi).toContain("event PaidPurchaseReportFinalized");
+    expect(abi).not.toContain("function getAuthorReport(uint64 reportId)");
 
     const trust = read("lib/baseAuthorTrust.ts");
     expect(trust).toContain("openDisputes: bigint");
