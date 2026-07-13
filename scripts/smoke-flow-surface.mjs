@@ -156,31 +156,41 @@ async function main() {
   );
   assert(list.skills.length > 0, "Skills list returned no skills to inspect.");
 
-  const repoSkill =
-    list.skills.find((skill) => skill.source !== "chain") ?? list.skills[0];
-  assert(repoSkill?.id, "Could not find a skill id for smoke checks.");
-  let installSkill = null;
-  for (const candidate of list.skills.filter(
+  const repoCandidates = list.skills.filter(
     (skill) => skill.source !== "chain"
-  )) {
+  );
+  let repoSkill = null;
+  let detail = null;
+  let installSkill = null;
+  for (const candidate of repoCandidates) {
     const candidateDetail = await fetchJson(
       `${baseUrl}/api/skills/${candidate.id}`,
-      `install candidate ${candidate.id}`
+      `smoke candidate ${candidate.id}`
     );
-    if (isFreeSkill(candidateDetail) && !candidateDetail.on_chain_address) {
-      installSkill = candidateDetail;
-      break;
+    if (
+      !repoSkill &&
+      candidateDetail.author_pubkey &&
+      (candidateDetail.author_trust_summary || candidateDetail.author_trust)
+    ) {
+      repoSkill = candidate;
+      detail = candidateDetail;
     }
+    if (
+      !installSkill &&
+      isFreeSkill(candidateDetail) &&
+      !candidateDetail.on_chain_address
+    ) {
+      installSkill = candidateDetail;
+    }
+    if (repoSkill && installSkill) break;
   }
+  assert(repoSkill?.id, "Could not find a repo skill with trust data.");
   assert(
     installSkill?.id,
     "Could not find a free repo skill for install dry-run."
   );
 
-  const detail = await fetchJson(
-    `${baseUrl}/api/skills/${repoSkill.id}`,
-    "skill inspect"
-  );
+  assert(detail, "Could not load a repo skill for smoke checks.");
   assert(detail.id === repoSkill.id, "Skill inspect returned the wrong id.");
   assert(detail.author_pubkey, "Skill detail is missing author_pubkey.");
   assert(
