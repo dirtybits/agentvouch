@@ -43,6 +43,7 @@ import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
 import { getPublicSkillPath } from "@/lib/skillUrls";
 import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
+import { BASE_PASSKEY_WALLET_SOURCE } from "@/lib/adapters/baseWalletConfig";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -74,6 +75,9 @@ function shortAddr(addr: string): string {
 
 const REWARD_INDEX_SCALE = 1_000_000_000_000n;
 const AUTHOR_REWARD_POOL_CLAIM_ID = "author-reward-pool";
+const MIN_VOUCH_USDC_MICROS = 1_000_000n;
+const BASE_VOUCH_PASSKEY_MESSAGE =
+  "Base vouching currently requires Coinbase Smart Wallet. Disconnect the current wallet, then reconnect with a passkey.";
 
 function formatUsdc(
   micros: number | bigint | string | null | undefined
@@ -148,6 +152,8 @@ export default function AuthorProfilePage() {
     !!activeChainWallet &&
     !!evmAuthorAddress &&
     activeChainWallet.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT;
+  const isBasePasskeyTrustWrite =
+    isBaseTrustWrite && chainSession.source === BASE_PASSKEY_WALLET_SOURCE;
 
   const [profile, setProfile] = useState<AgentProfileData | null>(null);
   const [vouchesReceived, setVouchesReceived] = useState<VouchRecord[]>([]);
@@ -162,7 +168,7 @@ export default function AuthorProfilePage() {
   );
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [vouchAmount, setVouchAmount] = useState("0.1");
+  const [vouchAmount, setVouchAmount] = useState("1");
   const [vouching, setVouching] = useState(false);
   const [vouchStatus, setVouchStatus] = useState("");
   const [vouchTx, setVouchTx] = useState<string | null>(null);
@@ -386,9 +392,23 @@ export default function AuthorProfilePage() {
 
   const submitVouch = useCallback(async () => {
     if (!connected) return;
+    if (isEvmAuthor && !isBasePasskeyTrustWrite) {
+      setVouchStatus(`Error: ${BASE_VOUCH_PASSKEY_MESSAGE}`);
+      setVouchTx(null);
+      setVouchTxExplorerUrl(null);
+      setPendingVouchAfterRegister(false);
+      return;
+    }
     const amountUsdcMicros = parseUsdcMicrosInput(vouchAmount);
     if (amountUsdcMicros === null) {
       setVouchStatus("Error: Enter a valid stake amount in USDC.");
+      setVouchTx(null);
+      setVouchTxExplorerUrl(null);
+      setPendingVouchAfterRegister(false);
+      return;
+    }
+    if (amountUsdcMicros < MIN_VOUCH_USDC_MICROS) {
+      setVouchStatus("Error: Vouches require at least 1.00 USDC.");
       setVouchTx(null);
       setVouchTxExplorerUrl(null);
       setPendingVouchAfterRegister(false);
@@ -400,7 +420,7 @@ export default function AuthorProfilePage() {
     setVouchTx(null);
     setVouchTxExplorerUrl(null);
     try {
-      if (isBaseTrustWrite && activeChainWallet && evmAuthorAddress) {
+      if (isBasePasskeyTrustWrite && activeChainWallet && evmAuthorAddress) {
         const result = await activeChainWallet.vouchForAuthor({
           authorAddress: evmAuthorAddress,
           stakeUsdcMicros: amountUsdcMicros,
@@ -432,7 +452,8 @@ export default function AuthorProfilePage() {
     activeChainWallet,
     connected,
     evmAuthorAddress,
-    isBaseTrustWrite,
+    isBasePasskeyTrustWrite,
+    isEvmAuthor,
     loadData,
     oracle,
     pubkey,
@@ -459,7 +480,7 @@ export default function AuthorProfilePage() {
       return;
     }
 
-    if (isBaseTrustWrite) {
+    if (isEvmAuthor) {
       await submitVouch();
       return;
     }
@@ -1832,7 +1853,7 @@ export default function AuthorProfilePage() {
                       type="number"
                       value={vouchAmount}
                       onChange={(e) => setVouchAmount(e.target.value)}
-                      min="0.01"
+                      min="1"
                       step="0.01"
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
                     />
@@ -1841,6 +1862,10 @@ export default function AuthorProfilePage() {
                   {!connected ? (
                     <div className="sm:self-end">
                       <ClientWalletButton />
+                    </div>
+                  ) : isEvmAuthor && !isBasePasskeyTrustWrite ? (
+                    <div className="sm:self-end rounded-sm border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                      {BASE_VOUCH_PASSKEY_MESSAGE}
                     </div>
                   ) : !myProfileChecked || myProfileLoading ? (
                     <button
@@ -1882,6 +1907,11 @@ export default function AuthorProfilePage() {
                       a one-time on-chain profile, then continue to the vouch.
                     </p>
                   )}
+                {isEvmAuthor && (
+                  <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+                    Base Sepolia vouches require a minimum 1.00 USDC stake.
+                  </p>
+                )}
               </>
             )}
 
