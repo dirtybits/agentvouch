@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql, initializeDatabase } from "@/lib/db";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
 import { randomBytes, createHash } from "crypto";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -51,6 +55,15 @@ export async function POST(request: NextRequest) {
         { error: verification.error || "Invalid signature" },
         { status: 401 }
       );
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: auth.message,
+      timestamp: auth.timestamp,
+      expectedAction: "create-key",
+    });
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: 401 });
     }
 
     const existing = await sql()<ApiKeyIdRow>`
@@ -121,6 +134,14 @@ export async function GET(request: NextRequest) {
           { status: 401 }
         );
       }
+      const scope = assertPublisherAuthMessageScope({
+        message: signedAuth.message,
+        timestamp: signedAuth.timestamp,
+        expectedAction: "list-keys",
+      });
+      if (!scope.ok) {
+        return NextResponse.json({ error: scope.error }, { status: 401 });
+      }
       pubkey = verification.pubkey;
     } else if (authHeader?.startsWith("Bearer sk_")) {
       const key = authHeader.slice(7);
@@ -178,6 +199,15 @@ export async function DELETE(request: NextRequest) {
         { error: verification.error || "Invalid signature" },
         { status: 401 }
       );
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: auth.message,
+      timestamp: auth.timestamp,
+      expectedAction: "revoke-key",
+    });
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: 401 });
     }
 
     const rows = await sql()<ApiKeyIdRow & ApiKeyOwnerRow>`

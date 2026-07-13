@@ -7,15 +7,21 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
+  assertPublisherAuthMessageScope: vi.fn(),
   verifyWalletSignature: vi.fn(),
 }));
 
-import { GET } from "@/app/api/keys/route";
-import { verifyWalletSignature } from "@/lib/auth";
+import { DELETE, GET, POST } from "@/app/api/keys/route";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+} from "@/lib/auth";
 import { sql } from "@/lib/db";
 
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockAssertPublisherAuthMessageScope =
+  assertPublisherAuthMessageScope as unknown as ReturnType<typeof vi.fn>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
 const signedAuth = {
@@ -25,9 +31,10 @@ const signedAuth = {
   timestamp: 1,
 };
 
-describe("GET /api/keys", () => {
+describe("API-key route wallet authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAssertPublisherAuthMessageScope.mockReturnValue({ ok: true });
     mockSql.mockReturnValue(
       vi.fn().mockResolvedValue([
         {
@@ -79,5 +86,50 @@ describe("GET /api/keys", () => {
       error: "Malformed X-AgentVouch-Auth header",
     });
     expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+  });
+
+  it("rejects signed payloads that name a different action before any key operation", async () => {
+    mockVerifyWalletSignature.mockReturnValue({
+      valid: true,
+      pubkey: "Wallet111",
+    });
+    mockAssertPublisherAuthMessageScope.mockReturnValue({
+      ok: false,
+      error: 'Signature is not for action "list-keys" (got "download-raw").',
+    });
+
+    const responses = await Promise.all([
+      GET(
+        new NextRequest("http://localhost/api/keys", {
+          headers: { "X-AgentVouch-Auth": JSON.stringify(signedAuth) },
+        })
+      ),
+      POST(
+        new NextRequest("http://localhost/api/keys", {
+          method: "POST",
+          body: JSON.stringify({ auth: signedAuth }),
+        })
+      ),
+      DELETE(
+        new NextRequest("http://localhost/api/keys", {
+          method: "DELETE",
+          body: JSON.stringify({ auth: signedAuth, key_id: "key-1" }),
+        })
+      ),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([
+      401, 401, 401,
+    ]);
+    expect(mockAssertPublisherAuthMessageScope).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedAction: "list-keys" })
+    );
+    expect(mockAssertPublisherAuthMessageScope).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedAction: "create-key" })
+    );
+    expect(mockAssertPublisherAuthMessageScope).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedAction: "revoke-key" })
+    );
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });
