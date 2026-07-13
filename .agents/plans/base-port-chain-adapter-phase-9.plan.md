@@ -331,6 +331,11 @@ Out of scope:
   The Base author page now defaults and validates vouches at the contract's `1 USDC` minimum and
   tells connected injected-wallet users that Base vouching currently requires Coinbase Smart Wallet.
   These Sepolia checks do not lift any Base-mainnet gate.
+- 2026-07-13 Base A1 merge handoff: PR #102 merged the clean-break `base-v1-a1` source into `main`.
+  The live `0x5992…B7d1` deployment remains pre-A1; no contract pointer or paymaster policy changed.
+  Paid-report client work, fresh linked paused deployment, lifecycle smoke, activation, and rollback
+  are owned by `.agents/plans/base-paid-report-activation-sepolia.plan.md`. This merge does not close
+  the remaining Phase 9 custody, external-review/human-acceptance, monitoring, or live-smoke gates.
 
 ## Part A - Base Sepolia E2E Proof
 

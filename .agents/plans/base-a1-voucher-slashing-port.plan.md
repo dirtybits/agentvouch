@@ -21,8 +21,8 @@ todos:
     content: "DONE 2026-07-13 — Completed and recorded the local-only Forge, size, ABI, storage, exact-link/code-hash, chain-map, web lint/typecheck/test/build, isolated UI/harness, and 31-transaction Anvil rehearsal gates. An internal executable-diff review covered 50/50 surfaces with no reportable findings; this is not an external review or launch approval."
     status: completed
   - id: deploy-smoke-sepolia
-    content: "HUMAN-GATED FOLLOW-UP — Excluded from the local implementation closeout. Only after explicit approval, deploy and verify a fresh linked Base Sepolia candidate and run the paid-report settlement smoke. Paid-report wallet/UI writes require a separately approved activation plan. This plan never authorizes Base mainnet."
-    status: pending
+    content: "SUPERSEDED 2026-07-13 — PR #102 merged the local implementation into main without deployment. Fresh linked Base Sepolia deployment, paid-report client activation, live smoke, and rollback are now owned by .agents/plans/base-paid-report-activation-sepolia.plan.md; this completion records handoff only, not deployment."
+    status: completed
 isProject: false
 ---
 
@@ -200,15 +200,21 @@ chain-capability-map verification, repository Prettier check, and `git diff --ch
 
 ### Local implementation closeout — 2026-07-13
 
-The clean-break Base A1 local implementation is complete. All local implementation, consumer-sync,
+The clean-break Base A1 implementation is complete and merged through PR #102. All local implementation, consumer-sync,
 size, linking, test, build, rehearsal, and internal executable-diff review gates passed; the internal
 review covered 50/50 executable diff surfaces and produced no reportable findings.
 
-This is a local-source closeout only. The candidate is not merged, publicly deployed, or live-smoked.
+This is an implementation/merge closeout only. The candidate is not publicly deployed or live-smoked.
 The internal diff review does not satisfy the external-review or explicit human-acceptance launch gate.
 Paid-report wallet/UI writes remain deliberately absent and require a separately approved activation
 plan. Fresh Base Sepolia deployment, operational configuration, custody approval, exposure limits,
 monitoring, and Base mainnet authorization remain gated.
+
+### Merge handoff — 2026-07-13
+
+PR #102 squash-merged the clean-break A1 implementation into `main` at `ce219b86`. The human-gated
+deployment todo above is completed only as superseded: `.agents/plans/base-paid-report-activation-sepolia.plan.md`
+now owns paid-report client work, fresh paused Base Sepolia deployment, smoke, activation, and rollback.
 
 ## Actors and trust
 

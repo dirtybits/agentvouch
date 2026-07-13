@@ -79,20 +79,6 @@ function parseSurfaceMap(markdown) {
   );
 }
 
-function blockedA1Surface(markdown) {
-  const rows = parseMarkedTable(
-    markdown,
-    "<!-- BEGIN BLOCKED A1 SURFACE -->",
-    "<!-- END BLOCKED A1 SURFACE -->",
-    6,
-    "blocked-A1-surface"
-  );
-  return {
-    functions: new Set(rows.flatMap((row) => functionIdentifiers(row[3]))),
-    superseded: new Set(rows.flatMap((row) => functionIdentifiers(row[4]))),
-  };
-}
-
 function anchorInstructionNames(source) {
   return new Set(
     [
@@ -119,39 +105,6 @@ function baseStateChangingFunctionNames(source) {
   return names;
 }
 
-function assertBaseSurface(mappedBase, blockedA1, superseded, baseSource) {
-  const presentBlocked = new Set(
-    [...baseSource].filter((name) => blockedA1.has(name))
-  );
-  const effectiveMapped =
-    presentBlocked.size === 0
-      ? mappedBase
-      : new Set([...mappedBase].filter((name) => !superseded.has(name)));
-  const missingMapped = difference(effectiveMapped, baseSource);
-  const allowed = new Set([...effectiveMapped, ...blockedA1]);
-  const undocumented = difference(baseSource, allowed);
-  if (missingMapped.length > 0 || undocumented.length > 0) {
-    const details = [];
-    if (missingMapped.length > 0) {
-      details.push(`missing mapped functions: ${missingMapped.join(", ")}`);
-    }
-    if (undocumented.length > 0) {
-      details.push(`undocumented functions: ${undocumented.join(", ")}`);
-    }
-    throw new Error(
-      `chain map vs Base state-changing source drifted (${details.join("; ")})`
-    );
-  }
-
-  if (presentBlocked.size > 0) {
-    assertSameSet(
-      "blocked A1 table vs Base state-changing source",
-      presentBlocked,
-      blockedA1
-    );
-  }
-}
-
 try {
   const mapMarkdown = read("docs/CHAIN_CAPABILITY_MAP.md");
   const rows = parseSurfaceMap(mapMarkdown);
@@ -164,7 +117,6 @@ try {
   const mappedBase = new Set(
     rows.flatMap((row) => functionIdentifiers(row[4]))
   );
-  const blockedA1Surface_ = blockedA1Surface(mapMarkdown);
   const anchorSource = anchorInstructionNames(
     read("programs/agentvouch/src/lib.rs")
   );
@@ -177,15 +129,14 @@ try {
 
   assertSameSet("Anchor source vs checked-in IDL", anchorSource, anchorIdl);
   assertSameSet("chain map vs Anchor source", mappedSolana, anchorSource);
-  assertBaseSurface(
+  assertSameSet(
+    "chain map vs Base state-changing source",
     mappedBase,
-    blockedA1Surface_.functions,
-    blockedA1Surface_.superseded,
     baseSource
   );
 
   console.log(
-    `Chain capability map verified: ${anchorSource.size} Solana instructions, ${baseSource.size} Base state-changing functions, ${blockedA1Surface_.functions.size} documented local A1 functions, ${rows.length} mapped rows.`
+    `Chain capability map verified: ${anchorSource.size} Solana instructions, ${baseSource.size} Base state-changing functions, ${rows.length} mapped rows.`
   );
 } catch (error) {
   console.error(`Chain capability map verification failed: ${error.message}`);

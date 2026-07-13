@@ -124,12 +124,14 @@ Record the authority pubkeys for each environment before production changes:
 
 The deployed Base Sepolia contract is a **pre-A1 Base v1 candidate**, not a mainnet release. It reports
 `PROTOCOL_VERSION = "base-v1-candidate"` and includes USDC purchase/x402 flows, author bonds,
-vouch/revoke, and founder/admin-resolved generic author reports. The local clean-break A1 source reports
+vouch/revoke, and founder/admin-resolved generic author reports. The merged clean-break A1 source reports
 `base-v1-a1`, removes those generic reports, and adds centrally adjudicated paid-purchase reports through
-an immutably linked settlement library. It is not deployed or approved for broadcast.
+an immutably linked settlement library. It is not deployed or approved for broadcast; activation is
+tracked in `.agents/plans/base-paid-report-activation-sepolia.plan.md`.
 
-Use `docs/BASE_DEPLOY.md` for Base Sepolia v1-candidate deploys, env pointer updates, selector
-verification, and the fresh-state report smoke. `docs/DEPLOY.md` is Solana-only.
+Use `docs/BASE_DEPLOY.md` for Base Sepolia linked-candidate dry runs, env pointer updates, selector
+verification, and fresh-state smoke requirements. Any A1 broadcast or activation remains separately
+human-gated by `.agents/plans/base-paid-report-activation-sepolia.plan.md`. `docs/DEPLOY.md` is Solana-only.
 
 Before any Base mainnet deployment:
 
