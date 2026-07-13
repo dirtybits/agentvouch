@@ -20,29 +20,33 @@ library AgentVouchTypes {
         Removed
     }
 
-    // Mirrors Solana AuthorDisputeStatus.
-    enum DisputeStatus {
-        Open,
-        Resolved,
-        SlashingVouchers
+    enum PurchaseLane {
+        None,
+        Direct,
+        Authorization,
+        Settlement
     }
 
-    // Mirrors Solana AuthorDisputeLiabilityScope.
-    enum LiabilityScope {
-        AuthorBondOnly,
-        AuthorBondThenVouchers
+    enum PaidPurchaseReportStatus {
+        None,
+        Pending,
+        Accepted,
+        SlashingVouchers,
+        Terminal
     }
 
-    // Mirrors Solana AuthorDisputeRuling.
-    enum Ruling {
-        Upheld,
-        Dismissed
+    enum PaidPurchaseReportOutcome {
+        None,
+        Rejected,
+        Expired,
+        Dismissed,
+        Upheld
     }
 
-    enum ReportStatus {
-        Open,
-        Resolved,
-        SlashingVouchers
+    enum PaidPurchaseReportRuling {
+        None,
+        Dismissed,
+        Upheld
     }
 
     /// @dev Mirrors Solana `Config` (state/config.rs) minus the authority pubkeys
@@ -72,37 +76,9 @@ library AgentVouchTypes {
         uint256 longevityComponentCap;
         uint256 upheldDisputePenalty;
         uint256 reputationScoreCap;
-        // Immutable destination for financial-report residuals. Appended so the
+        // Immutable destination for paid-purchase report residuals. Appended so the
         // deployment input cannot be confused with the legacy config layout.
         address treasuryRecipient;
-    }
-
-    /// @dev ABI-compatible view of the pre-A1 config. `getConfig` returns this
-    ///      shape so an env rollback to the previous immutable candidate cannot
-    ///      make existing clients decode the appended treasury field incorrectly.
-    struct LegacyConfig {
-        address usdc;
-        string chainContext;
-        uint256 minVouchStakeUsdcMicros;
-        uint256 disputeBondUsdcMicros;
-        uint256 minAuthorBondForFreeListingUsdcMicros;
-        uint256 minPaidListingPriceUsdcMicros;
-        uint16 authorShareBps;
-        uint16 voucherShareBps;
-        uint16 protocolFeeBps;
-        uint8 slashPercentage;
-        uint256 authorProceedsLockSeconds;
-        uint256 refundClaimWindowSeconds;
-        uint16 challengerRewardBps;
-        uint256 challengerRewardCapUsdcMicros;
-        uint32 stakeWeightPerUsdc;
-        uint256 riskComponentCap;
-        uint32 vouchWeight;
-        uint256 vouchComponentCap;
-        uint32 longevityBonusPerDay;
-        uint256 longevityComponentCap;
-        uint256 upheldDisputePenalty;
-        uint256 reputationScoreCap;
     }
 
     /// @dev Mirrors Solana `AgentProfile` (state/agent.rs). `rewardIndexUsdcMicrosX1e12`
@@ -122,35 +98,11 @@ library AgentVouchTypes {
         uint256 rewardIndexUsdcMicrosX1e12;
         uint256 unclaimedVoucherRevenueUsdcMicros;
         uint64 registeredAt;
-        // A1 aggregate counters. They are exposed through the additive
-        // `getA1ProfileStats` view; legacy `getProfile` stays byte-for-byte
-        // compatible with the prior candidate.
+        // A1 aggregate counters. The clean-break `base-v1-a1` profile tuple exposes
+        // them directly; clients must bind tuple decoding to PROTOCOL_VERSION because
+        // the deployed pre-A1 candidate has the shorter legacy tuple.
         uint64 slashingReportCount;
-        uint256 totalVouchStakeSlashedUsdcMicros;
-    }
-
-    /// @dev ABI-compatible view of the pre-A1 profile.
-    struct LegacyAgentProfile {
-        bool registered;
-        string metadataUri;
-        uint256 reputationScore;
-        uint64 totalVouchesReceived;
-        uint64 totalVouchesGiven;
-        uint256 totalVouchStakeReceivedUsdcMicros;
-        uint256 authorBondUsdcMicros;
-        uint64 activeFreeListingCount;
-        uint64 openDisputes;
-        uint64 upheldDisputes;
-        uint64 dismissedDisputes;
-        uint256 rewardIndexUsdcMicrosX1e12;
-        uint256 unclaimedVoucherRevenueUsdcMicros;
-        uint64 registeredAt;
-    }
-
-    /// @dev A1-only profile aggregates. A Base author view can show slash
-    ///      history without an archive-log scan while Solana callers use zero.
-    struct A1ProfileStats {
-        uint64 slashingReportCount;
+        uint256 totalAuthorBondSlashedUsdcMicros;
         uint256 totalVouchStakeSlashedUsdcMicros;
     }
 
@@ -207,58 +159,47 @@ library AgentVouchTypes {
         uint256 authorShareUsdcMicros;
         uint256 voucherPoolUsdcMicros;
         uint64 timestamp;
+        PurchaseLane lane;
     }
 
-    /// @dev Minimal Base v1 author report. This is intentionally author-wide:
-    ///      skill/listing-specific refund and voucher-slashing machinery stays deferred.
-    struct AuthorReport {
+    struct PaidPurchaseReport {
         bool exists;
-        address reporter;
+        address buyer;
         address author;
-        string evidenceUri;
-        uint256 bondUsdcMicros;
-        uint256 forfeitedReporterBondUsdcMicros;
-        uint256 slashedAuthorBondUsdcMicros;
-        ReportStatus status;
-        Ruling ruling;
-        uint64 openedAt;
-        uint64 resolvedAt;
-        // Financial-report fields. Appended so `getAuthorReport` can keep its
-        // pre-A1 tuple layout and `getFinancialReport` can expose this lifecycle.
-        bool financial;
         bytes32 listingId;
         bytes32 purchaseId;
-        uint64 rewardSettlementRevision;
-        uint256 snapshottedPreSlashStakeUsdcMicros;
-        uint256 processedPreSlashStakeUsdcMicros;
-        uint256 slashedVouchStakeUsdcMicros;
+        string evidenceUri;
+        uint64 filedAt;
+        uint64 reviewDeadline;
+        uint64 acceptedAt;
+        uint64 terminalAt;
+        PaidPurchaseReportStatus status;
+        PaidPurchaseReportOutcome outcome;
+        uint256 bondUsdcMicros;
         uint8 snapshottedSlashPercentage;
-        uint16 snapshottedChallengerRewardBps;
-        uint256 snapshottedChallengerRewardCapUsdcMicros;
-        uint256 refundReserveUsdcMicros;
-        uint256 refundRemainingUsdcMicros;
-        uint256 reporterRewardReserveUsdcMicros;
-        bool refundReserveClosed;
-        uint64 parkedAt;
-        uint64 refundFundedAt;
-        uint64 refundDeadline;
-        uint64 finalizedAt;
+        uint256 snapshottedActiveVouchStakeUsdcMicros;
+        uint256 processedPreSlashStakeUsdcMicros;
+        uint256 authorBondSlashUsdcMicros;
+        uint256 voucherSlashUsdcMicros;
+        uint256 buyerEntitlementUsdcMicros;
+        uint256 buyerCreditUsdcMicros;
+        uint64 claimDeadline;
+        bool creditHandled;
     }
 
-    /// @dev ABI-compatible view of the pre-A1 report tuple. The legacy
-    ///      reputation-only browser action and prior candidate use this exact
-    ///      layout; A1 consumers call `getFinancialReport` instead.
-    struct LegacyAuthorReport {
-        bool exists;
-        address reporter;
-        address author;
-        string evidenceUri;
-        uint256 bondUsdcMicros;
-        uint256 forfeitedReporterBondUsdcMicros;
-        uint256 slashedAuthorBondUsdcMicros;
-        ReportStatus status;
-        Ruling ruling;
-        uint64 openedAt;
-        uint64 resolvedAt;
+    /// @dev All A1 state is owned by the facade and passed explicitly to the
+    ///      linked settlement library as one frozen storage boundary.
+    struct PaidPurchaseState {
+        mapping(uint64 => PaidPurchaseReport) reports;
+        mapping(bytes32 => uint64) reportIdByPurchase;
+        mapping(address => uint64) activeReportByBuyer;
+        mapping(address => uint64) activeReportByAuthor;
+        mapping(bytes32 => uint64) activeReportByListing;
+        mapping(address => uint64) buyerCooldownUntil;
+        mapping(address => uint64) authorCooldownUntil;
+        mapping(address => bool) purchaseLockedByAuthor;
+        mapping(uint64 => mapping(address => bool)) vouchProcessed;
+        uint64 nextReportId;
+        uint256 restitutionReserveCreditUsdcMicros;
     }
 }

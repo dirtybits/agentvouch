@@ -6,22 +6,22 @@ todos:
     content: "DONE 2026-07-12 — Operator approved the final PaidPurchaseReport-only lifecycle, filing-time collateral lock, 3-day resolver review, 7-day filing/cooldown/claim windows, deterministic bond routing, author-bond-first percentage slash, author-wide voucher slash, initiating-buyer-only restitution, exact ABI, and linked-library architecture."
     status: completed
   - id: implement-contract
-    content: "Replace the monolithic WIP and all legacy/FinancialReport paths with the final PaidPurchaseReport state machine plus immutably linked A1Settlement library; enable via_ir at optimizer runs=200 and freeze the facade/library storage boundary."
-    status: pending
+    content: "DONE 2026-07-12 — Replaced the monolithic WIP and all legacy/FinancialReport paths with the final PaidPurchaseReport state machine plus immutably linked PaidPurchaseSettlement library; enabled via_ir at optimizer runs=200 and froze the facade/library storage boundary."
+    status: completed
   - id: forge-tests
-    content: "Add the behavioral, fuzz, invariant, pause, reentrancy, concurrency, replay, rounding, liability, linking, ABI, and runtime-size coverage in this plan. The existing 85 tests are pre-clean-break regression evidence only."
-    status: pending
+    content: "DONE 2026-07-13 — 116 Forge tests cover the behavioral, fuzz, invariant, pause, reentrancy, concurrency, replay, rounding, liability, linking, ABI, runtime-size, and exact linked-library code-hash requirements in this plan."
+    status: completed
   - id: sync-artifacts
-    content: "Synchronize the final base-v1-a1 ABI, deployment/link artifacts, isolated UI, harness, web consumers, selector/event/error snapshots, and remove active legacy report surfaces."
-    status: pending
+    content: "DONE 2026-07-12 — Synchronized the base-v1-a1 ABI, linked deployment script, isolated UI, harness, version-bound web reads, selector/event/error gates, and removed active legacy report surfaces."
+    status: completed
   - id: web-trust-surfaces
-    content: "Expose deployment-bound Base A1 slash aggregates on chain-qualified Review-oriented trust surfaces; preserve historical receipt redemption and never synthesize Solana trust."
-    status: pending
+    content: "DONE 2026-07-12 — Added protocol-version-bound Base A1 slash aggregates to chain-qualified Review-oriented trust reads, preserved pre-A1 receipt/profile decoding, and kept unsupported A1 data unavailable rather than synthesized."
+    status: completed
   - id: verify-and-record
-    content: "Complete local-only Forge, size, ABI, storage, linking, chain-map, web, build, deployment-rehearsal, readiness, and runbook gates with concrete evidence."
-    status: pending
+    content: "DONE 2026-07-13 — Completed and recorded the local-only Forge, size, ABI, storage, exact-link/code-hash, chain-map, web lint/typecheck/test/build, isolated UI/harness, and 31-transaction Anvil rehearsal gates. An internal executable-diff review covered 50/50 surfaces with no reportable findings; this is not an external review or launch approval."
+    status: completed
   - id: deploy-smoke-sepolia
-    content: "HUMAN-GATED — Only after explicit approval, deploy and verify a fresh linked Base Sepolia candidate and run the paid-report settlement smoke. This plan never authorizes Base mainnet."
+    content: "HUMAN-GATED FOLLOW-UP — Excluded from the local implementation closeout. Only after explicit approval, deploy and verify a fresh linked Base Sepolia candidate and run the paid-report settlement smoke. Paid-report wallet/UI writes require a separately approved activation plan. This plan never authorizes Base mainnet."
     status: pending
 isProject: false
 ---
@@ -50,7 +50,7 @@ Adjudication is centralized under `RESOLVER_ROLE`. Filing, expiry, voucher settl
 - Author-bond first loss, author-wide voucher snapshot, bounded permissionless crank, residual reclaim.
 - Initiating-buyer-only credit, restitution-reserve accounting, seven-day claim expiry.
 - Clean-break `base-v1-a1` ABI and complete artifact/client synchronization.
-- Immutable `AgentVouchEvm` facade plus immutably linked external `A1Settlement` library.
+- Immutable `AgentVouchEvm` facade plus immutably linked external `PaidPurchaseSettlement` library.
 - Base Sepolia-only deployment tooling, runtime-size enforcement, trust reads, and runbooks.
 
 ### Out of scope
@@ -79,6 +79,136 @@ Adjudication is centralized under `RESOLVER_ROLE`. Filing, expiry, voucher settl
 Compiler settings alone do not solve deployability. Final facade and linked library must each be at most 24,576 runtime bytes and at most 23,500 project-soft-limit bytes. Creation input, including constructor arguments, must stay within EIP-3860’s 49,152-byte cap.
 
 The current default EVM target resolves to `prague`. Pin an explicitly approved Base-supported target before final artifacts.
+
+### Size-feasibility spike — 2026-07-12
+
+The first linked-library spike extracted the existing voucher page, reward accrual, and financial-report
+finalization into `PaidPurchaseSettlement` under solc 0.8.28, optimizer runs=200, `via_ir=true`, pinned
+`cancun`, and metadata disabled. The typed external-library boundary compiled and emitted two facade
+link references; `forge inspect` showed no storage-layout change.
+
+| Artifact                 | Runtime | Initcode | EIP-170 headroom | 23,500-byte soft headroom |
+| ------------------------ | ------: | -------: | ---------------: | ------------------------: |
+| `AgentVouchEvm`          |  25,578 |   27,250 |           -1,002 |                    -2,078 |
+| `PaidPurchaseSettlement` |   2,235 |    2,267 |           22,341 |                    21,265 |
+
+**Gate result: failed.** The linked library is viable, but this representative extraction does not make
+the facade deployable and therefore does not authorize full implementation. Stop and re-plan the
+feature boundary before continuing. The next review should decide whether the clean-break removal of
+legacy/FinancialReport surfaces plus broader extraction of uphold, credit, expiry, and reserve accounting
+can demonstrate the required soft headroom without changing locked economics.
+
+### Broader clean-break feasibility — 2026-07-12
+
+The operator approved the broader clean break after the first spike failed: remove the obsolete generic
+and FinancialReport implementations, keep the facade as the public API, authorization boundary, storage
+owner, and USDC custodian, and move the paid-purchase terminal accounting into the linked library. The
+result compiles under solc 0.8.28, optimizer runs=200, `via_ir=true`, pinned `cancun`, and metadata disabled.
+
+| Artifact                 | Runtime | Initcode | EIP-170 headroom | 23,500-byte soft headroom |
+| ------------------------ | ------: | -------: | ---------------: | ------------------------: |
+| `AgentVouchEvm`          |  23,428 |   25,011 |            1,148 |                        72 |
+| `PaidPurchaseSettlement` |   4,425 |    4,457 |           20,151 |                    19,075 |
+
+**Gate result: passed, narrowly.** The clean-break facade and library are each deployable and below the
+project soft limit. The 72-byte facade margin is a hard review constraint: remaining A1 settlement logic
+should stay in the library, and later consumer/docs work must not grow the facade without re-running the
+gate. The contract implementation remains in progress until the two-ledger voucher-revenue rule, full
+adversarial suite, ABI/link/storage snapshots, and consumer synchronization are complete.
+
+The frozen ABI has no standalone pending-expiry selector. The implementation therefore gives
+`closePaidPurchaseReportCredit(uint64)` two state-specific permissionless meanings: expire a Pending
+report at/after `reviewDeadline`, or convert an unclaimed terminal buyer credit at/after `claimDeadline`.
+Before either deadline it reverts with the corresponding open-window error. This preserves the exact ABI
+and the locked permissionless-expiry boundary without adding another facade selector.
+
+### Contract implementation checkpoint — 2026-07-12
+
+The full two-ledger voucher-revenue rule and the facade-level Base Sepolia invariant are now included.
+To preserve the frozen external ABI and keep the facade below the soft limit, the linked settlement
+library also owns voucher exit/claim materialization and author-proceeds debits; the facade remains the
+only caller, role/pause/reentrancy boundary, storage owner, event-facing API, and USDC transfer/custody
+contract. `VoucherRevenueAccounting` is an internal source-shared helper, not a separately deployed or
+linked module.
+
+| Artifact                 | Runtime | Initcode | EIP-170 headroom | 23,500-byte soft headroom |
+| ------------------------ | ------: | -------: | ---------------: | ------------------------: |
+| `AgentVouchEvm`          |  23,487 |   24,881 |            1,089 |                        13 |
+| `PaidPurchaseSettlement` |   5,939 |    5,971 |           18,637 |                    17,561 |
+
+**Current gate result: passed, with only 13 facade bytes of soft headroom.** `forge test --root
+contracts/base-poc` passes 116 tests, including wrong-chain initialization, exact filing/review/claim
+and cooldown boundaries, removed-listing receipts, pause liveness, post-filing bond deposits,
+duplicate-safe multi-page slashing, max-page rejection, raw mutating CALL rejection, and unequal-stake
+rounding residue routed to author proceeds after either revoke or slash removes the final active vouch. Contract implementation
+is complete. The expanded suite includes a 256-case variable-stake/price/order conservation fuzz test,
+a 256-run/128,000-call stateful liability invariant, and a malicious-token reserve-claim reentrancy test.
+It also covers false-return rollback, no-return tokens, blacklisted recipients, a 32-voucher gas budget,
+resolver-role handoff, successor isolation, concurrency slots, one-time claims, and exact compiled-artifact
+code-hash enforcement for missing, wrong, stale-address, and correctly linked settlement libraries. The
+executable local deployment rehearsal covers the complete actor flow.
+
+The storage-layout verifier now canonicalizes solc's compilation-unit-specific struct and enum AST ids
+before hashing. Its frozen hash is `1d3551ad881bfe94fef5e709f3d4fe4b7827f743e54d76fd9fb1ddec802dbbeb` and remains stable after a forced
+source-only rebuild. Deployment preflight derives the expected linked-library runtime hash from the exact
+compiled artifact, patches solc's embedded library self-address, and rejects missing or mismatched code
+before broadcasting the facade. It also rejects a no-code USDC address and a non-six-decimal token, and
+prints both expected and actual library code hashes.
+
+Consumer synchronization is locally verified: stale report selectors are absent from the facade,
+isolated UI, harness, and active web ABI fragments; the web selects the longer A1 profile tuple only
+after reading exact `PROTOCOL_VERSION=base-v1-a1`; and the deployed pre-A1 tuple remains supported.
+Web lint, typecheck, 631 tests, and the webpack production build pass. The isolated UI build and harness
+typecheck also pass after installing the UI's already-locked dependencies; no dependency files changed.
+
+### Partial local linked-deployment rehearsal — 2026-07-12
+
+An ephemeral Anvil node ran with chain ID 84532 and unlocked local-only accounts. Manual `forge create`
+transactions deployed `MockUSDC` at block 1 (`0xca170b3f55da4dca7caa622d25cf739f07e4662487e8ef8a1fcc44545bd919f0`),
+`PaidPurchaseSettlement` at block 2 (`0x7f07f32349cea03b64c965b29b5048276958b9af01fb2384cb90dcd83fcd1014`),
+and the explicitly linked `AgentVouchEvm` facade at block 3
+(`0x04b0c6bf2f89ac714e37f992aa6140b227f18eb7a242bda1cdae1d14914eaf7b`). Locked A1 config
+initialization succeeded at block 4 (`0x4bafd4e15f7c474109f99ef00b2250ec85fd1c43aa20c05146697a91995a5d4c`).
+No public RPC or real funds were used. The environment exhausted escalation credits before actor-flow
+transactions, so this is deployment/link/config evidence only and does **not** satisfy the required
+end-to-end report/crank/claim/reserve/residual rehearsal. The local node was stopped.
+
+### Complete local linked-deployment rehearsal — 2026-07-13
+
+`script/RehearseA1.s.sol` ran successfully against a fresh ephemeral Anvil node with chain ID 84532
+and seven distinct unlocked local-only actors. Foundry mined 31 transactions and wrote the
+machine-readable broadcast artifact to the gitignored
+`contracts/base-poc/broadcast/RehearseA1.s.sol/84532/run-latest.json`. The run deployed
+`PaidPurchaseSettlement` at `0xA26CF860f391d6009eb4fc484356A53c6018CbA5`
+(`0xd8da3cbe6de588134109f77a520b7bda1cfa5ec1a335a3f17e829061702e2104`) with code hash
+`0x0c7f706cc0e5a66e5581c7be4c62192c8e5eaf794c84e03b26c71027ec3ef603`, then deployed the
+explicitly linked facade at `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`
+(`0xb2b5b7d00746313b895cd1668c78b1a6d7cc7688b5fe653b11dfadbc4d017274`) with code hash
+`0x35f6f60c2575e48650e5cc30b8691bb8430e03f68c2ef4900e35fece773e2812`.
+
+The script initialized locked economics, handed `RESOLVER_ROLE` to a distinct resolver and removed it
+from the deployer, registered the author/buyer/two vouchers, deposited a 20 USDC author bond, created
+and purchased a 10 USDC listing, and opened report 1
+(`0x0e2c1a825734cfae9047245ed952d786d2fecf9ddfc24e2a9b58e0c8a9639c56`). The resolver accepted and
+upheld it (`0xf85696d158fbc6c407855ef9b4ecf5e4e3e2c71eecf4cff426aaf2e195576dd0`); two separate one-voucher
+crank pages completed slashing (`0x2897726efa4a0fce2ac98a852bf65d34175187d37c8bbb521cae4e169d486755`,
+`0x8fc916ab342f26c875e2941170ff9a7206460bb22a5cb3e5a22f95a2c26b0f8d`). Terminal assertions proved
+15 USDC buyer credit, 5 USDC reserve proceeds, and a 2 USDC voucher residual reclaim. No public RPC,
+private key, public deployment, or real funds were used; the node was stopped after evidence capture.
+The post-rehearsal gates passed: 116 Forge tests, `forge fmt --check`, runtime-size verification,
+chain-capability-map verification, repository Prettier check, and `git diff --check`.
+
+### Local implementation closeout — 2026-07-13
+
+The clean-break Base A1 local implementation is complete. All local implementation, consumer-sync,
+size, linking, test, build, rehearsal, and internal executable-diff review gates passed; the internal
+review covered 50/50 executable diff surfaces and produced no reportable findings.
+
+This is a local-source closeout only. The candidate is not merged, publicly deployed, or live-smoked.
+The internal diff review does not satisfy the external-review or explicit human-acceptance launch gate.
+Paid-report wallet/UI writes remain deliberately absent and require a separately approved activation
+plan. Fresh Base Sepolia deployment, operational configuration, custody approval, exposure limits,
+monitoring, and Base mainnet authorization remain gated.
 
 ## Actors and trust
 
@@ -272,12 +402,15 @@ Remove every active `openReport`, generic report, `FinancialReport*`, reporter-r
 
 ## Contract architecture and size
 
-- Add `contracts/base-poc/src/libraries/A1Settlement.sol` as an external linked library whose mutating calls execute through `DELEGATECALL`.
+- Add `contracts/base-poc/src/libraries/PaidPurchaseSettlement.sol` as an external linked library whose mutating calls execute through `DELEGATECALL`.
 - The facade remains sole storage owner, USDC custodian, reentrancy boundary, role gate, and event origin.
 - Pass explicit facade storage references and the immutable USDC value into library calls. Treat
   every library argument as an authorization boundary; the library has no independent state.
 - Keep admission/review wrappers, roles, pause, commerce, compact reads, and user-facing selectors on the facade.
 - Move uphold accounting, author-bond slash, voucher crank, final allocation, buyer-credit accounting, expiry conversion, and reserve accounting behind thin facade wrappers.
+- Keep voucher revenue materialization, final-position rounding release, vouch exit, and author-proceeds
+  debit in the same fixed library so the facade retains review headroom without introducing a second
+  deployable module.
 - Share reward accrual through one internal helper; no external self-call.
 - Freeze `forge inspect` storage layouts and artifact link references before integration.
 - Test raw mutating CALL to the library fails, facade DELEGATECALL succeeds, wrong/missing links fail, library code hashes match, and no unprivileged facade route reaches settlement.
@@ -288,7 +421,8 @@ Remove every active `openReport`, generic report, `FinancialReport*`, reporter-r
 
 - `contracts/base-poc/src/AgentVouchEvm.sol`
 - `contracts/base-poc/src/libraries/AgentVouchTypes.sol`
-- `contracts/base-poc/src/libraries/A1Settlement.sol`
+- `contracts/base-poc/src/libraries/PaidPurchaseSettlement.sol`
+- `contracts/base-poc/src/libraries/VoucherRevenueAccounting.sol`
 - `contracts/base-poc/foundry.toml`
 - `contracts/base-poc/test/AgentVouchEvm.Slashing.t.sol` and affected legacy suites
 - `contracts/base-poc/script/Deploy.s.sol` and `contracts/base-poc/setup.sh`
@@ -302,7 +436,7 @@ Do not add dependencies, expand `ChainAdapter`/`ChainWallet`, or add paid-report
 
 ## Implementation sequence
 
-1. **Run the size-feasibility spike first.** Extract a representative external `A1Settlement`,
+1. **Run the size-feasibility spike first.** Extract a representative external `PaidPurchaseSettlement`,
    link it into the current facade under the target compiler profile, and measure post-link facade
    and library runtime/initcode. Stop and re-plan before full implementation unless both artifacts
    are at or below the 23,500-byte soft limit and all hard limits.

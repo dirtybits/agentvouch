@@ -171,22 +171,22 @@ describe("Base passkey trust-write seam", () => {
     expect(source).toContain("buildExactUsdcApprovalCalls");
     expect(source).toContain("ensureBaseAgentRegistered");
     expect(source).toContain("agentvouch://base-passkey/");
-    expect(source).toContain("encodeFunctionData");
-    expect(source).toContain('functionName: "openReport"');
-    expect(source).toContain("data: encodeFunctionData");
+    expect(source).not.toContain('functionName: "openReport"');
     expect(source).toContain('functionName: "vouch"');
     expect(source).toContain('functionName: "updateSkillListing"');
     expect(source).toContain('"SkillListingUpdated"');
     expect(source).toContain('functionName: "removeSkillListing"');
     expect(source).toContain('"SkillListingRemoved"');
-    expect(source).toContain("OPEN_REPORT_SELECTOR");
-    expect(source).toContain("publicClient.getCode");
+    expect(source).not.toContain("OPEN_REPORT_SELECTOR");
     expect(source).toContain(
-      "Base author reports are not deployed on the configured Base contract yet."
+      "General Base author reports were removed in base-v1-a1."
+    );
+    expect(source).toContain(
+      "throw new Error(BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE)"
     );
     expect(source).toContain("sequentialApproval?: boolean");
     expect(source).toContain("if (input.sequentialApproval)");
-    expect(source).toContain("sequentialApproval: true");
+    expect(source).not.toContain("sequentialApproval: true");
   });
 });
 

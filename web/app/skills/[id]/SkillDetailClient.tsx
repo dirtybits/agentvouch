@@ -2755,18 +2755,20 @@ export default function SkillDetailPage({
                     View full author trust history{" "}
                     <FiExternalLink className="w-3.5 h-3.5" />
                   </Link>
-                  <Link
-                    href={`${authorHref}?report=1${
-                      skill.on_chain_address
-                        ? `&skill=${encodeURIComponent(
-                            `skill:${skill.on_chain_address}`
-                          )}`
-                        : ""
-                    }`}
-                    className={navButtonSecondaryInlineClass}
-                  >
-                    Report Author
-                  </Link>
+                  {!isEvmAuthor && (
+                    <Link
+                      href={`${authorHref}?report=1${
+                        skill.on_chain_address
+                          ? `&skill=${encodeURIComponent(
+                              `skill:${skill.on_chain_address}`
+                            )}`
+                          : ""
+                      }`}
+                      className={navButtonSecondaryInlineClass}
+                    >
+                      Report Author
+                    </Link>
+                  )}
                 </div>
               ) : isEvmAuthor ? (
                 <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">

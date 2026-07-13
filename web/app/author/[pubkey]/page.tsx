@@ -1069,7 +1069,7 @@ export default function AuthorProfilePage() {
   };
 
   useEffect(() => {
-    if (!authorCanReceiveTrust || isOwnProfile) return;
+    if (isEvmAuthor || !authorCanReceiveTrust || isOwnProfile) return;
     if (searchParams.get("report") !== "1") return;
     if (claimRouteDismissed) return;
     if (showClaimModal) return;
@@ -1077,6 +1077,7 @@ export default function AuthorProfilePage() {
   }, [
     claimRouteDismissed,
     authorCanReceiveTrust,
+    isEvmAuthor,
     isOwnProfile,
     openClaimModal,
     searchParams,
@@ -1139,179 +1140,184 @@ export default function AuthorProfilePage() {
             </div>
           )}
 
-        {showClaimModal && !isOwnProfile && authorCanReceiveTrust && (
-          <div
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-            role="presentation"
-            onClick={closeClaimModal}
-          >
+        {showClaimModal &&
+          !isEvmAuthor &&
+          !isOwnProfile &&
+          authorCanReceiveTrust && (
             <div
-              className="relative w-full max-w-2xl rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-xl"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="report-author-title"
-              onClick={(event) => event.stopPropagation()}
+              className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              role="presentation"
+              onClick={closeClaimModal}
             >
-              <button
-                type="button"
-                onClick={closeClaimModal}
-                aria-label="Close report dialog"
-                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              <div
+                className="relative w-full max-w-2xl rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-xl"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="report-author-title"
+                onClick={(event) => event.stopPropagation()}
               >
-                <FiX className="w-4 h-4" />
-              </button>
-
-              <div className="mb-5 pr-8">
-                <h2
-                  id="report-author-title"
-                  className="text-xl font-heading font-bold text-gray-900 dark:text-white"
+                <button
+                  type="button"
+                  onClick={closeClaimModal}
+                  aria-label="Close report dialog"
+                  className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
-                  Report this author
-                </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  {isBaseTrustWrite
-                    ? "Open an author-wide Base report. The reporter bond is held until founder/admin resolution."
-                    : "Open a skill-linked author dispute. The protocol always snapshots the author's current backing set for visibility. Free-skill disputes cap slashing at author bond; paid-skill disputes can continue into vouchers after author bond."}
-                </p>
-              </div>
+                  <FiX className="w-4 h-4" />
+                </button>
 
-              {!connected ? (
-                <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-6 text-center">
-                  <FiShield className="w-8 h-8 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                    Connect your wallet to report this author and post the
-                    dispute bond.
+                <div className="mb-5 pr-8">
+                  <h2
+                    id="report-author-title"
+                    className="text-xl font-heading font-bold text-gray-900 dark:text-white"
+                  >
+                    Report this author
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    {isBaseTrustWrite
+                      ? "Open an author-wide Base report. The reporter bond is held until founder/admin resolution."
+                      : "Open a skill-linked author dispute. The protocol always snapshots the author's current backing set for visibility. Free-skill disputes cap slashing at author bond; paid-skill disputes can continue into vouchers after author bond."}
                   </p>
-                  <ClientWalletButton />
                 </div>
-              ) : (
-                <>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Report reason
-                      </label>
-                      <select
-                        value={claimReason}
-                        onChange={(e) => setClaimReason(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
-                      >
-                        <option value="malicious-skill">
-                          Malicious skill or payload
-                        </option>
-                        <option value="fraudulent-claims">
-                          Fraudulent or deceptive claims
-                        </option>
-                        <option value="failed-delivery">
-                          Paid skill failed to deliver
-                        </option>
-                        <option value="other">Other misconduct</option>
-                      </select>
-                    </div>
 
-                    {!isBaseTrustWrite && (
+                {!connected ? (
+                  <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-6 text-center">
+                    <FiShield className="w-8 h-8 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      Connect your wallet to report this author and post the
+                      dispute bond.
+                    </p>
+                    <ClientWalletButton />
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Related skill
+                          Report reason
                         </label>
                         <select
-                          value={claimSkillContext}
-                          onChange={(e) => setClaimSkillContext(e.target.value)}
+                          value={claimReason}
+                          onChange={(e) => setClaimReason(e.target.value)}
                           className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
                         >
-                          {claimSkillOptions.map((skill) => (
-                            <option key={skill.value} value={skill.value}>
-                              {skill.label}
-                            </option>
-                          ))}
+                          <option value="malicious-skill">
+                            Malicious skill or payload
+                          </option>
+                          <option value="fraudulent-claims">
+                            Fraudulent or deceptive claims
+                          </option>
+                          <option value="failed-delivery">
+                            Paid skill failed to deliver
+                          </option>
+                          <option value="other">Other misconduct</option>
                         </select>
                       </div>
-                    )}
 
-                    {!isBaseTrustWrite && (
+                      {!isBaseTrustWrite && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Related skill
+                          </label>
+                          <select
+                            value={claimSkillContext}
+                            onChange={(e) =>
+                              setClaimSkillContext(e.target.value)
+                            }
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
+                          >
+                            {claimSkillOptions.map((skill) => (
+                              <option key={skill.value} value={skill.value}>
+                                {skill.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {!isBaseTrustWrite && (
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Author-wide backing snapshot
+                          </label>
+                          <div className="rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              This report records the offending listed skill and
+                              the author&apos;s full backing snapshot. You
+                              cannot choose individual backers.
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {authorWideBackingVouches.length > 0
+                                ? `The protocol will snapshot ${
+                                    authorWideBackingVouches.length
+                                  } current backing ${
+                                    authorWideBackingVouches.length === 1
+                                      ? "voucher"
+                                      : "vouchers"
+                                  } when you open the report. Free-skill disputes keep that snapshot for transparency only; paid-skill disputes may also slash it after author bond.`
+                                : "This author has no live backing vouchers right now, so only author bond can be economically in scope."}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Author-wide backing snapshot
+                          Evidence URI
                         </label>
-                        <div className="rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
-                          <p className="text-sm text-gray-600 dark:text-gray-300">
-                            This report records the offending listed skill and
-                            the author&apos;s full backing snapshot. You cannot
-                            choose individual backers.
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {authorWideBackingVouches.length > 0
-                              ? `The protocol will snapshot ${
-                                  authorWideBackingVouches.length
-                                } current backing ${
-                                  authorWideBackingVouches.length === 1
-                                    ? "voucher"
-                                    : "vouchers"
-                                } when you open the report. Free-skill disputes keep that snapshot for transparency only; paid-skill disputes may also slash it after author bond.`
-                              : "This author has no live backing vouchers right now, so only author bond can be economically in scope."}
-                          </p>
-                        </div>
+                        <input
+                          type="url"
+                          value={claimEvidenceUri}
+                          onChange={(e) => setClaimEvidenceUri(e.target.value)}
+                          placeholder="https://github.com/... or ipfs://..."
+                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
+                        />
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                          The skill listing is required. Purchase is optional
+                          evidence for delivery claims.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-sm border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/20 p-4">
+                      <p className="text-sm text-amber-800 dark:text-amber-300">
+                        <span className="inline-flex items-center gap-1">
+                          <FiAlertTriangle className="w-4 h-4" />
+                        </span>{" "}
+                        Opening a report posts the dispute bond. If the dispute
+                        is dismissed, the bond may be forfeited.
+                      </p>
+                    </div>
+
+                    {claimStatus && !claimStatus.success && (
+                      <div className="mt-4 rounded-sm border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+                        <p className="text-sm text-red-700 dark:text-red-300">
+                          {claimStatus.message}
+                        </p>
                       </div>
                     )}
 
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Evidence URI
-                      </label>
-                      <input
-                        type="url"
-                        value={claimEvidenceUri}
-                        onChange={(e) => setClaimEvidenceUri(e.target.value)}
-                        placeholder="https://github.com/... or ipfs://..."
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
-                      />
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                        The skill listing is required. Purchase is optional
-                        evidence for delivery claims.
-                      </p>
+                    <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={closeClaimModal}
+                        className={navButtonSecondaryInlineClass}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSubmitClaim}
+                        disabled={claiming}
+                        className={`sm:min-w-[13rem] ${navButtonPrimaryFlexClass}`}
+                      >
+                        {claiming ? "Opening report..." : "Open report"}
+                      </button>
                     </div>
-                  </div>
-
-                  <div className="mt-4 rounded-sm border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/20 p-4">
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                      <span className="inline-flex items-center gap-1">
-                        <FiAlertTriangle className="w-4 h-4" />
-                      </span>{" "}
-                      Opening a report posts the dispute bond. If the dispute is
-                      dismissed, the bond may be forfeited.
-                    </p>
-                  </div>
-
-                  {claimStatus && !claimStatus.success && (
-                    <div className="mt-4 rounded-sm border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
-                      <p className="text-sm text-red-700 dark:text-red-300">
-                        {claimStatus.message}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={closeClaimModal}
-                      className={navButtonSecondaryInlineClass}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSubmitClaim}
-                      disabled={claiming}
-                      className={`sm:min-w-[13rem] ${navButtonPrimaryFlexClass}`}
-                    >
-                      {claiming ? "Opening report..." : "Open report"}
-                    </button>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -2262,7 +2268,7 @@ export default function AuthorProfilePage() {
           </div>
         )}
 
-        {!isOwnProfile && authorIsRegistered && (
+        {!isEvmAuthor && !isOwnProfile && authorIsRegistered && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">

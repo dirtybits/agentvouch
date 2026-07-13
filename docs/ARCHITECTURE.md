@@ -60,7 +60,8 @@ Agent or human
           `-- Base EVM contract: AgentVouchEvm
                 - one contract-wide USDC custody balance
                 - Solidity mappings and internal liability accounting
-                - Base Sepolia candidate is pre-A1
+                - deployed Base Sepolia candidate is pre-A1
+                - local base-v1-a1 candidate links PaidPurchaseSettlement
           |
           v
 Neon/Postgres index and skill repository
@@ -102,16 +103,22 @@ Base does not have program accounts. The direct `AgentVouchEvm` contract custodi
 
 | Base storage | EVM key / shape | Purpose | Status |
 | --- | --- | --- | --- |
-| Protocol singleton | `usdc`, `config`, `configInitialized`, inherited role state | Immutable USDC asset; one-time CAIP-2/economic configuration; `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` govern the relevant actions. | Present in the pre-A1 candidate. `TREASURY_ROLE` is declared but is not a standalone live sweep path. |
-| Profiles | `profiles[agent]` → `AgentProfile` | Registration metadata, author bond, author-wide vouch aggregate/reward index, free-listing count, and report counters. | Present in the pre-A1 candidate. |
+| Protocol singleton | `usdc`, `config`, `configInitialized`, inherited role state | Immutable USDC asset; one-time CAIP-2/economic configuration; `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` govern the relevant actions. | Present in the deployed pre-A1 candidate and local A1 candidate. The local candidate removes the unused `TREASURY_ROLE`; restitution is pull-only to the configured immutable recipient. |
+| Profiles | `profiles[agent]` → `AgentProfile` | Registration metadata, author bond, author-wide vouch aggregate/reward index, free-listing count, report counters, and A1 slash aggregates. | Core fields are deployed; slash aggregates exist only in the local A1 candidate. |
 | Vouches | `vouches[vouchId(voucher, vouchee)]` → `Vouch` | An author-wide endorsement, its stake, status, and reward accrual. Base deliberately has no listing-position account. | Present in the pre-A1 candidate. |
 | Listings and settlements | `listings[listingId(author, skillIdHash)]` and `settlements[listingId][revision]` | Listing metadata, price/revision/status and per-revision author-proceeds accounting. | Present in the pre-A1 candidate; `updateSkillListing` is source-only until the next candidate deploy. |
-| Purchases | `purchases[purchaseId(buyer, listingId, revision)]` → `Purchase` | Revision-scoped buyer receipt and its author/voucher payment split. | Present in the pre-A1 candidate. |
-| Reputation reports | `authorReports[reportId]` and `nextAuthorReportId` | The deployed candidate's author-wide report, reporter bond, ruling, and bounded author-bond first loss. | Present in the pre-A1 candidate; it has no deployed financial-report lifecycle. |
+| Purchases | `purchases[purchaseId(buyer, listingId, revision)]` → `Purchase` | Revision-scoped buyer receipt and its author/voucher payment split. The local A1 candidate also stores immutable Direct/Authorization/Settlement lane provenance. | Core receipt is deployed; lane provenance is local A1 source only. |
+| Deployed legacy reports | `authorReports[reportId]` and `nextAuthorReportId` | The deployed candidate's author-wide report, reporter bond, ruling, and bounded author-bond first loss. | Present only in the deployed pre-A1 candidate; removed by the local clean break. |
+| Paid-purchase reports | `paidPurchaseState` → report, consumed-receipt, active-slot, cooldown, processed-vouch, purchase-lock, and reserve-credit mappings | One eligible buyer receipt, fixed bond, filing/acceptance locks, centralized ruling, paged author-wide slash, buyer credit, and reserve liabilities. | Local `base-v1-a1` source only; not deployed. |
+| Voucher revenue conservation | `voucherRevenuePendingDistributionUsdcMicros[author]` and `voucherRevenueRoundingAuthorProceedsUsdcMicros[author]` plus materialized profile claims | Separates funded-but-unmaterialized revenue from exact voucher claims and routes final rounding residue to author proceeds. | Local `base-v1-a1` source only. |
 | x402 replay guards | `usedPaymentRefHash[paymentRefHash]` and `usedSettlementTxHash[settlementTxHash]` | Prevents reuse of a Lane-C x402 payment reference or settlement transaction hash. | Present in the pre-A1 candidate. |
-| Financial-report extension | `financialReportIdByPurchase`, `reportVouchSlashed`, `reportPurchaseRefunded`; appended financial fields on `Config`, `AgentProfile`, and `AuthorReport` | Permanent initiating-purchase binding, one slash per voucher/report, one refund per purchase/report, slash aggregates, refund reserve, and treasury destination. | `PARTIAL_SOURCE_BLOCKED_EIP170` on `a2a/base-a1-voucher-slashing-port-20260709`; not merged, deployed, live-smoked, or security-reviewed. |
 
-The current Base Sepolia deployment is `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` (`base-v1-candidate`) and is pre-A1. The full A1 source on this branch calls itself `base-v1-a1-candidate`, but is 3,355 bytes over EIP-170; neither its storage extension nor its financial-report behavior is a deployed Base claim.
+The current Base Sepolia deployment is `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`
+(`base-v1-candidate`) and remains pre-A1. The local clean-break source reports `base-v1-a1` and uses an
+immutably linked `PaidPurchaseSettlement` library: facade runtime is 23,487 bytes and library runtime is
+5,939 bytes under the pinned build profile. It is size-feasible but is not merged, deployed, live-smoked,
+or security-reviewed. Web reads select the legacy or A1 tuple by exact `PROTOCOL_VERSION`; no deployment
+address has been repointed.
 
 ### Instruction Surfaces
 
@@ -127,10 +134,14 @@ This is the architecture-level Base write surface; [`docs/CHAIN_CAPABILITY_MAP.m
 | Backing and rewards | `depositAuthorBond`, `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue` | Present in the pre-A1 candidate; backing and rewards are author-wide on Base. |
 | Listings | `createSkillListing`, `removeSkillListing`; `updateSkillListing` | Create/remove are deployed; update is merged source but absent from the current candidate. |
 | Purchases | `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase` | Present in the pre-A1 candidate. EIP-3009 authorization purchase is Base-only Lane B. |
-| Reports and proceeds | `openReport`, `resolveReport`, `withdrawAuthorProceeds` | Present in the pre-A1 candidate. Reports are author-wide and have no deployed voucher-slashing or buyer-refund path. |
-| A1 financial reports | `openFinancialReport`, `slashReportVouches`, `claimFinancialReportRefund`, `closeFinancialReportReserve` | `PARTIAL_SOURCE_BLOCKED_EIP170` on this branch only; not a `main` or deployed Base surface. |
+| Deployed legacy reports | `openReport`, `resolveReport` | Present only in the deployed pre-A1 candidate; the web no longer advertises this obsolete path. |
+| Paid-purchase A1 | `openPaidPurchaseReport`, `reviewPaidPurchaseReport`, `resolvePaidPurchaseReport`, `slashPaidPurchaseReportVouches`, `claimPaidPurchaseReportCredit`, `closePaidPurchaseReportCredit`, `claimRestitutionReserve` | Local size-feasible source only; not a `main` or deployed Base surface. |
+| Proceeds | `withdrawAuthorProceeds` | Present in both candidates; local A1 also releases conserved voucher-rounding residue through this existing selector. |
 
-The read surface exposes the corresponding current data through `getConfig`, `getProfile`, `getVouch`, `getListing`, `getSettlement`, `getPurchase`, and `getAuthorReport`. A1-specific views are likewise source-only until an A1 design is approved, size-compliant, deployed, and verified.
+The deployed read surface remains available through its exact `base-v1-candidate` ABI. The local A1
+surface removes `getAuthorReport` and adds the three compact `getPaidPurchaseReport*` reads plus profile
+slash aggregates. These are selected only for exact `PROTOCOL_VERSION=base-v1-a1`; unsupported reads are
+not synthesized as zero.
 
 ## Solana Economic Parameters
 

@@ -7,7 +7,10 @@ import {
   type Address,
 } from "viem";
 import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
-import { AGENTVOUCH_EVM_READ_ABI } from "@/lib/adapters/agentVouchEvmAbi";
+import {
+  AGENTVOUCH_EVM_A1_READ_ABI,
+  AGENTVOUCH_EVM_READ_ABI,
+} from "@/lib/adapters/agentVouchEvmAbi";
 import {
   BASE_AGENTVOUCH_CONTRACT_ADDRESS,
   BASE_SEPOLIA_CHAIN_ID,
@@ -31,6 +34,9 @@ type BaseAgentProfile = {
   rewardIndexUsdcMicrosX1e12: bigint;
   unclaimedVoucherRevenueUsdcMicros: bigint;
   registeredAt: bigint;
+  slashingReportCount?: bigint;
+  totalAuthorBondSlashedUsdcMicros?: bigint;
+  totalVouchStakeSlashedUsdcMicros?: bigint;
 };
 
 const cache = new Map<string, { data: AuthorTrust; expires: number }>();
@@ -81,6 +87,17 @@ function profileToTrust(profile: BaseAgentProfile): AuthorTrust {
     activeDisputesAgainstAuthor,
     registeredAt: toSafeNumber(profile.registeredAt),
     isRegistered: true,
+    ...(profile.slashingReportCount === undefined
+      ? {}
+      : {
+          slashingReportCount: toSafeNumber(profile.slashingReportCount),
+          totalAuthorBondSlashedUsdcMicros: toSafeNumber(
+            profile.totalAuthorBondSlashedUsdcMicros ?? 0n
+          ),
+          totalVouchStakeSlashedUsdcMicros: toSafeNumber(
+            profile.totalVouchStakeSlashedUsdcMicros ?? 0n
+          ),
+        }),
   };
 }
 
@@ -97,9 +114,19 @@ async function fetchBaseAgentProfile(
     );
   }
 
+  const protocolVersion = await publicClient.readContract({
+    address: getAddress(BASE_AGENTVOUCH_CONTRACT_ADDRESS),
+    abi: parseAbi(["function PROTOCOL_VERSION() view returns (string)"]),
+    functionName: "PROTOCOL_VERSION",
+  });
+  const readAbi =
+    protocolVersion === "base-v1-a1"
+      ? AGENTVOUCH_EVM_A1_READ_ABI
+      : AGENTVOUCH_EVM_READ_ABI;
+
   return (await publicClient.readContract({
     address: getAddress(BASE_AGENTVOUCH_CONTRACT_ADDRESS),
-    abi: parseAbi([...AGENTVOUCH_EVM_READ_ABI]),
+    abi: parseAbi([...readAbi]),
     functionName: "getProfile",
     args: [authorAddress],
   })) as unknown as BaseAgentProfile;

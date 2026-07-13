@@ -14,11 +14,12 @@ contract BondsVouchesListingsTest is Test {
     address internal author = address(0xA0);
     address internal voucher = address(0xB0);
 
-    uint256 constant FLOOR = 10_000_000; // minAuthorBondForFreeListing
+    uint256 constant FLOOR = 1_000_000; // minAuthorBondForFreeListing
     uint256 constant MIN_VOUCH = 1_000_000;
-    uint256 constant MIN_PAID = 1_000_000;
+    uint256 constant MIN_PAID = 10_000;
 
     function setUp() public {
+        vm.chainId(84532);
         usdc = new MockUSDC();
         av = new AgentVouchEvm(address(usdc), admin);
         vm.prank(admin);
@@ -38,9 +39,7 @@ contract BondsVouchesListingsTest is Test {
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
-        c.refundClaimWindowSeconds = 1 days;
-        c.challengerRewardBps = 1_000;
-        c.challengerRewardCapUsdcMicros = 1_000_000;
+        c.refundClaimWindowSeconds = 7 days;
         c.treasuryRecipient = address(0xD00D);
     }
 

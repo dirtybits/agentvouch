@@ -13,6 +13,7 @@ contract AgentVouchEvmStateTest is Test {
     address internal alice = address(0xA1);
 
     function setUp() public {
+        vm.chainId(84532);
         usdc = new MockUSDC();
         av = new AgentVouchEvm(address(usdc), admin);
         vm.prank(admin);
@@ -24,21 +25,19 @@ contract AgentVouchEvmStateTest is Test {
         c.chainContext = "eip155:84532";
         c.minVouchStakeUsdcMicros = 1_000_000;
         c.disputeBondUsdcMicros = 5_000_000;
-        c.minAuthorBondForFreeListingUsdcMicros = 10_000_000;
-        c.minPaidListingPriceUsdcMicros = 1_000_000;
+        c.minAuthorBondForFreeListingUsdcMicros = 1_000_000;
+        c.minPaidListingPriceUsdcMicros = 10_000;
         c.authorShareBps = 6000;
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
-        c.refundClaimWindowSeconds = 1 days;
-        c.challengerRewardBps = 1_000;
-        c.challengerRewardCapUsdcMicros = 1_000_000;
+        c.refundClaimWindowSeconds = 7 days;
         c.treasuryRecipient = address(0xD00D);
         // remaining reputation-scoring fields stay zero in the state skeleton
     }
 
     function test_configInitialized() public view {
-        AgentVouchTypes.LegacyConfig memory c = av.getConfig();
+        AgentVouchTypes.Config memory c = av.getConfig();
         assertEq(c.usdc, address(usdc));
         assertEq(c.authorShareBps, 6000);
         assertEq(c.voucherShareBps, 4000);
@@ -88,10 +87,19 @@ contract AgentVouchEvmStateTest is Test {
         av2.initializeConfig(c);
     }
 
+    function test_initializeRejectsWrongChainEvenWithSepoliaContext() public {
+        vm.chainId(8453);
+        MockUSDC u2 = new MockUSDC();
+        AgentVouchEvm av2 = new AgentVouchEvm(address(u2), admin);
+        vm.prank(admin);
+        vm.expectRevert(AgentVouchEvm.BadEconomics.selector);
+        av2.initializeConfig(_cfg(address(u2)));
+    }
+
     function test_registerAgent() public {
         vm.prank(alice);
         av.registerAgent("ipfs://alice");
-        AgentVouchTypes.LegacyAgentProfile memory p = av.getProfile(alice);
+        AgentVouchTypes.AgentProfile memory p = av.getProfile(alice);
         assertTrue(p.registered);
         assertEq(p.metadataUri, "ipfs://alice");
         assertEq(p.registeredAt, uint64(block.timestamp));

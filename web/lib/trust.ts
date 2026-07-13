@@ -29,6 +29,9 @@ export interface AuthorTrust {
   disputesAgainstAuthor: number;
   disputesUpheldAgainstAuthor: number;
   activeDisputesAgainstAuthor: number;
+  slashingReportCount?: number;
+  totalAuthorBondSlashedUsdcMicros?: number;
+  totalVouchStakeSlashedUsdcMicros?: number;
   registeredAt: number;
   isRegistered: boolean;
 }

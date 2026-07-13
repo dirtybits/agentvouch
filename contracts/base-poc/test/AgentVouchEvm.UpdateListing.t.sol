@@ -19,8 +19,8 @@ contract UpdateListingTest is Test {
     address internal buyer2;
     address internal relayer = address(0xCAFE);
 
-    uint256 internal constant FLOOR = 10_000_000;
-    uint256 internal constant MIN_PAID = 1_000_000;
+    uint256 internal constant FLOOR = 1_000_000;
+    uint256 internal constant MIN_PAID = 10_000;
     uint256 internal constant PRICE = 5_000_000;
 
     bytes32 internal listingId;
@@ -35,6 +35,7 @@ contract UpdateListingTest is Test {
     );
 
     function setUp() public {
+        vm.chainId(84532);
         buyer2 = vm.addr(buyer2Pk);
         usdc = new MockUSDC();
         av = new AgentVouchEvm(address(usdc), admin);
@@ -54,7 +55,7 @@ contract UpdateListingTest is Test {
     function _cfg() internal view returns (AgentVouchTypes.Config memory c) {
         c.usdc = address(usdc);
         c.chainContext = "eip155:84532";
-        c.minVouchStakeUsdcMicros = MIN_PAID;
+        c.minVouchStakeUsdcMicros = 1_000_000;
         c.disputeBondUsdcMicros = 5_000_000;
         c.minAuthorBondForFreeListingUsdcMicros = FLOOR;
         c.minPaidListingPriceUsdcMicros = MIN_PAID;
@@ -62,9 +63,7 @@ contract UpdateListingTest is Test {
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
-        c.refundClaimWindowSeconds = 1 days;
-        c.challengerRewardBps = 1_000;
-        c.challengerRewardCapUsdcMicros = 1_000_000;
+        c.refundClaimWindowSeconds = 7 days;
         c.treasuryRecipient = address(0xD00D);
     }
 
@@ -140,8 +139,10 @@ contract UpdateListingTest is Test {
     }
 
     function test_openDisputeBlocksBumpButAllowsMetadataOnlyUpdate() public {
-        vm.prank(reporter);
-        av.openReport(author, "ipfs://evidence");
+        vm.prank(buyer);
+        bytes32 purchaseId_ = av.purchaseSkill(listingId);
+        vm.prank(buyer);
+        av.openPaidPurchaseReport(author, listingId, purchaseId_, "ipfs://evidence");
 
         vm.prank(author);
         av.updateSkillListing(listingId, "uri-v1", "Allowed Name", "Allowed Description", PRICE);
