@@ -75,7 +75,7 @@ function shortAddr(addr: string): string {
 
 const REWARD_INDEX_SCALE = 1_000_000_000_000n;
 const AUTHOR_REWARD_POOL_CLAIM_ID = "author-reward-pool";
-const BASE_MIN_VOUCH_USDC_MICROS = 1_000_000n;
+const MIN_VOUCH_USDC_MICROS = 1_000_000n;
 const BASE_VOUCH_PASSKEY_MESSAGE =
   "Base vouching currently requires Coinbase Smart Wallet. Disconnect the current wallet, then reconnect with a passkey.";
 
@@ -168,7 +168,7 @@ export default function AuthorProfilePage() {
   );
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [vouchAmount, setVouchAmount] = useState(isEvmAuthor ? "1" : "0.1");
+  const [vouchAmount, setVouchAmount] = useState("1");
   const [vouching, setVouching] = useState(false);
   const [vouchStatus, setVouchStatus] = useState("");
   const [vouchTx, setVouchTx] = useState<string | null>(null);
@@ -407,8 +407,8 @@ export default function AuthorProfilePage() {
       setPendingVouchAfterRegister(false);
       return;
     }
-    if (isEvmAuthor && amountUsdcMicros < BASE_MIN_VOUCH_USDC_MICROS) {
-      setVouchStatus("Error: Base vouches require at least 1.00 USDC.");
+    if (amountUsdcMicros < MIN_VOUCH_USDC_MICROS) {
+      setVouchStatus("Error: Vouches require at least 1.00 USDC.");
       setVouchTx(null);
       setVouchTxExplorerUrl(null);
       setPendingVouchAfterRegister(false);
@@ -1853,7 +1853,7 @@ export default function AuthorProfilePage() {
                       type="number"
                       value={vouchAmount}
                       onChange={(e) => setVouchAmount(e.target.value)}
-                      min={isEvmAuthor ? "1" : "0.01"}
+                      min="1"
                       step="0.01"
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
                     />

@@ -86,12 +86,12 @@ describe("author page source", () => {
     expect(source).toContain("setVouchTxExplorerUrl(result.explorerUrl)");
     expect(source).toContain("setClaimTxExplorerUrl(result.explorerUrl)");
     expect(source).toContain(
-      'const [vouchAmount, setVouchAmount] = useState(isEvmAuthor ? "1" : "0.1")'
+      'const [vouchAmount, setVouchAmount] = useState("1")'
     );
-    expect(source).toContain('min={isEvmAuthor ? "1" : "0.01"}');
-    expect(source).toContain("BASE_MIN_VOUCH_USDC_MICROS");
+    expect(source).toContain('min="1"');
+    expect(source).toContain("MIN_VOUCH_USDC_MICROS");
     expect(source).toContain("BASE_PASSKEY_WALLET_SOURCE");
-    expect(source).toContain("Base vouches require at least 1.00 USDC.");
+    expect(source).toContain("Vouches require at least 1.00 USDC.");
     expect(source).toContain(
       "Base vouching currently requires Coinbase Smart Wallet."
     );
