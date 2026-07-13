@@ -934,3 +934,31 @@ reconciliation. The old run ledger must not be resumed: start a fresh run after 
 `origin/main`, recording HEAD/merge-base, rebuilding with the production profile, and confirming
 the measured runtime baseline. One validation-only plan review is sufficient; any reviewer request
 for an operator decision must block immediately rather than consume another autonomous round.
+
+## Baseline Re-established — 2026-07-12
+
+Current `origin/main` commit `0d28904a` was integrated without conflict by signed merge commit
+`03710175`; the resulting merge-base with `origin/main` is `0d28904a`. The historical WIP lineage
+beginning at `492f7a06` remains reachable on this branch. Main's PR #98 widened the six
+`protocol_version` columns to `VARCHAR(64)`, so Decision Addendum item 6(a)'s separate guarded
+hotfix is complete upstream and must not be reimplemented in A1.
+
+The post-merge contract baseline is unchanged because the integrated range did not modify
+`contracts/base-poc`. Measured with Forge 1.7.1 and solc 0.8.28:
+
+| Compiler profile             |      Runtime |     Initcode | EIP-170 headroom | 23,500-byte soft headroom |
+| ---------------------------- | -----------: | -----------: | ---------------: | ------------------------: |
+| optimizer runs=200, no IR    | 27,931 bytes | 28,866 bytes |     -3,355 bytes |              -4,431 bytes |
+| optimizer runs=200, `via_ir` | 26,545 bytes | 28,217 bytes |     -1,969 bytes |              -3,045 bytes |
+
+Resolved default Forge settings are EVM target `prague`, metadata hash `ipfs`, CBOR metadata
+enabled, and no linked libraries. The target implementation profile remains solc 0.8.28,
+optimizer runs=200, and `via_ir=true`; before final deployment artifacts, pin an explicitly
+approved Base-supported EVM target instead of inheriting `prague`.
+
+Verification evidence: `forge test --root contracts/base-poc` passed all 85 legacy tests;
+`forge build --root contracts/base-poc --sizes --force` and the corresponding `--via-ir
+--optimizer-runs 200` build both compiled successfully and reproduced the expected EIP-170
+failures above. The test process could not write Foundry's optional signature cache under
+`~/.foundry/cache/signatures`, but all suites completed with 85 passed, zero failed, and zero
+skipped. These remain pre-clean-break regression and deployability baselines, not A1 completion.
