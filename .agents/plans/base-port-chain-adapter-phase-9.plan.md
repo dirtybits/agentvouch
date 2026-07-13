@@ -278,6 +278,23 @@ Out of scope:
   (`1 USDC` vouch stake + `5 USDC` report bond). The public RPC refused a wider log query over
   2,000 blocks, so event lookup used a bounded latest-minus-1500 block range as documented in the
   Base deploy runbook.
+- 2026-07-12 Base Sepolia backed x402 split smoke: the v1 candidate at
+  `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` reported `6000` author-share bps, `4000`
+  voucher-share bps, and zero protocol-fee bps. A fresh unlinked 1-USDC listing was created by
+  the already-backed author, then the zero-ETH agent EOA signed a Lane-B EIP-3009
+  `receiveWithAuthorization`; the dedicated relayer submitted
+  `purchaseWithAuthorization`. Settlement tx
+  `0x8d68f1db7ae596311487e493bca317fc9c4fbee1ea718f0a49be6eb7d5283bfa` in Base Sepolia block
+  `44072208` transferred exactly `1_000_000` USDC micros from the agent and recorded purchase
+  `0x0e6ad7f0de85878f7101ec9472d11ff3303393b16766739174bebed942fd1fc8` for listing
+  `0x4949b04c41373363c3a3717584d370399771b93b8cdb8831e568a48848651b2b`. Independent receipt
+  verification through `base-sepolia-rpc.publicnode.com` proved `600_000` micros in settlement
+  author proceeds and `400_000` micros in the author-wide unclaimed voucher pool. The agent
+  balance was `4 -> 3` test USDC and remained at zero ETH. `sepolia.base.org` lagged the just-mined
+  block, so final evidence used the documented publicnode read endpoint. This proves the deployed
+  v1 contract's backed Lane-B split, but not a DB/raw-download/API settlement because this
+  ephemeral listing is intentionally unlinked; it also does not lift any Phase 10 Base-mainnet
+  gate.
 
 ## Part A - Base Sepolia E2E Proof
 
