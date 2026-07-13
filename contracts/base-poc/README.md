@@ -1,7 +1,7 @@
 # AgentVouch Base contracts (`contracts/base-poc`)
 
 Isolated Foundry workspace for the Base/EVM protocol candidate. The deployed Base Sepolia contract is
-still the pre-A1 `base-v1-candidate`; the current local source is the clean-break, linked-library
+still the pre-A1 `base-v1-candidate`; the current merged source is the clean-break, linked-library
 `base-v1-a1` candidate described by
 `.agents/plans/base-a1-voucher-slashing-port.plan.md`. It has not been deployed or approved for
 broadcast.
@@ -35,7 +35,7 @@ npm run verify:base-size
 
 ## Status
 
-The local `base-v1-a1` source preserves the core registration, listing, purchase, bond, vouch, reward,
+The merged `base-v1-a1` source preserves the core registration, listing, purchase, bond, vouch, reward,
 and x402 surfaces and replaces generic Base reports with one paid-purchase mechanism:
 
 - an eligible Direct or EIP-3009 buyer receipt can open a bonded report;
@@ -53,7 +53,7 @@ storage owner, event origin, and USDC custodian. Under the pinned Foundry profil
 | `AgentVouchEvm` | 23,487 bytes | 1,089 bytes | 13 bytes |
 | `PaidPurchaseSettlement` | 5,939 bytes | 18,637 bytes | 17,561 bytes |
 
-The current local suite passes 116 Foundry tests, including variable-order conservation fuzzing, a
+The current suite passes 116 Foundry tests, including variable-order conservation fuzzing, a
 128,000-call stateful liability invariant, malicious-token reentrancy, adversarial token behavior,
 max-page gas, role handoff, and successor isolation. A 31-transaction ephemeral linked Anvil rehearsal
 completed deployment, role handoff, report, resolution, paginated slashing, claims, and residual
