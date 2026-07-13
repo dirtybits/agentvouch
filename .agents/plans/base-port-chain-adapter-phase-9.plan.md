@@ -295,6 +295,42 @@ Out of scope:
   v1 contract's backed Lane-B split, but not a DB/raw-download/API settlement because this
   ephemeral listing is intentionally unlinked; it also does not lift any Phase 10 Base-mainnet
   gate.
+- 2026-07-12 Base Sepolia passkey vouch E2E (x402 worktree only): the repeatable
+  `web/scripts/base-vouch-e2e-smoke.ts` preflighted the v1 candidate
+  `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`, the registered author
+  `0x191370b682924527c1A5fD6B484A4BC37460CA30`, and a separate funded Coinbase Smart Account
+  `0xf49844Aa13d97263Cc96b4038161F05975974293`. Because that voucher was new, the smoke first
+  followed the UI's `ensureBaseAgentRegistered` path with sponsored registration UserOp
+  `0x52576a32f45b1623db78c0944fdc5c71a12464e55a51b0397d4b5cdb3d71312b`, then submitted the
+  same exact-USDC-approval plus `vouch` UserOp used by the passkey UI:
+  `0x63b34d3240b4e3c38dad85a80c0ad96a650d69e89a7cc7d21754c82e644a8c48`. Transaction
+  `0x27d66de00f1be685a5170d2d8497bc0a1a0902446ba7ed315f70aa581855cf43` emitted the expected
+  `Vouched` event and moved voucher USDC from `4 -> 3`, vouch stake from `0 -> 1`, and voucher ETH
+  from `0 -> 0`. Browser verification on `localhost:3003/author/0x1913...CA30` rendered “Vouch for
+  this Author” and the connected author backing as `2 USDC`. The UI write is passkey-only today:
+  MetaMask/injected wallets deliberately reject Base vouching; this smoke does not make that path
+  supported or lift any Base-mainnet gate.
+- 2026-07-12 DB-linked Base v1 x402 E2E (x402 worktree only): the repeatable
+  `web/scripts/base-x402-v1-e2e-smoke.ts` completed the local raw-content flow against Base Sepolia
+  with `AGENTVOUCH_HARNESS_ENV` pointing at the existing local harness secrets. It created fixture
+  `3224046a-d1cb-4831-a552-f5319c92bb10`, linked Base listing
+  `0xe2f6498d0430bb00835fb6d304dfdfd16cc37add030bc1e56c9f7b9f9ae19481`, returned `402` for
+  unsigned raw access, settled an exact `1 USDC` EIP-3009 payment in transaction
+  `0x4acc49ca67b6d212533fb605b7a4a5d6145f522bc9dd637ac46b467dc54e0a7d` with purchase id
+  `0x677939f9c7cfbc966c74ad8d8e9e9eb2e624a96783b29f7f28dccfac00deeedd`, accepted the duplicate
+  payment retry idempotently, and accepted the buyer's signed re-download. The smoke then confirmed
+  exactly one Base-qualified receipt and one entitlement with `payment_flow=base-x402-purchase-skill`,
+  `protocol_version=base-v1-candidate`, and listing revision `1`.
+- 2026-07-12 voucher-share claim E2E (x402 worktree only): new
+  `web/scripts/base-voucher-claim-e2e-smoke.ts` first calculated `0.2 USDC` claimable for voucher
+  `0xf49844Aa13d97263Cc96b4038161F05975974293` after the x402 sale, then submitted sponsored UserOp
+  `0x186f14a66f0b8d7b133a04a84632589818751224d3ddcfb6a7a008ca5d25b8bc`. Transaction
+  `0x9572a24d03c90a22ed89145eda64f6c4947b79dee63afa8e7c53c978eb59ff0e` emitted the matching
+  `VoucherRevenueClaimed` event, increased voucher USDC from `3 -> 3.2`, cleared pending rewards,
+  reduced the author's unclaimed voucher pool by the same amount, and left voucher ETH at `0 -> 0`.
+  The Base author page now defaults and validates vouches at the contract's `1 USDC` minimum and
+  tells connected injected-wallet users that Base vouching currently requires Coinbase Smart Wallet.
+  These Sepolia checks do not lift any Base-mainnet gate.
 
 ## Part A - Base Sepolia E2E Proof
 
