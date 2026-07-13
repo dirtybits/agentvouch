@@ -8,6 +8,7 @@ import {
   FiDownload,
   FiGithub,
   FiInfo,
+  FiLayers,
   FiShield,
   FiUsers,
 } from "react-icons/fi";
@@ -17,7 +18,11 @@ import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
-import { getChainDisplayLabel } from "@/lib/chains";
+import {
+  getChainBadge,
+  isEvmListedSkill,
+  type ChainBadgeTone,
+} from "@/lib/chainBadge";
 import { shortenChainAddress } from "@/lib/chainAddress";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
@@ -56,6 +61,7 @@ interface SkillPreviewCardSkill {
   security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
   chain_context?: string | null;
+  on_chain_address?: string | null;
   evm_listing_id?: string | null;
   payment_flow?:
     | "free"
@@ -91,6 +97,14 @@ interface SkillPreviewCardProps {
 }
 
 type Verdict = "allow" | "review" | "avoid" | "unknown";
+
+const CHAIN_BADGE_CLASS: Record<ChainBadgeTone, string> = {
+  solana:
+    "border-[var(--solana-purple-border)] bg-[var(--solana-purple-soft)] text-[var(--solana-purple)]",
+  base: "border-[var(--base-blue-border)] bg-[var(--base-blue-soft)] text-[var(--base-blue)]",
+  default:
+    "border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)]",
+};
 
 function truncateAtWord(value: string, maxChars: number): string {
   if (value.length <= maxChars) {
@@ -306,12 +320,16 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
-  const isReadOnlyEvmListing = Boolean(
-    skill.evm_listing_id && skill.chain_context?.startsWith("eip155:")
-  );
-  const chainLabel = isReadOnlyEvmListing
-    ? getChainDisplayLabel(skill.chain_context)
-    : null;
+  const chainBadge = getChainBadge({
+    chainContext: skill.chain_context,
+    onChainAddress: skill.on_chain_address,
+    evmListingId: skill.evm_listing_id,
+  });
+  const isReadOnlyEvmListing = isEvmListedSkill({
+    chainContext: skill.chain_context,
+    evmListingId: skill.evm_listing_id,
+  });
+  const chainLabel = chainBadge?.label ?? null;
   const walletAuthorLabel = skill.author_pubkey
     ? isReadOnlyEvmListing
       ? shortenChainAddress({
@@ -485,6 +503,17 @@ export default function SkillPreviewCard({
         {/* Signals + tags. Mirror provenance is shown in the author byline
             ("Mirror · @handle"), so it is intentionally not repeated here. */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {chainBadge && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                CHAIN_BADGE_CLASS[chainBadge.tone]
+              }`}
+              title={`Listed on ${chainLabel}.`}
+            >
+              <FiLayers className="h-3 w-3" />
+              {chainLabel}
+            </span>
+          )}
           {syncedRepoUrl && (
             <a
               href={syncedRepoUrl}
@@ -513,14 +542,6 @@ export default function SkillPreviewCard({
             >
               <FiAlertTriangle className="h-3 w-3" />
               Unscanned executable code
-            </span>
-          )}
-          {isReadOnlyEvmListing && chainLabel && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)]"
-              title={`${chainLabel} listing fetched through the chain adapter.`}
-            >
-              {chainLabel}
             </span>
           )}
           {hasDisputeFlag && authorReports && (

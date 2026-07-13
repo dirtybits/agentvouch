@@ -56,4 +56,18 @@ describe("SkillPreviewCard source", () => {
     expect(source).toContain("@/lib/repoUrls");
     expect(source).not.toContain("@/lib/mirror/connectedRepos");
   });
+
+  it("delegates network-listing badges to the chain badge model", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/SkillPreviewCard.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("getChainBadge");
+    expect(source).toContain("isEvmListedSkill");
+    expect(source).toContain("on_chain_address?: string | null");
+    expect(source).toContain("Listed on ${chainLabel}.");
+    expect(source).toContain("FiLayers");
+    expect(source).toContain("CHAIN_BADGE_CLASS");
+  });
 });
