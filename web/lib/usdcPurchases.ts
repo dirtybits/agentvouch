@@ -70,7 +70,7 @@ export async function ensureUsdcPurchaseSchema() {
         asset_address VARCHAR(128),
         amount_micros BIGINT NOT NULL,
         payment_flow VARCHAR(64),
-        protocol_version VARCHAR(16),
+        protocol_version VARCHAR(64),
         on_chain_program_id VARCHAR(44),
         chain_context VARCHAR(64),
         on_chain_address VARCHAR(44),
@@ -129,7 +129,7 @@ export async function ensureUsdcPurchaseSchema() {
 
     await db`
       ALTER TABLE usdc_purchase_receipts
-      ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(16)
+      ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(64)
     `;
 
     await db`
@@ -256,7 +256,7 @@ export async function ensureUsdcPurchaseSchema() {
         asset_address VARCHAR(128),
         amount_micros BIGINT NOT NULL,
         payment_flow VARCHAR(64),
-        protocol_version VARCHAR(16),
+        protocol_version VARCHAR(64),
         on_chain_program_id VARCHAR(44),
         chain_context VARCHAR(64),
         on_chain_address VARCHAR(44),
@@ -317,7 +317,7 @@ export async function ensureUsdcPurchaseSchema() {
 
     await db`
       ALTER TABLE usdc_purchase_entitlements
-      ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(16)
+      ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(64)
     `;
 
     await db`

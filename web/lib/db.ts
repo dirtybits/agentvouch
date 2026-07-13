@@ -652,7 +652,7 @@ async function runCoreSchemaDdl() {
 
   await db`
     ALTER TABLE skills
-    ADD COLUMN IF NOT EXISTS on_chain_protocol_version VARCHAR(16)
+    ADD COLUMN IF NOT EXISTS on_chain_protocol_version VARCHAR(64)
   `;
 
   await db`
@@ -778,7 +778,7 @@ async function runCoreSchemaDdl() {
 
   await db`
     ALTER TABLE usdc_purchase_receipts
-    ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(16)
+    ADD COLUMN IF NOT EXISTS protocol_version VARCHAR(64)
   `;
 
   await db`
