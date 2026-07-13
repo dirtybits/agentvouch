@@ -63,3 +63,6 @@ __pycache__/
 # eval run output (generated; curate baselines deliberately, don't commit raw runs)
 evals/skill-scan/results*.json
 evals/skill-scan/run.*.log
+.neon
+.a2a/
+a2a-logs/

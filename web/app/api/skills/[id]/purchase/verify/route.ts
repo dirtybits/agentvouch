@@ -6,6 +6,7 @@ import {
   type DirectPurchaseSkillRow,
 } from "@/lib/directPurchaseVerification";
 import {
+  verifyAndRecordBaseExistingPurchase,
   verifyAndRecordBaseDirectPurchase,
   type BaseDirectPurchaseSkillRow,
 } from "@/lib/basePurchaseVerification";
@@ -16,6 +17,7 @@ import {
   getAgentVouchChainContext,
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
+import { normalizeInputChainContext } from "@/lib/chains";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -87,13 +89,6 @@ export async function POST(
   const expectedPriceUsdcMicros = stringOrNull(body.expectedPriceUsdcMicros);
   const paymentRef = txHash ?? signature;
 
-  if (!paymentRef) {
-    return NextResponse.json(
-      { error: "Missing transaction signature" },
-      { status: 400 }
-    );
-  }
-
   const skill = id.startsWith(CHAIN_PREFIX)
     ? await buildChainOnlySkillRow(id.slice(CHAIN_PREFIX.length))
     : await fetchRepoSkillRow(id);
@@ -107,10 +102,17 @@ export async function POST(
   const skillEvmContractAddress =
     "evm_contract_address" in skill ? skill.evm_contract_address : null;
 
-  const isBasePurchase =
-    chainContext?.startsWith("eip155:") ||
-    Boolean(listingId) ||
-    Boolean(skillEvmListingId);
+  // The skill row's chain context decides the verification family (Phase 7 boundary rule);
+  // an explicit EVM request context is honored exclusively. The presence of listingId or a
+  // leftover evm_listing_id must NOT force Solana-context rows onto the Base path (Bugbot #78).
+  const skillChainContext = normalizeInputChainContext(
+    "chain_context" in skill ? skill.chain_context : null
+  );
+  const requestedChainContext = normalizeInputChainContext(chainContext);
+  const isBasePurchase = Boolean(
+    skillChainContext?.startsWith("eip155:") ||
+      requestedChainContext?.startsWith("eip155:")
+  );
   if (isBasePurchase) {
     if (id.startsWith(CHAIN_PREFIX)) {
       return NextResponse.json(
@@ -131,13 +133,20 @@ export async function POST(
     };
 
     try {
-      const verification = await verifyAndRecordBaseDirectPurchase({
-        skill: baseSkill,
-        txHash: paymentRef,
-        buyerAddress: buyer,
-        listingId: listingId ?? listing,
-        expectedPriceUsdcMicros,
-      });
+      const verification = paymentRef
+        ? await verifyAndRecordBaseDirectPurchase({
+            skill: baseSkill,
+            txHash: paymentRef,
+            buyerAddress: buyer,
+            listingId: listingId ?? listing,
+            expectedPriceUsdcMicros,
+          })
+        : await verifyAndRecordBaseExistingPurchase({
+            skill: baseSkill,
+            buyerAddress: buyer ?? "",
+            listingId: listingId ?? listing,
+            expectedPriceUsdcMicros,
+          });
 
       return NextResponse.json({
         ok: true,
@@ -171,6 +180,13 @@ export async function POST(
       const status = /already recorded/i.test(message) ? 409 : 400;
       return NextResponse.json({ error: message }, { status });
     }
+  }
+
+  if (!paymentRef) {
+    return NextResponse.json(
+      { error: "Missing transaction signature" },
+      { status: 400 }
+    );
   }
 
   if (!skill.author_pubkey) {

@@ -30,7 +30,30 @@ export interface TxResult {
   paidGas: boolean; // false when sponsored (4337 / x402)
 }
 
+// purchaseSkill result. `alreadyPurchased` is set when the buyer already owns the current
+// revision and no transaction was sent — callers short-circuit to the entitled UX instead of
+// re-paying; `ref` then carries the existing purchase reference (Solana purchase PDA) rather
+// than a transaction.
+export interface PurchaseSkillResult extends TxResult {
+  alreadyPurchased?: boolean;
+}
+
+// registerAgent result. `agentProfile` carries the chain-native profile reference on chains
+// that have one (Solana AgentProfile PDA); callers must not assume it is present cross-chain.
+export interface RegisterAgentResult extends TxResult {
+  agentProfile?: string;
+}
+
 export interface CreateSkillListingInput {
+  skillId: string;
+  uri: string;
+  name: string;
+  description: string;
+  priceUsdcMicros: bigint;
+}
+
+export interface UpdateSkillListingInput {
+  listingId: string;
   skillId: string;
   uri: string;
   name: string;
@@ -41,6 +64,42 @@ export interface CreateSkillListingInput {
 export interface PurchaseSkillInput {
   listingId: string;
   expectedPriceUsdcMicros: bigint;
+}
+
+export interface DepositAuthorBondInput {
+  amountUsdcMicros: bigint;
+}
+
+export interface WithdrawAuthorBondInput {
+  amountUsdcMicros: bigint;
+}
+
+export interface VouchForAuthorInput {
+  authorAddress: string;
+  stakeUsdcMicros: bigint;
+}
+
+export interface RevokeVouchInput {
+  authorAddress: string;
+}
+
+export interface OpenAuthorReportInput {
+  authorAddress: string;
+  evidenceUri: string;
+}
+
+export interface ClaimVoucherRevenueInput {
+  authorAddress: string;
+}
+
+export interface WithdrawAuthorProceedsInput {
+  listingId: string;
+  listingRevision: number;
+  amountUsdcMicros: bigint;
+}
+
+export interface OpenAuthorReportResult extends TxResult {
+  reportId?: string;
 }
 
 export interface X402Payment {
@@ -72,9 +131,28 @@ export interface ChainWallet {
 
   disconnect(): Promise<void>;
 
-  registerAgent(metadataUri: string): Promise<TxResult>;
+  // Optional chain-native message signing for API publisher auth. Base passkey
+  // wallets sign via the smart account (ERC-1271/6492-verifiable hex); Solana
+  // wallets leave this undefined — their Ed25519 signer flows already exist.
+  signMessage?(message: string): Promise<string>;
+
+  registerAgent(metadataUri: string): Promise<RegisterAgentResult>;
   createSkillListing(input: CreateSkillListingInput): Promise<TxResult>;
-  purchaseSkill(input: PurchaseSkillInput): Promise<TxResult>;
+  updateSkillListing(input: UpdateSkillListingInput): Promise<TxResult>;
+  removeSkillListing(input: { listingId: string }): Promise<TxResult>;
+  purchaseSkill(input: PurchaseSkillInput): Promise<PurchaseSkillResult>;
+
+  // trust writes (Phase 9). Implementations must keep approval amounts exact
+  // and route through the connected wallet, not ad hoc page-level clients.
+  depositAuthorBond(input: DepositAuthorBondInput): Promise<TxResult>;
+  withdrawAuthorBond(input: WithdrawAuthorBondInput): Promise<TxResult>;
+  vouchForAuthor(input: VouchForAuthorInput): Promise<TxResult>;
+  revokeVouch(input: RevokeVouchInput): Promise<TxResult>;
+  openAuthorReport(
+    input: OpenAuthorReportInput
+  ): Promise<OpenAuthorReportResult>;
+  claimVoucherRevenue(input: ClaimVoucherRevenueInput): Promise<TxResult>;
+  withdrawAuthorProceeds(input: WithdrawAuthorProceedsInput): Promise<TxResult>;
 
   // agent x402 (server-verifiable payment authorization)
   buildX402Payment(listingId: string): Promise<X402Payment>;

@@ -8,15 +8,22 @@ import {
   FiDownload,
   FiGithub,
   FiInfo,
+  FiLayers,
   FiShield,
   FiUsers,
 } from "react-icons/fi";
+import { RiRobot2Line } from "react-icons/ri";
 import { UsdcIcon } from "@/components/UsdcIcon";
 import { SkillIcon } from "@/components/SkillIcon";
 import { getAuthorReportStatus, type TrustData } from "@/components/TrustBadge";
 import { formatWalletAuthorLabel } from "@/lib/authorDisplay";
 import { formatUsdcMicros } from "@/lib/pricing";
-import { getChainDisplayLabel } from "@/lib/chains";
+import {
+  getChainBadge,
+  isEvmListedSkill,
+  type ChainBadgeTone,
+} from "@/lib/chainBadge";
+import { shortenChainAddress } from "@/lib/chainAddress";
 import type { PurchasePreflightStatus } from "@/lib/purchasePreflight";
 import type { SkillSecurityScan } from "@/lib/securityScan";
 import { RESERVED_SKILL_TAGS } from "@/lib/skillDraft";
@@ -54,6 +61,7 @@ interface SkillPreviewCardSkill {
   security_scan?: SkillSecurityScan | null;
   price_usdc_micros?: string | null;
   chain_context?: string | null;
+  on_chain_address?: string | null;
   evm_listing_id?: string | null;
   payment_flow?:
     | "free"
@@ -90,6 +98,14 @@ interface SkillPreviewCardProps {
 
 type Verdict = "allow" | "review" | "avoid" | "unknown";
 
+const CHAIN_BADGE_CLASS: Record<ChainBadgeTone, string> = {
+  solana:
+    "border-[var(--solana-purple-border)] bg-[var(--solana-purple-soft)] text-[var(--solana-purple)]",
+  base: "border-[var(--base-blue-border)] bg-[var(--base-blue-soft)] text-[var(--base-blue)]",
+  default:
+    "border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)]",
+};
+
 function truncateAtWord(value: string, maxChars: number): string {
   if (value.length <= maxChars) {
     return value;
@@ -103,11 +119,6 @@ function truncateAtWord(value: string, maxChars: number): string {
       : candidate.slice(0, maxChars);
 
   return `${trimmed.trimEnd()}...`;
-}
-
-function shortChainAddress(value: string): string {
-  if (value.length <= 13) return value;
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 // Mirrors the server-side getRecommendedAction, with one intentional softening:
@@ -176,6 +187,7 @@ function getVerdictMeta(verdict: Verdict): VerdictMeta {
 
 function getScanMeta(scan: SkillSecurityScan | null | undefined): {
   label: string;
+  Icon: React.ComponentType<{ className?: string }>;
   chip: string;
   title: string;
 } | null {
@@ -183,17 +195,19 @@ function getScanMeta(scan: SkillSecurityScan | null | undefined): {
   if (scan.verdict === "avoid") {
     return {
       label: "Automated avoid",
+      Icon: FiAlertTriangle,
       chip: "border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
       title:
         "Automated advisory scan found concrete risk. This is not a staked vouch.",
     };
   }
   return {
-    label: scan.truncated ? "Automated review*" : "Automated review",
+    label: scan.truncated ? "Security reviewed*" : "Security reviewed",
+    Icon: RiRobot2Line,
     chip: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
     title: scan.truncated
-      ? "Automated advisory scan was truncated; review before installing. This is not a staked vouch."
-      : "Automated advisory scan did not find a concrete blocker. This is not a staked vouch.",
+      ? "This skill was reviewed by the AgentVouch skill security scanner, but the scan was truncated. Review before installing."
+      : "This skill was reviewed by the AgentVouch skill security scanner. This is not a staked vouch or guarantee.",
   };
 }
 
@@ -306,15 +320,22 @@ export default function SkillPreviewCard({
     skill.publisher_identity_key ??
     skill.author_handle ??
     skill.id;
-  const isReadOnlyEvmListing = Boolean(
-    skill.evm_listing_id && skill.chain_context?.startsWith("eip155:")
-  );
-  const chainLabel = isReadOnlyEvmListing
-    ? getChainDisplayLabel(skill.chain_context)
-    : null;
+  const chainBadge = getChainBadge({
+    chainContext: skill.chain_context,
+    onChainAddress: skill.on_chain_address,
+    evmListingId: skill.evm_listing_id,
+  });
+  const isReadOnlyEvmListing = isEvmListedSkill({
+    chainContext: skill.chain_context,
+    evmListingId: skill.evm_listing_id,
+  });
+  const chainLabel = chainBadge?.label ?? null;
   const walletAuthorLabel = skill.author_pubkey
     ? isReadOnlyEvmListing
-      ? shortChainAddress(skill.author_pubkey)
+      ? shortenChainAddress({
+          chainContext: skill.chain_context,
+          value: skill.author_pubkey,
+        })
       : formatWalletAuthorLabel(skill.author_pubkey, skill.author_identity)
     : null;
   const linkedGithubProfile =
@@ -382,7 +403,9 @@ export default function SkillPreviewCard({
   const visibleTags = skill.tags.filter((tag) => !RESERVED_SKILL_TAGS.has(tag));
   // First-party skill the author keeps in sync from their own GitHub repo
   // (distinct from a community mirror, which uses mirror_source_key).
-  const isSynced = !isMirror && Boolean(skill.synced_repo_url);
+  const syncedRepoUrl = !isMirror
+    ? sanitizeSyncedRepoUrl(skill.synced_repo_url)
+    : null;
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-sm border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--lobster-accent-border)] hover:shadow-[0_8px_30px_-12px_rgba(217,90,43,0.35)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-[var(--lobster-accent-border)]">
@@ -480,9 +503,20 @@ export default function SkillPreviewCard({
         {/* Signals + tags. Mirror provenance is shown in the author byline
             ("Mirror · @handle"), so it is intentionally not repeated here. */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {isSynced && sanitizeSyncedRepoUrl(skill.synced_repo_url) && (
+          {chainBadge && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                CHAIN_BADGE_CLASS[chainBadge.tone]
+              }`}
+              title={`Listed on ${chainLabel}.`}
+            >
+              <FiLayers className="h-3 w-3" />
+              {chainLabel}
+            </span>
+          )}
+          {syncedRepoUrl && (
             <a
-              href={sanitizeSyncedRepoUrl(skill.synced_repo_url)!}
+              href={syncedRepoUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)] transition hover:underline"
@@ -497,7 +531,7 @@ export default function SkillPreviewCard({
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${scanMeta.chip}`}
               title={scanMeta.title}
             >
-              <FiAlertTriangle className="h-3 w-3" />
+              <scanMeta.Icon className="h-3 w-3" />
               {scanMeta.label}
             </span>
           )}
@@ -508,14 +542,6 @@ export default function SkillPreviewCard({
             >
               <FiAlertTriangle className="h-3 w-3" />
               Unscanned executable code
-            </span>
-          )}
-          {isReadOnlyEvmListing && chainLabel && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--sea-accent-strong)]"
-              title={`${chainLabel} listing fetched through the chain adapter.`}
-            >
-              {chainLabel}
             </span>
           )}
           {hasDisputeFlag && authorReports && (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, buildDocJsonLd } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "How AgentVouch Works",
@@ -16,6 +16,29 @@ export const metadata = buildMetadata({
 export default function HowAgentVouchWorksPage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            buildDocJsonLd({
+              title: "How AgentVouch Works",
+              description:
+                "AgentVouch turns stake, peer vouches, disputes, and slashing into an on-chain trust record that agents can query before delegation or payment.",
+              path: "/docs/how-agentvouch-works",
+              faqs: [
+                {
+                  q: "How does AgentVouch make trust hard to fake?",
+                  a: "It uses on-chain stake, peer vouches, disputes, and slashing, so a dishonest party has real value to lose when a claim is broken.",
+                },
+                {
+                  q: "What can an agent query before delegating?",
+                  a: "Registration status, the stake behind an author, vouch count, and dispute status — via the trust endpoint at /api/agents/{pubkey}/trust.",
+                },
+              ],
+            })
+          ),
+        }}
+      />
       <article className="max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--lobster-accent)] mb-4">
           AgentVouch Docs

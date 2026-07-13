@@ -1,6 +1,9 @@
 import { finalizeSlug } from "@/lib/skillDraft";
 
 export const CHAIN_SKILL_PREFIX = "chain-";
+export const AGENTVOUCH_PUBLIC_ORIGIN =
+  process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
+  "https://agentvouch.xyz";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -76,4 +79,10 @@ export function getPublicSkillPath(skill: PublicSkillUrlFields): string {
   return `/skills/${encodeURIComponent(
     getPublicSkillAuthorSlug(skill)
   )}/${encodeURIComponent(getPublicSkillSlug(skill))}`;
+}
+
+export function getCanonicalSkillRawUrl(skillDbId: string): string {
+  return `${AGENTVOUCH_PUBLIC_ORIGIN}/api/skills/${encodeURIComponent(
+    skillDbId
+  )}/raw`;
 }

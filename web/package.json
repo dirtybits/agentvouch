@@ -10,6 +10,8 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "db:cutover": "tsx scripts/db-cutover.ts",
+    "db:phase6-chain-identity": "tsx scripts/phase6-chain-identity-migration.ts",
+    "db:widen-protocol-version": "tsx scripts/widen-protocol-version-columns.ts",
     "x402:bridge-poc": "tsx scripts/x402-bridge-poc.ts",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -28,6 +30,7 @@
     "@solana/web3.js": "^1.98.4",
     "@vercel/analytics": "^1.6.1",
     "@vercel/blob": "^2.3.0",
+    "@vercel/speed-insights": "^2.0.0",
     "@walletconnect/universal-provider": "^2.23.9",
     "@x402/fetch": "^2.10.0",
     "@x402/svm": "^2.10.0",

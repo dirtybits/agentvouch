@@ -19,6 +19,12 @@
   --sea-accent-soft-hover: #d4e4e8;
   --sea-accent-border: #b8ced5;
   --sea-focus-ring: rgba(95, 143, 155, 0.26);
+  --base-blue: #3c8aff;
+  --base-blue-soft: #edf4ff;
+  --base-blue-border: #a8c8ff;
+  --solana-purple: #9945ff;
+  --solana-purple-soft: #f3eaff;
+  --solana-purple-border: #caa7ff;
   --gold-accent: #eab308;
   --gold-accent-strong: #a16207;
   --gold-accent-contrast: #713f12;
@@ -44,6 +50,12 @@
   --sea-accent-soft-hover: rgba(95, 143, 155, 0.28);
   --sea-accent-border: rgba(143, 181, 191, 0.38);
   --sea-focus-ring: rgba(143, 181, 191, 0.3);
+  --base-blue: #3c8aff;
+  --base-blue-soft: rgba(60, 138, 255, 0.18);
+  --base-blue-border: rgba(60, 138, 255, 0.48);
+  --solana-purple: #9945ff;
+  --solana-purple-soft: rgba(153, 69, 255, 0.16);
+  --solana-purple-border: rgba(153, 69, 255, 0.46);
   --gold-accent: #facc15;
   --gold-accent-strong: #facc15;
   --gold-accent-contrast: #fef9c3;

@@ -20,23 +20,33 @@ library AgentVouchTypes {
         Removed
     }
 
-    // Mirrors Solana AuthorDisputeStatus.
-    enum DisputeStatus {
-        Open,
-        Resolved,
-        SlashingVouchers
+    enum PurchaseLane {
+        None,
+        Direct,
+        Authorization,
+        Settlement
     }
 
-    // Mirrors Solana AuthorDisputeLiabilityScope.
-    enum LiabilityScope {
-        AuthorBondOnly,
-        AuthorBondThenVouchers
+    enum PaidPurchaseReportStatus {
+        None,
+        Pending,
+        Accepted,
+        SlashingVouchers,
+        Terminal
     }
 
-    // Mirrors Solana AuthorDisputeRuling.
-    enum Ruling {
-        Upheld,
-        Dismissed
+    enum PaidPurchaseReportOutcome {
+        None,
+        Rejected,
+        Expired,
+        Dismissed,
+        Upheld
+    }
+
+    enum PaidPurchaseReportRuling {
+        None,
+        Dismissed,
+        Upheld
     }
 
     /// @dev Mirrors Solana `Config` (state/config.rs) minus the authority pubkeys
@@ -66,6 +76,9 @@ library AgentVouchTypes {
         uint256 longevityComponentCap;
         uint256 upheldDisputePenalty;
         uint256 reputationScoreCap;
+        // Immutable destination for paid-purchase report residuals. Appended so the
+        // deployment input cannot be confused with the legacy config layout.
+        address treasuryRecipient;
     }
 
     /// @dev Mirrors Solana `AgentProfile` (state/agent.rs). `rewardIndexUsdcMicrosX1e12`
@@ -85,6 +98,12 @@ library AgentVouchTypes {
         uint256 rewardIndexUsdcMicrosX1e12;
         uint256 unclaimedVoucherRevenueUsdcMicros;
         uint64 registeredAt;
+        // A1 aggregate counters. The clean-break `base-v1-a1` profile tuple exposes
+        // them directly; clients must bind tuple decoding to PROTOCOL_VERSION because
+        // the deployed pre-A1 candidate has the shorter legacy tuple.
+        uint64 slashingReportCount;
+        uint256 totalAuthorBondSlashedUsdcMicros;
+        uint256 totalVouchStakeSlashedUsdcMicros;
     }
 
     /// @dev Mirrors Solana `Vouch` (state/vouch.rs). No vault/rent-payer fields.
@@ -140,5 +159,47 @@ library AgentVouchTypes {
         uint256 authorShareUsdcMicros;
         uint256 voucherPoolUsdcMicros;
         uint64 timestamp;
+        PurchaseLane lane;
+    }
+
+    struct PaidPurchaseReport {
+        bool exists;
+        address buyer;
+        address author;
+        bytes32 listingId;
+        bytes32 purchaseId;
+        string evidenceUri;
+        uint64 filedAt;
+        uint64 reviewDeadline;
+        uint64 acceptedAt;
+        uint64 terminalAt;
+        PaidPurchaseReportStatus status;
+        PaidPurchaseReportOutcome outcome;
+        uint256 bondUsdcMicros;
+        uint8 snapshottedSlashPercentage;
+        uint256 snapshottedActiveVouchStakeUsdcMicros;
+        uint256 processedPreSlashStakeUsdcMicros;
+        uint256 authorBondSlashUsdcMicros;
+        uint256 voucherSlashUsdcMicros;
+        uint256 buyerEntitlementUsdcMicros;
+        uint256 buyerCreditUsdcMicros;
+        uint64 claimDeadline;
+        bool creditHandled;
+    }
+
+    /// @dev All A1 state is owned by the facade and passed explicitly to the
+    ///      linked settlement library as one frozen storage boundary.
+    struct PaidPurchaseState {
+        mapping(uint64 => PaidPurchaseReport) reports;
+        mapping(bytes32 => uint64) reportIdByPurchase;
+        mapping(address => uint64) activeReportByBuyer;
+        mapping(address => uint64) activeReportByAuthor;
+        mapping(bytes32 => uint64) activeReportByListing;
+        mapping(address => uint64) buyerCooldownUntil;
+        mapping(address => uint64) authorCooldownUntil;
+        mapping(address => bool) purchaseLockedByAuthor;
+        mapping(uint64 => mapping(address => bool)) vouchProcessed;
+        uint64 nextReportId;
+        uint256 restitutionReserveCreditUsdcMicros;
     }
 }

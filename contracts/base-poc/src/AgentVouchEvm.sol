@@ -8,28 +8,35 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20ReceiveWithAuthorization} from "./interfaces/IERC20ReceiveWithAuthorization.sol";
 import {AgentVouchTypes} from "./libraries/AgentVouchTypes.sol";
+import {PaidPurchaseSettlement} from "./libraries/PaidPurchaseSettlement.sol";
 
-/// @title AgentVouchEvm (Base POC)
-/// @notice Spec-port of AgentVouch's USDC-native protocol to Base/EVM. Decision
-///         instrument only; Solana (`programs/agentvouch`) remains canonical.
-/// @dev    No rent/ATA/PDA concepts: the contract custodies USDC and tracks every
-///         balance as internal accounting. Authority is OpenZeppelin roles, not
-///         config pubkeys. A single `Pausable` flag provides A3 parity. The exact
-///         paused set mirrors the Solana `require!(!config.paused)` guards (verified
-///         2026-06-22): blocked = deposit_author_bond, withdraw_author_bond, vouch,
-///         create/update_skill_listing, purchase_skill, withdraw_author_proceeds,
-///         open_dispute, x402 settle. Allowed while paused = register_agent,
-///         revoke_vouch, remove_listing, claim_voucher_revenue, refund claims.
+/// @title AgentVouchEvm (Base v1 A1 candidate)
+/// @notice USDC-native AgentVouch protocol candidate for Base Sepolia. Its clean-break
+///         A1 surface supports only paid-purchase reports; generic author reports are
+///         intentionally absent.
+/// @dev    No rent/ATA/PDA concepts: this facade owns all protocol storage and USDC
+///         custody. OpenZeppelin roles provide authority, and the immutable linked
+///         PaidPurchaseSettlement library executes terminal A1 accounting in this
+///         contract's storage context. Pause blocks market entry and report acceptance
+///         while terminal settlement, claims, and residual exits remain live.
 contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    string public constant PROTOCOL_VERSION = "base-v1-a1";
+
     // Matches Solana REWARD_INDEX_SCALE (state/skill_listing.rs).
     uint256 internal constant REWARD_INDEX_SCALE = 1e12;
+    uint256 internal constant MAX_LISTING_URI_BYTES = 256;
+    uint256 internal constant MAX_LISTING_NAME_BYTES = 64;
+    uint256 internal constant MAX_LISTING_DESCRIPTION_BYTES = 256;
+    uint256 internal constant MAX_REPORT_EVIDENCE_URI_BYTES = 256;
+    uint256 internal constant PURCHASE_REPORT_WINDOW = 7 days;
+    uint256 internal constant REPORT_REVIEW_WINDOW = 3 days;
+    uint256 internal constant REPORT_BOND_USDC_MICROS = 5_000_000;
 
     // --- Roles (replace Solana Config authority pubkeys) ---
     bytes32 public constant CONFIG_ROLE = keccak256("CONFIG_ROLE");
     bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
-    bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
     bytes32 public constant SETTLEMENT_ROLE = keccak256("SETTLEMENT_ROLE");
     bytes32 public constant PAUSE_ROLE = keccak256("PAUSE_ROLE");
 
@@ -43,9 +50,13 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     mapping(bytes32 => AgentVouchTypes.SkillListing) internal listings; // keccak256(author, skillIdHash)
     mapping(bytes32 => mapping(uint64 => AgentVouchTypes.ListingSettlement)) internal settlements;
     mapping(bytes32 => AgentVouchTypes.Purchase) internal purchases; // keccak256(buyer, listingId, revision)
+    mapping(address => uint256) internal voucherRevenuePendingDistributionUsdcMicros;
+    mapping(address => uint256) internal voucherRevenueRoundingAuthorProceedsUsdcMicros;
+    AgentVouchTypes.PaidPurchaseState internal paidPurchaseState;
     mapping(bytes32 => bool) public usedPaymentRefHash; // x402 payment-ref idempotency guard
     mapping(bytes32 => bool) public usedSettlementTxHash; // x402 settlement-tx idempotency guard
 
+    event ProtocolVersionDeclared(string version);
     event ConfigInitialized(address indexed usdc, string chainContext);
     event PausedSet(address indexed by, bool paused);
     event AgentRegistered(address indexed agent, string metadataUri, uint64 registeredAt);
@@ -54,6 +65,14 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     event Vouched(address indexed voucher, address indexed vouchee, uint256 stake);
     event VouchRevoked(address indexed voucher, address indexed vouchee, uint256 returned);
     event SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free);
+    event SkillListingUpdated(
+        bytes32 indexed listingId,
+        address indexed author,
+        uint64 revision,
+        uint256 price,
+        bool free,
+        bool revisionChanged
+    );
     event SkillListingRemoved(bytes32 indexed listingId);
     event SkillPurchased(
         bytes32 indexed purchaseId,
@@ -73,6 +92,68 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         address buyer,
         uint256 amount
     );
+    event PaidPurchaseReportOpened(
+        uint64 indexed reportId,
+        address indexed buyer,
+        address indexed author,
+        bytes32 listingId,
+        bytes32 purchaseId,
+        uint256 bond,
+        uint64 reviewDeadline,
+        string evidenceUri
+    );
+    event PaidPurchaseReportAccepted(
+        uint64 indexed reportId, address indexed resolver, address indexed author, uint64 acceptedAt
+    );
+    event PaidPurchaseReportRejected(
+        uint64 indexed reportId,
+        address indexed resolver,
+        address indexed buyer,
+        uint256 reserveCredit,
+        uint64 buyerCooldownUntil
+    );
+    event PaidPurchaseReportExpired(
+        uint64 indexed reportId,
+        address indexed buyer,
+        address indexed author,
+        uint256 buyerCredit,
+        uint64 claimDeadline,
+        uint64 authorCooldownUntil
+    );
+    event PaidPurchaseReportParked(
+        uint64 indexed reportId,
+        address indexed resolver,
+        address indexed author,
+        uint8 slashPercentage,
+        uint256 activeVouchStake,
+        uint256 authorBondSlash
+    );
+    event PaidPurchaseReportVouchSlashed(
+        uint64 indexed reportId,
+        address indexed voucher,
+        uint256 preSlashStake,
+        uint256 slashAmount,
+        uint256 processedPreSlashStake
+    );
+    event PaidPurchaseReportDismissed(
+        uint64 indexed reportId,
+        address indexed resolver,
+        address indexed author,
+        uint256 reserveCredit,
+        uint64 buyerCooldownUntil
+    );
+    event PaidPurchaseReportFinalized(
+        uint64 indexed reportId,
+        address indexed author,
+        address indexed buyer,
+        uint256 buyerEntitlement,
+        uint256 buyerCredit,
+        uint256 reserveCredit,
+        uint64 claimDeadline
+    );
+    event PaidPurchaseReportCreditClaimed(uint64 indexed reportId, address indexed buyer, uint256 amount);
+    event PaidPurchaseReportCreditExpired(uint64 indexed reportId, uint256 reserveCredit);
+    event RestitutionReserveClaimed(address indexed recipient, uint256 amount);
 
     error ZeroAddress();
     error AlreadyInitialized();
@@ -94,6 +175,11 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error ListingExists();
     error ListingNotFound();
     error NotListingAuthor();
+    error EmptyListingUri();
+    error EmptyListingName();
+    error ListingUriTooLong();
+    error ListingNameTooLong();
+    error ListingDescriptionTooLong();
     error BelowMinPaidPrice();
     error FreeListingBondFloor();
     error FreeSkillNotPurchased();
@@ -109,6 +195,25 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     error PaymentRefUsed();
     error SettlementTxUsed();
     error SettlementAmountMismatch();
+    error PaidPurchaseReportNotFound();
+    error PaidPurchaseReportInvalidState();
+    error PaidPurchaseReceiptIneligible();
+    error PaidPurchaseReceiptConsumed();
+    error PaidPurchaseBuyerBusy();
+    error PaidPurchaseListingBusy();
+    error PaidPurchaseAuthorBusy();
+    error PaidPurchaseBuyerCooldown();
+    error PaidPurchaseAuthorCooldown();
+    error PaidPurchaseReviewExpired();
+    error PaidPurchaseReviewOpen();
+    error PaidPurchaseEvidenceTooLong();
+    error PaidPurchaseSlashPageTooLarge();
+    error PaidPurchaseSlashSnapshotIncomplete();
+    error PaidPurchaseCreditNotFunded();
+    error PaidPurchaseCreditExpired();
+    error PaidPurchaseCreditOpen();
+    error PaidPurchaseCreditAlreadyHandled();
+    error PurchaseLaneIneligible();
 
     /// @param usdc_ 6-decimal USDC token on the target Base network.
     /// @param admin holder of every role for the POC (a multisig/timelock in prod).
@@ -118,9 +223,9 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(CONFIG_ROLE, admin);
         _grantRole(RESOLVER_ROLE, admin);
-        _grantRole(TREASURY_ROLE, admin);
         _grantRole(SETTLEMENT_ROLE, admin);
         _grantRole(PAUSE_ROLE, admin);
+        emit ProtocolVersionDeclared(PROTOCOL_VERSION);
     }
 
     // --- Config & pause (initialize_config, set_paused) ---
@@ -128,13 +233,15 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     function initializeConfig(AgentVouchTypes.Config calldata cfg) external onlyRole(CONFIG_ROLE) {
         if (configInitialized) revert AlreadyInitialized();
         if (cfg.usdc != address(usdc)) revert UsdcMismatch();
-        if (uint256(cfg.authorShareBps) + cfg.voucherShareBps + cfg.protocolFeeBps != 10_000) {
-            revert BadEconomics();
-        }
-        // Protocol fees are reserved until purchaseSkill routes them to treasury.
-        if (cfg.protocolFeeBps != 0) {
-            revert BadEconomics();
-        }
+        if (
+            block.chainid != 84532 || keccak256(bytes(cfg.chainContext)) != keccak256("eip155:84532")
+                || cfg.minVouchStakeUsdcMicros != 1_000_000 || cfg.disputeBondUsdcMicros != REPORT_BOND_USDC_MICROS
+                || cfg.minAuthorBondForFreeListingUsdcMicros != 1_000_000 || cfg.minPaidListingPriceUsdcMicros != 10_000
+                || cfg.authorShareBps != 6_000 || cfg.voucherShareBps != 4_000 || cfg.protocolFeeBps != 0
+                || cfg.slashPercentage == 0 || cfg.slashPercentage > 100 || cfg.refundClaimWindowSeconds != 7 days
+                || cfg.challengerRewardBps != 0 || cfg.challengerRewardCapUsdcMicros != 0
+                || cfg.treasuryRecipient == address(0)
+        ) revert BadEconomics();
         config = cfg;
         configInitialized = true;
         emit ConfigInitialized(cfg.usdc, cfg.chainContext);
@@ -201,6 +308,10 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         if (!profiles[msg.sender].registered) revert NotRegistered();
         // Solana parity: the vouchee_profile PDA must already exist (be registered).
         if (!profiles[vouchee].registered) revert NotRegistered();
+        // Paid-purchase reports snapshot author-wide backing at resolution. New positions
+        // must be blocked alongside the existing revoke exit lock so calldata-driven
+        // cranks have a complete, frozen set to account for.
+        if (profiles[vouchee].openDisputes > 0) revert DisputeLocked();
 
         AgentVouchTypes.Vouch storage v = vouches[vouchId(msg.sender, vouchee)];
         // A fresh storage slot has status == Active (enum value 0), so existence is
@@ -236,20 +347,14 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     ///         earnings stay claimable), then returns active stake. Blocked while the
     ///         vouchee has open disputes (A1 lock). Allowed while paused.
     function revokeVouch(address vouchee) external nonReentrant {
-        AgentVouchTypes.Vouch storage v = vouches[vouchId(msg.sender, vouchee)];
-        if (v.voucher == address(0) || v.status != AgentVouchTypes.VouchStatus.Active) {
-            revert NoActiveVouch();
-        }
-        AgentVouchTypes.AgentProfile storage vee = profiles[vouchee];
-        if (vee.openDisputes > 0) revert DisputeLocked();
-
-        // Settle rewards earned up to now before the stake stops backing.
-        _accrueAuthorRewards(vouchee, v);
-
-        uint256 stake = v.stakeUsdcMicros;
-        v.status = AgentVouchTypes.VouchStatus.Revoked;
-        v.stakeUsdcMicros = 0;
-        vee.totalVouchStakeReceivedUsdcMicros -= stake;
+        uint256 stake = PaidPurchaseSettlement.exitVouch(
+            profiles,
+            vouches,
+            voucherRevenuePendingDistributionUsdcMicros,
+            voucherRevenueRoundingAuthorProceedsUsdcMicros,
+            msg.sender,
+            vouchee
+        );
         usdc.safeTransfer(msg.sender, stake);
         emit VouchRevoked(msg.sender, vouchee, stake);
     }
@@ -271,6 +376,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         AgentVouchTypes.SkillListing storage l = listings[id];
         if (l.exists) revert ListingExists();
 
+        _validateListingMetadata(uri, name, description);
+
         bool free = priceUsdcMicros == 0;
         if (free) {
             if (p.authorBondUsdcMicros < config.minAuthorBondForFreeListingUsdcMicros) {
@@ -291,10 +398,58 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         l.status = AgentVouchTypes.ListingStatus.Active;
         l.exists = true;
         // implicit initialize_listing_settlement for revision 1
-        settlements[id][1].initialized = true;
-        settlements[id][1].createdAt = uint64(block.timestamp);
-        settlements[id][1].updatedAt = uint64(block.timestamp);
+        _initializeSettlement(id, 1);
         emit SkillListingCreated(id, msg.sender, priceUsdcMicros, free);
+    }
+
+    function updateSkillListing(
+        bytes32 id,
+        string calldata uri,
+        string calldata name,
+        string calldata description,
+        uint256 priceUsdcMicros
+    ) external returns (uint64 revision) {
+        if (!configInitialized) revert NotInitialized();
+        AgentVouchTypes.SkillListing storage l = listings[id];
+        if (!l.exists) revert ListingNotFound();
+        if (l.author != msg.sender) revert NotListingAuthor();
+        AgentVouchTypes.AgentProfile storage p = profiles[msg.sender];
+        if (!p.registered) revert NotRegistered();
+        _requireNotPaused();
+        if (l.status == AgentVouchTypes.ListingStatus.Removed) revert ListingNotActive();
+
+        _validateListingMetadata(uri, name, description);
+
+        bool wasFree = l.priceUsdcMicros == 0;
+        bool free = priceUsdcMicros == 0;
+        if (free) {
+            if (p.authorBondUsdcMicros < config.minAuthorBondForFreeListingUsdcMicros) {
+                revert FreeListingBondFloor();
+            }
+        } else if (priceUsdcMicros < config.minPaidListingPriceUsdcMicros) {
+            revert BelowMinPaidPrice();
+        }
+
+        bool revisionChanged = keccak256(bytes(l.uri)) != keccak256(bytes(uri)) || l.priceUsdcMicros != priceUsdcMicros;
+        if (revisionChanged) {
+            if (l.lockedByDispute || p.openDisputes > 0) revert DisputeLocked();
+            l.currentRevision += 1;
+            _initializeSettlement(id, l.currentRevision);
+        }
+
+        if (wasFree && !free) {
+            p.activeFreeListingCount -= 1;
+        } else if (!wasFree && free) {
+            p.activeFreeListingCount += 1;
+        }
+
+        l.uri = uri;
+        l.name = name;
+        l.description = description;
+        l.priceUsdcMicros = priceUsdcMicros;
+
+        revision = l.currentRevision;
+        emit SkillListingUpdated(id, msg.sender, revision, priceUsdcMicros, free, revisionChanged);
     }
 
     /// @notice Port of `remove_skill_listing` (and `close_skill_listing`: on EVM there
@@ -325,7 +480,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         AgentVouchTypes.SkillListing storage l = _purchasableListing(id);
         uint256 authorShare;
         uint256 voucherPool;
-        (pId, authorShare, voucherPool) = _recordPurchase(id, l, msg.sender);
+        (pId, authorShare, voucherPool) = _recordPurchase(id, l, msg.sender, AgentVouchTypes.PurchaseLane.Direct);
         // Effects written above; allowance pull last (CEI). Atomic: a failed pull reverts all.
         usdc.safeTransferFrom(msg.sender, address(this), authorShare + voucherPool);
     }
@@ -350,7 +505,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         uint256 price = l.priceUsdcMicros;
         bytes32 boundNonce = keccak256(abi.encode(buyer, id, l.currentRevision, price));
 
-        (pId,,) = _recordPurchase(id, l, buyer);
+        (pId,,) = _recordPurchase(id, l, buyer, AgentVouchTypes.PurchaseLane.Authorization);
 
         // Pull the buyer's funds via their signed EIP-3009 authorization (value == price).
         // receiveWithAuthorization requires msg.sender == to, so only this contract can consume
@@ -384,8 +539,148 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         usedPaymentRefHash[paymentRefHash] = true;
         usedSettlementTxHash[settlementTxHash] = true;
         // No pull: funds are assumed already delivered to the contract by the facilitator.
-        (pId,,) = _recordPurchase(id, l, buyer);
+        (pId,,) = _recordPurchase(id, l, buyer, AgentVouchTypes.PurchaseLane.Settlement);
         emit X402Settled(pId, paymentRefHash, settlementTxHash, buyer, amount);
+    }
+
+    // --- Paid-purchase reports (clean-break A1) ---
+
+    function openPaidPurchaseReport(
+        address author,
+        bytes32 listingId_,
+        bytes32 purchaseId_,
+        string calldata evidenceUri
+    ) external nonReentrant whenNotPaused returns (uint64 reportId) {
+        if (!configInitialized) revert NotInitialized();
+        uint256 evidenceLength = bytes(evidenceUri).length;
+        if (evidenceLength == 0) revert PaidPurchaseReceiptIneligible();
+        if (evidenceLength > MAX_REPORT_EVIDENCE_URI_BYTES) revert PaidPurchaseEvidenceTooLong();
+        if (author == address(0) || author == msg.sender) revert PaidPurchaseReceiptIneligible();
+        if (!profiles[msg.sender].registered || !profiles[author].registered) revert NotRegistered();
+
+        AgentVouchTypes.Purchase storage purchase = purchases[purchaseId_];
+        AgentVouchTypes.SkillListing storage listing = listings[listingId_];
+        if (
+            !purchase.exists || purchase.buyer != msg.sender || purchase.listingId != listingId_
+                || purchase.priceUsdcMicros == 0 || !listing.exists || listing.author != author
+                || block.timestamp > uint256(purchase.timestamp) + PURCHASE_REPORT_WINDOW
+        ) revert PaidPurchaseReceiptIneligible();
+        if (
+            purchase.lane != AgentVouchTypes.PurchaseLane.Direct
+                && purchase.lane != AgentVouchTypes.PurchaseLane.Authorization
+        ) revert PurchaseLaneIneligible();
+
+        AgentVouchTypes.PaidPurchaseState storage state = paidPurchaseState;
+        if (state.reportIdByPurchase[purchaseId_] != 0) revert PaidPurchaseReceiptConsumed();
+        if (state.activeReportByBuyer[msg.sender] != 0) revert PaidPurchaseBuyerBusy();
+        if (state.activeReportByListing[listingId_] != 0) revert PaidPurchaseListingBusy();
+        if (state.activeReportByAuthor[author] != 0) revert PaidPurchaseAuthorBusy();
+        if (block.timestamp < state.buyerCooldownUntil[msg.sender]) revert PaidPurchaseBuyerCooldown();
+        if (block.timestamp < state.authorCooldownUntil[author]) revert PaidPurchaseAuthorCooldown();
+
+        reportId = ++state.nextReportId;
+        uint64 reviewDeadline = uint64(block.timestamp + REPORT_REVIEW_WINDOW);
+        AgentVouchTypes.PaidPurchaseReport storage report = state.reports[reportId];
+        report.exists = true;
+        report.buyer = msg.sender;
+        report.author = author;
+        report.listingId = listingId_;
+        report.purchaseId = purchaseId_;
+        report.evidenceUri = evidenceUri;
+        report.filedAt = uint64(block.timestamp);
+        report.reviewDeadline = reviewDeadline;
+        report.status = AgentVouchTypes.PaidPurchaseReportStatus.Pending;
+        report.bondUsdcMicros = REPORT_BOND_USDC_MICROS;
+
+        state.reportIdByPurchase[purchaseId_] = reportId;
+        state.activeReportByBuyer[msg.sender] = reportId;
+        state.activeReportByAuthor[author] = reportId;
+        state.activeReportByListing[listingId_] = reportId;
+        profiles[author].openDisputes += 1;
+        listing.lockedByDispute = true;
+        usdc.safeTransferFrom(msg.sender, address(this), REPORT_BOND_USDC_MICROS);
+        emit PaidPurchaseReportOpened(
+            reportId, msg.sender, author, listingId_, purchaseId_, REPORT_BOND_USDC_MICROS, reviewDeadline, evidenceUri
+        );
+    }
+
+    function reviewPaidPurchaseReport(uint64 reportId, bool accept) external nonReentrant onlyRole(RESOLVER_ROLE) {
+        AgentVouchTypes.PaidPurchaseReport storage report = _paidPurchaseReport(reportId);
+        if (report.status != AgentVouchTypes.PaidPurchaseReportStatus.Pending) {
+            revert PaidPurchaseReportInvalidState();
+        }
+        if (block.timestamp >= report.reviewDeadline) revert PaidPurchaseReviewExpired();
+
+        if (accept) {
+            _requireNotPaused();
+            report.status = AgentVouchTypes.PaidPurchaseReportStatus.Accepted;
+            report.acceptedAt = uint64(block.timestamp);
+            paidPurchaseState.purchaseLockedByAuthor[report.author] = true;
+            emit PaidPurchaseReportAccepted(reportId, msg.sender, report.author, report.acceptedAt);
+        } else {
+            PaidPurchaseSettlement.terminateWithoutSlash(
+                paidPurchaseState, profiles, listings, reportId, AgentVouchTypes.PaidPurchaseReportOutcome.Rejected
+            );
+        }
+    }
+
+    function resolvePaidPurchaseReport(uint64 reportId, uint8 ruling) external nonReentrant onlyRole(RESOLVER_ROLE) {
+        if (ruling == uint8(AgentVouchTypes.PaidPurchaseReportRuling.Dismissed)) {
+            PaidPurchaseSettlement.terminateWithoutSlash(
+                paidPurchaseState, profiles, listings, reportId, AgentVouchTypes.PaidPurchaseReportOutcome.Dismissed
+            );
+        } else if (ruling == uint8(AgentVouchTypes.PaidPurchaseReportRuling.Upheld)) {
+            PaidPurchaseSettlement.uphold(paidPurchaseState, profiles, listings, purchases, config, reportId);
+        } else {
+            revert PaidPurchaseReportInvalidState();
+        }
+    }
+
+    function slashPaidPurchaseReportVouches(uint64 reportId, address[] calldata vouchers_) external nonReentrant {
+        PaidPurchaseSettlement.slashVouches(
+            paidPurchaseState,
+            profiles,
+            vouches,
+            listings,
+            purchases,
+            voucherRevenuePendingDistributionUsdcMicros,
+            voucherRevenueRoundingAuthorProceedsUsdcMicros,
+            reportId,
+            vouchers_
+        );
+    }
+
+    function claimPaidPurchaseReportCredit(uint64 reportId) external nonReentrant {
+        uint256 amount = PaidPurchaseSettlement.claimCredit(paidPurchaseState, reportId, msg.sender);
+        usdc.safeTransfer(msg.sender, amount);
+    }
+
+    function closePaidPurchaseReportCredit(uint64 reportId) external nonReentrant {
+        AgentVouchTypes.PaidPurchaseReport storage report = _paidPurchaseReport(reportId);
+        if (report.status == AgentVouchTypes.PaidPurchaseReportStatus.Pending) {
+            if (block.timestamp < report.reviewDeadline) revert PaidPurchaseReviewOpen();
+            PaidPurchaseSettlement.terminateWithoutSlash(
+                paidPurchaseState, profiles, listings, reportId, AgentVouchTypes.PaidPurchaseReportOutcome.Expired
+            );
+        } else {
+            PaidPurchaseSettlement.closeCredit(paidPurchaseState, reportId);
+        }
+    }
+
+    function claimRestitutionReserve() external nonReentrant {
+        if (msg.sender != config.treasuryRecipient) revert PaidPurchaseReportInvalidState();
+        uint256 amount = PaidPurchaseSettlement.takeReserveCredit(paidPurchaseState);
+        usdc.safeTransfer(msg.sender, amount);
+        emit RestitutionReserveClaimed(msg.sender, amount);
+    }
+
+    function _paidPurchaseReport(uint64 reportId)
+        internal
+        view
+        returns (AgentVouchTypes.PaidPurchaseReport storage report)
+    {
+        report = paidPurchaseState.reports[reportId];
+        if (!report.exists) revert PaidPurchaseReportNotFound();
     }
 
     /// @dev Validates a listing is purchasable (exists, active, not dispute-locked, paid).
@@ -393,7 +688,7 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         l = listings[id];
         if (!l.exists) revert ListingNotFound();
         if (l.status != AgentVouchTypes.ListingStatus.Active) revert ListingNotActive();
-        if (l.lockedByDispute) revert DisputeLocked();
+        if (paidPurchaseState.purchaseLockedByAuthor[l.author]) revert DisputeLocked();
         if (l.priceUsdcMicros == 0) revert FreeSkillNotPurchased();
     }
 
@@ -401,14 +696,17 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     ///      duplicate receipts, splits by backing, advances the author-wide reward index,
     ///      and writes the revision-scoped receipt. Does NOT move USDC — each lane moves
     ///      its own funds (Lane A/B pull; Lane C assumes prior delivery).
-    function _recordPurchase(bytes32 id, AgentVouchTypes.SkillListing storage l, address buyer)
-        internal
-        returns (bytes32 pId, uint256 authorShare, uint256 voucherPool)
-    {
+    function _recordPurchase(
+        bytes32 id,
+        AgentVouchTypes.SkillListing storage l,
+        address buyer,
+        AgentVouchTypes.PurchaseLane lane
+    ) internal returns (bytes32 pId, uint256 authorShare, uint256 voucherPool) {
         if (buyer == address(0)) revert ZeroAddress();
         uint64 revision = l.currentRevision;
         AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
         if (!s.initialized) revert SettlementNotInitialized();
+        if (paidPurchaseState.purchaseLockedByAuthor[l.author]) revert DisputeLocked();
         if (s.locked) revert SettlementLocked();
 
         pId = purchaseId(buyer, id, revision);
@@ -438,7 +736,8 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
             priceUsdcMicros: price,
             authorShareUsdcMicros: authorShare,
             voucherPoolUsdcMicros: voucherPool,
-            timestamp: uint64(block.timestamp)
+            timestamp: uint64(block.timestamp),
+            lane: lane
         });
 
         s.authorProceedsUsdcMicros += authorShare;
@@ -449,31 +748,49 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
         if (voucherPool > 0) {
             uint256 indexDelta = (voucherPool * REWARD_INDEX_SCALE) / activeVouchStake;
             if (indexDelta == 0) revert VoucherPoolTooSmall();
+            uint256 distributable = (indexDelta * activeVouchStake) / REWARD_INDEX_SCALE;
+            uint256 indexRemainder = voucherPool - distributable;
+            voucherPool = distributable;
+            authorShare += indexRemainder;
+            purchases[pId].authorShareUsdcMicros = authorShare;
+            purchases[pId].voucherPoolUsdcMicros = voucherPool;
+            s.authorProceedsUsdcMicros += indexRemainder;
             AgentVouchTypes.AgentProfile storage ap = profiles[author];
             ap.rewardIndexUsdcMicrosX1e12 += indexDelta;
-            ap.unclaimedVoucherRevenueUsdcMicros += voucherPool;
+            voucherRevenuePendingDistributionUsdcMicros[author] += voucherPool;
         }
 
         emit SkillPurchased(pId, id, buyer, revision, price, authorShare, voucherPool);
     }
 
+    function _validateListingMetadata(string calldata uri, string calldata name, string calldata description)
+        internal
+        pure
+    {
+        uint256 uriLength = bytes(uri).length;
+        if (uriLength == 0) revert EmptyListingUri();
+        if (uriLength > MAX_LISTING_URI_BYTES) revert ListingUriTooLong();
+        uint256 nameLength = bytes(name).length;
+        if (nameLength == 0) revert EmptyListingName();
+        if (nameLength > MAX_LISTING_NAME_BYTES) revert ListingNameTooLong();
+        if (bytes(description).length > MAX_LISTING_DESCRIPTION_BYTES) {
+            revert ListingDescriptionTooLong();
+        }
+    }
+
+    function _initializeSettlement(bytes32 id, uint64 revision) internal {
+        AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
+        s.initialized = true;
+        s.createdAt = uint64(block.timestamp);
+        s.updatedAt = uint64(block.timestamp);
+    }
+
     /// @notice Port of `claim_voucher_revenue`. Accrues then pays out the voucher's
     ///         pending rewards. NOT paused-guarded on Solana — claims stay open while paused.
     function claimVoucherRevenue(address author) external nonReentrant {
-        AgentVouchTypes.Vouch storage v = vouches[vouchId(msg.sender, author)];
-        if (v.voucher == address(0)) revert NoActiveVouch();
-
-        _accrueAuthorRewards(author, v);
-        uint256 claimable = v.pendingRewardsUsdcMicros;
-        if (claimable == 0) revert NothingToClaim();
-
-        AgentVouchTypes.AgentProfile storage ap = profiles[author];
-        // checked_sub parity: claim can never exceed the author's unclaimed pool.
-        ap.unclaimedVoucherRevenueUsdcMicros -= claimable;
-
-        v.pendingRewardsUsdcMicros = 0;
-        v.cumulativeRevenueUsdcMicros += claimable;
-        v.lastPayoutAt = uint64(block.timestamp);
+        uint256 claimable = PaidPurchaseSettlement.materializeVoucherClaim(
+            profiles, vouches, voucherRevenuePendingDistributionUsdcMicros, msg.sender, author
+        );
 
         usdc.safeTransfer(msg.sender, claimable);
         emit VoucherRevenueClaimed(msg.sender, author, claimable);
@@ -483,41 +800,18 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
     ///         author-side collateral exit while paused). Also blocked by the settlement
     ///         dispute lock and the rolling proceeds time lock (updatedAt + authorProceedsLockSeconds).
     function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount) external nonReentrant whenNotPaused {
-        AgentVouchTypes.SkillListing storage l = listings[id];
-        if (!l.exists) revert ListingNotFound();
-        if (l.author != msg.sender) revert NotListingAuthor();
-        if (amount == 0) revert ZeroAmount();
-
-        AgentVouchTypes.ListingSettlement storage s = settlements[id][revision];
-        if (!s.initialized) revert SettlementNotInitialized();
-        if (s.locked) revert SettlementLocked();
-        // Rolling lock measured from the last purchase (updatedAt), matching Solana.
-        // Hours/days-scale lock; a few seconds of validator timestamp drift is irrelevant.
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < uint256(s.updatedAt) + config.authorProceedsLockSeconds) {
-            revert ProceedsTimeLocked();
-        }
-        if (amount > s.authorProceedsUsdcMicros) revert InsufficientProceeds();
-
-        s.authorProceedsUsdcMicros -= amount;
+        PaidPurchaseSettlement.takeAuthorProceeds(
+            listings,
+            settlements,
+            voucherRevenueRoundingAuthorProceedsUsdcMicros,
+            id,
+            revision,
+            msg.sender,
+            amount,
+            config.authorProceedsLockSeconds
+        );
         usdc.safeTransfer(msg.sender, amount);
         emit AuthorProceedsWithdrawn(id, revision, msg.sender, amount);
-    }
-
-    /// @dev Mirrors Solana `accrue_author_rewards`. Non-live vouches (Revoked/Slashed)
-    ///      or zero-stake do not accrue (their stake left the reward-index denominator),
-    ///      but already-accrued pending rewards stay claimable. Index only grows, so the
-    ///      subtraction never underflows for a real entry.
-    function _accrueAuthorRewards(address author, AgentVouchTypes.Vouch storage v) internal {
-        uint256 authorIndex = profiles[author].rewardIndexUsdcMicrosX1e12;
-        uint256 delta = authorIndex - v.entryRewardIndexUsdcMicrosX1e12;
-        if (delta == 0 || v.stakeUsdcMicros == 0 || v.status != AgentVouchTypes.VouchStatus.Active) {
-            v.entryRewardIndexUsdcMicrosX1e12 = authorIndex;
-            return;
-        }
-        uint256 accrued = (v.stakeUsdcMicros * delta) / REWARD_INDEX_SCALE;
-        v.pendingRewardsUsdcMicros += accrued;
-        v.entryRewardIndexUsdcMicrosX1e12 = authorIndex;
     }
 
     // --- Id helpers (Solana seed concepts, not exposed as PDAs) ---
@@ -562,5 +856,69 @@ contract AgentVouchEvm is AccessControl, Pausable, ReentrancyGuard {
 
     function getPurchase(bytes32 pId) external view returns (AgentVouchTypes.Purchase memory) {
         return purchases[pId];
+    }
+
+    function getPaidPurchaseReportCore(uint64 reportId)
+        external
+        view
+        returns (
+            address buyer,
+            address author,
+            bytes32 listingId_,
+            bytes32 purchaseId_,
+            uint64 filedAt,
+            uint64 reviewDeadline,
+            uint64 acceptedAt,
+            uint64 terminalAt,
+            uint8 status,
+            uint8 outcome
+        )
+    {
+        AgentVouchTypes.PaidPurchaseReport storage report = _paidPurchaseReport(reportId);
+        return (
+            report.buyer,
+            report.author,
+            report.listingId,
+            report.purchaseId,
+            report.filedAt,
+            report.reviewDeadline,
+            report.acceptedAt,
+            report.terminalAt,
+            uint8(report.status),
+            uint8(report.outcome)
+        );
+    }
+
+    function getPaidPurchaseReportSettlement(uint64 reportId)
+        external
+        view
+        returns (
+            uint8 slashPercentage,
+            uint256 activeVouchStake,
+            uint256 processedPreSlashStake,
+            uint256 authorBondSlash,
+            uint256 voucherSlash,
+            uint256 buyerEntitlement,
+            uint256 buyerCredit,
+            uint64 claimDeadline,
+            bool creditHandled
+        )
+    {
+        AgentVouchTypes.PaidPurchaseReport storage report = _paidPurchaseReport(reportId);
+        return (
+            report.snapshottedSlashPercentage,
+            report.snapshottedActiveVouchStakeUsdcMicros,
+            report.processedPreSlashStakeUsdcMicros,
+            report.authorBondSlashUsdcMicros,
+            report.voucherSlashUsdcMicros,
+            report.buyerEntitlementUsdcMicros,
+            report.buyerCreditUsdcMicros,
+            report.claimDeadline,
+            report.creditHandled
+        );
+    }
+
+    function getPaidPurchaseReportEvidence(uint64 reportId) external view returns (string memory) {
+        return _paidPurchaseReport(reportId).evidenceUri;
     }
 }

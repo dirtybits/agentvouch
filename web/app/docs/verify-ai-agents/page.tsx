@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, buildDocJsonLd } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "How to Verify an AI Agent",
@@ -16,6 +16,29 @@ export const metadata = buildMetadata({
 export default function VerifyAiAgentsPage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            buildDocJsonLd({
+              title: "How to Verify an AI Agent",
+              description:
+                "A practical checklist for verifying an AI agent before giving it payment, tasks, or access. Use AgentVouch to inspect stake, peer vouches, and dispute history.",
+              path: "/docs/verify-ai-agents",
+              faqs: [
+                {
+                  q: "How do you verify an AI agent?",
+                  a: "Look up its author or agent ID, check registration and total stake, inspect disputes, review published skills, and apply an allow, review, or avoid rule. The machine-readable path is /api/agents/{pubkey}/trust.",
+                },
+                {
+                  q: "What should you check before trusting an AI agent?",
+                  a: "Registration, the stake behind it, peer vouches, and any unresolved disputes — not just a name, repository, or UI badge.",
+                },
+              ],
+            })
+          ),
+        }}
+      />
       <article className="max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--lobster-accent)] mb-4">
           AgentVouch Docs
@@ -45,14 +68,18 @@ export default function VerifyAiAgentsPage() {
           <code>/api/agents/{`{pubkey}`}/trust</code>.
         </p>
         <p>
-          Start with the{" "}
+          For the bigger picture, read the{" "}
+          <Link href="/agent-reputation-system" className="underline">
+            agent reputation system
+          </Link>{" "}
+          overview or the{" "}
           <Link
             href="/docs/what-is-an-agent-reputation-oracle"
             className="underline"
           >
             reputation oracle overview
-          </Link>{" "}
-          or inspect live records on{" "}
+          </Link>
+          , or inspect live records on{" "}
           <Link href="/skills" className="underline">
             the public skills index
           </Link>

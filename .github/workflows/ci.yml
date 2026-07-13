@@ -27,6 +27,9 @@ jobs:
         working-directory: contracts/base-poc
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Vendor Solidity deps (lib/ is gitignored; pinned to the versions used locally)
@@ -36,3 +39,5 @@ jobs:
           git clone --depth 1 --branch v0.7.0 https://github.com/eth-infinitism/account-abstraction.git lib/account-abstraction
       - name: forge test
         run: forge test -vv
+      - name: EIP-170 and initcode size gate
+        run: forge build --skip test && node ../../scripts/verify-base-runtime-size.mjs

@@ -25,6 +25,8 @@ isProject: false
 
 # Phase 4 - Base Chain Wallet Connect
 
+> **Status: Completed/Historical — do not edit except corrections. Current status:** `docs/MAINNET_READINESS.md` for launch gates; this plan remains Phase 4 closeout evidence.
+
 Sub-plan of [`base-port-chain-adapter.plan.md`](./base-port-chain-adapter.plan.md) Phase 4
 (`base-adapter-wallet`).
 
@@ -63,7 +65,7 @@ client-only hook such as `web/hooks/useChainWallet.ts`.
 
 ### D2 - Base Sepolia only
 
-Use `eip155:84532` for this phase. The parent plan's Phase 8b mainnet cutover is blocked until
+Use `eip155:84532` for this phase. The parent plan's Phase 10 mainnet cutover is blocked until
 mainnet contract, RPC, USDC, and paymaster configuration exist. Do not accept or silently map
 `eip155:8453` to the Sepolia adapter.
 

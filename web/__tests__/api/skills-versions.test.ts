@@ -13,8 +13,16 @@ vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  verifyWalletSignature: vi.fn(),
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth")>();
+  return {
+    ...actual,
+    verifyWalletSignature: vi.fn(),
+  };
+});
+
+vi.mock("@/lib/evmAuth", () => ({
+  verifyEvmWalletSignature: vi.fn(),
 }));
 
 vi.mock("@/lib/ipfs", () => ({
@@ -32,6 +40,7 @@ vi.mock("@vercel/blob", () => ({
 
 import { POST } from "@/app/api/skills/[id]/versions/route";
 import { verifyWalletSignature } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { sql } from "@/lib/db";
 import { pinSkillContent } from "@/lib/ipfs";
 import { MAX_SKILL_UPLOAD_BYTES } from "@/lib/skillDraft";
@@ -39,6 +48,8 @@ import { MAX_SKILL_UPLOAD_BYTES } from "@/lib/skillDraft";
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockVerifyEvmWalletSignature =
+  verifyEvmWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockPinSkillContent = pinSkillContent as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -50,6 +61,18 @@ function makeRequest(body: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function publisherAuth(
+  pubkey: string,
+  action: string,
+  skillId?: string,
+  timestamp = Date.now()
+) {
+  const message = skillId
+    ? `AgentVouch Skill Repo\nAction: ${action}\nSkill id: ${skillId}\nTimestamp: ${timestamp}`
+    : `AgentVouch Skill Repo\nAction: ${action}\nTimestamp: ${timestamp}`;
+  return { pubkey, signature: "sig", message, timestamp };
 }
 
 function makeRawRequest(body: string, headers: Record<string, string>) {
@@ -105,12 +128,11 @@ describe("POST /api/skills/[id]/versions", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "OtherWallet11111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "OtherWallet11111111111111111111111111111111",
+          "publish-skill",
+          "uuid-skill"
+        ),
         content: "# Updated\n",
       }),
       { params: Promise.resolve({ id: "uuid-skill" }) }
@@ -137,12 +159,11 @@ describe("POST /api/skills/[id]/versions", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill",
+          "uuid-skill"
+        ),
         content: "# Updated\n",
       }),
       { params: Promise.resolve({ id: "uuid-skill" }) }
@@ -179,12 +200,11 @@ describe("POST /api/skills/[id]/versions", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill",
+          "uuid-skill"
+        ),
         content: "# Updated\n",
         changelog: "Improve author actions",
       }),
@@ -209,5 +229,157 @@ describe("POST /api/skills/[id]/versions", () => {
         cid: "bafy-new-version",
       },
     });
+  });
+
+  it("accepts Base author signatures for repo version publishes", async () => {
+    const authorAddress = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill",
+          skill_id: "base-calendar-agent",
+          author_pubkey: authorAddress,
+          chain_context: "eip155:84532",
+          current_version: 4,
+          ipfs_cid: "bafy-existing",
+        },
+      ])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifyEvmWalletSignature.mockResolvedValue({
+      valid: true,
+      pubkey: authorAddress.toLowerCase(),
+    });
+    mockPinSkillContent.mockResolvedValue({
+      success: true,
+      cid: "bafy-base-new-version",
+    });
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(authorAddress, "publish-skill", "uuid-skill"),
+        content: "# Base updated\n",
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockVerifyEvmWalletSignature).toHaveBeenCalledWith(
+      expect.objectContaining({ pubkey: authorAddress })
+    );
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).toHaveBeenCalledWith(
+      "# Base updated\n",
+      "base-calendar-agent",
+      5
+    );
+  });
+
+  it("rejects version publish when signed action does not match", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        id: "uuid-skill",
+        skill_id: "calendar-agent",
+        author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        current_version: 2,
+        ipfs_cid: "bafy-existing",
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifyWalletSignature.mockReturnValue({
+      valid: true,
+      pubkey: "AuthorWallet1111111111111111111111111111111",
+    });
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "link-base-listing",
+          "uuid-skill"
+        ),
+        content: "# Updated\n",
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "publish-skill"/i);
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects version publish when signed skill id does not match", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        id: "uuid-skill",
+        skill_id: "calendar-agent",
+        author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        current_version: 2,
+        ipfs_cid: "bafy-existing",
+      },
+    ]);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifyWalletSignature.mockReturnValue({
+      valid: true,
+      pubkey: "AuthorWallet1111111111111111111111111111111",
+    });
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill",
+          "other-uuid"
+        ),
+        content: "# Updated\n",
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/skill id does not match/i);
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
+  });
+
+  it("accepts legacy CLI Action+Timestamp-only auth for version publish", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill",
+          skill_id: "calendar-agent",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+          current_version: 2,
+          ipfs_cid: "bafy-existing",
+        },
+      ])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    mockSql.mockReturnValue(dbQuery);
+    mockVerifyWalletSignature.mockReturnValue({
+      valid: true,
+      pubkey: "AuthorWallet1111111111111111111111111111111",
+    });
+    mockPinSkillContent.mockResolvedValue({
+      success: true,
+      cid: "bafy-legacy",
+    });
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
+        content: "# Legacy\n",
+      }),
+      { params: Promise.resolve({ id: "uuid-skill" }) }
+    );
+
+    expect(res.status).toBe(201);
   });
 });

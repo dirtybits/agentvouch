@@ -31,7 +31,9 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspace @agentvouch/web",
     "test:cli": "npm run test --workspace @agentvouch/cli",
-    "test:web": "npm run test --workspace @agentvouch/web"
+    "test:web": "npm run test --workspace @agentvouch/web",
+    "verify:base-size": "node scripts/verify-base-runtime-size.mjs",
+    "verify:chain-map": "node scripts/verify-chain-capability-map.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

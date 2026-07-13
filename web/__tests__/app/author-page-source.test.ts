@@ -70,4 +70,50 @@ describe("author page source", () => {
     expect(source).toContain('href="/settings"');
     expect(source).toContain("FiSettings");
   });
+
+  it("routes Base author trust writes through the writable ChainWallet seam", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("useWritableChainWallet");
+    expect(source).toContain("BASE_SEPOLIA_CHAIN_CONTEXT");
+    expect(source).toContain("activeChainWallet.vouchForAuthor");
+    expect(source).toContain("activeChainWallet.openAuthorReport");
+    expect(source).toContain("authorCanReceiveTrust");
+    expect(source).toContain("isEvmAddress(pubkey)");
+    expect(source).toContain("setVouchTxExplorerUrl(result.explorerUrl)");
+    expect(source).toContain("setClaimTxExplorerUrl(result.explorerUrl)");
+    expect(source).toContain(
+      'const [vouchAmount, setVouchAmount] = useState("1")'
+    );
+    expect(source).toContain('min="1"');
+    expect(source).toContain("MIN_VOUCH_USDC_MICROS");
+    expect(source).toContain("BASE_PASSKEY_WALLET_SOURCE");
+    expect(source).toContain("Vouches require at least 1.00 USDC.");
+    expect(source).toContain(
+      "Base vouching currently requires Coinbase Smart Wallet."
+    );
+  });
+
+  it("renders Base author trust from chain-neutral trustData instead of Solana profile state", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain(
+      "const authorIsRegistered = Boolean(trustData?.isRegistered);"
+    );
+    expect(source).toContain(
+      "const registeredAt = Number(trustData?.registeredAt ?? 0);"
+    );
+    expect(source).toContain("{!authorIsRegistered ? (");
+    expect(source).toContain(
+      "{!isEvmAuthor && !isOwnProfile && authorIsRegistered && ("
+    );
+    expect(source).not.toContain("{!profile ? (");
+    expect(source).not.toContain("{!isOwnProfile && profile && (");
+  });
 });

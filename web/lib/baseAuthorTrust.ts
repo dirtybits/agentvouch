@@ -7,12 +7,16 @@ import {
   type Address,
 } from "viem";
 import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
-import { AGENTVOUCH_EVM_READ_ABI } from "@/lib/adapters/agentVouchEvmAbi";
+import {
+  AGENTVOUCH_EVM_A1_READ_ABI,
+  AGENTVOUCH_EVM_READ_ABI,
+} from "@/lib/adapters/agentVouchEvmAbi";
 import {
   BASE_AGENTVOUCH_CONTRACT_ADDRESS,
   BASE_SEPOLIA_CHAIN_ID,
   BASE_SEPOLIA_RPC_URL,
 } from "@/lib/adapters/baseConfig";
+import { IN_MEMORY_CACHE_TTL_MS } from "./cachePolicy";
 import type { AuthorTrust } from "@/lib/trust";
 
 type BaseAgentProfile = {
@@ -30,10 +34,13 @@ type BaseAgentProfile = {
   rewardIndexUsdcMicrosX1e12: bigint;
   unclaimedVoucherRevenueUsdcMicros: bigint;
   registeredAt: bigint;
+  slashingReportCount?: bigint;
+  totalAuthorBondSlashedUsdcMicros?: bigint;
+  totalVouchStakeSlashedUsdcMicros?: bigint;
 };
 
 const cache = new Map<string, { data: AuthorTrust; expires: number }>();
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = IN_MEMORY_CACHE_TTL_MS.authorTrust;
 
 function defaultTrust(): AuthorTrust {
   return {
@@ -80,11 +87,23 @@ function profileToTrust(profile: BaseAgentProfile): AuthorTrust {
     activeDisputesAgainstAuthor,
     registeredAt: toSafeNumber(profile.registeredAt),
     isRegistered: true,
+    ...(profile.slashingReportCount === undefined
+      ? {}
+      : {
+          slashingReportCount: toSafeNumber(profile.slashingReportCount),
+          totalAuthorBondSlashedUsdcMicros: toSafeNumber(
+            profile.totalAuthorBondSlashedUsdcMicros ?? 0n
+          ),
+          totalVouchStakeSlashedUsdcMicros: toSafeNumber(
+            profile.totalVouchStakeSlashedUsdcMicros ?? 0n
+          ),
+        }),
   };
 }
 
 async function fetchBaseAgentProfile(
-  authorAddress: Address
+  authorAddress: Address,
+  contractAddress: Address
 ): Promise<BaseAgentProfile> {
   const publicClient = createPublicClient({
     transport: http(BASE_SEPOLIA_RPC_URL),
@@ -96,9 +115,19 @@ async function fetchBaseAgentProfile(
     );
   }
 
+  const protocolVersion = await publicClient.readContract({
+    address: contractAddress,
+    abi: parseAbi(["function PROTOCOL_VERSION() view returns (string)"]),
+    functionName: "PROTOCOL_VERSION",
+  });
+  const readAbi =
+    protocolVersion === "base-v1-a1"
+      ? AGENTVOUCH_EVM_A1_READ_ABI
+      : AGENTVOUCH_EVM_READ_ABI;
+
   return (await publicClient.readContract({
-    address: getAddress(BASE_AGENTVOUCH_CONTRACT_ADDRESS),
-    abi: parseAbi([...AGENTVOUCH_EVM_READ_ABI]),
+    address: contractAddress,
+    abi: parseAbi([...readAbi]),
     functionName: "getProfile",
     args: [authorAddress],
   })) as unknown as BaseAgentProfile;
@@ -106,17 +135,20 @@ async function fetchBaseAgentProfile(
 
 export async function resolveBaseAuthorTrust(
   authorAddress: string,
-  chainContext = BASE_SEPOLIA_CHAIN_CONTEXT
+  chainContext = BASE_SEPOLIA_CHAIN_CONTEXT,
+  contractAddress = BASE_AGENTVOUCH_CONTRACT_ADDRESS
 ): Promise<AuthorTrust> {
   if (
     chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT ||
-    !isAddress(authorAddress)
+    !isAddress(authorAddress) ||
+    !isAddress(contractAddress)
   ) {
     return defaultTrust();
   }
 
   const normalizedAddress = getAddress(authorAddress);
-  const cacheKey = `${chainContext}:${normalizedAddress}`;
+  const normalizedContractAddress = getAddress(contractAddress);
+  const cacheKey = `${chainContext}:${normalizedContractAddress}:${normalizedAddress}`;
   const now = Date.now();
   const cached = cache.get(cacheKey);
   if (cached && cached.expires > now) {
@@ -125,7 +157,7 @@ export async function resolveBaseAuthorTrust(
 
   try {
     const trust = profileToTrust(
-      await fetchBaseAgentProfile(normalizedAddress)
+      await fetchBaseAgentProfile(normalizedAddress, normalizedContractAddress)
     );
     cache.set(cacheKey, { data: trust, expires: now + CACHE_TTL_MS });
     return trust;

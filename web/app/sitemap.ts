@@ -25,6 +25,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
+      url: getCanonicalUrl("/agent-reputation-system"),
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
+    {
       url: getCanonicalUrl("/docs"),
       lastModified: now,
       changeFrequency: "weekly",

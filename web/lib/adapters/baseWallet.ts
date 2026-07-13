@@ -41,9 +41,19 @@ import {
 } from "./baseWalletConfig";
 import type {
   ChainWallet,
+  ClaimVoucherRevenueInput,
   CreateSkillListingInput,
+  DepositAuthorBondInput,
+  OpenAuthorReportInput,
+  OpenAuthorReportResult,
+  PurchaseSkillResult,
   PurchaseSkillInput,
+  RevokeVouchInput,
   TxResult,
+  UpdateSkillListingInput,
+  VouchForAuthorInput,
+  WithdrawAuthorBondInput,
+  WithdrawAuthorProceedsInput,
 } from "./types";
 import {
   computeListingId,
@@ -56,24 +66,52 @@ export { computeListingId, skillIdHashFrom } from "./baseListing";
 
 const PASSKEY_STORAGE_KEY = "agentvouch:base-sepolia:passkey";
 const PASSKEY_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:passkey:active";
+const BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE =
+  "General Base author reports were removed in base-v1-a1. Paid-purchase reports are not exposed through the current wallet interface.";
 
-const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
+export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   ...AGENTVOUCH_EVM_READ_ABI,
   "function registerAgent(string metadataUri)",
+  "function depositAuthorBond(uint256 amount)",
+  "function withdrawAuthorBond(uint256 amount)",
+  "function vouch(address vouchee, uint256 stake)",
+  "function revokeVouch(address vouchee)",
   "function createSkillListing(bytes32 skillIdHash, string uri, string name, string description, uint256 priceUsdcMicros) returns (bytes32)",
+  "function updateSkillListing(bytes32 id, string uri, string name, string description, uint256 priceUsdcMicros) returns (uint64)",
+  "function removeSkillListing(bytes32 id)",
   "function purchaseSkill(bytes32 id) returns (bytes32)",
+  "function claimVoucherRevenue(address author)",
+  "function withdrawAuthorProceeds(bytes32 id, uint64 revision, uint256 amount)",
+  "function purchaseId(address buyer, bytes32 id, uint64 revision) pure returns (bytes32)",
+  "function getPurchase(bytes32 pId) view returns (bool exists, address buyer, bytes32 listingId, uint64 revision, uint256 priceUsdcMicros, uint256 authorShareUsdcMicros, uint256 voucherPoolUsdcMicros, uint64 timestamp)",
   "event AgentRegistered(address indexed agent, string metadataUri, uint64 registeredAt)",
+  "event AuthorBondDeposited(address indexed author, uint256 amount, uint256 newBalance)",
+  "event AuthorBondWithdrawn(address indexed author, uint256 amount, uint256 newBalance)",
+  "event Vouched(address indexed voucher, address indexed vouchee, uint256 stake)",
+  "event VouchRevoked(address indexed voucher, address indexed vouchee, uint256 returned)",
+  "event SkillListingUpdated(bytes32 indexed listingId, address indexed author, uint64 revision, uint256 price, bool free, bool revisionChanged)",
+  "event SkillListingRemoved(bytes32 indexed listingId)",
   "event SkillPurchased(bytes32 indexed purchaseId, bytes32 indexed listingId, address indexed buyer, uint64 revision, uint256 price, uint256 authorShare, uint256 voucherPool)",
+  "event VoucherRevenueClaimed(address indexed voucher, address indexed author, uint256 amount)",
+  "event AuthorProceedsWithdrawn(bytes32 indexed listingId, uint64 revision, address indexed author, uint256 amount)",
 ]);
 
 type StoredCredential = { id: string; publicKey: Hex };
 
 export type BasePasskeySmartAccount = SmartAccount;
 
-type BaseWriteConfig = {
+export type BaseContractWriteConfig = {
   agentVouchAddress: Address;
   usdcAddress: Address;
+};
+
+type BasePaymasterWriteConfig = BaseContractWriteConfig & {
   paymasterRpcUrl: string;
+};
+
+export type BasePurchaseApprovalPlan = {
+  resetAllowance: boolean;
+  approvePrice: boolean;
 };
 
 type RawListing = {
@@ -91,15 +129,48 @@ type RawListing = {
   exists: boolean;
 };
 
+type RawPurchase = {
+  exists: boolean;
+  buyer: Address;
+  listingId: Hex;
+  revision: bigint;
+  priceUsdcMicros: bigint;
+};
+
+type RawPurchaseTuple = Partial<RawPurchase> & {
+  [index: number]: unknown;
+};
+
 type BaseUserOperationResult = TxResult & {
   userOpHash: Hex;
   txHash: Hex;
 };
 
-type BasePurchaseResult = BaseUserOperationResult & {
+type BasePurchaseResult = PurchaseSkillResult & {
+  userOpHash?: Hex;
+  txHash?: Hex;
   listingId: Hex;
-  purchaseId: Hex;
+  purchaseId?: Hex;
 };
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+export function isBaseReceiptPendingError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return (
+    /transaction receipt .*could not be found/i.test(message) ||
+    /not be processed on a block yet/i.test(message) ||
+    /waitfortransactionreceipttimeouterror/i.test(message) ||
+    /timed out while waiting for transaction/i.test(message)
+  );
+}
+
+export function isBaseDuplicatePurchaseError(error: unknown): boolean {
+  return /DuplicatePurchase/i.test(getErrorMessage(error));
+}
 
 function explorerTxUrl(txHash: string): string {
   return `${BASE_SEPOLIA_EXPLORER_URL}/tx/${txHash}`;
@@ -117,7 +188,7 @@ function sameEvmAddress(
   );
 }
 
-function requireBaseWriteConfig(): BaseWriteConfig {
+export function requireBaseContractWriteConfig(): BaseContractWriteConfig {
   const config = getBaseWalletConfig();
   if (!config.configured) {
     throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
@@ -130,11 +201,6 @@ function requireBaseWriteConfig(): BaseWriteConfig {
   if (config.chainId !== BASE_SEPOLIA_CHAIN_ID) {
     throw new Error(
       `Base writes require chain id ${BASE_SEPOLIA_CHAIN_ID}; received ${config.chainId}.`
-    );
-  }
-  if (!BASE_CDP_PAYMASTER_RPC_URL) {
-    throw new Error(
-      "Base writes require NEXT_PUBLIC_BASE_CDP_PAYMASTER_RPC_URL or NEXT_PUBLIC_CDP_RPC_URL."
     );
   }
 
@@ -153,21 +219,27 @@ function requireBaseWriteConfig(): BaseWriteConfig {
     );
   }
 
-  return {
-    agentVouchAddress,
-    usdcAddress,
-    paymasterRpcUrl: BASE_CDP_PAYMASTER_RPC_URL,
-  };
+  return { agentVouchAddress, usdcAddress };
 }
 
-function createBasePublicClient() {
+function requireBasePaymasterWriteConfig(): BasePaymasterWriteConfig {
+  const config = requireBaseContractWriteConfig();
+  if (!BASE_CDP_PAYMASTER_RPC_URL) {
+    throw new Error(
+      "Coinbase Smart Wallet Base writes require NEXT_PUBLIC_BASE_CDP_PAYMASTER_RPC_URL or NEXT_PUBLIC_CDP_RPC_URL."
+    );
+  }
+  return { ...config, paymasterRpcUrl: BASE_CDP_PAYMASTER_RPC_URL };
+}
+
+export function createBasePublicClient() {
   return createPublicClient({
     chain: baseSepolia,
     transport: http(BASE_SEPOLIA_RPC_URL),
   });
 }
 
-async function assertBaseSepoliaChain(
+export async function assertBaseSepoliaChain(
   publicClient: ReturnType<typeof createBasePublicClient>
 ): Promise<void> {
   const chainId = await publicClient.getChainId();
@@ -178,7 +250,7 @@ async function assertBaseSepoliaChain(
   }
 }
 
-async function fetchLiveListing(
+export async function fetchLiveListing(
   publicClient: ReturnType<typeof createBasePublicClient>,
   agentVouchAddress: Address,
   listingId: Hex
@@ -199,10 +271,21 @@ async function fetchLiveListing(
   return listing;
 }
 
-function findEvent(
+export function findBaseWalletEvent(
   logs: readonly { address: Address; topics: readonly Hex[]; data: Hex }[],
   contract: Address,
-  eventName: "AgentRegistered" | "SkillListingCreated" | "SkillPurchased"
+  eventName:
+    | "AgentRegistered"
+    | "AuthorBondDeposited"
+    | "AuthorBondWithdrawn"
+    | "Vouched"
+    | "VouchRevoked"
+    | "SkillListingCreated"
+    | "SkillListingUpdated"
+    | "SkillListingRemoved"
+    | "SkillPurchased"
+    | "VoucherRevenueClaimed"
+    | "AuthorProceedsWithdrawn"
 ): {
   eventName: string;
   args: Record<string, unknown>;
@@ -232,7 +315,7 @@ async function sendBaseUserOperation(
   account: BasePasskeySmartAccount,
   calls: unknown[]
 ): Promise<BaseUserOperationResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
   const publicClient = createBasePublicClient();
   await assertBaseSepoliaChain(publicClient);
 
@@ -260,12 +343,154 @@ async function sendBaseUserOperation(
   };
 }
 
+export async function waitForBaseTransactionReceipt(
+  publicClient: ReturnType<typeof createBasePublicClient>,
+  txHash: Hex,
+  label: string
+) {
+  try {
+    return await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+      pollingInterval: 1_000,
+      timeout: 60_000,
+    });
+  } catch (error) {
+    if (isBaseReceiptPendingError(error)) {
+      throw new Error(
+        `${label} was submitted, but Base Sepolia has not returned the transaction receipt yet. Wait a few seconds and refresh before signing again. Transaction: ${txHash}`
+      );
+    }
+    throw error;
+  }
+}
+
 export function baseUsdcMicros(amountUsdc: string): bigint {
   return parseUnits(amountUsdc, BASE_USDC_DECIMALS);
 }
 
 export function formatBaseUsdc(micros: bigint): string {
   return formatUnits(micros, BASE_USDC_DECIMALS);
+}
+
+export function planBasePurchaseApprovals(input: {
+  allowance: bigint;
+  expectedPriceUsdcMicros: bigint;
+}): BasePurchaseApprovalPlan {
+  const { allowance, expectedPriceUsdcMicros } = input;
+  return {
+    resetAllowance: allowance > 0n && allowance !== expectedPriceUsdcMicros,
+    approvePrice: allowance !== expectedPriceUsdcMicros,
+  };
+}
+
+function buildExactUsdcApprovalCalls(input: {
+  allowance: bigint;
+  spender: Address;
+  amountUsdcMicros: bigint;
+  usdcAddress: Address;
+}): unknown[] {
+  const { allowance, spender, amountUsdcMicros, usdcAddress } = input;
+  if (amountUsdcMicros <= 0n) {
+    throw new Error("Base USDC write amount must be greater than zero.");
+  }
+
+  const calls: unknown[] = [];
+  if (allowance > 0n && allowance !== amountUsdcMicros) {
+    calls.push({
+      to: usdcAddress,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [spender, 0n],
+    });
+  }
+  if (allowance !== amountUsdcMicros) {
+    calls.push({
+      to: usdcAddress,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [spender, amountUsdcMicros],
+    });
+  }
+  return calls;
+}
+
+function tupleField<T extends keyof RawPurchase>(
+  tuple: RawPurchaseTuple,
+  key: T,
+  index: number
+): RawPurchase[T] | unknown {
+  return tuple[key] ?? tuple[index];
+}
+
+function normalizeBasePurchaseTuple(value: unknown): RawPurchase {
+  const tuple = value as RawPurchaseTuple;
+  return {
+    exists: Boolean(tupleField(tuple, "exists", 0)),
+    buyer: requireBaseEvmAddress(
+      String(tupleField(tuple, "buyer", 1) ?? ""),
+      "Base purchase buyer"
+    ),
+    listingId: requireBaseBytes32(
+      String(tupleField(tuple, "listingId", 2) ?? ""),
+      "Base purchase listing id"
+    ),
+    revision: BigInt(String(tupleField(tuple, "revision", 3) ?? 0)),
+    priceUsdcMicros: BigInt(
+      String(tupleField(tuple, "priceUsdcMicros", 4) ?? 0)
+    ),
+  };
+}
+
+export async function findExistingBasePurchase(input: {
+  publicClient: ReturnType<typeof createBasePublicClient>;
+  agentVouchAddress: Address;
+  buyer: Address;
+  listingId: Hex;
+  currentRevision: bigint;
+}): Promise<{ purchaseId: Hex; purchase: RawPurchase } | null> {
+  const MAX_REVISION_SCAN = 20n;
+  for (
+    let revision = input.currentRevision;
+    revision >= 1n && input.currentRevision - revision < MAX_REVISION_SCAN;
+    revision -= 1n
+  ) {
+    const purchaseId = (await input.publicClient.readContract({
+      address: input.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "purchaseId",
+      args: [input.buyer, input.listingId, revision],
+    })) as Hex;
+    const purchase = normalizeBasePurchaseTuple(
+      await input.publicClient.readContract({
+        address: input.agentVouchAddress,
+        abi: AGENTVOUCH_EVM_WRITE_ABI,
+        functionName: "getPurchase",
+        args: [purchaseId],
+      })
+    );
+    if (
+      purchase.exists &&
+      getAddress(purchase.buyer) === input.buyer &&
+      purchase.listingId === input.listingId
+    ) {
+      return { purchaseId, purchase };
+    }
+  }
+  return null;
+}
+
+export async function fetchBaseUsdcBalance(address: string): Promise<bigint> {
+  const walletAddress = requireBaseEvmAddress(address, "Base wallet address");
+  const usdcAddress = requireBaseEvmAddress(
+    BASE_USDC_ADDRESS,
+    "Base USDC address"
+  );
+  return createBasePublicClient().readContract({
+    address: usdcAddress,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [walletAddress],
+  });
 }
 
 function readStoredCredential(): StoredCredential | null {
@@ -375,7 +600,8 @@ export async function registerBaseAgent(
   account: BasePasskeySmartAccount,
   metadataUri: string
 ): Promise<TxResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
   const result = await sendBaseUserOperation(account, [
     {
       to: config.agentVouchAddress,
@@ -385,10 +611,12 @@ export async function registerBaseAgent(
     },
   ]);
 
-  const receipt = await createBasePublicClient().getTransactionReceipt({
-    hash: result.txHash,
-  });
-  const event = findEvent(
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base agent registration"
+  );
+  const event = findBaseWalletEvent(
     receipt.logs,
     config.agentVouchAddress,
     "AgentRegistered"
@@ -400,11 +628,31 @@ export async function registerBaseAgent(
   return result;
 }
 
+async function ensureBaseAgentRegistered(
+  account: BasePasskeySmartAccount,
+  publicClient = createBasePublicClient()
+): Promise<void> {
+  const config = requireBasePaymasterWriteConfig();
+  const profile = await publicClient.readContract({
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "getProfile",
+    args: [account.address],
+  });
+  if (Boolean((profile as { registered?: boolean }).registered)) return;
+
+  await registerBaseAgent(
+    account,
+    `agentvouch://base-passkey/${account.address.toLowerCase()}`
+  );
+}
+
 export async function createBaseSkillListing(
   account: BasePasskeySmartAccount,
   input: CreateSkillListingInput
 ): Promise<TxResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
   const skillIdHash = skillIdHashFrom(input.skillId);
   const listingId = computeListingId(account.address, skillIdHash);
   const result = await sendBaseUserOperation(account, [
@@ -422,10 +670,12 @@ export async function createBaseSkillListing(
     },
   ]);
 
-  const receipt = await createBasePublicClient().getTransactionReceipt({
-    hash: result.txHash,
-  });
-  const event = findEvent(
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base marketplace listing"
+  );
+  const event = findBaseWalletEvent(
     receipt.logs,
     config.agentVouchAddress,
     "SkillListingCreated"
@@ -443,11 +693,91 @@ export async function createBaseSkillListing(
   return result;
 }
 
+export async function updateBaseSkillListing(
+  account: BasePasskeySmartAccount,
+  input: UpdateSkillListingInput
+): Promise<TxResult> {
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "updateSkillListing",
+      args: [
+        listingId,
+        input.uri,
+        input.name,
+        input.description,
+        input.priceUsdcMicros,
+      ],
+    },
+  ]);
+
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base marketplace listing update"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "SkillListingUpdated"
+  );
+  if (
+    event?.args.listingId !== listingId ||
+    !sameEvmAddress(event?.args.author, account.address) ||
+    event.args.price !== input.priceUsdcMicros
+  ) {
+    throw new Error(
+      "Base updateSkillListing receipt did not match the submitted listing."
+    );
+  }
+
+  return result;
+}
+
+export async function removeBaseSkillListing(
+  account: BasePasskeySmartAccount,
+  input: { listingId: string }
+): Promise<TxResult> {
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "removeSkillListing",
+      args: [listingId],
+    },
+  ]);
+
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base marketplace listing removal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "SkillListingRemoved"
+  );
+  if (event?.args.listingId !== listingId) {
+    throw new Error(
+      "Base removeSkillListing receipt did not match the submitted listing."
+    );
+  }
+
+  return result;
+}
+
 export async function purchaseBaseSkill(
   account: BasePasskeySmartAccount,
   input: PurchaseSkillInput
 ): Promise<BasePurchaseResult> {
-  const config = requireBaseWriteConfig();
+  const config = requireBasePaymasterWriteConfig();
   const listingId = requireBaseBytes32(input.listingId, "Base listing id");
   const publicClient = createBasePublicClient();
   await assertBaseSepoliaChain(publicClient);
@@ -494,16 +824,20 @@ export async function purchaseBaseSkill(
     );
   }
 
+  const approvals = planBasePurchaseApprovals({
+    allowance,
+    expectedPriceUsdcMicros: input.expectedPriceUsdcMicros,
+  });
   const calls: unknown[] = [];
-  if (allowance !== input.expectedPriceUsdcMicros) {
-    if (allowance > 0n) {
-      calls.push({
-        to: config.usdcAddress,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [config.agentVouchAddress, 0n],
-      });
-    }
+  if (approvals.resetAllowance) {
+    calls.push({
+      to: config.usdcAddress,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [config.agentVouchAddress, 0n],
+    });
+  }
+  if (approvals.approvePrice) {
     calls.push({
       to: config.usdcAddress,
       abi: erc20Abi,
@@ -518,11 +852,27 @@ export async function purchaseBaseSkill(
     args: [listingId],
   });
 
-  const result = await sendBaseUserOperation(account, calls);
-  const receipt = await publicClient.getTransactionReceipt({
-    hash: result.txHash,
-  });
-  const event = findEvent(
+  let result: BaseUserOperationResult;
+  try {
+    result = await sendBaseUserOperation(account, calls);
+  } catch (error) {
+    if (isBaseDuplicatePurchaseError(error)) {
+      return {
+        ref: listingId,
+        explorerUrl: `${BASE_SEPOLIA_EXPLORER_URL}/address/${config.agentVouchAddress}`,
+        paidGas: false,
+        alreadyPurchased: true,
+        listingId,
+      };
+    }
+    throw error;
+  }
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base USDC purchase"
+  );
+  const event = findBaseWalletEvent(
     receipt.logs,
     config.agentVouchAddress,
     "SkillPurchased"
@@ -546,6 +896,334 @@ export async function purchaseBaseSkill(
   };
 }
 
+async function readBaseUsdcBalanceAndAllowance(input: {
+  publicClient: ReturnType<typeof createBasePublicClient>;
+  owner: Address;
+  spender: Address;
+  usdcAddress: Address;
+}): Promise<{ balance: bigint; allowance: bigint }> {
+  const [balance, allowance] = await Promise.all([
+    input.publicClient.readContract({
+      address: input.usdcAddress,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [input.owner],
+    }),
+    input.publicClient.readContract({
+      address: input.usdcAddress,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [input.owner, input.spender],
+    }),
+  ]);
+  return { balance, allowance };
+}
+
+function assertSufficientBaseUsdc(input: {
+  balance: bigint;
+  amountUsdcMicros: bigint;
+  purpose: string;
+}) {
+  if (input.balance < input.amountUsdcMicros) {
+    throw new Error(
+      `Insufficient Base Sepolia USDC for ${
+        input.purpose
+      }. Have ${formatBaseUsdc(input.balance)} USDC, need ${formatBaseUsdc(
+        input.amountUsdcMicros
+      )} USDC.`
+    );
+  }
+}
+
+async function sendBaseUsdcPullWrite(input: {
+  account: BasePasskeySmartAccount;
+  amountUsdcMicros: bigint;
+  purpose: string;
+  contractCall: unknown;
+  sequentialApproval?: boolean;
+}): Promise<BaseUserOperationResult> {
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  const { balance, allowance } = await readBaseUsdcBalanceAndAllowance({
+    publicClient,
+    owner: input.account.address,
+    spender: config.agentVouchAddress,
+    usdcAddress: config.usdcAddress,
+  });
+  assertSufficientBaseUsdc({
+    balance,
+    amountUsdcMicros: input.amountUsdcMicros,
+    purpose: input.purpose,
+  });
+
+  const approvalCalls = buildExactUsdcApprovalCalls({
+    allowance,
+    spender: config.agentVouchAddress,
+    amountUsdcMicros: input.amountUsdcMicros,
+    usdcAddress: config.usdcAddress,
+  });
+  if (input.sequentialApproval) {
+    for (const approvalCall of approvalCalls) {
+      const approvalResult = await sendBaseUserOperation(input.account, [
+        approvalCall,
+      ]);
+      await waitForBaseTransactionReceipt(
+        publicClient,
+        approvalResult.txHash,
+        `Base ${input.purpose} approval`
+      );
+    }
+    return sendBaseUserOperation(input.account, [input.contractCall]);
+  }
+
+  return sendBaseUserOperation(input.account, [
+    ...approvalCalls,
+    input.contractCall,
+  ]);
+}
+
+export async function depositBaseAuthorBond(
+  account: BasePasskeySmartAccount,
+  input: DepositAuthorBondInput
+): Promise<TxResult> {
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  await ensureBaseAgentRegistered(account, publicClient);
+  const result = await sendBaseUsdcPullWrite({
+    account,
+    amountUsdcMicros: input.amountUsdcMicros,
+    purpose: "author bond deposit",
+    contractCall: {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "depositAuthorBond",
+      args: [input.amountUsdcMicros],
+    },
+  });
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base author bond deposit"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AuthorBondDeposited"
+  );
+  if (
+    !sameEvmAddress(event?.args.author, account.address) ||
+    event?.args.amount !== input.amountUsdcMicros
+  ) {
+    throw new Error(
+      "Base author bond deposit receipt did not match the submitted amount."
+    );
+  }
+  return result;
+}
+
+export async function withdrawBaseAuthorBond(
+  account: BasePasskeySmartAccount,
+  input: WithdrawAuthorBondInput
+): Promise<TxResult> {
+  if (input.amountUsdcMicros <= 0n) {
+    throw new Error(
+      "Base author bond withdrawal amount must be greater than zero."
+    );
+  }
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "withdrawAuthorBond",
+      args: [input.amountUsdcMicros],
+    },
+  ]);
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base author bond withdrawal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AuthorBondWithdrawn"
+  );
+  if (
+    !sameEvmAddress(event?.args.author, account.address) ||
+    event?.args.amount !== input.amountUsdcMicros
+  ) {
+    throw new Error(
+      "Base author bond withdrawal receipt did not match the submitted amount."
+    );
+  }
+  return result;
+}
+
+export async function vouchForBaseAuthor(
+  account: BasePasskeySmartAccount,
+  input: VouchForAuthorInput
+): Promise<TxResult> {
+  const vouchee = requireBaseEvmAddress(input.authorAddress, "Base vouchee");
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  await ensureBaseAgentRegistered(account, publicClient);
+  const result = await sendBaseUsdcPullWrite({
+    account,
+    amountUsdcMicros: input.stakeUsdcMicros,
+    purpose: "author vouch",
+    contractCall: {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "vouch",
+      args: [vouchee, input.stakeUsdcMicros],
+    },
+  });
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base author vouch"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "Vouched"
+  );
+  if (
+    !sameEvmAddress(event?.args.voucher, account.address) ||
+    !sameEvmAddress(event?.args.vouchee, vouchee) ||
+    event?.args.stake !== input.stakeUsdcMicros
+  ) {
+    throw new Error("Base vouch receipt did not match the submitted author.");
+  }
+  return result;
+}
+
+export async function revokeBaseVouch(
+  account: BasePasskeySmartAccount,
+  input: RevokeVouchInput
+): Promise<TxResult> {
+  const vouchee = requireBaseEvmAddress(input.authorAddress, "Base vouchee");
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "revokeVouch",
+      args: [vouchee],
+    },
+  ]);
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base vouch revocation"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "VouchRevoked"
+  );
+  if (
+    !sameEvmAddress(event?.args.voucher, account.address) ||
+    !sameEvmAddress(event?.args.vouchee, vouchee)
+  ) {
+    throw new Error(
+      "Base vouch revocation receipt did not match the submitted author."
+    );
+  }
+  return result;
+}
+
+export async function openBaseAuthorReport(
+  account: BasePasskeySmartAccount,
+  input: OpenAuthorReportInput
+): Promise<OpenAuthorReportResult> {
+  void account;
+  void input;
+  throw new Error(BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE);
+}
+
+export async function claimBaseVoucherRevenue(
+  account: BasePasskeySmartAccount,
+  input: ClaimVoucherRevenueInput
+): Promise<TxResult> {
+  const author = requireBaseEvmAddress(input.authorAddress, "Base author");
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "claimVoucherRevenue",
+      args: [author],
+    },
+  ]);
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base voucher revenue claim"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "VoucherRevenueClaimed"
+  );
+  if (
+    !sameEvmAddress(event?.args.voucher, account.address) ||
+    !sameEvmAddress(event?.args.author, author)
+  ) {
+    throw new Error(
+      "Base voucher revenue receipt did not match the submitted author."
+    );
+  }
+  return result;
+}
+
+export async function withdrawBaseAuthorProceeds(
+  account: BasePasskeySmartAccount,
+  input: WithdrawAuthorProceedsInput
+): Promise<TxResult> {
+  if (input.amountUsdcMicros <= 0n) {
+    throw new Error(
+      "Base author proceeds withdrawal amount must be greater than zero."
+    );
+  }
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  const config = requireBasePaymasterWriteConfig();
+  const publicClient = createBasePublicClient();
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_WRITE_ABI,
+      functionName: "withdrawAuthorProceeds",
+      args: [listingId, BigInt(input.listingRevision), input.amountUsdcMicros],
+    },
+  ]);
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base author proceeds withdrawal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AuthorProceedsWithdrawn"
+  );
+  if (
+    event?.args.listingId !== listingId ||
+    !sameEvmAddress(event?.args.author, account.address) ||
+    event?.args.amount !== input.amountUsdcMicros
+  ) {
+    throw new Error(
+      "Base author proceeds receipt did not match the submitted listing."
+    );
+  }
+  return result;
+}
+
 export function createBasePasskeyChainWallet(
   account: BasePasskeySmartAccount,
   disconnect: () => Promise<void>
@@ -554,9 +1232,22 @@ export function createBasePasskeyChainWallet(
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     address: account.address,
     disconnect,
+    // ERC-1271/6492-verifiable smart-account signature, checked server-side
+    // via publicClient.verifyMessage (web/lib/evmAuth.ts).
+    signMessage: (message) => account.signMessage({ message }),
     registerAgent: (metadataUri) => registerBaseAgent(account, metadataUri),
     createSkillListing: (input) => createBaseSkillListing(account, input),
+    updateSkillListing: (input) => updateBaseSkillListing(account, input),
+    removeSkillListing: (input) => removeBaseSkillListing(account, input),
     purchaseSkill: (input) => purchaseBaseSkill(account, input),
+    depositAuthorBond: (input) => depositBaseAuthorBond(account, input),
+    withdrawAuthorBond: (input) => withdrawBaseAuthorBond(account, input),
+    vouchForAuthor: (input) => vouchForBaseAuthor(account, input),
+    revokeVouch: (input) => revokeBaseVouch(account, input),
+    openAuthorReport: (input) => openBaseAuthorReport(account, input),
+    claimVoucherRevenue: (input) => claimBaseVoucherRevenue(account, input),
+    withdrawAuthorProceeds: (input) =>
+      withdrawBaseAuthorProceeds(account, input),
     buildX402Payment: () =>
       Promise.reject(
         new Error(

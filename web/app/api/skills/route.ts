@@ -9,7 +9,14 @@ import {
   resolveMultipleAuthorTrust,
   type AuthorTrust,
 } from "@/lib/trust";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
+import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 import { pinSkillContent } from "@/lib/ipfs";
 import {
   ensureAgentIdentitySchema,
@@ -18,6 +25,7 @@ import {
   upsertLocalAgentIdentity,
 } from "@/lib/agentIdentity";
 import {
+  BASE_SEPOLIA_CHAIN_CONTEXT,
   getConfiguredSolanaChainContext,
   normalizeInputChainContext,
 } from "@/lib/chains";
@@ -45,7 +53,14 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { listOnChainSkillListings } from "@/lib/onchain";
 import { DEFAULT_SOLANA_RPC_URL } from "@/lib/solanaRpc";
-import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import {
+  hasChainUsdcPurchaseEntitlement,
+  hasUsdcPurchaseEntitlement,
+} from "@/lib/usdcPurchases";
+import {
+  isEvmShapedAddress,
+  normalizeChainAddressForStorage,
+} from "@/lib/chainAddress";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { address, createSolanaRpc, isAddress, type Address } from "@solana/kit";
 import { getConfiguredUsdcMint } from "@/lib/x402";
@@ -120,6 +135,10 @@ type PublisherAuth =
       identityKey: string;
       tier: "unverified" | "registered";
       isRegistered: boolean;
+      // The chain the wallet signature proves control on: the configured
+      // Solana context for Ed25519 publishers, Base Sepolia for EVM
+      // publishers (Phase 8a). Drives the row's default chain_context.
+      walletChainContext: string;
     }
   | {
       kind: "github";
@@ -198,6 +217,64 @@ function normalizeCurrencyMint(value: unknown): string | null {
   return normalized;
 }
 
+function normalizeCurrencyMintForChain(input: {
+  value: unknown;
+  chainContext: string;
+  hasPrice: boolean;
+}): string | null {
+  if (!input.hasPrice) return null;
+  if (input.value === undefined || input.value === null || input.value === "") {
+    return null;
+  }
+
+  const normalized = String(input.value).trim();
+  if (!normalized) return null;
+
+  if (input.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT) {
+    if (!isEvmAddress(normalized)) {
+      throw new Error("currency_mint must be a valid Base USDC address");
+    }
+    return getEvmAddress(normalized);
+  }
+
+  return normalizeCurrencyMint(normalized);
+}
+
+function defaultCurrencyMintForChain(input: {
+  chainContext: string;
+  hasPrice: boolean;
+}): string | null {
+  if (!input.hasPrice) return null;
+  return input.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT
+    ? null
+    : getConfiguredUsdcMint();
+}
+
+// EVM buyers have no Solana purchase preflight; their purchase status comes from the
+// chain-qualified entitlements written by Base purchase verification (Phase 6 semantics).
+async function addEvmBuyerStatus(input: {
+  skills: EnrichedSkillRow[];
+  buyerChainContext: string;
+  buyerAddress: string;
+  timing: RouteTiming;
+}) {
+  return input.timing.measure("buyer-status", () =>
+    Promise.all(
+      input.skills.map(async (skill) => {
+        const priced = normalizeUsdcMicros(skill.price_usdc_micros);
+        const buyerHasPurchased =
+          Boolean(priced) && skill.source === "repo"
+            ? await hasChainUsdcPurchaseEntitlement(skill.id, {
+                buyerChainContext: input.buyerChainContext,
+                buyerAddress: input.buyerAddress,
+              }).catch(() => false)
+            : false;
+        return { ...skill, buyerHasPurchased };
+      })
+    )
+  );
+}
+
 async function resolveLiveSkillTrust(input: {
   authorPubkeys: string[];
   timing: RouteTiming;
@@ -206,32 +283,72 @@ async function resolveLiveSkillTrust(input: {
   identityMap: Map<string, AgentIdentitySummary>;
 }> {
   const authorPubkeys = input.authorPubkeys;
-  const trustMap =
-    authorPubkeys.length > 0
-      ? await input.timing.measure("trust", () =>
-          resolveMultipleAuthorTrust(authorPubkeys)
-        )
-      : new Map<string, AuthorTrust>();
-  let identityMap = new Map<string, AgentIdentitySummary>();
-  if (authorPubkeys.length > 0) {
-    try {
-      identityMap = await input.timing.measure("identity", () =>
-        resolveManyAgentIdentitiesByWallet(authorPubkeys, {
-          hasAgentProfileByWallet: new Map(
-            authorPubkeys.map((authorPubkey) => [
+  const evmAuthors = authorPubkeys.filter(
+    (authorPubkey) =>
+      isEvmShapedAddress(authorPubkey) && isEvmAddress(authorPubkey)
+  );
+  const solanaAuthors = authorPubkeys.filter(
+    (authorPubkey) => !isEvmShapedAddress(authorPubkey)
+  );
+  const trustMap = new Map<string, AuthorTrust>();
+  if (solanaAuthors.length > 0) {
+    const solanaTrust = await input.timing.measure("trust-solana", () =>
+      resolveMultipleAuthorTrust(solanaAuthors)
+    );
+    for (const [authorPubkey, trust] of solanaTrust.entries()) {
+      trustMap.set(authorPubkey, trust);
+    }
+  }
+  if (evmAuthors.length > 0) {
+    await input.timing.measure("trust-base", async () => {
+      const baseTrustEntries = await Promise.all(
+        evmAuthors.map(
+          async (authorPubkey) =>
+            [
               authorPubkey,
-              trustMap.get(authorPubkey)?.isRegistered ?? false,
-            ])
-          ),
-        })
+              await resolveBaseAuthorTrust(getEvmAddress(authorPubkey)),
+            ] as const
+        )
       );
+      for (const [authorPubkey, trust] of baseTrustEntries) {
+        trustMap.set(authorPubkey, trust);
+      }
+    });
+  }
+  const identityMap = new Map<string, AgentIdentitySummary>();
+  const resolveIdentityGroup = async (
+    authors: string[],
+    chainContext?: string
+  ) => {
+    if (authors.length === 0) return;
+    try {
+      const resolved = await input.timing.measure(
+        chainContext?.startsWith("eip155:")
+          ? "identity-base"
+          : "identity-solana",
+        () =>
+          resolveManyAgentIdentitiesByWallet(authors, {
+            chainContext,
+            hasAgentProfileByWallet: new Map(
+              authors.map((authorPubkey) => [
+                authorPubkey,
+                trustMap.get(authorPubkey)?.isRegistered ?? false,
+              ])
+            ),
+          })
+      );
+      for (const [authorPubkey, identity] of resolved.entries()) {
+        identityMap.set(authorPubkey, identity);
+      }
     } catch (error) {
       console.error(
         "Failed to resolve author identities for /api/skills:",
         error
       );
     }
-  }
+  };
+  await resolveIdentityGroup(solanaAuthors);
+  await resolveIdentityGroup(evmAuthors, BASE_SEPOLIA_CHAIN_CONTEXT);
   return { trustMap, identityMap };
 }
 
@@ -366,10 +483,76 @@ async function resolvePublisherAuth(input: {
   request: NextRequest;
   auth: AuthPayload | undefined;
   requiresWallet: boolean;
+  /** Expected Action line in the signed publisher message (e.g. publish-skill). */
+  expectedAction: string;
+  /** When set, the signed message must include this skill DB UUID. */
+  skillId?: string;
+  /**
+   * 2026-07-08: accept CLI-shaped Action+Timestamp-only messages that omit
+   * Skill id. Prefer skill-scoped messages from web clients.
+   */
+  allowLegacyWithoutSkillId?: boolean;
 }): Promise<
   | { ok: true; publisher: PublisherAuth }
   | { ok: false; status: number; error: string }
 > {
+  if (input.auth && isEvmAddress(input.auth.pubkey)) {
+    // Phase 8a: Base passkey publisher. The signature is ERC-1271/6492-verified
+    // against Base Sepolia; the paid gate is Base on-chain registration (the
+    // contract refuses createSkillListing from unregistered authors), not the
+    // Solana AgentProfile.
+    const verification = await verifyEvmWalletSignature(input.auth);
+    if (!verification.valid || !verification.pubkey) {
+      return {
+        ok: false,
+        status: 401,
+        error: verification.error || "Invalid signature",
+      };
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: input.auth.message,
+      timestamp: input.auth.timestamp,
+      expectedAction: input.expectedAction,
+      skillId: input.skillId,
+      allowLegacyWithoutSkillId: input.allowLegacyWithoutSkillId,
+    });
+    if (!scope.ok) {
+      return { ok: false, status: 401, error: scope.error };
+    }
+
+    // resolveBaseAuthorTrust never throws — an RPC failure reads as an
+    // unregistered default (cached briefly), which fails closed for paid.
+    const trust = await resolveBaseAuthorTrust(
+      getEvmAddress(verification.pubkey)
+    );
+    const isRegistered = trust.isRegistered;
+
+    if (input.requiresWallet && !isRegistered) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Paid marketplace listings require a registered Base author. Register your Base author profile, or publish for free.",
+      };
+    }
+
+    return {
+      ok: true,
+      publisher: {
+        kind: "wallet",
+        authorPubkey: verification.pubkey,
+        externalId: null,
+        handle: null,
+        displayName: null,
+        identityKey: `wallet:${verification.pubkey}`,
+        tier: isRegistered ? "registered" : "unverified",
+        isRegistered,
+        walletChainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
+      },
+    };
+  }
+
   if (input.auth) {
     const verification = verifyWalletSignature(input.auth);
     if (!verification.valid || !verification.pubkey) {
@@ -378,6 +561,17 @@ async function resolvePublisherAuth(input: {
         status: 401,
         error: verification.error || "Invalid signature",
       };
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: input.auth.message,
+      timestamp: input.auth.timestamp,
+      expectedAction: input.expectedAction,
+      skillId: input.skillId,
+      allowLegacyWithoutSkillId: input.allowLegacyWithoutSkillId,
+    });
+    if (!scope.ok) {
+      return { ok: false, status: 401, error: scope.error };
     }
 
     let isRegistered = false;
@@ -415,6 +609,7 @@ async function resolvePublisherAuth(input: {
         identityKey: `wallet:${verification.pubkey}`,
         tier: isRegistered ? "registered" : "unverified",
         isRegistered,
+        walletChainContext: getConfiguredSolanaChainContext(),
       },
     };
   }
@@ -526,13 +721,19 @@ export async function GET(request: NextRequest) {
       scheduleBackgroundTrustRefresh(stale);
     }
 
+    // resolveSkillAuthorIdentities only covers Solana-shaped authors; merge it OVER the live
+    // map (which resolveLiveSkillTrust filled for ALL missing authors, EVM included) so Base
+    // author identities are not discarded. Solana overlaps keep the page-wide resolution.
     const identityMap = fastMode
       ? live.identityMap
-      : await resolveSkillAuthorIdentities({
-          skills: allSkills,
-          trustMap: live.trustMap,
-          timing,
-        });
+      : new Map([
+          ...live.identityMap,
+          ...(await resolveSkillAuthorIdentities({
+            skills: allSkills,
+            trustMap: live.trustMap,
+            timing,
+          })),
+        ]);
 
     const enriched = buildEnrichedSkillRows({
       skills: allSkills,
@@ -545,10 +746,35 @@ export async function GET(request: NextRequest) {
     const total = enriched.length;
     const offset = (page - 1) * pageSize;
     const paged = enriched.slice(offset, offset + pageSize);
+    const buyerChainContext = normalizeInputChainContext(
+      searchParams.get("buyerChainContext") ??
+        searchParams.get("buyer_chain_context")
+    );
+    // An explicit EVM buyer context is EXCLUSIVE: if the buyer value fails EVM validation,
+    // the request gets no buyer status rather than falling through to Solana handling
+    // (Phase 7 chain-tagged boundary rule).
+    const wantsEvmBuyer = Boolean(
+      includeBuyerStatus && buyerChainContext?.startsWith("eip155:")
+    );
+    const evmBuyerAddress = wantsEvmBuyer
+      ? normalizeChainAddressForStorage({
+          chainContext: buyerChainContext,
+          value: buyer,
+        })
+      : null;
     const buyerAddress =
-      includeBuyerStatus && buyer && isAddress(buyer) ? address(buyer) : null;
+      includeBuyerStatus && !wantsEvmBuyer && buyer && isAddress(buyer)
+        ? address(buyer)
+        : null;
     const responseSkills = fastMode
       ? paged
+      : evmBuyerAddress && buyerChainContext
+      ? await addEvmBuyerStatus({
+          skills: paged,
+          buyerChainContext,
+          buyerAddress: evmBuyerAddress,
+          timing,
+        })
       : await addPurchasePreflightAndBuyerStatus({
           skills: paged,
           buyerAddress,
@@ -569,9 +795,7 @@ export async function GET(request: NextRequest) {
         headers: getSkillResponseHeaders({
           buyerAddress: fastMode
             ? null
-            : buyerAddress
-            ? String(buyerAddress)
-            : null,
+            : evmBuyerAddress ?? (buyerAddress ? String(buyerAddress) : null),
           mode: fastMode ? "fast" : "full",
           timing,
         }),
@@ -663,16 +887,12 @@ export async function POST(request: NextRequest) {
       : "";
     const normalizedContact = contact ? normalizeSkillContact(contact) : "";
     const normalizedTags = normalizeSkillTags(tags);
-    const normalizedChainContext = chain_context
+    const explicitChainContext = chain_context
       ? normalizeInputChainContext(chain_context)
-      : configuredSolanaChainContext;
+      : null;
     let normalizedPriceUsdcMicros: string | null = null;
-    let normalizedCurrencyMint: string | null = null;
     try {
       normalizedPriceUsdcMicros = normalizePriceUsdcMicros(price_usdc_micros);
-      normalizedCurrencyMint = normalizedPriceUsdcMicros
-        ? normalizeCurrencyMint(currency_mint) ?? getConfiguredUsdcMint()
-        : null;
     } catch (error: unknown) {
       return NextResponse.json(
         { error: getErrorMessage(error) },
@@ -685,6 +905,8 @@ export async function POST(request: NextRequest) {
       request,
       auth,
       requiresWallet: requiresWalletPublisher,
+      // Create has no skill UUID yet — Action + Timestamp only.
+      expectedAction: "publish-skill",
     });
     if (!publisherResult.ok) {
       return NextResponse.json(
@@ -701,12 +923,72 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (chain_context && !normalizedChainContext) {
+    if (chain_context && !explicitChainContext) {
       return NextResponse.json(
         {
           error:
             "Invalid chain_context. Use a supported CAIP-2 value or known alias.",
         },
+        { status: 400 }
+      );
+    }
+
+    // EVM chain contexts are wallet-proven only: a GitHub/wallet-less publish must not be
+    // able to label a row eip155:* via the request body (Bugbot #78 — Phase 8a rule).
+    if (
+      publisher.kind !== "wallet" &&
+      explicitChainContext?.startsWith("eip155:")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "EVM chain contexts require a wallet-signed publish; GitHub publishes keep the Solana context.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Row chain context follows the publisher's wallet chain when not explicit
+    // (Phase 8a): EVM publishers stamp Base Sepolia; Solana publishers and
+    // wallet-less GitHub publishes keep the configured Solana context — the
+    // global Base default must not relabel free skills with no signing wallet.
+    const normalizedChainContext =
+      explicitChainContext ??
+      (publisher.kind === "wallet"
+        ? publisher.walletChainContext
+        : configuredSolanaChainContext);
+    if (
+      publisher.kind === "wallet" &&
+      normalizedChainContext !== publisher.walletChainContext
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Wallet-authored skills must use the signing wallet chain context.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Currency-mint default is chain-specific. Solana rows default to the configured SPL USDC
+    // mint; Base Sepolia rows leave it NULL so the baseListing PATCH's verifyBaseSkillListing
+    // can stamp the native EVM USDC — a Solana mint here would fail getExpectedBaseCurrency's
+    // EVM validation and orphan the on-chain listing (PR #74 P1).
+    let normalizedCurrencyMint: string | null = null;
+    try {
+      normalizedCurrencyMint =
+        normalizeCurrencyMintForChain({
+          value: currency_mint,
+          chainContext: normalizedChainContext,
+          hasPrice: Boolean(normalizedPriceUsdcMicros),
+        }) ??
+        defaultCurrencyMintForChain({
+          chainContext: normalizedChainContext,
+          hasPrice: Boolean(normalizedPriceUsdcMicros),
+        });
+    } catch (error: unknown) {
+      return NextResponse.json(
+        { error: getErrorMessage(error) },
         { status: 400 }
       );
     }
@@ -727,6 +1009,8 @@ export async function POST(request: NextRequest) {
     const tree = await putSkillTree(upload.files);
     const pinResult = await pinSkillContent(content, skill_id, 1);
     try {
+      // Chain-qualified local identity: EVM publishers upsert under the Base
+      // Sepolia context (the author API resolves them the same way).
       if (publisher.kind === "wallet") {
         await upsertLocalAgentIdentity({
           walletPubkey: publisher.authorPubkey,

@@ -59,6 +59,7 @@ contract Gasless4337Test is Test {
     bytes32 internal constant SKILL = keccak256("skill-v2-gasless");
 
     function setUp() public {
+        vm.chainId(84532);
         entryPoint = new EntryPoint();
         factory = new SimpleAccountFactory(entryPoint);
         usdc = new MockUSDC();
@@ -216,11 +217,7 @@ contract Gasless4337Test is Test {
     }
 
     /// @dev Encode a two-call SimpleAccount.executeBatch (e.g. approve + protocol action).
-    function _batch2(address t0, bytes memory d0, address t1, bytes memory d1)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function _batch2(address t0, bytes memory d0, address t1, bytes memory d1) internal pure returns (bytes memory) {
         address[] memory dest = new address[](2);
         dest[0] = t0;
         dest[1] = t1;
@@ -236,12 +233,14 @@ contract Gasless4337Test is Test {
         c.chainContext = "eip155:84532"; // Base Sepolia
         c.minVouchStakeUsdcMicros = 1_000_000;
         c.disputeBondUsdcMicros = 5_000_000;
-        c.minAuthorBondForFreeListingUsdcMicros = 10_000_000;
-        c.minPaidListingPriceUsdcMicros = 1_000_000;
+        c.minAuthorBondForFreeListingUsdcMicros = 1_000_000;
+        c.minPaidListingPriceUsdcMicros = 10_000;
         c.authorShareBps = 6000;
         c.voucherShareBps = 4000;
         c.protocolFeeBps = 0;
         c.slashPercentage = 100;
+        c.refundClaimWindowSeconds = 7 days;
+        c.treasuryRecipient = address(0xD00D);
         // authorProceedsLockSeconds left 0 -> proceeds withdrawable immediately in the proof.
     }
 }

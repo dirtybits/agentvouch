@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import { resolveAuthorTrust } from "@/lib/trust";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import {
@@ -19,7 +24,9 @@ import {
   normalizePersistedChainContext,
 } from "@/lib/chains";
 import {
+  isSameSkillRawUri,
   verifyBaseSkillListing,
+  verifyBaseSkillListingRemoved,
   type BaseSkillListingRow,
 } from "@/lib/baseListingVerification";
 import {
@@ -44,6 +51,7 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
+import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
   loadSkillDetailSnapshot,
   type SkillDetailSnapshot,
@@ -66,7 +74,8 @@ async function applyLiveAuthorTrust(
     const authorAddress = getEvmAddress(snapshot.author_pubkey);
     const authorTrust = await resolveBaseAuthorTrust(
       authorAddress,
-      snapshotChainContext
+      snapshotChainContext,
+      snapshot.evm_contract_address ?? undefined
     );
     const authorIdentity =
       (await resolveAgentIdentityByWallet(authorAddress, {
@@ -340,7 +349,14 @@ export async function GET(
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
-    const skillSnapshot = useLiveTrust
+    const shouldApplyLiveTrust =
+      useLiveTrust ||
+      Boolean(
+        snapshot.author_pubkey &&
+          snapshot.chain_context?.startsWith("eip155:") &&
+          isEvmAddress(snapshot.author_pubkey)
+      );
+    const skillSnapshot = shouldApplyLiveTrust
       ? await applyLiveAuthorTrust(snapshot)
       : snapshot;
 
@@ -360,7 +376,7 @@ export async function GET(
     if (!buyerAddress && !canCheckEvmBuyer) {
       return NextResponse.json(skillSnapshot, {
         headers: {
-          "Cache-Control": useLiveTrust
+          "Cache-Control": shouldApplyLiveTrust
             ? PRIVATE_NO_STORE_CACHE_CONTROL
             : buildPublicCacheControl(
                 PUBLIC_ROUTE_CACHE_SECONDS.skillDetail,
@@ -481,10 +497,15 @@ export async function PATCH(
       auth?: AuthPayload;
       on_chain_address?: string;
       baseListing?: {
+        mode?: "create" | "update" | "remove";
         txHash?: string;
+        relinkExisting?: boolean;
         authorAddress?: string;
         chainContext?: string;
         expectedPriceUsdcMicros?: string;
+        expectedUri?: string;
+        expectedName?: string;
+        expectedDescription?: string;
       };
     };
 
@@ -498,9 +519,50 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      if (!baseListing.txHash) {
+      const baseListingMode = baseListing.mode ?? "create";
+      if (
+        baseListingMode !== "create" &&
+        baseListingMode !== "update" &&
+        baseListingMode !== "remove"
+      ) {
         return NextResponse.json(
-          { error: "Missing required field: baseListing.txHash" },
+          { error: "Invalid Base listing mode" },
+          { status: 400 }
+        );
+      }
+      const relinkExisting = baseListing.relinkExisting === true;
+      if (
+        !baseListing.txHash &&
+        !relinkExisting &&
+        baseListingMode !== "remove"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Missing required field: baseListing.txHash unless relinkExisting is true",
+          },
+          { status: 400 }
+        );
+      }
+      if (baseListingMode === "remove" && !baseListing.txHash) {
+        return NextResponse.json(
+          { error: "Base listing remove requires txHash" },
+          { status: 400 }
+        );
+      }
+      if (
+        baseListingMode === "update" &&
+        (!baseListing.txHash ||
+          baseListing.expectedName === undefined ||
+          baseListing.expectedDescription === undefined ||
+          baseListing.expectedUri === undefined ||
+          baseListing.expectedPriceUsdcMicros === undefined)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing update requires txHash and expected name, description, URI, and price.",
+          },
           { status: 400 }
         );
       }
@@ -526,6 +588,55 @@ export async function PATCH(
       if (!row) {
         return NextResponse.json({ error: "Skill not found" }, { status: 404 });
       }
+
+      // Parity with the Solana PATCH path (Bugbot #78): linking on-chain state to a repo row
+      // requires proof of wallet control, not just a public UUID + the stored author address.
+      // All written fields are still chain-verified below; this gates who can trigger the sync.
+      if (!auth) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing linking requires wallet signature auth (auth payload missing).",
+          },
+          { status: 401 }
+        );
+      }
+      const evmAuthVerification = await verifyEvmWalletSignature(auth);
+      if (!evmAuthVerification.valid || !evmAuthVerification.pubkey) {
+        return NextResponse.json(
+          { error: evmAuthVerification.error || "Invalid signature" },
+          { status: 401 }
+        );
+      }
+      // Scope the signed message per Base listing mode. No legacy allowance on
+      // any Base mode — the web clients always sign a skill-scoped message.
+      const baseListingExpectedAction =
+        baseListingMode === "update"
+          ? "update-base-listing"
+          : baseListingMode === "remove"
+          ? "remove-base-listing"
+          : "link-base-listing";
+      const baseListingScope = assertPublisherAuthMessageScope({
+        message: auth.message,
+        timestamp: auth.timestamp,
+        expectedAction: baseListingExpectedAction,
+        skillId: id,
+      });
+      if (!baseListingScope.ok) {
+        return NextResponse.json(
+          { error: baseListingScope.error },
+          { status: 401 }
+        );
+      }
+      if (
+        !row.author_pubkey ||
+        evmAuthVerification.pubkey !== row.author_pubkey.toLowerCase()
+      ) {
+        return NextResponse.json(
+          { error: "Only the Base skill author can link this listing" },
+          { status: 403 }
+        );
+      }
       if (
         normalizeInputChainContext(row.chain_context) !==
         BASE_SEPOLIA_CHAIN_CONTEXT
@@ -549,17 +660,76 @@ export async function PATCH(
         );
       }
 
+      if (baseListingMode === "remove") {
+        // Chain-qualified: clear EVM listing fields only — never on_chain_address.
+        const removal = await verifyBaseSkillListingRemoved({
+          skill: row,
+          txHash: baseListing.txHash!,
+          authorAddress: baseListing.authorAddress,
+        });
+        const [updated] = await sql()<SkillRow>`
+          UPDATE skills
+          SET
+            evm_listing_id = NULL,
+            evm_contract_address = NULL,
+            on_chain_protocol_version = NULL,
+            on_chain_program_id = NULL,
+            evm_tx_hash = ${removal.txHash},
+            updated_at = NOW()
+          WHERE id = ${id}::uuid
+          RETURNING *
+        `;
+        return NextResponse.json({
+          ...updated,
+          chain_context: normalizePersistedChainContext(updated.chain_context),
+        });
+      }
+
+      const canonicalSkillRawUrl = getCanonicalSkillRawUrl(id);
+      if (
+        baseListingMode === "update" &&
+        !isSameSkillRawUri({
+          actual: baseListing.expectedUri!,
+          expected: canonicalSkillRawUrl,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Base listing update URI must match the canonical skill raw URL",
+          },
+          { status: 400 }
+        );
+      }
+
       const verification = await verifyBaseSkillListing({
         skill: row,
-        txHash: baseListing.txHash,
+        mode: baseListingMode,
+        txHash: baseListing.txHash ?? null,
         authorAddress: baseListing.authorAddress,
-        expectedPriceUsdcMicros: baseListing.expectedPriceUsdcMicros ?? null,
-        expectedUri: `${request.nextUrl.origin}/api/skills/${id}/raw`,
+        expectedPriceUsdcMicros: relinkExisting
+          ? null
+          : baseListing.expectedPriceUsdcMicros ?? null,
+        expectedUri: canonicalSkillRawUrl,
+        expectedName:
+          baseListingMode === "update" ? baseListing.expectedName : undefined,
+        expectedDescription:
+          baseListingMode === "update"
+            ? baseListing.expectedDescription
+            : undefined,
       });
+      const nextName =
+        baseListingMode === "update" ? baseListing.expectedName! : row.name;
+      const nextDescription =
+        baseListingMode === "update"
+          ? baseListing.expectedDescription!
+          : row.description;
 
       const [updated] = await sql()<SkillRow>`
         UPDATE skills
         SET
+          name = ${nextName},
+          description = ${nextDescription},
           chain_context = ${verification.chainContext},
           on_chain_address = NULL,
           price_usdc_micros = ${verification.priceUsdcMicros},
@@ -569,8 +739,8 @@ export async function PATCH(
           on_chain_protocol_version = ${verification.protocolVersion},
           on_chain_program_id = ${verification.onChainProgramId},
           evm_listing_id = ${verification.listingId},
-          evm_contract_address = ${verification.onChainProgramId},
-          evm_tx_hash = ${verification.txHash},
+          evm_contract_address = ${verification.onChainProgramId.toLowerCase()},
+          evm_tx_hash = COALESCE(${verification.txHash}, evm_tx_hash),
           updated_at = NOW()
         WHERE id = ${id}::uuid
         RETURNING *
@@ -593,6 +763,21 @@ export async function PATCH(
     if (!verification.valid) {
       return NextResponse.json(
         { error: verification.error || "Invalid signature" },
+        { status: 401 }
+      );
+    }
+    // CLI still signs Action+Timestamp-only for publish-skill link mutations
+    // (2026-07-08 dated legacy). Web clients should include Skill id.
+    const solanaLinkScope = assertPublisherAuthMessageScope({
+      message: auth.message,
+      timestamp: auth.timestamp,
+      expectedAction: "publish-skill",
+      skillId: id,
+      allowLegacyWithoutSkillId: true,
+    });
+    if (!solanaLinkScope.ok) {
+      return NextResponse.json(
+        { error: solanaLinkScope.error },
         { status: 401 }
       );
     }

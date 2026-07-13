@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql, initializeDatabase } from "@/lib/db";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
 import { randomBytes, createHash } from "crypto";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -53,6 +57,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const scope = assertPublisherAuthMessageScope({
+      message: auth.message,
+      timestamp: auth.timestamp,
+      expectedAction: "create-key",
+    });
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: 401 });
+    }
+
     const existing = await sql()<ApiKeyIdRow>`
       SELECT id FROM api_keys
       WHERE owner_pubkey = ${verification.pubkey} AND revoked_at IS NULL
@@ -98,15 +111,36 @@ export async function GET(request: NextRequest) {
     const body = await request.json().catch(() => null);
 
     const authHeader = request.headers.get("authorization");
+    const signedAuthHeader = request.headers.get("x-agentvouch-auth");
     let pubkey: string | null = null;
 
-    if (body?.auth) {
-      const verification = verifyWalletSignature(body.auth);
+    let signedAuth = body?.auth as AuthPayload | undefined;
+    if (signedAuthHeader) {
+      try {
+        signedAuth = JSON.parse(signedAuthHeader) as AuthPayload;
+      } catch {
+        return NextResponse.json(
+          { error: "Malformed X-AgentVouch-Auth header" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (signedAuth) {
+      const verification = verifyWalletSignature(signedAuth);
       if (!verification.valid || !verification.pubkey) {
         return NextResponse.json(
           { error: verification.error || "Invalid signature" },
           { status: 401 }
         );
+      }
+      const scope = assertPublisherAuthMessageScope({
+        message: signedAuth.message,
+        timestamp: signedAuth.timestamp,
+        expectedAction: "list-keys",
+      });
+      if (!scope.ok) {
+        return NextResponse.json({ error: scope.error }, { status: 401 });
       }
       pubkey = verification.pubkey;
     } else if (authHeader?.startsWith("Bearer sk_")) {
@@ -165,6 +199,15 @@ export async function DELETE(request: NextRequest) {
         { error: verification.error || "Invalid signature" },
         { status: 401 }
       );
+    }
+
+    const scope = assertPublisherAuthMessageScope({
+      message: auth.message,
+      timestamp: auth.timestamp,
+      expectedAction: "revoke-key",
+    });
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: 401 });
     }
 
     const rows = await sql()<ApiKeyIdRow & ApiKeyOwnerRow>`

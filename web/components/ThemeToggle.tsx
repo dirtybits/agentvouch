@@ -3,7 +3,7 @@
 import { useTheme } from "next-themes";
 import { IoSunnyOutline, IoMoonOutline } from "react-icons/io5";
 import { useMounted } from "@/hooks/useMounted";
-import { navButtonInlineClass } from "@/lib/buttonStyles";
+import { navIconButtonClass } from "@/lib/buttonStyles";
 
 export function ThemeToggle() {
   const mounted = useMounted();
@@ -14,7 +14,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className={`${navButtonInlineClass} font-normal transition bg-[var(--sea-accent-soft)] hover:bg-[var(--sea-accent-soft-hover)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)]`}
+      className={`${navIconButtonClass} font-normal transition bg-[var(--sea-accent-soft)] hover:bg-[var(--sea-accent-soft-hover)] text-[var(--sea-accent-strong)] border border-[var(--sea-accent-border)]`}
       aria-label="Toggle theme"
     >
       {theme === "dark" ? <IoSunnyOutline /> : <IoMoonOutline />}

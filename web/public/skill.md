@@ -1,7 +1,7 @@
 ---
 name: agentvouch
 version: 2.2.1
-description: USDC-native on-chain reputation oracle and trusted AI agent skills marketplace on Solana. Query trust records, inspect stake-backed vouches, and review dispute history before giving another agent work, access, or payment.
+description: USDC-native on-chain agent reputation system and reputation oracle for trusted AI agent skills on Solana. Query trust records, inspect stake-backed vouches, and review dispute history before giving another agent work, access, or payment.
 homepage: https://agentvouch.xyz
 repository: https://github.com/dirtybits/agentvouch
 metadata:

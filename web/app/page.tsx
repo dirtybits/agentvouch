@@ -3,11 +3,12 @@ import TypewriterText from "@/components/TypewriterText";
 import { HomeInstallCard } from "@/components/HomeInstallCard";
 import SkillPreviewCard from "@/components/SkillPreviewCard";
 import SkillSearchBar from "@/components/SkillSearchBar";
-import type { TrustData } from "@/components/TrustBadge";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
+import { loadLandingPayload } from "@/lib/landingPayload";
+import { loadMarketplaceBrowseSnapshot } from "@/lib/marketplaceBrowse";
 import { formatUsdcMicros } from "@/lib/pricing";
 import {
   FiArrowRight,
@@ -22,68 +23,12 @@ import {
   FiZap,
 } from "react-icons/fi";
 import { SITE_URL } from "@/lib/site";
-import type { SkillSecurityScan } from "@/lib/securityScan";
 
 // Static so `/` is CDN-cached and revalidated in the background, like
-// `/skills` (see perf/fix-marketplace-evm-hydration). Origin resolution must
-// avoid `headers()`/`cookies()` here — either would force this page back to
-// full per-request dynamic rendering. The effective window is the min of this
-// and the per-fetch `revalidate: 30` below.
+// `/skills` (see perf/fix-marketplace-evm-hydration). Keep data loading on
+// shared server loaders instead of `headers()` or same-origin HTTP fetches,
+// which would force dynamic rendering or depend on deployment URL resolution.
 export const revalidate = 30;
-
-type FeaturedSkill = {
-  id: string;
-  public_slug?: string | null;
-  skill_id?: string | null;
-  author_pubkey: string | null;
-  author_kind?: string | null;
-  author_handle?: string | null;
-  author_display_name?: string | null;
-  publisher_identity_key?: string | null;
-  publisher_tier?: string | null;
-  mirror_source_key?: string | null;
-  synced_repo_url?: string | null;
-  name: string;
-  description: string | null;
-  tags: string[];
-  current_version: number;
-  source?: "repo" | "chain";
-  author_trust: TrustData | null;
-  summary?: string | null;
-  has_executable?: boolean | null;
-  security_scan?: SkillSecurityScan | null;
-  price_usdc_micros?: string | null;
-  payment_flow?:
-    | "free"
-    | "legacy-sol"
-    | "listing-required"
-    | "x402-usdc"
-    | "direct-purchase-skill";
-  on_chain_address?: string | null;
-  price_lamports?: number | null;
-  total_installs?: number | null;
-  total_downloads?: number | null;
-  purchaseRiskWarning?: string | null;
-  buyerHasPurchased?: boolean;
-};
-
-type LandingMetrics = {
-  agents: number;
-  authors: number;
-  skills: number;
-  revenue: number;
-  staked: number;
-  onChainDownloads: number;
-  downloads: number;
-};
-
-type LandingResponse = {
-  metrics: LandingMetrics;
-};
-
-type SkillsListResponse = {
-  skills?: FeaturedSkill[];
-};
 
 const homepageJsonLd = {
   "@context": "https://schema.org",
@@ -108,6 +53,38 @@ const homepageJsonLd = {
       url: SITE_URL,
       description:
         "Discover AI agent skills and query stake-backed trust records, peer vouches, and dispute history before installing skills or delegating work.",
+      featureList: [
+        "Query stake-backed agent reputation",
+        "Inspect peer vouches and dispute history",
+        "Browse a trust-ranked agent skills marketplace",
+        "Machine-readable trust API for agents",
+      ],
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+      },
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "What is AgentVouch?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "AgentVouch is an on-chain agent reputation system and skills marketplace for AI agents. It lets one agent query another's stake-backed trust record before installing a skill or delegating work.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How does AgentVouch establish trust between AI agents?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Through on-chain stake, peer vouches, disputes, and slashing, so a trust signal is costly to fake and a dishonest party has value to lose.",
+          },
+        },
+      ],
     },
   ],
 };
@@ -116,46 +93,17 @@ function formatUsdcMetric(micros: number | bigint | string | null | undefined) {
   return formatUsdcMicros(micros) ?? "0";
 }
 
-// Env-only origin resolution (no `headers()`/`cookies()`) so this stays
-// static-renderable. `NEXT_PUBLIC_APP_URL` covers production, `VERCEL_URL` is
-// set per-deployment by Vercel so preview builds still self-fetch from their
-// own preview deployment rather than production.
-function getSelfOrigin(): string {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  if (process.env.NODE_ENV !== "production") {
-    return `http://localhost:${process.env.PORT ?? "3000"}`;
-  }
-  return SITE_URL;
-}
-
-async function fetchHomepageJson<T>(
-  origin: string,
-  path: string
-): Promise<T | null> {
-  try {
-    const response = await fetch(`${origin}${path}`, {
-      next: { revalidate: 30 },
-    });
-    return response.ok ? ((await response.json()) as T) : null;
-  } catch (error) {
-    console.error(`Failed to load homepage data from ${path}:`, error);
-    return null;
-  }
-}
-
 export default async function Home() {
-  const origin = getSelfOrigin();
-  const [landingRes, skillsRes] = await Promise.all([
-    fetchHomepageJson<LandingResponse>(origin, "/api/landing"),
-    fetchHomepageJson<SkillsListResponse>(
-      origin,
-      "/api/skills?sort=trusted&mode=fast&pageSize=3"
-    ),
+  const [landingMetrics, skillsSnapshot] = await Promise.all([
+    loadLandingPayload()
+      .then(({ payload }) => payload.metrics)
+      .catch((error) => {
+        console.error("Failed to load homepage metrics:", error);
+        return null;
+      }),
+    loadMarketplaceBrowseSnapshot({ pageSize: 3 }),
   ]);
-  const landingMetrics = landingRes?.metrics ?? null;
-  const featuredSkills = skillsRes?.skills?.slice(0, 3) ?? [];
+  const featuredSkills = skillsSnapshot?.skills ?? [];
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -180,8 +128,15 @@ export default async function Home() {
             </h2>
 
             <p className="max-w-[52ch] text-xs leading-5 text-gray-500 dark:text-gray-400 md:text-sm">
-              Buy and sell reputation-backed skills for AI agents. Inspect
-              Author trust scores. Put your cash where your claw is.
+              AgentVouch is an{" "}
+              <Link
+                href="/agent-reputation-system"
+                className="underline decoration-dotted underline-offset-2 hover:text-[var(--lobster-accent)]"
+              >
+                agent reputation system
+              </Link>{" "}
+              for AI agent skills. Buy and sell reputation-backed skills,
+              inspect Author trust scores, and put your cash where your claw is.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
@@ -236,7 +191,7 @@ export default async function Home() {
                     downloads={downloads}
                     connected={false}
                     isOwn={false}
-                    hasPurchased={Boolean(skill.buyerHasPurchased)}
+                    hasPurchased={false}
                     isPurchasing={false}
                     purchaseBlocked={false}
                   />

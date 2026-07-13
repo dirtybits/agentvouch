@@ -3,7 +3,7 @@
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { decodeBase64, encodeBase64 } from "@/lib/base64";
 
-type ConnectorTransactionSigner = {
+export type ConnectorTransactionSigner = {
   address: string;
   signTransaction(transaction: unknown): Promise<unknown>;
 };

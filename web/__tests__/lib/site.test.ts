@@ -14,15 +14,18 @@ describe("site URL helpers", () => {
     );
   });
 
-  it("positions AgentVouch as both trust layer and skills marketplace", async () => {
+  it("positions AgentVouch as an agent reputation system and skills marketplace", async () => {
     vi.resetModules();
     vi.unstubAllEnvs();
 
     const { SITE_DESCRIPTION, SITE_TAGLINE } = await import("@/lib/site");
 
-    expect(SITE_DESCRIPTION).toMatch(/trust layer/i);
+    // Search-facing positioning leads with the "agent reputation system" head
+    // term (see .agents/plans/seo-agent-reputation-system.plan.md); "trust
+    // layer" remains brand flavor on machine surfaces (agentvouch.json, llms.txt).
+    expect(SITE_DESCRIPTION).toMatch(/agent reputation system/i);
     expect(SITE_DESCRIPTION).toMatch(/skills marketplace/i);
-    expect(SITE_TAGLINE).toMatch(/trust layer/i);
+    expect(SITE_TAGLINE).toMatch(/agent reputation system/i);
     expect(SITE_TAGLINE).toMatch(/agent skills/i);
   });
 });

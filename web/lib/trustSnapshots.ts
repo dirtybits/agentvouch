@@ -22,9 +22,19 @@ type TrustSnapshotEntry = {
   summary: AgentTrustSummary;
 };
 
+// These snapshots are persisted under the configured *Solana* chain context, so EVM-shaped
+// authors (Base `0x…` addresses) must never enter this pipeline: resolving them through the
+// Solana trust path would persist bogus Solana-context rows that the marketplace trust joins
+// would then attach to Base skills. Base author trust is served live via resolveBaseAuthorTrust;
+// a Base snapshot write path would need its own chain_context (Phase 7+).
+function isEvmShapedWallet(walletPubkey: string): boolean {
+  return walletPubkey.startsWith("0x");
+}
+
 async function upsertTrustSnapshotEntries(
   entries: TrustSnapshotEntry[]
 ): Promise<void> {
+  entries = entries.filter((entry) => !isEvmShapedWallet(entry.walletPubkey));
   if (entries.length === 0) return;
 
   const wallets: string[] = [];
@@ -125,6 +135,9 @@ export async function resolveTrustAndIdentity(
   trustMap: Map<string, AuthorTrust>;
   identityMap: Map<string, AgentIdentitySummary>;
 }> {
+  authorPubkeys = authorPubkeys.filter(
+    (authorPubkey) => !isEvmShapedWallet(authorPubkey)
+  );
   if (authorPubkeys.length === 0) {
     return { trustMap: new Map(), identityMap: new Map() };
   }
@@ -178,7 +191,9 @@ export async function refreshAllAuthorTrustSnapshots(options?: {
   const rows = await sql()<{ author_pubkey: string | null }>`
     SELECT DISTINCT author_pubkey
     FROM skills
-    WHERE author_pubkey IS NOT NULL AND author_pubkey <> ''
+    WHERE author_pubkey IS NOT NULL
+      AND author_pubkey <> ''
+      AND author_pubkey NOT LIKE '0x%'
   `;
   const authorPubkeys = rows
     .map((row) => row.author_pubkey)

@@ -6,8 +6,8 @@ todos:
     content: "Phase 1. Add the ChainAdapter interface + view types (web/lib/adapters/types.ts) and a getAdapter(chainContext) registry (web/lib/adapters/index.ts) returning not-implemented stubs. No wiring, no behavior change."
     status: completed
   - id: extract-solana-adapter
-    content: "Phase 2. Implement SolanaAdapter (web/lib/adapters/solana.ts) by moving existing logic (onchain.ts, sponsoredPurchase.ts, useMarketplaceOracle.ts, browserX402.ts, x402ProtocolBridge.ts, WalletContextProvider.tsx) behind it; repoint UI/hooks at getAdapter(ctx). LIVE-APP refactor — must be behavior-preserving for Solana. Sub-status: 2a reads DONE; 2b design DONE; 2b-impl/2c/2d DEFERRED to an app+wallet session — do Phase 3 FIRST (see NEXT STEP OVERRIDE). Full Done-when needs running-app devnet verification."
-    status: in_progress
+    content: "Phase 2 COMPLETE 2026-07-01. SolanaAdapter reads plus the post-Phase-6 circle-back landed: shared Solana write helpers, Solana ChainWallet facade, primary Solana purchase caller repointing, safe metadata read repointing, and explicit Solana/SVM x402 seam isolation. Browser smoke proved Solana direct list->purchase->entitlement->raw download and Base passkey connect/disconnect. Solana Kora sponsored checkout and Base list/purchase/raw-download are accepted deferrals tracked as later Base-default/E2E smokes, not Phase 2 blockers. See .agents/plans/base-port-chain-adapter-phase-2-circleback.plan.md."
+    status: completed
   - id: base-adapter-readslice
     content: "Phase 3 DONE 2026-06-29. BaseAdapter reads are live-verified, DB-driven Base Sepolia row hydration is wired into /skills + /api/skills + /api/skills/hydrate, one seeded Base listing renders in the real marketplace with on_chain_address=NULL and plain-text EVM author, and Solana listings still render. A local Playwright screenshot was captured during verification."
     status: completed
@@ -15,24 +15,31 @@ todos:
     content: "Phase 4 DONE 2026-06-30. Chain-aware wallet: Base Sepolia Coinbase Smart Wallet passkey connect/restore/disconnect works in a client-only ChainWallet hook/module, not in server-safe BaseAdapter. Browser WebAuthn restore smoke and Solana regression passed. wagmi/MetaMask injected deferred. See sub-plan .agents/plans/base-port-chain-adapter-phase-4.plan.md."
     status: completed
   - id: base-adapter-write
-    content: "Phase 5. Base ChainWallet writes (register/list/buy) lifting contracts/base-poc/ui/src/flow.ts (sponsored 4337), kept out of server-safe BaseAdapter. purchaseSkill takes expectedPriceUsdcMicros and verifies the live EVM listing price before exact USDC approval. Wire EVM x402 receiveWithAuthorization into route handlers. DECIDED 2026-06-25: on-chain identity via AgentVouchEvm registerAgent/getProfile. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
-    status: pending
+    content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke is now a Phase 5/9 follow-up with CDP paymaster env present; it still needs a Base fixture/funded passkey wallet run. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
+    status: completed
   - id: db-multichain
-    content: "Phase 6. Extend/harden Postgres for EVM alongside Solana: explicit evm_listing_id (bytes32), evm_contract_address, evm_tx_hash, and chain-qualified buyer entitlement semantics. Do not overload Solana-sized on_chain_address or bare buyer_pubkey semantics for Base. Guard reads/writes by chain_context. See [[neon-db-two-projects]]."
-    status: pending
+    content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch rehearsal, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
+    status: completed
   - id: address-type-sweep
-    content: "Phase 7. Replace @solana/kit Address (base58/PDA) assumptions with a chain-tagged address type + per-chain explorer helpers across the touched files. Mostly mechanical."
-    status: pending
+    content: "Phase 7 DONE 2026-07-02 via PR #73. Chain-aware address helpers, explorer links, EVM buyer API boundaries, storage/display normalization split, behavioral tests, import guards, and browser smoke for one Solana + one Base listing surface all landed. See .agents/plans/base-port-chain-adapter-phase-7.plan.md."
+    status: completed
   - id: make-base-canonical
-    content: "Phase 8, TWO gates (PR #58 review 2026-06-29). 8a: default chain_context -> Base SEPOLIA (eip155:84532) behind a flag, Solana still selectable. 8b (LATER, blocked): mainnet cutover once mainnet RPC/contract/USDC/paymaster exist and getAdapter accepts eip155:8453. Do NOT flip the default to generic Base/eip155:8453 before 8b."
-    status: pending
+    content: "Phase 8 (8a) DONE 2026-07-02 via PR #74. Base Sepolia (eip155:84532) is the default new-user writable path behind the single rollback env NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana; EVM publisher auth (ERC-1271/6492) and Base paid publish through the ChainWallet seam landed with it. Solana remains selectable; legacy trust/default row fallbacks stay Solana. Base mainnet was never part of Phase 8. See .agents/plans/base-port-chain-adapter-phase-8a.plan.md."
+    status: completed
   - id: verify-e2e
-    content: "Phase 9. E2E on Base (passkey register->list->buy gas-free; agent x402) + Solana regression. forge contracts job + web format/lint/typecheck/vitest green; Vercel build green."
+    content: "Phase 9 IN PROGRESS. Part A live smokes are recorded in the phase-9 plan: Base default-path human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive + Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base Sepolia v1 candidate (`0x5992…B7d1`, `base-v1-candidate`) and recorded vouch/report browser smokes. RE-SCOPED 2026-07-06: full A1 voucher-slashing port to the Base v1 candidate approved as Phase 9b-2 — dedicated plan .agents/plans/base-a1-voucher-slashing-port.plan.md — landing BEFORE the 9c security review. Still open: A1 implementation, remaining self-stake/proceeds trust-write smoke, ownership/custody sign-off, internal review, and external security review. See .agents/plans/base-port-chain-adapter-phase-9.plan.md."
+    status: in_progress
+  - id: base-mainnet-cutover
+    content: "Phase 10. Dedicated blocked gate plan: .agents/plans/base-port-chain-adapter-phase-10.plan.md. Cut over to Base mainnet only after Phase 9 v1 trust/security gates, mainnet deploy/RPC/USDC/paymaster, custody policy, runbook, and real-funds smoke evidence exist."
     status: pending
 isProject: false
 ---
 
 # Solana → Base Port via a ChainAdapter Seam
+
+> **Status note (2026-07-08):** Phase 1–8 sections are Completed/Historical — do not edit except
+> corrections. Current Base launch gate status lives in `docs/MAINNET_READINESS.md`; this umbrella
+> remains the phase execution ledger, with Phase 9 active and Phase 10 blocked.
 
 ## Decision (2026-06-23)
 
@@ -60,26 +67,31 @@ but off by default.
 - **In scope:** the `ChainAdapter` seam; `SolanaAdapter` (extraction, not rewrite); `BaseAdapter`
   (new, lifting `contracts/base-poc`); EVM wallet connection; DB multi-chain columns;
   address-type generalization; flip default to Base.
-- **Out of scope:** UI redesign (keep as-is — it is chain-agnostic), disputes/slashing
-  (deferred — see [[mvp-ship-minimal-bias]]), deleting Solana code, archiving `web/`,
-  Base **mainnet** cutover (the POC contract is Sepolia — see Open questions).
+- **Out of scope:** UI redesign (keep as-is — it is chain-agnostic), ~~disputes/slashing
+  (deferred — see [[mvp-ship-minimal-bias]])~~ **(deferral superseded 2026-07-06 for Base v1:
+  the full A1 voucher-slashing port is approved — see the 2026-07-06 sequencing note and
+  `.agents/plans/base-a1-voucher-slashing-port.plan.md`)**, deleting Solana code, archiving
+  `web/`, Base **mainnet** cutover (the POC contract is Sepolia — see Open questions).
 
 ## Resuming this plan in a fresh session (HANDOFF)
 
-The plan and the implementation live together on branch **`feat/base-port-chain-adapter`**
-(the plan also exists on `main` as commit `d4c8b68`, but the up-to-date copy travels with the
-branch). To take over:
+As of 2026-07-06, completed Base-port phases land through one PR branch per phase off current
+`main`. Phase 8a is merged (PR #74); the active work is **Phase 9** (sub-plan + the 9b-2 A1-port
+plan), with follow-up branch `ops/base-port-phase-9-followup` open as PR #79.
+To take over:
 
-1. `git checkout feat/base-port-chain-adapter` (fresh worktree setup: [[agentvouch-worktree-setup]]).
-2. Read the frontmatter `todos`. **The first non-`completed` id is the next phase.**
-3. Read that phase's section under "## Phases" — each is self-contained (files, steps,
-   Done-when). **Phases are ordered; each depends on the previous.**
+1. `git fetch origin`, then either check out the active phase branch or create the next phase branch
+   from `origin/main` (fresh worktree setup: [[agentvouch-worktree-setup]]).
+2. Read the frontmatter `todos` **and the dated sequencing notes below**. Phase 7 is complete; the
+   next implementation phase is Phase 8a (Base Sepolia default), not Base mainnet.
+3. Read the relevant phase section under "## Phases" plus its dedicated sub-plan when one exists.
+   Each phase is self-contained (files, steps, Done-when), but dated sequencing notes override
+   frontmatter order when they say so.
 4. Set the todo to `in_progress` when you start; `completed` only when its **Done when** passes
    (verification, not just compile). If you diverge from the plan, append a dated note at that
    phase. See the plan-writing skill for status discipline.
-5. **One phase = one commit/PR** off `feat/base-port-chain-adapter`, so each step is reviewable
-   and the handoff boundary is clean. Suggested branch per phase:
-   `feat/base-port-p<N>-<slug>`.
+5. **One phase = one PR** off current `main`, so each step is reviewable and the handoff boundary is
+   clean. Suggested branch per phase: `feat/base-port-phase-<N>`.
 
 > **NEXT STEP OVERRIDE (2026-06-24 review).** The strict "first non-`completed` todo = next phase"
 > rule (step 2) is **overridden once**: do **Phase 3 (`base-adapter-readslice`) NEXT**, before the
@@ -88,17 +100,52 @@ branch). To take over:
 > and only prove the Solana refactor didn't regress (no new capability). Phase 3 does **not** depend
 > on 2c — it adds `base.ts` + one `chain_context` read branch while Solana keeps working via its
 > current path (satisfying Phase 3's "Solana still renders" gate); 2c later unifies the transitional
-> dual read path (trivial churn on one call site). Batch **2b-impl + 2c + Phases 4/5** into a single
-> app+wallet session. See the Phase 3 block for the verified read-path recon.
+> dual read path (trivial churn on one call site). See the Phase 3 block for the verified read-path
+> recon.
+>
+> **POST-PHASE-6 / PHASE-2 CLOSEOUT (2026-07-01).** Phase 6 landed and the Phase 2 circle-back is now
+> complete for its Solana adapter/refactor scope. The remaining browser gaps are intentionally moved
+> out of Phase 2: Phantom/Base reload restore polish and Solana Kora sponsored-checkout prompts can
+> be revisited only if Solana remains first-class; Base list/purchase/raw-download belongs to the
+> Base write/default/E2E smoke lane (Phase 5/9), especially now that the CDP paymaster env exists.
+> Phase 7 address sweep is unblocked.
+>
+> **POST-PHASE-7 / PHASE-8 SEQUENCING (2026-07-02).** Phase 7 merged via PR #73 with the optional
+> browser smoke completed: one Solana listing rendered with Solana Explorer PDA link, and one Base
+> listing rendered with Base Sepolia Basescan tx link plus intentionally display-only EVM author.
+> Phase 8a should now flip the default new-user writable path to Base Sepolia behind rollback, but it
+> must not rewrite legacy Solana fallbacks or imply Base rows have stake-backed trust. Phase 9 is
+> re-scoped from generic E2E only into Base Sepolia E2E plus the minimal Base v1 trust/security gate
+> needed before any Phase 10 mainnet cutover.
+>
+> **PHASE 10 RENAME (2026-07-02).** The blocked Base mainnet cutover was originally drafted as
+> "Phase 8b." That created a confusing 8a -> 9 -> 8b sequence, so it is now Phase 10. The intended
+> order is Phase 8a (Base Sepolia default), Phase 9 (Base E2E + minimal v1 trust/security), then
+> Phase 10 (Base mainnet cutover).
+>
+> **POST-PHASE-8A / A1-PORT RE-SCOPE (2026-07-06).** Phase 8a merged via PR #74 and Base Sepolia is
+> the live default. Phase 9's 9b-1 slice (author-report primitive, `base-v1-candidate`, Base trust
+> reads) merged via PR #78; follow-up PR #79 closed the static ops gaps (Deploy.s.sol/ABI sync,
+> runbook Base env + custody sections, Base detail trust rendering) and recorded the first live
+> Base default-path buyer purchase + signed raw download evidence. **Founder decision 2026-07-06:
+> the "minimal trust layer" bar for Base v1 is raised to a full A1 voucher-slashing mechanism port**
+> (EVM-simplified, invariant-preserving) — dedicated plan
+> `.agents/plans/base-a1-voucher-slashing-port.plan.md`, sequenced as Phase 9b-2 so it lands
+> before the 9c internal/external security review (one review covers the complete mechanism).
+> Part A live smokes are not blocked by this: the remaining x402/author-flow smokes are gated on
+> human wallet/relayer setup and run in parallel. The launch trust bar and Coinbase platform-
+> concentration risk are now recorded chain-agnostically in `docs/MAINNET_READINESS.md`.
 
 ## What already exists to build on
 
 - **Seam is half-stubbed:** `web/lib/chains.ts` already defines `base` (`eip155:8453`) and the
   `skills` table already has a `chain_context` column — both used only for display/config today.
   Make them load-bearing.
-- **Fixed Base contract:** `AgentVouchEvm` at `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`
-  (Base Sepolia, F-1-fixed — Lane B uses `receiveWithAuthorization`). Mirrors the Solana core
-  economics (60/40 split, USDC micros). See [[base-poc-gasfree-spike]].
+- **Original Base contract:** `AgentVouchEvm` at `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`
+  (Base Sepolia, F-1-fixed — Lane B uses `receiveWithAuthorization`). It mirrors the Solana core
+  economics (60/40 split, USDC micros) and remains the historical POC/default fallback; Phase 9
+  v1-candidate smokes now point env at `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`. See
+  [[base-poc-gasfree-spike]] and `docs/BASE_DEPLOY.md`.
 - **The BaseAdapter's engine already exists** in `contracts/base-poc` — lift, don't rewrite:
   - `contracts/base-poc/ui/src/flow.ts` — register/list/buy as sponsored 4337 UserOps
     (`listingId`/`skillIdHash` calc + ABI calls).
@@ -109,13 +156,13 @@ branch). To take over:
 
 ## The coupling map — what swaps (verified 2026-06-23)
 
-| File / area                                                                                               | Today (Solana)                           | After (behind the adapter)                                              |
-| --------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
+| File / area                                                                                               | Today (Solana)                           | After (behind the adapter)                                               |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------ |
 | `web/components/WalletContextProvider.tsx` + exported wallet hooks                                        | ConnectorKit / Phantom, hardcoded Solana | chain-aware provider; EVM via Coinbase Smart Wallet passkey; wagmi later |
-| `web/lib/onchain.ts`                                                                                      | `getProgramAccounts` browser reads       | `SolanaAdapter.listSkillListings`; `BaseAdapter` uses viem `getListing` |
-| `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`                                       | Solana instructions + PDAs               | `adapter.purchaseSkill` (Base lifts `flow.ts`)                          |
-| `web/lib/browserX402.ts`, `web/lib/x402ProtocolBridge.ts`, `/api/x402/*`, `/api/transactions/sponsored/*` | Solana sponsored / x402                  | EVM Lane B `receiveWithAuthorization`                                   |
-| address handling (`@solana/kit` `Address`, base58, PDAs), explorer URLs                                   | Solana-only                              | chain-tagged address type + per-chain explorer helpers                  |
+| `web/lib/onchain.ts`                                                                                      | `getProgramAccounts` browser reads       | `SolanaAdapter.listSkillListings`; `BaseAdapter` uses viem `getListing`  |
+| `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`                                       | Solana instructions + PDAs               | `adapter.purchaseSkill` (Base lifts `flow.ts`)                           |
+| `web/lib/browserX402.ts`, `web/lib/x402ProtocolBridge.ts`, `/api/x402/*`, `/api/transactions/sponsored/*` | Solana sponsored / x402                  | EVM Lane B `receiveWithAuthorization`                                    |
+| address handling (`@solana/kit` `Address`, base58, PDAs), explorer URLs                                   | Solana-only                              | chain-tagged address type + per-chain explorer helpers                   |
 
 **Chain-agnostic — unchanged:** all routes/pages, the 27 components, styling, copy, the Postgres
 schema (extend, not replace), GitHub OAuth, search/indexing, markdown.
@@ -242,9 +289,20 @@ export function useChainWallet(): ChainWallet | null;
   Base stub and `getAdapter(<solana ctx>)` the Solana stub; the live app is otherwise untouched
   (`git grep -l getAdapter web/app web/components web/hooks` is empty).
 
-### Phase 2 — `extract-solana-adapter` [in_progress] ⚠ live-app refactor
+### Phase 2 — `extract-solana-adapter` [completed 2026-07-01] ⚠ live-app refactor
 
-- **Goal:** route all existing Solana behavior through `SolanaAdapter` with zero UX change.
+Dedicated circle-back sub-plan:
+[`base-port-chain-adapter-phase-2-circleback.plan.md`](./base-port-chain-adapter-phase-2-circleback.plan.md).
+
+- **Goal:** route the existing Solana read/write behavior that fits the current seam through
+  `SolanaAdapter`/`ChainWallet` with zero UX change.
+- **Status:** complete for the Base-port sequencing gate. Phase 2a reads shipped earlier; the
+  post-Phase-6 circle-back added shared Solana write helpers, a Solana `ChainWallet` facade, primary
+  Solana purchase caller repointing, one safe metadata read repoint, and explicit Solana/SVM-only
+  x402 seam guards. Advanced Solana-only protocol actions remain on `useReputationOracle` by design.
+  Browser smoke proved Solana direct list/purchase/raw-download and Base passkey connect/disconnect.
+  Kora/Solana sponsored checkout prompt coverage and Base list/purchase/raw-download are no longer
+  Phase 2 blockers.
 - **Why sub-sliced:** this spans server (API routes) + client (hooks/components/provider), ~20
   files, and only some slices are verifiable without a running app + wallet. Split into separate
   verifiable commits:
@@ -256,7 +314,7 @@ export function useChainWallet(): ChainWallet | null;
     read methods so the adapter registry never pulls it (Buffer/RPC) into a client bundle.
     Wallet/write methods throw (Phase 2b). **No callers repointed — live app untouched.**
     typecheck + prettier green; `git grep getAdapter web/app web/components web/hooks` empty.
-  - **2b — wallet + writes [design settled 2026-06-23; impl pending]:** SIGNER-INJECTION DECISION:
+  - **2b — wallet + writes [completed 2026-07-01]:** SIGNER-INJECTION DECISION:
     wallet connection is irreducibly chain-specific + React-bound (Solana ConnectorKit/Phantom;
     Base wagmi/passkey), so the adapter does NOT own connection. The seam is SPLIT: `ChainAdapter`
     (server-safe reads/format — done) + a separate client-only `ChainWallet` (writes), produced by
@@ -264,13 +322,15 @@ export function useChainWallet(): ChainWallet | null;
     chain's connected signer and returns writes already bound to it — the UI calls
     `wallet.purchaseSkill(input)` uniformly (no signer threading, no per-chain branching). Interfaces
     materialized in `web/lib/adapters/types.ts`; `SolanaAdapter` + the registry stub trimmed to
-    reads/format (typecheck green). IMPL remaining (needs a running app to verify): `SolanaWallet`
-    (wrap `useMarketplaceOracle`'s prepare→sign→submit bound to the context signer), `BaseWallet`
-    (lift `flow.ts`), and the `useChainWallet()` hook.
-  - **2c — repoint callers [pending]:** flip server read routes (`app/api/skills/*`) and client
-    orchestration (`useMarketplaceOracle`, the `useAgentVouchWallet` consumers) to `getAdapter(ctx)`.
-    Behavior-touching: routes read `OnChainSkillListingRecord` fields — confirm `SkillListingView`
-    carries everything they use, or map at the boundary. **Needs a running app + wallet to verify.**
+    reads/format (typecheck green). Implementation result: `web/lib/solanaWrites.ts` owns shared
+    Solana register/list/purchase helpers, `web/lib/adapters/solanaWallet.ts` exposes the Solana
+    facade, and `web/hooks/useWritableChainWallet.ts` composes the lightweight wallet context with
+    write-capable chain wallets without bloating the header provider.
+  - **2c — repoint callers [completed 2026-07-01 for safe/current seam callers]:** primary Solana
+    purchase callers now use the writable `ChainWallet`; one safe read caller
+    (`web/lib/metadataData.ts`) uses `getAdapter().fetchSkillListing`. Call sites needing fields
+    outside `SkillListingView`, cache-bypass money reads, or advanced Solana-only protocol actions
+    intentionally stay on explicit Solana helpers until a reviewed interface expansion.
     NOTE (2026-06-24 review): UI address-shortening is NOT uniform today. `shortenAddress` in
     `solana.ts` now matches the dominant content format — `6 + "..." + 4` (author page,
     `SkillDetailClient`) — and the bogus `…` (U+2026) char it shipped with (used by NO call site)
@@ -279,14 +339,22 @@ export function useChainWallet(): ChainWallet | null;
     repointing these to `adapter.shortenAddress`, decide per-site: accept the unified `6/4`, keep
     the inline logic, or add an optional length param to the `ChainAdapter` interface. Do NOT
     silently change rendered output — that breaks the "behavior-preserving" contract of this phase.
-  - **2d — x402 [pending]:** `browserX402` / `x402ProtocolBridge` + `/api/x402/*` behind the adapter.
+  - **2d — x402 seam isolation [completed 2026-07-01]:** `browserX402` and `x402ProtocolBridge`
+    remain explicit Solana/SVM-only seams; Base x402/verification/adapters are guarded from
+    importing Solana PDA/ATA/bridge code. A real cross-chain `X402Payment` abstraction remains
+    future work.
+- **Circle-back result (2026-07-01):** branch `feat/base-port-phase-2-circleback` completed the
+  remaining Solana seam work after Phase 6. Key decision preserved: the lightweight/header
+  `useChainWallet` status path does not import the full Solana oracle hooks; Solana writes live
+  behind extracted helpers and a write-focused hook/facade, avoiding circular imports and unexpected
+  bundle/RPC churn.
 - **Files:** `web/lib/adapters/solana.ts` (2a ✓); then `web/lib/onchain.ts`,
   `web/lib/sponsoredPurchase.ts`, `web/hooks/useMarketplaceOracle.ts`, `web/lib/browserX402.ts`,
   `web/lib/x402ProtocolBridge.ts`, `web/components/WalletContextProvider.tsx` + their callers.
-- **Done when (full phase):** the live Solana flow (connect → browse → sponsored purchase) works
-  **identically on devnet** — requires a running app + wallet, **NOT verifiable in a headless
-  session**; `git grep -l "@solana/" web/app web/components web/hooks` shows only adapter/provider
-  files; `npm run typecheck && npm test` green.
+- **Done when (full phase):** done for current scope — local source gates passed, browser smoke
+  proved Solana direct list -> purchase -> entitlement -> raw download still works on devnet, and
+  Base passkey connect/disconnect still renders. Deferred: Solana sponsored/Kora prompt coverage
+  only if Solana remains first-class; Base list/purchase/raw-download in Phase 5/9.
 
 ### Phase 3 — `base-adapter-readslice` [completed 2026-06-29]
 
@@ -343,9 +411,7 @@ export function useChainWallet(): ChainWallet | null;
      `chain_context = eip155:*` rows, derive each `listingId`, then `multicall` `getListing` for current
      state. Fits the architecture (DB = discovery, chain = economic truth). Legitimately different from
      the Solana adapter's chain-enumeration — that asymmetry is exactly why the seam exists.
-  2. **Event-driven (fallback/reconciliation only):** query `SkillListingCreated(bytes32 indexed listingId,
-address indexed author, uint256 price, bool free)` logs minus `SkillListingRemoved(bytes32 indexed
-listingId)`, then `getListing` each. Use only to discover listings not in the DB, and only when
+  2. **Event-driven (fallback/reconciliation only):** query `SkillListingCreated(bytes32 indexed listingId, address indexed author, uint256 price, bool free)` logs minus `SkillListingRemoved(bytes32 indexed listingId)`, then `getListing` each. Use only to discover listings not in the DB, and only when
      explicitly configured with an archive-capable RPC and deploy block.
 - **`listingId` derivation (must match the contract exactly — `ui/src/flow.ts`):**
   `skillIdHash = keccak256(stringToHex(skillId))`;
@@ -355,8 +421,7 @@ listingId)`, then `getListing` each. Use only to discover listings not in the DB
   `listingId` ← the bytes32 you queried with (`getListing` does NOT return the id — caller supplies it);
   `author` ← `author` (EVM checksum addr, not base58 — Phase 7 sweep); `name`/`description`/`uri` direct;
   `priceUsdcMicros` ← `priceUsdcMicros` (same 6-dec USDC micros as Solana — parity); `revision` ←
-  `Number(currentRevision)`; `active` ← `status === ListingStatus.Active` (enum: `Active=0, Suspended=1,
-Removed=2` — match the Solana adapter, which keys `active` on status alone).
+  `Number(currentRevision)`; `active` ← `status === ListingStatus.Active` (enum: `Active=0, Suspended=1, Removed=2` — match the Solana adapter, which keys `active` on status alone).
 - **Seeded state (verified 2026-06-24):** contract code IS deployed at `0x6Fd9…D854`, but **zero
   `SkillListingCreated` and zero `AgentRegistered`** over blocks 41,000,000→43,283,619 (~53 days) via
   `https://base-sepolia-rpc.publicnode.com`. This is the F-1-fixed contract (PR #56), newer than the
@@ -394,11 +459,17 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-4.plan.md`](./base-port-chai
 - **Verification:** browser connect/restore proof plus web typecheck, lint, vitest, and
   `npm run build --workspace @agentvouch/web`; see the Phase 4 sub-plan for exact evidence.
 
-### Phase 5 — `base-adapter-write` [pending]
+### Phase 5 — `base-adapter-write` [completed 2026-07-01]
 
 Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chain-adapter-phase-5.plan.md).
 
 - **Goal:** register/list/buy on Base Sepolia from the UI plus agent x402 settlement.
+- **Status:** done - PR #67 merged as `a61f65d` on `main`. The implementation includes Base
+  ChainWallet writes, purchase/listing verification, Base author identity, chain-qualified purchase
+  groundwork, and EVM x402 settlement/entitlement paths. Local source/test/build verification is
+  recorded in the Phase 5 sub-plan. As of 2026-07-01 the CDP paymaster env is present; live Base
+  write/x402 smoke still needs an intentional Base fixture/funded passkey wallet run against the
+  intended DB env.
 - **DECIDED (2026-06-25):** on-chain identity via `AgentVouchEvm.registerAgent` / `getProfile`
   (already deployed; mirrors the Solana identity program). The EVM author/profile branch must read
   `getProfile` before routing EVM authors through an author page.
@@ -417,44 +488,98 @@ Dedicated sub-plan: [`base-port-chain-adapter-phase-5.plan.md`](./base-port-chai
 - **Verification:** Base browser write proof, EVM x402 settlement proof, Solana write regression,
   and web typecheck, lint, vitest, and `npm run build --workspace @agentvouch/web`.
 
-### Phase 6 — `db-multichain` [pending]
+### Phase 6 — `db-multichain` [completed]
+
+Dedicated sub-plan: [`base-port-chain-adapter-phase-6.plan.md`](./base-port-chain-adapter-phase-6.plan.md).
 
 - **Goal:** harden multi-chain persistence after the minimum Phase 5 write/access path lands.
-- **Files:** a migration + `web/lib/db.ts`. Add explicit EVM fields (`evm_listing_id`,
-  `evm_contract_address`, `evm_tx_hash`) keyed by `chain_context`; add or finish generic purchase
-  identity fields such as `buyer_chain_context` / `buyer_address`, `recipient_chain_context` /
-  `recipient_address`, and `asset_chain_context` / `asset_address`; guard reads/writes by chain.
+- **Files:** `web/lib/db.ts`, `web/lib/usdcPurchases.ts`, raw access/purchase/x402 routes, skill
+  detail and marketplace/activity read surfaces, plus focused tests. Phase 5 already added many
+  additive fields (`evm_listing_id`, `evm_contract_address`, `evm_tx_hash`, `buyer_chain_context`,
+  `buyer_address`, recipient/asset chain fields, and EVM purchase ids). Phase 6 must make those
+  fields useful and consistently populated: add/verify EVM listing identity indexes, backfill
+  chain-qualified buyer fields, route eligible reads/writes through chain-qualified helpers, and guard
+  all relevant reads/writes by `chain_context`. Do **not** swap the legacy
+  `(skill_db_id, buyer_pubkey)` entitlement primary key in Phase 6; that destructive migration is
+  deferred until a later multi-EVM phase.
 - **Done when:** a Base purchase persists (contract addr + tx hash), raw-access entitlements are
   chain-qualified, and dashboards/activity render without treating EVM rows as Solana PDAs; existing
-  Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project).
+  Solana rows are unaffected. Mind [[neon-db-two-projects]] (use the live project). After this phase,
+  return to Phase 2 before Phase 7/8.
+- **Pre-prod DB gate:** before running `db:phase6-chain-identity migrate` against the live Neon
+  project, rehearse the exact `migrate` command on a disposable Neon branch/database copied from the
+  intended production project. Capture the target host/database, `EXPECTED_DATABASE_HOST` guard,
+  preflight output, index creation success, and a post-run constraint/index check. This rehearsal is
+  not for finding duplicates (live read-only preflight already does that); it proves the guarded
+  migration script and SQL order execute end-to-end before production DDL.
+- **Post-merge result (2026-07-01):** `neonctl` context was fixed to the Vercel-managed
+  `agentvouch-postgres` project (`calm-meadow-36819154`), the disposable branch rehearsal passed on
+  `br-young-feather-af5t7y1c`, live `db:phase6-chain-identity migrate` passed on main
+  (`ep-morning-firefly-afjzu0sp.c-2.us-west-2.aws.neon.tech/neondb`), both Phase 6 unique indexes
+  were verified in `pg_indexes`, and production API smoke returned 200 for `/api/skills?mode=fast`,
+  `/api/skills/activity`, and `/api/x402/supported`.
 
-### Phase 7 — `address-type-sweep` [pending]
+### Phase 7 — `address-type-sweep` [completed]
 
-- **Goal:** stop assuming Solana base58/PDA addresses app-wide.
+Dedicated sub-plan: [`base-port-chain-adapter-phase-7.plan.md`](./base-port-chain-adapter-phase-7.plan.md).
+
+- **Status:** DONE 2026-07-02 via PR #73.
+- **Goal:** stop assuming Solana base58/PDA addresses app-wide while preserving the Phase 6
+  storage/display invariant: EVM storage and lookup values are lowercase; display may checksum.
 - **Files:** a chain-tagged address type + `explorerTxUrl`/`explorerAddressUrl` helpers (already on
   the adapter); replace `@solana/kit` `Address`/`isAddress` assumptions across the touched files.
+  Keep generic EVM actors display-only in Phase 7; do not invent internal `/author/0x...` navigation
+  until the Base-default UX pass.
 - **Done when:** addresses + explorer links render correctly for both a Base and a Solana listing;
-  `npm run typecheck` green.
+  behavioral `chainAddress` unit tests and import guards pass; `npm run typecheck` green.
+- **Post-merge evidence:** format/lint/typecheck/vitest/build passed during review; browser smoke
+  rendered `another-skill-to-delete` with Solana Explorer PDA link and `phase-3b-demo-skill` with
+  Base Sepolia Basescan tx link.
 
-### Phase 8 — `make-base-canonical` [pending]
+### Phase 8 — `make-base-canonical` [completed 2026-07-02 via PR #74]
+
+Dedicated sub-plan: [`base-port-chain-adapter-phase-8a.plan.md`](./base-port-chain-adapter-phase-8a.plan.md).
 
 Two explicit gates (PR #58 review 2026-06-29): the adapter/config today support Base **Sepolia**
 only, and `getAdapter()` deliberately **rejects mainnet** (`eip155:8453`) until mainnet
 RPC/contract/USDC/paymaster config exists — so do NOT flip the default to generic `Base`/`eip155:8453`.
 
-- **8a — Base Sepolia default for port smoke [pending]:** `web/lib/chains.ts`
-  `getConfiguredChainContext()` defaults to **`eip155:84532`** (Sepolia), behind a flag that keeps
-  Solana selectable. Done when a fresh visit defaults to Base **Sepolia**; the flag restores Solana
-  (the rollback switch).
-- **8b — Base mainnet cutover [LATER gate — blocked]:** only after a mainnet `AgentVouchEvm` deploy
-  + mainnet RPC + mainnet USDC + a CDP mainnet paymaster exist and `getAdapter()` accepts
-  `eip155:8453`. Flip the default to mainnet then. Do NOT ask a follow-on agent to do this until those exist.
+- **8a — Base Sepolia default [DONE 2026-07-02, PR #74]:** `getDefaultChainContext()` defaults to
+  **`eip155:84532`** behind the single client-inlined rollback env
+  (`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`, then redeploy); Solana stays selectable;
+  EVM publisher auth (ERC-1271/6492) and Base paid publish via `ChainWallet.createSkillListing`
+  landed with it. Mainnet (`eip155:8453`) remains rejected until Phase 10.
 
-### Phase 9 — `verify-e2e` [pending]
+### Phase 9 — `verify-e2e` [in progress]
 
-- **Goal:** prove the whole thing + no regression.
-- **Done when:** Base human flow (passkey, 0 gas) + agent x402 both pass; Solana regression passes
-  when selected; all CI gates below green.
+Dedicated sub-plan: [`base-port-chain-adapter-phase-9.plan.md`](./base-port-chain-adapter-phase-9.plan.md).
+A1-port sub-plan (9b-2, added 2026-07-06):
+[`base-a1-voucher-slashing-port.plan.md`](./base-a1-voucher-slashing-port.plan.md).
+
+- **Goal:** prove Base Sepolia default E2E, then close the Base trust/mainnet-readiness gap before
+  Phase 10.
+- **Status (2026-07-08):** Part A live smokes are recorded in the phase-9 plan: Base default-path
+  human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive
+  plus Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base
+  Sepolia v1 candidate, pointed local/dev/preview envs at it, and recorded vouch/report browser
+  smokes. 9b-2 (full A1 voucher-slashing port) was approved 2026-07-06 and must land before the 9c
+  security review. Remaining: A1 implementation, remaining self-stake/proceeds trust-write smoke,
+  ownership/custody sign-off, internal review, and external security review.
+- **Done when:** Base human flow (passkey, register/list/buy, raw download, gas sponsorship
+  evidence) and agent x402 both pass; Solana regression passes when selected; the Base v1 trust
+  layer (vouch/author bond/founder-resolved reports **plus the 9b-2 voucher-slashing port**),
+  ownership policy, and security review are complete enough to unblock a future mainnet plan.
+
+### Phase 10 — `base-mainnet-cutover` [blocked]
+
+Dedicated sub-plan: [`base-port-chain-adapter-phase-10.plan.md`](./base-port-chain-adapter-phase-10.plan.md).
+
+- **Goal:** cut the default chain over from Base Sepolia (`eip155:84532`) to Base mainnet
+  (`eip155:8453`) only after Phase 9 and all mainnet ops/security prerequisites are complete.
+- **Done when:** mainnet `AgentVouchEvm` v1 is deployed and reviewed, Base-chain modules are
+  parameterized instead of Sepolia-pinned, `getAdapter()` accepts `eip155:8453`, the default flips
+  behind rollback, and a human-approved real-funds mainnet smoke proves register/list/buy/raw
+  download + x402.
 
 ## Cross-cutting verification & CI gates
 
@@ -493,6 +618,14 @@ retained, just dormant. Per-phase: revert that phase's single PR.
 - **Wallet provider (gates Phase 4) — RESOLVED 2026-06-25:** Coinbase Smart Wallet passkey for the
   MVP (POC-proven, gas-free). wagmi/MetaMask injected = roadmapped follow-on, reconsidered if it
   proves too much lifting; not in the MVP.
+  **UPDATE 2026-07-07:** MetaMask injected **buyer** support landed via PR #83
+  (`.agents/plans/base-metamask-erc7702-wallet.plan.md` — live smoke still pending there). Two
+  tracked follow-ons, deliberately NOT new phases here: MetaMask author-write parity
+  (register/list) is a pending todo in that plan; Base trust **writes** (vouch, author-bond
+  self-stake, openReport) need a reviewed `ChainWallet` seam extension and are tracked in the
+  Phase 9 sub-plan's report/vouch UI scope — the seam today is marketplace-only
+  (register/list/buy/x402/signMessage) while the deployed contract already exposes the full
+  trust surface.
 - **Circle Modular Wallets / Circle Paymaster (reviewed 2026-06-30):** not Phase 5. Modular Wallets
   are a future Circle-native wallet variant; Circle Paymaster is a future user-pays-gas-in-USDC
   option. The Base port MVP stays on Coinbase Smart Wallet + CDP-sponsored UserOps.

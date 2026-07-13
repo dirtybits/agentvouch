@@ -14,8 +14,20 @@ vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  verifyWalletSignature: vi.fn(),
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth")>();
+  return {
+    ...actual,
+    verifyWalletSignature: vi.fn(),
+  };
+});
+
+vi.mock("@/lib/evmAuth", () => ({
+  verifyEvmWalletSignature: vi.fn(),
+}));
+
+vi.mock("@/lib/baseAuthorTrust", () => ({
+  resolveBaseAuthorTrust: vi.fn(),
 }));
 
 vi.mock("@/lib/trust", () => ({
@@ -42,9 +54,25 @@ vi.mock("@/lib/onchain", () => ({
 }));
 
 const mockVerifyBaseSkillListing = vi.fn();
+const mockVerifyBaseSkillListingRemoved = vi.fn();
 vi.mock("@/lib/baseListingVerification", () => ({
+  isSameSkillRawUri: (input: { actual: string; expected: string }) => {
+    if (input.actual === input.expected) return true;
+    try {
+      const actualUrl = new URL(input.actual);
+      const expectedUrl = new URL(input.expected);
+      return (
+        actualUrl.pathname === expectedUrl.pathname &&
+        actualUrl.search === expectedUrl.search
+      );
+    } catch {
+      return false;
+    }
+  },
   verifyBaseSkillListing: (...args: unknown[]) =>
     mockVerifyBaseSkillListing(...args),
+  verifyBaseSkillListingRemoved: (...args: unknown[]) =>
+    mockVerifyBaseSkillListingRemoved(...args),
 }));
 
 vi.mock("@/lib/agentIdentity", () => ({
@@ -76,6 +104,8 @@ vi.mock("@/lib/skillRouteResolver", async (importOriginal) => {
 import { POST } from "@/app/api/skills/route";
 import { PATCH } from "@/app/api/skills/[id]/route";
 import { verifyWalletSignature } from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { initializeDatabase, sql } from "@/lib/db";
 import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
@@ -93,6 +123,10 @@ const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockVerifyEvmWalletSignature =
+  verifyEvmWalletSignature as unknown as ReturnType<typeof vi.fn>;
+const mockResolveBaseAuthorTrust =
+  resolveBaseAuthorTrust as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyAuthorTrust = verifyAuthorTrust as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -116,6 +150,18 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
+function publisherAuth(
+  pubkey: string,
+  action: string,
+  skillId?: string,
+  timestamp = Date.now()
+) {
+  const message = skillId
+    ? `AgentVouch Skill Repo\nAction: ${action}\nSkill id: ${skillId}\nTimestamp: ${timestamp}`
+    : `AgentVouch Skill Repo\nAction: ${action}\nTimestamp: ${timestamp}`;
+  return { pubkey, signature: "sig", message, timestamp };
+}
+
 function makeRawRequest(body: string, headers: Record<string, string>) {
   return new NextRequest("http://localhost/api/skills", {
     method: "POST",
@@ -132,7 +178,12 @@ describe("POST /api/skills", () => {
       valid: true,
       pubkey: "AuthorWallet1111111111111111111111111111111",
     });
+    mockVerifyEvmWalletSignature.mockResolvedValue({
+      valid: true,
+      pubkey: "0x1111111111111111111111111111111111111111",
+    });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
+    mockResolveBaseAuthorTrust.mockResolvedValue({ isRegistered: true });
     mockGetGithubSessionFromRequest.mockReturnValue(null);
     mockPinSkillContent.mockResolvedValue({
       success: true,
@@ -179,12 +230,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "my-skill",
         name: "My Skill",
         description: "Test description",
@@ -317,12 +366,10 @@ describe("POST /api/skills", () => {
 
     const res = await POST(
       makeRequest({
-        auth: {
-          pubkey: "AuthorWallet1111111111111111111111111111111",
-          signature: "sig",
-          message: "msg",
-          timestamp: Date.now(),
-        },
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
         skill_id: "my-skill",
         name: "My Skill",
         description: longDescription,
@@ -336,6 +383,115 @@ describe("POST /api/skills", () => {
     expect(body.error).toMatch(/description is \d+ bytes/i);
     expect(body.error).toContain(String(MAX_SKILL_DESCRIPTION_LENGTH));
     // No DB write should have happened.
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts an explicit Base USDC currency mint on paid Base publishes", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-base-skill",
+          skill_id: "base-skill",
+          author_pubkey: "0x1111111111111111111111111111111111111111",
+          name: "Base Skill",
+          description: "Base paid skill",
+          tags: [],
+          current_version: 1,
+          ipfs_cid: "bafy-test-cid",
+          on_chain_address: null,
+          chain_context: "eip155:84532",
+          price_usdc_micros: "10000",
+          currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          total_installs: 0,
+          contact: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(
+          "0x1111111111111111111111111111111111111111",
+          "publish-skill"
+        ),
+        skill_id: "base-skill",
+        name: "Base Skill",
+        description: "Base paid skill",
+        tags: [],
+        content: "# Base Skill\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+        currency_mint: "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(dbQuery.mock.calls[0][17]).toBe("eip155:84532");
+    expect(dbQuery.mock.calls[0][18]).toBe("10000");
+    expect(dbQuery.mock.calls[0][19]).toBe(
+      "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    );
+  });
+
+  it("rejects a Solana currency mint on paid Base publishes", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(
+          "0x1111111111111111111111111111111111111111",
+          "publish-skill"
+        ),
+        skill_id: "base-skill",
+        name: "Base Skill",
+        description: "Base paid skill",
+        tags: [],
+        content: "# Base Skill\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+        currency_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "currency_mint must be a valid Base USDC address",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Solana-signed publish that tries to stamp a Base chain context", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await POST(
+      makeRequest({
+        auth: publisherAuth(
+          "AuthorWallet1111111111111111111111111111111",
+          "publish-skill"
+        ),
+        skill_id: "base-stamped-by-solana",
+        name: "Base Stamped By Solana",
+        description: "Should fail before DB writes",
+        tags: [],
+        content: "# Base Stamped By Solana\n\nHello",
+        chain_context: "eip155:84532",
+        price_usdc_micros: "10000",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "Wallet-authored skills must use the signing wallet chain context.",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(dbQuery).not.toHaveBeenCalled();
   });
 });
@@ -406,12 +562,10 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          auth: {
-            pubkey: "AuthorWallet1111111111111111111111111111111",
-            signature: "sig",
-            message: "msg",
-            timestamp: Date.now(),
-          },
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "publish-skill"
+          ),
           on_chain_address: "Listing1111111111111111111111111111111111",
         }),
       }),
@@ -463,6 +617,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             txHash:
               "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -478,13 +637,271 @@ describe("PATCH /api/skills/[id]", () => {
     expect(res.status).toBe(200);
     expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
       skill: baseSkill,
+      mode: "create",
       txHash:
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       authorAddress: "0x1111111111111111111111111111111111111111",
       expectedPriceUsdcMicros: "10000",
-      expectedUri: "http://localhost/api/skills/uuid-skill-1/raw",
+      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
     });
     expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a baseListing PATCH without wallet signature auth (Bugbot #78)", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "skill-one",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Skill One",
+      description: "desc",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    const dbQuery = vi.fn().mockResolvedValueOnce([baseSkill]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("relinks an existing Base listing without requiring the original tx hash", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    const updated = {
+      ...baseSkill,
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_tx_hash: null,
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListing.mockResolvedValueOnce({
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      txHash: null,
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      skillIdHash:
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      priceUsdcMicros: "10000",
+      currencyMint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      protocolVersion: "base-poc-v0",
+      onChainProgramId: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      chainContext: "eip155:84532",
+      listingRevision: "1",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
+      skill: baseSkill,
+      mode: "create",
+      txHash: null,
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      expectedPriceUsdcMicros: null,
+      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+    });
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates a Base listing only after verifying the update tx and expected fields", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Old Skill",
+      description: "Old description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    const updated = {
+      ...baseSkill,
+      name: "New Skill",
+      description: "New description",
+      price_usdc_micros: "20000",
+      evm_tx_hash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListing.mockResolvedValueOnce({
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      txHash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      skillIdHash:
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      priceUsdcMicros: "20000",
+      currencyMint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      protocolVersion: "base-poc-v0",
+      onChainProgramId: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      chainContext: "eip155:84532",
+      listingRevision: "2",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "update-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "update",
+            txHash:
+              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+            expectedName: "New Skill",
+            expectedDescription: "New description",
+            expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+            expectedPriceUsdcMicros: "20000",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListing).toHaveBeenCalledWith({
+      skill: baseSkill,
+      mode: "update",
+      txHash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      authorAddress: "0x1111111111111111111111111111111111111111",
+      expectedPriceUsdcMicros: "20000",
+      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      expectedName: "New Skill",
+      expectedDescription: "New description",
+    });
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects Base listing updates whose URI does not match the canonical raw skill path", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Old Skill",
+      description: "Old description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    const dbQuery = vi.fn().mockResolvedValueOnce([baseSkill]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "update-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "update",
+            txHash:
+              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+            expectedName: "New Skill",
+            expectedDescription: "New description",
+            expectedUri: "https://evil.example/whatever",
+            expectedPriceUsdcMicros: "20000",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base listing update URI must match the canonical skill raw URL",
+    });
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+    expect(dbQuery).toHaveBeenCalledTimes(1);
   });
 
   it("rejects Base listing persistence for non-Base skill rows", async () => {
@@ -511,6 +928,11 @@ describe("PATCH /api/skills/[id]", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
           baseListing: {
             txHash:
               "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -526,5 +948,462 @@ describe("PATCH /api/skills/[id]", () => {
     expect(res.status).toBe(400);
     expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
     expect(dbQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a Base listing by clearing only EVM fields after verifying the remove tx", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    // Post-remove row: EVM link fields nulled, evm_tx_hash set to the remove tx,
+    // on_chain_address untouched (Solana PDA namespace is disjoint).
+    const updated = {
+      ...baseSkill,
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+      evm_tx_hash:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      total_installs: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyBaseSkillListingRemoved.mockResolvedValueOnce({
+      listingId:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      txHash:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([baseSkill])
+      .mockResolvedValueOnce([updated]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "remove-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "remove",
+            txHash:
+              "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockVerifyBaseSkillListingRemoved).toHaveBeenCalledWith({
+      skill: baseSkill,
+      txHash:
+        "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      authorAddress: "0x1111111111111111111111111111111111111111",
+    });
+    // SELECT + UPDATE ran; verifyBaseSkillListing (create/update path) did not.
+    expect(dbQuery).toHaveBeenCalledTimes(2);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.evm_listing_id).toBeNull();
+    expect(body.evm_contract_address).toBeNull();
+    expect(body.evm_tx_hash).toBe(
+      "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    );
+  });
+
+  it("rejects a Base listing remove with no txHash before any DB read", async () => {
+    const dbQuery = vi.fn();
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "remove-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "remove",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base listing remove requires txHash",
+    });
+    expect(mockVerifyBaseSkillListingRemoved).not.toHaveBeenCalled();
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not clear the DB row when Base remove verification fails", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    mockVerifyBaseSkillListingRemoved.mockRejectedValueOnce(
+      new Error("Base listing is not in Removed status after remove tx")
+    );
+    const dbQuery = vi.fn().mockResolvedValueOnce([baseSkill]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "remove-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "remove",
+            txHash:
+              "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/Removed status/i);
+    // Only the SELECT ran — the UPDATE that clears EVM fields never fired.
+    expect(dbQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects baseListing PATCH when signed action does not match", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "skill-one",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Skill One",
+      description: "desc",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "publish-skill",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "link-base-listing"/i);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("rejects baseListing PATCH when signed skill id does not match", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "skill-one",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Skill One",
+      description: "desc",
+      price_usdc_micros: "10000",
+      currency_mint: null,
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: null,
+      on_chain_program_id: null,
+      evm_listing_id: null,
+      evm_contract_address: null,
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "other-skill-id"
+          ),
+          baseListing: {
+            relinkExisting: true,
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/skill id does not match/i);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Base update-mode PATCH signed with the wrong action", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "Old Skill",
+      description: "Old description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // Signed publish-skill but requesting an update — must reject.
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "publish-skill",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "update",
+            txHash:
+              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+            expectedName: "New Skill",
+            expectedDescription: "New description",
+            expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+            expectedPriceUsdcMicros: "20000",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "update-base-listing"/i);
+    expect(mockVerifyBaseSkillListing).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Base remove-mode PATCH signed with the wrong action", async () => {
+    const baseSkill = {
+      id: "uuid-skill-1",
+      skill_id: "my-skill",
+      author_pubkey: "0x1111111111111111111111111111111111111111",
+      name: "My Skill",
+      description: "Test description",
+      price_usdc_micros: "10000",
+      currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      chain_context: "eip155:84532",
+      on_chain_protocol_version: "base-poc-v0",
+      on_chain_program_id: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+      evm_listing_id:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      evm_contract_address: "0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854",
+    };
+    mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // Signed link-base-listing but requesting a remove — must reject.
+          auth: publisherAuth(
+            "0x1111111111111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
+          baseListing: {
+            mode: "remove",
+            txHash:
+              "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            authorAddress: "0x1111111111111111111111111111111111111111",
+            chainContext: "eip155:84532",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "remove-base-listing"/i);
+    expect(mockVerifyBaseSkillListingRemoved).not.toHaveBeenCalled();
+  });
+
+  it("accepts Solana listing PATCH with skill-scoped publish-skill auth", async () => {
+    mockGetOnChainUsdcPrice.mockResolvedValue({
+      priceUsdcMicros: 5_000_000n,
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+          on_chain_address: "Listing111111111111111111111111111111111",
+          price_usdc_micros: "5000000",
+          chain_context: "solana:devnet",
+        },
+      ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "publish-skill",
+            "uuid-skill-1"
+          ),
+          on_chain_address: "Listing111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockGetOnChainUsdcPrice).toHaveBeenCalled();
+  });
+
+  it("accepts Solana listing PATCH with legacy Action+Timestamp-only CLI auth", async () => {
+    mockGetOnChainUsdcPrice.mockResolvedValue({
+      priceUsdcMicros: 5_000_000n,
+    });
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-skill-1",
+          author_pubkey: "AuthorWallet1111111111111111111111111111111",
+          on_chain_address: "Listing111111111111111111111111111111111",
+          price_usdc_micros: "5000000",
+          chain_context: "solana:devnet",
+        },
+      ]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // CLI legacy: no Skill id line
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "publish-skill"
+          ),
+          on_chain_address: "Listing111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects Solana listing PATCH when signed action does not match", async () => {
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth: publisherAuth(
+            "AuthorWallet1111111111111111111111111111111",
+            "link-base-listing",
+            "uuid-skill-1"
+          ),
+          on_chain_address: "Listing111111111111111111111111111111111",
+        }),
+      }),
+      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/not for action "publish-skill"/i);
+    expect(mockGetOnChainUsdcPrice).not.toHaveBeenCalled();
   });
 });

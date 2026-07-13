@@ -5,6 +5,7 @@ import { address, type Address } from "@solana/kit";
 import Link from "next/link";
 import { useAgentVouchWallet } from "@/components/WalletContextProvider";
 import { useMarketplaceOracle } from "@/hooks/useMarketplaceOracle";
+import { useWritableChainWallet } from "@/hooks/useWritableChainWallet";
 import {
   formatWalletAuthorLabel,
   shortWalletAddress,
@@ -142,6 +143,8 @@ type ActivityRepoListing = {
 type ActivityUsdcPurchase = {
   payment_tx_signature: string;
   buyer_pubkey: string;
+  buyer_chain_context: string | null;
+  buyer_address: string | null;
   currency_mint: string;
   amount_micros: string;
   verified_at: string;
@@ -275,6 +278,7 @@ export default function MarketplaceClient({
   const connected = status === "connected" && !!account;
   const publicKey = account ?? null;
   const oracle = useMarketplaceOracle();
+  const writableChainWallet = useWritableChainWallet();
 
   const [activeTab, setActiveTab] = useState<PageTab>("browse");
 
@@ -442,8 +446,9 @@ export default function MarketplaceClient({
         (purchase) => ({
           id: `usdc-${purchase.payment_tx_signature}`,
           type: "purchase",
-          actor: purchase.buyer_pubkey,
-          actorChainContext: purchase.chain_context,
+          actor: purchase.buyer_address ?? purchase.buyer_pubkey,
+          actorChainContext:
+            purchase.buyer_chain_context ?? purchase.chain_context,
           skillListing: purchase.on_chain_address,
           skillName: purchase.skill_name,
           skillRepoId: purchase.skill_db_id,
@@ -588,24 +593,46 @@ export default function MarketplaceClient({
     setPage(1);
   }, []);
 
-  const handlePurchase = async (listingPubkey: Address, authorKey: Address) => {
+  const handlePurchase = async (
+    listingPubkey: Address,
+    authorKey: Address,
+    priceUsdcMicros: bigint | null
+  ) => {
     if (!connected) return;
     setPurchasing(listingPubkey as string);
     setTxError(null);
     setTxSuccess(null);
     try {
-      const { tx, alreadyPurchased } = await oracle.purchaseSkill(
-        listingPubkey,
-        authorKey
-      );
-      if (alreadyPurchased) {
+      if (writableChainWallet && priceUsdcMicros !== null) {
+        // Phase 2 circle-back: quick purchase goes through the chain-agnostic wallet facade,
+        // which enforces the displayed price against the live listing before sending.
+        const result = await writableChainWallet.purchaseSkill({
+          listingId: String(listingPubkey),
+          expectedPriceUsdcMicros: priceUsdcMicros,
+        });
         setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
         setPurchaseStatusWarning(null);
-        setTxSuccess("Already purchased with this wallet.");
-      } else if (tx) {
-        setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
-        setPurchaseStatusWarning(null);
-        setTxSuccess(tx);
+        setTxSuccess(
+          result.alreadyPurchased
+            ? "Already purchased with this wallet."
+            : result.ref
+        );
+      } else {
+        // No displayed price quote (or no writable session): legacy oracle path, which
+        // purchases at the live listing price without a quote check.
+        const { tx, alreadyPurchased } = await oracle.purchaseSkill(
+          listingPubkey,
+          authorKey
+        );
+        if (alreadyPurchased) {
+          setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
+          setPurchaseStatusWarning(null);
+          setTxSuccess("Already purchased with this wallet.");
+        } else if (tx) {
+          setPurchasedKeys((prev) => new Set([...prev, String(listingPubkey)]));
+          setPurchaseStatusWarning(null);
+          setTxSuccess(tx);
+        }
       }
       await Promise.all([
         fetchSkills(),
@@ -945,7 +972,10 @@ export default function MarketplaceClient({
                             if (!skill.author_pubkey) return;
                             handlePurchase(
                               address(listingPubkey),
-                              address(skill.author_pubkey)
+                              address(skill.author_pubkey),
+                              skill.price_usdc_micros
+                                ? BigInt(skill.price_usdc_micros)
+                                : null
                             );
                           }}
                         />

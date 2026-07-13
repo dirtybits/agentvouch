@@ -1,20 +1,92 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { sql } from "@/lib/db";
-import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
+import {
+  assertPublisherAuthMessageScope,
+  verifyWalletSignature,
+  type AuthPayload,
+} from "@/lib/auth";
+import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { pinSkillContent } from "@/lib/ipfs";
 import { runReviewSafe } from "@/lib/ai/review";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import { MAX_SKILL_CONTENT_BYTES } from "@/lib/skillDraft";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  BASE_SEPOLIA_CHAIN_CONTEXT,
+  normalizeInputChainContext,
+} from "@/lib/chains";
+import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 
 type VersionedSkillRow = {
   id: string;
   skill_id: string;
   author_pubkey: string | null;
+  chain_context: string | null;
   current_version: number;
   ipfs_cid: string | null;
 };
+
+async function verifyVersionPublisherAuth(
+  skill: VersionedSkillRow,
+  auth: AuthPayload
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  if (!skill.author_pubkey) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "This unverified publisher has not linked a wallet yet, so wallet-signed version publishing is unavailable.",
+    };
+  }
+
+  // CLI still signs Action+Timestamp-only for publish-skill (2026-07-08 dated
+  // legacy). Web clients should include Skill id for the target DB UUID.
+  const scope = assertPublisherAuthMessageScope({
+    message: auth.message,
+    timestamp: auth.timestamp,
+    expectedAction: "publish-skill",
+    skillId: skill.id,
+    allowLegacyWithoutSkillId: true,
+  });
+  if (!scope.ok) {
+    return { ok: false, status: 401, error: scope.error };
+  }
+
+  const chainContext = normalizeInputChainContext(skill.chain_context);
+  if (
+    chainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+    isEvmAddress(skill.author_pubkey)
+  ) {
+    const verification = await verifyEvmWalletSignature(auth);
+    if (!verification.valid || !verification.pubkey) {
+      return {
+        ok: false,
+        status: 401,
+        error: verification.error || "Invalid signature",
+      };
+    }
+    if (
+      getEvmAddress(skill.author_pubkey) !== getEvmAddress(verification.pubkey)
+    ) {
+      return { ok: false, status: 403, error: "Not the skill author" };
+    }
+    return { ok: true };
+  }
+
+  const verification = verifyWalletSignature(auth);
+  if (!verification.valid || !verification.pubkey) {
+    return {
+      ok: false,
+      status: 401,
+      error: verification.error || "Invalid signature",
+    };
+  }
+  if (skill.author_pubkey !== verification.pubkey) {
+    return { ok: false, status: 403, error: "Not the skill author" };
+  }
+  return { ok: true };
+}
 
 export async function POST(
   request: NextRequest,
@@ -48,14 +120,6 @@ export async function POST(
       );
     }
 
-    const verification = verifyWalletSignature(auth);
-    if (!verification.valid) {
-      return NextResponse.json(
-        { error: verification.error || "Invalid signature" },
-        { status: 401 }
-      );
-    }
-
     const rows = await sql()<VersionedSkillRow>`
       SELECT * FROM skills WHERE id = ${id}::uuid
     `;
@@ -65,21 +129,11 @@ export async function POST(
     }
 
     const skill = rows[0];
-
-    if (!skill.author_pubkey) {
+    const authResult = await verifyVersionPublisherAuth(skill, auth);
+    if (!authResult.ok) {
       return NextResponse.json(
-        {
-          error:
-            "This unverified publisher has not linked a wallet yet, so wallet-signed version publishing is unavailable.",
-        },
-        { status: 403 }
-      );
-    }
-
-    if (skill.author_pubkey !== verification.pubkey) {
-      return NextResponse.json(
-        { error: "Not the skill author" },
-        { status: 403 }
+        { error: authResult.error },
+        { status: authResult.status }
       );
     }
 
