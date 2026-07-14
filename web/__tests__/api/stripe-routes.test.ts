@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   verifyAndParseWebhook: vi.fn(),
   verifyWalletSignature: vi.fn(),
   hasUsdcPurchaseEntitlement: vi.fn(),
+  hasOnChainPurchase: vi.fn(),
   recordRevocableUsdcPurchaseReceipt: vi.fn(),
   recordAndApplyUsdcPaymentRevocation: vi.fn(),
   getUsdcPurchaseEntitlementStatus: vi.fn(),
@@ -53,6 +54,10 @@ vi.mock("@/lib/usdcPurchases", () => ({
     mocks.hasUsdcPurchaseReceiptForPaymentRef(...args),
 }));
 
+vi.mock("@/lib/x402", () => ({
+  hasOnChainPurchase: (...args: unknown[]) => mocks.hasOnChainPurchase(...args),
+}));
+
 import { POST as checkoutPOST } from "@/app/api/stripe/checkout/route";
 import { POST as webhookPOST } from "@/app/api/stripe/webhook/route";
 import { sql } from "@/lib/db";
@@ -94,6 +99,7 @@ function signedCheckoutAuth(priceMicros = "1000000") {
 function mockSkillRow(
   overrides: Partial<{
     price_usdc_micros: string | null;
+    on_chain_address: string | null;
     evm_listing_id: string | null;
   }> = {}
 ) {
@@ -103,6 +109,7 @@ function mockSkillRow(
         id: skillId,
         name: "Paid Skill",
         price_usdc_micros: "1000000",
+        on_chain_address: null,
         evm_listing_id: null,
         ...overrides,
       },
@@ -162,6 +169,7 @@ describe("Stripe checkout and webhook routes", () => {
     });
     mocks.hasUsdcPurchaseReceiptForPaymentRef.mockResolvedValue(false);
     mocks.hasUsdcPurchaseEntitlement.mockResolvedValue(false);
+    mocks.hasOnChainPurchase.mockResolvedValue(false);
     mocks.recordRevocableUsdcPurchaseReceipt.mockResolvedValue({
       receiptRecorded: true,
       entitlementUpdated: true,
@@ -273,6 +281,24 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(409);
     expect(body.error).toContain("already has access");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("refuses card checkout after an on-chain purchase", async () => {
+    mockSkillRow({ on_chain_address: "SkillListing111" });
+    mocks.hasOnChainPurchase.mockResolvedValue(true);
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId, auth: signedCheckoutAuth() })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toContain("already has access");
+    expect(mocks.hasOnChainPurchase).toHaveBeenCalledWith(
+      buyerPubkey,
+      "SkillListing111"
+    );
     expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 

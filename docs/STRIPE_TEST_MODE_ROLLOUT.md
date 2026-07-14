@@ -54,7 +54,8 @@ purchase state.
 - Duplicate webhook delivery is idempotent. A second captured payment is kept
   as an append-only receipt for reconciliation without overwriting the existing
   entitlement provenance.
-- Checkout returns 409 when the signed wallet already has an entitlement.
+- Checkout returns 409 when the signed wallet already has a database
+  entitlement or linked Solana purchase.
 - Checkout for a price below $0.50 returns 400 before any Stripe call.
 - Checkout for a Base protocol listing returns 409 (card entitlements are not
   redeemable on the Base download gate yet).

@@ -17,11 +17,13 @@ import {
 } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import { hasOnChainPurchase } from "@/lib/x402";
 
 type SkillPriceRow = {
   id: string;
   name: string;
   price_usdc_micros: string | null;
+  on_chain_address: string | null;
   evm_listing_id: string | null;
 };
 
@@ -82,6 +84,7 @@ export async function POST(req: NextRequest) {
         id,
         name,
         price_usdc_micros::text AS price_usdc_micros,
+        on_chain_address,
         evm_listing_id
       FROM skills
       WHERE id = ${skillId}::uuid
@@ -147,7 +150,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (await hasUsdcPurchaseEntitlement(skill.id, verification.pubkey)) {
+    const alreadyPurchased =
+      (await hasUsdcPurchaseEntitlement(skill.id, verification.pubkey)) ||
+      (skill.on_chain_address
+        ? await hasOnChainPurchase(verification.pubkey, skill.on_chain_address)
+        : false);
+    if (alreadyPurchased) {
       return NextResponse.json(
         { error: "This wallet already has access to the skill" },
         { status: 409 }
