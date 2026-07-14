@@ -4,6 +4,7 @@ import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
 import {
   BASE_A1_PROTOCOL_VERSION,
   normalizeA1Purchase,
+  readBasePaidPurchaseReportPreflight,
   verifyAndIndexBasePaidPurchaseReport,
   type PaidReportSkillRow,
 } from "@/lib/basePaidPurchaseReportVerification";
@@ -52,7 +53,13 @@ function skill(): PaidReportSkillRow {
   };
 }
 
-function mockClient(options: { lane?: number; protocolVersion?: string } = {}) {
+function mockClient(
+  options: {
+    lane?: number;
+    protocolVersion?: string;
+    simulationError?: Error;
+  } = {}
+) {
   const filedAt = 1_783_000_000n;
   const reviewDeadline = filedAt + 259_200n;
   const client = {
@@ -73,7 +80,11 @@ function mockClient(options: { lane?: number; protocolVersion?: string } = {}) {
     getBlock: vi.fn().mockResolvedValue({
       hash: BLOCK_HASH,
       number: 123n,
+      timestamp: filedAt,
     }),
+    simulateContract: options.simulationError
+      ? vi.fn().mockRejectedValue(options.simulationError)
+      : vi.fn().mockResolvedValue({ result: 1n }),
     readContract: vi.fn().mockImplementation(({ functionName }) => {
       switch (functionName) {
         case "PROTOCOL_VERSION":
@@ -94,6 +105,8 @@ function mockClient(options: { lane?: number; protocolVersion?: string } = {}) {
           });
         case "getListing":
           return Promise.resolve({ author: AUTHOR, exists: true });
+        case "paused":
+          return Promise.resolve(false);
         case "getPaidPurchaseReportCore":
           return Promise.resolve({
             buyer: BUYER,
@@ -158,6 +171,57 @@ describe("A1 purchase tuple normalization", () => {
     ]);
     expect(purchase.lane).toBe(2);
     expect(purchase.priceUsdcMicros).toBe(10_000_000n);
+  });
+});
+
+describe("paid-purchase report preflight", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reports a consumed purchase even when the database report index is missing", async () => {
+    const client = mockClient({
+      simulationError: new Error(
+        "The contract function reverted with PaidPurchaseReceiptConsumed"
+      ),
+    });
+
+    const result = await readBasePaidPurchaseReportPreflight({
+      skill: skill(),
+      buyerAddress: BUYER,
+      purchaseId: PURCHASE_ID,
+    });
+
+    expect(result).toMatchObject({
+      eligible: false,
+      reason: "purchase-already-reported",
+      requiresExactCallSimulation: false,
+    });
+    expect(client.simulateContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: BUYER,
+        functionName: "openPaidPurchaseReport",
+        args: [AUTHOR, LISTING_ID, PURCHASE_ID, "preflight"],
+      })
+    );
+  });
+
+  it("keeps admission open when only the exact wallet call can decide", async () => {
+    mockClient({
+      simulationError: new Error("ERC20InsufficientAllowance"),
+    });
+
+    const result = await readBasePaidPurchaseReportPreflight({
+      skill: skill(),
+      buyerAddress: BUYER,
+      purchaseId: PURCHASE_ID,
+    });
+
+    expect(result).toMatchObject({
+      eligible: true,
+      reason: null,
+      requiresExactCallSimulation: true,
+    });
   });
 });
 

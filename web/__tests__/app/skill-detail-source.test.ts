@@ -142,5 +142,6 @@ describe("skill detail source", () => {
     expect(reportSource).toContain("Founder/operator review is");
     expect(reportSource).toContain("centralized. Rejection");
     expect(reportSource).toContain("not a full-refund guarantee");
+    expect(reportSource).toContain('BigInt(report.claimDeadline ?? "0") >');
   });
 });

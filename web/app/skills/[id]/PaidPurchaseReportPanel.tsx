@@ -98,7 +98,7 @@ function isBuyerCreditClaimable(
   try {
     return (
       BigInt(report.buyerCreditUsdcMicros) > 0n &&
-      BigInt(report.claimDeadline ?? "0") >=
+      BigInt(report.claimDeadline ?? "0") >
         BigInt(Math.floor(Date.now() / 1000))
     );
   } catch {

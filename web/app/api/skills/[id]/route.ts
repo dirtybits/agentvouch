@@ -397,14 +397,18 @@ export async function GET(
         normalizedBuyerChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
         Boolean(skillSnapshot.evm_listing_id);
       const buyerPurchaseSummary = isA1Deployment
-        ? await getEvmPaidPurchaseReportCandidate({
-            skillDbId,
-            chainContext: normalizedBuyerChainContext,
-            contractAddress: getBasePaidPurchaseReportContract(skillSnapshot),
-            protocolVersion: BASE_A1_PROTOCOL_VERSION,
-            buyerAddress: buyerEvmAddress,
-            listingId: String(skillSnapshot.evm_listing_id),
-          }).catch(() => null)
+        ? await (async () => {
+            const contractAddress =
+              getBasePaidPurchaseReportContract(skillSnapshot);
+            return getEvmPaidPurchaseReportCandidate({
+              skillDbId,
+              chainContext: normalizedBuyerChainContext,
+              contractAddress,
+              protocolVersion: BASE_A1_PROTOCOL_VERSION,
+              buyerAddress: buyerEvmAddress,
+              listingId: String(skillSnapshot.evm_listing_id),
+            });
+          })().catch(() => null)
         : null;
       // The legacy entitlement key collapses deployments. Once A1 is selected, only an exact
       // append-only receipt from that deployment counts as the buyer's purchase context.

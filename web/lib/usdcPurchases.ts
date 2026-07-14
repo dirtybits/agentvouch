@@ -7,6 +7,7 @@ let schemaReady: Promise<void> | null = null;
 export const REPO_X402_PAYMENT_FLOW = "repo-x402-usdc";
 export const DIRECT_PURCHASE_PAYMENT_FLOW = "direct-purchase-skill";
 export const X402_BRIDGE_PURCHASE_PAYMENT_FLOW = "x402-bridge-purchase-skill";
+const BASE_AUTHORIZATION_PURCHASE_PAYMENT_FLOW = "base-x402-purchase-skill";
 
 export type ChainQualifiedBuyer = {
   buyerChainContext: string;
@@ -920,7 +921,27 @@ export async function getEvmPaidPurchaseReportCandidate(input: {
       AND LOWER(buyer_address) = ${buyerAddress}
       AND LOWER(evm_listing_id) = ${input.listingId.toLowerCase()}
       AND evm_purchase_id IS NOT NULL
-    ORDER BY verified_at DESC, created_at DESC, id DESC
+    ORDER BY
+      CASE
+        WHEN payment_flow IN (
+          ${DIRECT_PURCHASE_PAYMENT_FLOW},
+          ${BASE_AUTHORIZATION_PURCHASE_PAYMENT_FLOW}
+        ) THEN 0
+        ELSE 1
+      END,
+      CASE
+        WHEN EXISTS (
+          SELECT 1
+          FROM evm_paid_purchase_report_index report_index
+          WHERE report_index.chain_context = usdc_purchase_receipts.chain_context
+            AND report_index.contract_address = LOWER(usdc_purchase_receipts.on_chain_program_id)
+            AND report_index.purchase_id = LOWER(usdc_purchase_receipts.evm_purchase_id)
+        ) THEN 1
+        ELSE 0
+      END,
+      verified_at DESC,
+      created_at DESC,
+      id DESC
     LIMIT 1
   `;
   const row = rows[0];

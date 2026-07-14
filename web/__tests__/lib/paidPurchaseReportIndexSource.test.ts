@@ -35,4 +35,16 @@ describe("deployment-qualified paid report index schema", () => {
     expect(source).toContain("report_id NUMERIC(20, 0) NOT NULL");
     expect(source).toContain("opened_block_number NUMERIC(78, 0) NOT NULL");
   });
+
+  it("prefers an older reportable receipt over newer ineligible or already indexed receipts", () => {
+    expect(source).toContain("BASE_AUTHORIZATION_PURCHASE_PAYMENT_FLOW");
+    expect(source).toContain("WHEN payment_flow IN (");
+    expect(source).toContain("WHEN EXISTS (");
+    expect(source).toContain(
+      "FROM evm_paid_purchase_report_index report_index"
+    );
+    expect(source).toContain(
+      "report_index.purchase_id = LOWER(usdc_purchase_receipts.evm_purchase_id)"
+    );
+  });
 });

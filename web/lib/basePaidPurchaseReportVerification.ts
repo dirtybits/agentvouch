@@ -8,7 +8,7 @@ import {
   type Hex,
 } from "viem";
 import { baseSepolia } from "viem/chains";
-import { AGENTVOUCH_EVM_A1_READ_ABI } from "@/lib/adapters/agentVouchEvmAbi";
+import { AGENTVOUCH_EVM_A1_PAID_REPORT_WRITE_ABI } from "@/lib/adapters/agentVouchEvmAbi";
 import {
   BASE_AGENTVOUCH_CONTRACT_ADDRESS,
   BASE_SEPOLIA_CHAIN_ID,
@@ -30,7 +30,7 @@ export const BASE_A1_PROTOCOL_VERSION = "base-v1-a1";
 export const PAID_PURCHASE_REPORT_BOND_USDC_MICROS = 5_000_000n;
 
 const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
-const A1_ABI = parseAbi([...AGENTVOUCH_EVM_A1_READ_ABI]);
+const A1_ABI = parseAbi([...AGENTVOUCH_EVM_A1_PAID_REPORT_WRITE_ABI]);
 type BasePublicClient = ReturnType<typeof createBasePublicClient>;
 
 export type PaidReportSkillRow = {
@@ -635,6 +635,23 @@ export async function readBasePaidPurchaseReportPreflight(input: {
   } else if (latestBlock.timestamp > filingDeadline) {
     reason = "filing-window-expired";
   } else if (isPaused) reason = "deployment-paused";
+
+  if (reason === null) {
+    try {
+      await client.simulateContract({
+        account: buyer,
+        address: contract,
+        abi: A1_ABI,
+        functionName: "openPaidPurchaseReport",
+        args: [author, skillListingId, purchaseId, "preflight"],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/PaidPurchaseReceiptConsumed/i.test(message)) {
+        reason = "purchase-already-reported";
+      }
+    }
+  }
 
   return {
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
