@@ -12,8 +12,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import {
   getUsdcPurchaseEntitlementStatus,
+  hasUsdcPaymentRevocation,
   hasUsdcPurchaseReceiptForPaymentRef,
   recordUsdcPurchaseReceipt,
+  recordUsdcPaymentRevocation,
   revokeUsdcEntitlementsByPaymentRef,
 } from "@/lib/usdcPurchases";
 import {
@@ -123,6 +125,7 @@ export async function POST(req: NextRequest) {
       await initializeDatabase();
       const reason =
         event.type === "charge.refunded" ? "stripe-refund" : "stripe-dispute";
+      await recordUsdcPaymentRevocation(paymentRef, reason);
       const revoked = await revokeUsdcEntitlementsByPaymentRef(
         paymentRef,
         reason
@@ -217,11 +220,15 @@ export async function POST(req: NextRequest) {
   try {
     await initializeDatabase();
 
-    // Re-read only to ensure the skill still exists. Fulfillment uses the
-    // checkout-time amount stored in Stripe metadata, so author price changes
-    // between checkout and webhook do not strand paid buyers.
-    const rows = await sql()<{ id: string }>`
-      SELECT id
+    // Re-read to ensure the skill still exists and has not become a Base
+    // protocol listing since checkout creation. Fulfillment uses the
+    // checkout-time amount stored in Stripe metadata, so price changes do not
+    // strand paid buyers.
+    const rows = await sql()<{
+      id: string;
+      evm_listing_id: string | null;
+    }>`
+      SELECT id, evm_listing_id
       FROM skills
       WHERE id = ${skillDbId}::uuid
       LIMIT 1
@@ -229,13 +236,29 @@ export async function POST(req: NextRequest) {
     if (!rows[0]) {
       return ackUnprocessable(session.id, "skill no longer exists");
     }
+    if (rows[0].evm_listing_id) {
+      return ackUnprocessable(
+        session.id,
+        "card checkout is unavailable for Base protocol listings"
+      );
+    }
 
     // Stripe payment reference + wallet buyer identity from checkout metadata.
     // `payment_tx_signature` is UNIQUE, giving us idempotency on retries.
-    const paymentRef = `stripe:${session.payment_intent || session.id}`.slice(
-      0,
-      128
-    );
+    const paymentRef = stripePaymentRef(session.payment_intent);
+    if (!paymentRef) {
+      return ackUnprocessable(
+        session.id,
+        "paid session without payment_intent"
+      );
+    }
+
+    if (await hasUsdcPaymentRevocation(paymentRef)) {
+      return ackUnprocessable(
+        session.id,
+        "payment was refunded or disputed; entitlement stays revoked"
+      );
+    }
 
     // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
     // through for a buyer who already holds a live entitlement (e.g. a real

@@ -106,10 +106,17 @@ export async function POST(
     const priceUsdcMicros = normalizeUsdcMicros(skill.price_usdc_micros);
     if (priceUsdcMicros) {
       const purchased = skill.on_chain_address
-        ? await hasOnChainPurchase(
-            verification.pubkey,
-            skill.on_chain_address
-          ).catch(() => false)
+        ? (
+            await Promise.all([
+              hasOnChainPurchase(
+                verification.pubkey,
+                skill.on_chain_address
+              ).catch(() => false),
+              hasUsdcPurchaseEntitlement(id, verification.pubkey).catch(
+                () => false
+              ),
+            ])
+          ).some(Boolean)
         : await hasUsdcPurchaseEntitlement(id, verification.pubkey).catch(
             () => false
           );

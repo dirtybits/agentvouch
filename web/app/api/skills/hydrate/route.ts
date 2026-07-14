@@ -316,11 +316,24 @@ async function addPurchasePreflightAndBuyerStatus(input: {
       );
       const buyerHasPurchased = input.buyerAddress
         ? creatorPriceUsdcMicros
-          ? skill.source === "repo" && !skill.on_chain_address
-            ? await hasUsdcPurchaseEntitlement(
-                skill.id,
-                String(input.buyerAddress)
-              ).catch(() => false)
+          ? skill.source === "repo"
+            ? skill.on_chain_address
+              ? (
+                  await Promise.all([
+                    hasOnChainPurchase(
+                      String(input.buyerAddress),
+                      String(skill.on_chain_address)
+                    ).catch(() => false),
+                    hasUsdcPurchaseEntitlement(
+                      skill.id,
+                      String(input.buyerAddress)
+                    ).catch(() => false),
+                  ])
+                ).some(Boolean)
+              : await hasUsdcPurchaseEntitlement(
+                  skill.id,
+                  String(input.buyerAddress)
+                ).catch(() => false)
             : skill.on_chain_address
             ? await hasOnChainPurchase(
                 String(input.buyerAddress),

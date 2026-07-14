@@ -22,6 +22,7 @@ vi.mock("@/lib/purchasePreflight", () => ({
 }));
 
 vi.mock("@/lib/usdcPurchases", () => ({
+  hasChainUsdcPurchaseEntitlement: vi.fn(),
   hasUsdcPurchaseEntitlement: vi.fn(),
 }));
 
@@ -42,6 +43,7 @@ import {
 } from "@/lib/purchasePreflight";
 import { resolveMultipleAuthorTrust } from "@/lib/trust";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
+import { hasOnChainPurchase } from "@/lib/x402";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockResolveMultipleAuthorTrust =
@@ -56,6 +58,9 @@ const mockSerializePurchasePreflight =
   serializePurchasePreflight as unknown as ReturnType<typeof vi.fn>;
 const mockHasUsdcPurchaseEntitlement =
   hasUsdcPurchaseEntitlement as unknown as ReturnType<typeof vi.fn>;
+const mockHasOnChainPurchase = hasOnChainPurchase as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/api/skills/hydrate", {
@@ -90,6 +95,7 @@ describe("POST /api/skills/hydrate", () => {
       purchaseRiskWarning: null,
     });
     mockHasUsdcPurchaseEntitlement.mockResolvedValue(false);
+    mockHasOnChainPurchase.mockResolvedValue(false);
   });
 
   it("returns an empty hydration map when no valid skill ids are provided", async () => {
@@ -166,6 +172,41 @@ describe("POST /api/skills/hydrate", () => {
       }
     );
     expect(mockCreatePurchasePreflightContext).toHaveBeenCalledOnce();
+    expect(mockHasUsdcPurchaseEntitlement).toHaveBeenCalledWith(skillId, buyer);
+  });
+
+  it("reports a linked paid repo skill purchased via Stripe", async () => {
+    const skillId = "22222222-2222-4222-8222-222222222222";
+    const buyer = "2DGYWtztLvPB6GxgGXT16gjCoEf56jEmwSxjMwK21Pg3";
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([
+        {
+          id: skillId,
+          skill_id: "linked-paid-repo-skill",
+          author_pubkey: "asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw",
+          name: "Linked Paid Repo Skill",
+          description: null,
+          tags: [],
+          current_version: 1,
+          ipfs_cid: null,
+          on_chain_address: "ChainAddr1111111111111111111111111111111111",
+          chain_context: "solana:devnet",
+          total_installs: 0,
+          price_usdc_micros: "1000000",
+          created_at: "2026-05-11T00:00:00.000Z",
+          updated_at: "2026-05-11T00:00:00.000Z",
+        },
+      ])
+    );
+    mockHasUsdcPurchaseEntitlement.mockResolvedValue(true);
+
+    const res = await POST(
+      makeRequest({ skillIds: [skillId], buyer, includeBuyerStatus: true })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.skills[skillId].buyerHasPurchased).toBe(true);
     expect(mockHasUsdcPurchaseEntitlement).toHaveBeenCalledWith(skillId, buyer);
   });
 });

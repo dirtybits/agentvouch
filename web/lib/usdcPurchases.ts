@@ -439,6 +439,15 @@ export async function ensureUsdcPurchaseSchema() {
     `;
 
     await db`
+      CREATE TABLE IF NOT EXISTS usdc_payment_revocations (
+        payment_tx_signature VARCHAR(128) PRIMARY KEY,
+        reason TEXT NOT NULL,
+        revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    await db`
       CREATE INDEX IF NOT EXISTS idx_usdc_purchase_receipts_chain_buyer
       ON usdc_purchase_receipts(skill_db_id, buyer_chain_context, buyer_address)
       WHERE buyer_chain_context IS NOT NULL
@@ -813,6 +822,40 @@ export async function hasUsdcPurchaseReceiptForPaymentRef(
   `;
 
   return rows[0]?.has_receipt ?? false;
+}
+
+export async function hasUsdcPaymentRevocation(
+  paymentTxSignature: string
+): Promise<boolean> {
+  await ensureUsdcPurchaseSchema();
+
+  const rows = await sql()<{ revoked: boolean }>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM usdc_payment_revocations
+      WHERE payment_tx_signature = ${paymentTxSignature}
+    ) AS revoked
+  `;
+
+  return rows[0]?.revoked ?? false;
+}
+
+export async function recordUsdcPaymentRevocation(
+  paymentTxSignature: string,
+  reason: string
+): Promise<void> {
+  await ensureUsdcPurchaseSchema();
+
+  await sql()`
+    INSERT INTO usdc_payment_revocations (
+      payment_tx_signature,
+      reason,
+      updated_at
+    )
+    VALUES (${paymentTxSignature}, ${reason}, NOW())
+    ON CONFLICT (payment_tx_signature)
+    DO UPDATE SET reason = EXCLUDED.reason, updated_at = NOW()
+  `;
 }
 
 // Revokes entitlements whose CURRENT backing receipt is this payment (e.g. a
