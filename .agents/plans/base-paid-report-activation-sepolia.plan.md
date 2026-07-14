@@ -2,24 +2,27 @@
 name: base-paid-report-activation-sepolia
 overview: "Activate the merged base-v1-a1 PaidPurchaseReport mechanism on Base Sepolia through a fresh linked deployment, explicit paused staging, a purchase-bound buyer client, isolated lifecycle smoke, and reversible preview/production cutover—without enabling Base mainnet."
 todos:
+  - id: consolidate-go-no-go
+    content: "Consolidate the existing blockers, evidence requirements, role/config checks, monitoring, rollback, and human approvals into one explicit staged Go/No-Go checklist without weakening any gate."
+    status: completed
   - id: lock-activation-inputs
     content: "Record the approved slash percentage, restitution-reserve recipient, testnet role holders, fallback cranker/monitor owner, external-review or explicit human-acceptance evidence, and the exact Base Sepolia exposure policy before any broadcast."
     status: pending
   - id: harden-dormant-deploy-sequence
     content: "Update the Base deploy runbook and rehearsal so the linked facade is deployed uninitialized with ADMIN_ADDRESS separated from the broadcaster, PAUSE_ROLE pauses it before initializeConfig, and initialization completes while paused; prove no configured unpaused interval and no client pointer change."
-    status: pending
+    status: completed
   - id: implement-paid-report-client
     content: "Add a Base-only optional PaidPurchaseReport open/claim wallet capability and exact base-v1-a1 ABI/event handling for Coinbase Smart Wallet and supported injected wallets without reviving the removed general-report API or changing the required cross-chain ChainWallet surface."
-    status: pending
+    status: completed
   - id: implement-purchase-bound-ui
     content: "Move the Base report entry point to an eligible paid-purchase surface, bind author/listing/purchase/evidence, disclose the 5 USDC bond and centralized resolution, and cover approve/open/pending/error states while preserving the Solana author-report path."
-    status: pending
+    status: completed
   - id: persist-report-index
     content: "Expose the exact deployment-qualified EVM purchase summary and add an additive report index populated only from a verified PaidPurchaseReportOpened event so report status and credit claims recover safely after reload."
-    status: pending
+    status: completed
   - id: add-operator-smoke-and-monitoring
     content: "Build a restart-safe Base Sepolia paid-report smoke/operations driver that records linked code hashes, roles/config, deadlines, explicit-block USDC deltas, multi-page crank progress, liabilities, reserve credit, pause state, and machine-readable transaction evidence."
-    status: pending
+    status: in_progress
   - id: deploy-verify-paused-sepolia
     content: "HUMAN GATE — After explicit broadcast approval, deploy and explorer-verify the linked library and fresh facade, stage it initialized and paused with approved roles/config, verify bytecode/linking/selectors, and leave all app env pointers unchanged."
     status: pending
@@ -120,10 +123,60 @@ Before any Base Sepolia broadcast, record:
 
 The API-key nonce/object-binding PR is an independent security change and is explicitly out of this plan’s scope. Neither PR certifies or blocks the other. As with any intervening merge, update the activation implementation onto the final `main` and rerun affected gates before activation.
 
+## Formal Go/No-Go Checklist — added 2026-07-13
+
+Each stage is an independent **NO-GO** until every item in that stage is checked, its evidence is linked
+in the deployment record, and the named human approver records an explicit decision. Approval for one
+stage never authorizes the next stage. Base mainnet is outside every stage below and remains blocked.
+
+### Gate A — pre-broadcast candidate
+
+- [ ] Candidate commit is based on the final merged `main`; worktree is clean and the reviewed SHA is recorded.
+- [x] Facade and linked-library artifacts reproduce under the pinned compiler/link profile; both local-rehearsal code hashes and the final link map are verified.
+- [x] Facade runtime is at or below the 23,500-byte project soft limit and 24,576-byte EIP-170 hard limit.
+- [x] Forge, ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates pass locally; the candidate SHA remains pending commit/review.
+- [x] Local Anvil rehearsal proves deploy-uninitialized → pause → initialize-while-paused → ordered role handoff, with no configured/unpaused interval.
+- [x] Paid-report client and purchase-bound UX fail closed on wrong chain, deployment, protocol version, receipt, buyer, listing, deadline, bond, pause state, or unsupported wallet.
+- [x] Verified report indexing is deployment-qualified and populated only from the exact confirmed `PaidPurchaseReportOpened` event.
+- [x] Restart-safe read-only monitoring covers lifecycle progress, explicit-block balances, pause state, reserve/credit liabilities, and fallback-cranker alerts without constructing a wallet client; the Gate-C write-stage smoke executor remains pending.
+- [ ] External security review is complete, or the human approver records explicit Base Sepolia-only risk acceptance and its scope.
+- [ ] Human approver records **GO: deploy/configure paused candidate** for the exact commit and artifacts.
+
+### Gate B — deploy, verify, configure, and remain paused
+
+- [ ] Exact Base Sepolia chain ID, RPC, deployer, deployer balance/nonce, USDC address, compiler inputs, library address, predicted facade address, and verification inputs are independently confirmed.
+- [ ] `SLASH_PERCENTAGE`, immutable restitution recipient, final role holders/custody, fallback cranker, monitor owner, incident commander, and exposure policy are approved and recorded.
+- [ ] Facade and library deploy and verify separately; runtime code hashes and caller link references match Gate A artifacts.
+- [ ] The non-broadcaster admin/role owner pauses before initialization; initialization and ordered role grants/revocations complete while paused; default admin transfers last.
+- [ ] Protocol version, USDC, config, roles, pause state, deployment block, and explorer metadata read back exactly.
+- [ ] Frontend/shared environment pointers and CDP policies remain unchanged; the deployment is described only as deployed, verified, configured, and paused.
+- [ ] Rollback procedure and historical-claim reachability are reviewed against the exact deployed addresses.
+- [ ] Human approver records **GO: isolated smoke** with the allowed fixtures, operators, and exposure cap.
+
+### Gate C — isolated lifecycle smoke
+
+- [ ] Only approved fresh fixtures are used; pre-A1 receipts remain ineligible and deployment namespaces do not cross-contaminate.
+- [ ] Purchase → open → review → resolve → multi-page slash → buyer claim → reserve claim → voucher residual reclaim completes with exact events and explicit-block USDC conservation.
+- [ ] Rejection, expiry, premature, duplicate, replay, wrong-role, paused, and recipient-failure paths match the locked lifecycle; local-only time-warp branches remain separately identified.
+- [ ] Indexer/report-index recovery, recent-log chunking, restart/resume, accepted-report age, remaining stake, unpaid credit, reserve credit, and fallback-cranker alerts are verified.
+- [ ] Contract is repaused and all reports, slash work, buyer credits, reserve credit, and voucher residuals are reconciled.
+- [ ] Old-deployment historical reads and Solana purchase/trust regressions pass.
+- [ ] Human approver records **GO: preview activation** and the exact pointer/paymaster changes permitted.
+
+### Gate D — preview and shared Sepolia activation
+
+- [ ] Preview points only to the verified A1 deployment; Coinbase Smart Wallet and supported injected-wallet filing/claim flows pass through the deployed app.
+- [ ] Frontend, API, DB index, monitoring, explorer metadata, role ownership, and paymaster allowlist all reference the exact deployment identity.
+- [ ] Monitoring and alerting are active for pause, accepted-report age, stuck slash pages, unpaid buyer credit, reserve credit, role/config change, UserOp/RPC failures, and unexpected balance movement.
+- [ ] Preview rollback is exercised: pause new exposure, restore the prior commerce pointer, preserve deployment-qualified terminal claims, and retain required buyer sponsorship.
+- [ ] Exposure caps and incident ownership are approved for shared Sepolia; no unresolved liability or unexplained balance remains from preview.
+- [ ] Human approver records **GO: shared Sepolia promotion**. This is not Base mainnet approval.
+
 ## Files Expected To Change During Execution
 
-- `contracts/base-poc/script/Deploy.s.sol`: retain exact economics/link checks and make the paused staging sequence explicit or fail closed when the broadcaster would initialize an unpaused release candidate.
-- `contracts/base-poc/script/RehearseA1.s.sol` and deployment tests: prove deploy-uninitialized → pause → initialize-while-paused → verify → approved unpause ordering.
+- `contracts/base-poc/script/Deploy.s.sol`: deploy only an uninitialized facade with a distinct non-broadcaster staging admin and verify the exact linked facade/library artifacts.
+- `contracts/base-poc/script/StageA1.s.sol`: pause first, initialize the exact economics while paused, transfer every final role, revoke every staging role, and leave the candidate paused.
+- `contracts/base-poc/script/RehearseA1.s.sol`, `scripts/local-a1-rehearsal.sh`, and deployment tests: prove deploy-uninitialized → pause → initialize-while-paused → verify → role handoff → approved unpause ordering and terminal settlement after re-pause.
 - `docs/BASE_DEPLOY.md`: replace the pre-A1-centric broadcast steps with linked A1 dormant deployment, separate activation, verification, and rollback gates.
 - `web/lib/adapters/agentVouchEvmAbi.ts`: expose the exact paid-report reads/events needed by the client without legacy report selectors.
 - `web/lib/adapters/types.ts` plus a focused Base paid-report capability module: add an optional capability/type guard rather than a required method on every `ChainWallet` implementation.
@@ -136,6 +189,49 @@ The API-key nonce/object-binding PR is an independent security change and is exp
 - `docs/CHAIN_CAPABILITY_MAP.md`, `docs/MAINNET_READINESS.md`, `docs/PRODUCTION_RUNBOOK.md`, `.agents/plans/base-port-chain-adapter-phase-9.plan.md`, and `web/public/skill.md`: update only after corresponding behavior is actually deployed or activated.
 
 The exact client seam may be adjusted during implementation if repository types have changed, but the implementation must not silently reuse `openAuthorReport` for the incompatible paid-purchase lifecycle or make the capability mandatory for Solana.
+
+## Implementation note — 2026-07-13 dormant deployment gate complete
+
+The deploy path now requires a staging admin distinct from the broadcaster, deploys without
+initialization, proves the broadcaster owns none of the five roles, and compares the deployed facade
+runtime against the exact pinned artifact after applying all 11 settlement-library link references
+and 13 USDC immutable references. `StageA1.s.sol` is a separate transaction phase that verifies the
+target, pauses before initialization, initializes the locked economics with zero reporter reward,
+hands off all roles, revokes default admin last, and leaves the facade paused. The one-command Anvil
+driver broadcast the full sequence and emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`; terminal
+resolution, paginated slashing, 15 USDC buyer credit, 5 USDC reserve credit, and 2 USDC voucher
+residual all completed after re-pause. No Sepolia transaction, client pointer, or paymaster change was
+made.
+
+## Implementation note — 2026-07-13 pre-broadcast client, index, UI, and monitoring
+
+The Base wallet now exposes `openPaidPurchaseReport` and buyer-credit claim as an optional A1-only
+capability rather than widening the required cross-chain wallet interface. Coinbase Smart Wallet and
+supported injected wallets bind chain, deployment, author, listing, purchase, evidence, exact 5 USDC
+bond, purchase lane, inclusive seven-day filing boundary, profile state, native USDC, allowance, and
+exact-call simulation; receipt verification requires the exact A1 lifecycle event. The obsolete Base
+author-wide report CTA is removed while the Solana report path remains.
+
+The skill page obtains an exact append-only A1 purchase receipt, fetches live deployment-qualified
+preflight/report state, and displays the paid-report panel only behind
+`NEXT_PUBLIC_BASE_PAID_PURCHASE_REPORTS_ENABLED=true` (default off). The report index is additive,
+lowercase/deployment-qualified, idempotent, populated only from an exact canonical
+`PaidPurchaseReportOpened` event, and never used as claim/admission authority. API responses are
+private/no-store.
+
+The operations command currently enables only read-only `preflight` and `monitor` modes. It requires
+explicit facade/library hashes, deployment block, native USDC, pause expectation, and complete role
+holder sets; reconstructs AccessControl from deployment events; scans in ≤1,999-block ranges;
+validates restart checkpoint hashes; re-reads live reports and voucher candidates; and records
+machine-readable balances, events, reserve credit, and separate liveness alerts. `--apply`, write
+modes, and secret-bearing arguments fail closed. The Gate-C transaction executor and public smoke
+remain pending the separately approved deployment identity and human write gate.
+
+Local verification: 121 Forge tests and 679 web tests passed; format, lint, typecheck, chain-map,
+isolated Base UI build, harness typecheck, and production webpack build passed. The facade is 23,487
+runtime bytes (1,089 bytes EIP-170 headroom; 13 bytes project-soft-limit headroom). The final local
+Anvil rehearsal emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`. No Sepolia transaction,
+client pointer, feature flag, paymaster policy, or Base mainnet setting changed.
 
 ## Implementation Sequence
 

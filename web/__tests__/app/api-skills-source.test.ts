@@ -100,6 +100,11 @@ describe("skills api source", () => {
     expect(detailSource).toContain("loadSkillDetailSnapshot(skillDbId)");
     expect(detailSource).toContain("if (!buyerAddress && !canCheckEvmBuyer)");
     expect(detailSource).toContain("hasChainUsdcPurchaseEntitlement");
+    expect(detailSource).toContain("await (async () => {");
+    expect(detailSource).toContain(
+      "getBasePaidPurchaseReportContract(skillSnapshot)"
+    );
+    expect(detailSource).toContain("})().catch(() => null)");
     expect(detailSource).toContain("buildPublicCacheControl");
     expect(detailSource).not.toContain(
       "fetchOnChainSkillListing(skill.on_chain_address"

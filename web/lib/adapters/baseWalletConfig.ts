@@ -48,6 +48,11 @@ export const BASE_CDP_PAYMASTER_RPC_URL =
   process.env.NEXT_PUBLIC_CDP_RPC_URL ||
   "";
 
+// UX-only gate. The on-chain global pause is the authority for exposure.
+// This defaults off so merging the client cannot activate paid reports.
+export const BASE_PAID_PURCHASE_REPORTS_ENABLED =
+  process.env.NEXT_PUBLIC_BASE_PAID_PURCHASE_REPORTS_ENABLED === "true";
+
 export function getBaseWalletConfig() {
   return {
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
@@ -58,6 +63,7 @@ export function getBaseWalletConfig() {
     usdcAddress: BASE_USDC_ADDRESS,
     paymasterRpcUrl: BASE_CDP_PAYMASTER_RPC_URL,
     explorerUrl: BASE_SEPOLIA_EXPLORER_URL,
+    paidPurchaseReportsEnabled: BASE_PAID_PURCHASE_REPORTS_ENABLED,
     configured: BASE_WALLET_CONFIGURED,
   } as const;
 }

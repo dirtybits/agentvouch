@@ -21,6 +21,7 @@ import {
   getBaseWalletConfig,
 } from "./baseWalletConfig";
 import { requireBaseBytes32 } from "./baseListing";
+import { requireBaseEvmAddress } from "./baseListing";
 import {
   assertBaseSepoliaChain,
   createBasePublicClient,
@@ -34,10 +35,26 @@ import {
   waitForBaseTransactionReceipt,
 } from "./baseWallet";
 import type {
-  ChainWallet,
+  ClaimPaidPurchaseReportCreditInput,
+  ClaimPaidPurchaseReportCreditResult,
+  OpenPaidPurchaseReportInput,
+  OpenPaidPurchaseReportResult,
+  PaidPurchaseReportChainWallet,
   PurchaseSkillInput,
   PurchaseSkillResult,
 } from "./types";
+import {
+  AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+  BASE_A1_PROTOCOL_VERSION,
+  PAID_PURCHASE_REPORT_BOND_USDC_MICROS,
+  PAID_PURCHASE_REPORT_STATUS_TERMINAL,
+  assertBaseA1ReportPreflight,
+  assertPaidPurchaseReportInput,
+  findBasePaidReportEvent,
+  isKnownUsdcAllowanceFailure,
+  normalizeBaseA1Purchase,
+  type BaseA1Config,
+} from "./basePaidPurchaseReports";
 
 export const BASE_INJECTED_WALLET_NAME = "MetaMask";
 export const BASE_INJECTED_WALLET_SOURCE = "metamask-injected";
@@ -303,6 +320,446 @@ async function sendInjectedTransaction(
   return hash as Hex;
 }
 
+function namedOrIndexed(value: unknown, name: string, index: number): unknown {
+  const tuple = value as Record<string | number, unknown>;
+  return tuple[name] ?? tuple[index];
+}
+
+function normalizeInjectedA1Config(value: unknown): BaseA1Config {
+  return {
+    usdc: requireBaseEvmAddress(
+      String(namedOrIndexed(value, "usdc", 0) ?? ""),
+      "Base A1 config USDC"
+    ),
+    chainContext: String(namedOrIndexed(value, "chainContext", 1) ?? ""),
+    disputeBondUsdcMicros: BigInt(
+      String(namedOrIndexed(value, "disputeBondUsdcMicros", 3) ?? 0)
+    ),
+    refundClaimWindowSeconds: BigInt(
+      String(namedOrIndexed(value, "refundClaimWindowSeconds", 11) ?? 0)
+    ),
+  };
+}
+
+async function registerBaseAgentWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  metadataUri: string
+): Promise<PurchaseSkillResult> {
+  if (!metadataUri.trim()) throw new Error("Base agent metadata is required.");
+  const config = requireBaseContractWriteConfig();
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  await ensureBaseSepoliaInjectedChain(session.provider);
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeFunctionData({
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "registerAgent",
+      args: [metadataUri],
+    })
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base agent registration"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AgentRegistered"
+  );
+  if (
+    !event ||
+    !isAddress(String(event.args.agent)) ||
+    getAddress(String(event.args.agent)) !== session.address
+  ) {
+    throw new Error("Base registerAgent receipt did not match MetaMask.");
+  }
+  return {
+    ref: txHash,
+    explorerUrl: `${BASE_SEPOLIA_EXPLORER_URL}/tx/${txHash}`,
+    paidGas: true,
+  };
+}
+
+async function ensureInjectedBuyerRegistered(
+  session: BaseInjectedWalletSession,
+  contractAddress: Address
+): Promise<void> {
+  const publicClient = createBasePublicClient();
+  const profile = await publicClient.readContract({
+    address: contractAddress,
+    abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+    functionName: "getProfile",
+    args: [session.address],
+  });
+  if (Boolean(namedOrIndexed(profile, "registered", 0))) return;
+  await registerBaseAgentWithInjectedWallet(
+    session,
+    `agentvouch://base-paid-report/${session.address.toLowerCase()}`
+  );
+}
+
+async function openPaidPurchaseReportWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: OpenPaidPurchaseReportInput
+): Promise<OpenPaidPurchaseReportResult> {
+  const config = requireBaseContractWriteConfig();
+  const bound = assertPaidPurchaseReportInput({
+    request: input,
+    selectedContract: config.agentVouchAddress,
+  });
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  await ensureBaseSepoliaInjectedChain(session.provider);
+
+  const [code, protocolVersion, paused, rawConfig] = await Promise.all([
+    publicClient.getCode({ address: bound.contractAddress }),
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "PROTOCOL_VERSION",
+    }),
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "paused",
+    }),
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getConfig",
+    }),
+  ]);
+  if (!code || code === "0x")
+    throw new Error("Selected Base A1 contract has no code.");
+  if (protocolVersion !== BASE_A1_PROTOCOL_VERSION) {
+    throw new Error("Selected Base contract is not protocol base-v1-a1.");
+  }
+  if (paused) {
+    throw new Error(
+      "Paid-purchase reports are paused on the selected deployment."
+    );
+  }
+  await ensureInjectedBuyerRegistered(session, bound.contractAddress);
+
+  const [
+    buyerProfile,
+    authorProfile,
+    rawPurchase,
+    rawListing,
+    block,
+    balance,
+    allowance,
+  ] = await Promise.all([
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getProfile",
+      args: [session.address],
+    }),
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getProfile",
+      args: [bound.authorAddress],
+    }),
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getPurchase",
+      args: [bound.purchaseId],
+    }),
+    publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getListing",
+      args: [bound.listingId],
+    }),
+    publicClient.getBlock({ blockTag: "latest" }),
+    publicClient.readContract({
+      address: config.usdcAddress,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [session.address],
+    }),
+    publicClient.readContract({
+      address: config.usdcAddress,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [session.address, bound.contractAddress],
+    }),
+  ]);
+  if (!Boolean(namedOrIndexed(buyerProfile, "registered", 0))) {
+    throw new Error("The connected Base buyer is not registered.");
+  }
+  if (!Boolean(namedOrIndexed(authorProfile, "registered", 0))) {
+    throw new Error("The paid-purchase author is not registered.");
+  }
+  assertBaseA1ReportPreflight({
+    protocolVersion: String(protocolVersion),
+    paused: Boolean(paused),
+    code,
+    config: normalizeInjectedA1Config(rawConfig),
+    buyer: session.address,
+    author: bound.authorAddress,
+    listingId: bound.listingId,
+    purchase: normalizeBaseA1Purchase(rawPurchase),
+    listing: {
+      author: requireBaseEvmAddress(
+        String(namedOrIndexed(rawListing, "author", 0) ?? ""),
+        "Base A1 listing author"
+      ),
+      exists: Boolean(namedOrIndexed(rawListing, "exists", 11)),
+    },
+    nowSeconds: block.timestamp,
+  });
+  if (balance < PAID_PURCHASE_REPORT_BOND_USDC_MICROS) {
+    throw new Error(
+      "Insufficient Base Sepolia USDC for the 5 USDC report bond."
+    );
+  }
+
+  try {
+    await publicClient.simulateContract({
+      account: session.address,
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "openPaidPurchaseReport",
+      args: [
+        bound.authorAddress,
+        bound.listingId,
+        bound.purchaseId,
+        input.evidenceUri,
+      ],
+    });
+  } catch (error) {
+    if (
+      allowance >= PAID_PURCHASE_REPORT_BOND_USDC_MICROS ||
+      !isKnownUsdcAllowanceFailure(error)
+    ) {
+      throw error;
+    }
+  }
+
+  const approvalPlan = planBasePurchaseApprovals({
+    allowance,
+    expectedPriceUsdcMicros: PAID_PURCHASE_REPORT_BOND_USDC_MICROS,
+  });
+  if (approvalPlan.resetAllowance) {
+    const resetHash = await sendInjectedTransaction(
+      session.provider,
+      session.address,
+      config.usdcAddress,
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [bound.contractAddress, 0n],
+      })
+    );
+    await waitForBaseTransactionReceipt(
+      publicClient,
+      resetHash,
+      "Base report bond allowance reset"
+    );
+  }
+  if (approvalPlan.approvePrice) {
+    const approvalHash = await sendInjectedTransaction(
+      session.provider,
+      session.address,
+      config.usdcAddress,
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [bound.contractAddress, PAID_PURCHASE_REPORT_BOND_USDC_MICROS],
+      })
+    );
+    await waitForBaseTransactionReceipt(
+      publicClient,
+      approvalHash,
+      "Base report bond approval"
+    );
+    // Re-simulate after the non-atomic approval before opening.
+    await publicClient.simulateContract({
+      account: session.address,
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "openPaidPurchaseReport",
+      args: [
+        bound.authorAddress,
+        bound.listingId,
+        bound.purchaseId,
+        input.evidenceUri,
+      ],
+    });
+  }
+
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    bound.contractAddress,
+    encodeFunctionData({
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "openPaidPurchaseReport",
+      args: [
+        bound.authorAddress,
+        bound.listingId,
+        bound.purchaseId,
+        input.evidenceUri,
+      ],
+    })
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base paid-purchase report"
+  );
+  const event = findBasePaidReportEvent(
+    receipt.logs,
+    bound.contractAddress,
+    "PaidPurchaseReportOpened"
+  );
+  if (
+    !event ||
+    String(event.args.buyer).toLowerCase() !== session.address.toLowerCase() ||
+    String(event.args.author).toLowerCase() !==
+      bound.authorAddress.toLowerCase() ||
+    event.args.listingId !== bound.listingId ||
+    event.args.purchaseId !== bound.purchaseId ||
+    event.args.bond !== PAID_PURCHASE_REPORT_BOND_USDC_MICROS ||
+    event.args.evidenceUri !== input.evidenceUri
+  ) {
+    throw new Error(
+      "Base paid-purchase report receipt did not match the purchase."
+    );
+  }
+  return {
+    ref: txHash,
+    txHash,
+    reportId: String(event.args.reportId),
+    explorerUrl: `${BASE_SEPOLIA_EXPLORER_URL}/tx/${txHash}`,
+    paidGas: true,
+  };
+}
+
+async function claimPaidPurchaseReportWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: ClaimPaidPurchaseReportCreditInput
+): Promise<ClaimPaidPurchaseReportCreditResult> {
+  const config = requireBaseContractWriteConfig();
+  if (
+    input.chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT ||
+    input.chainId !== BASE_SEPOLIA_CHAIN_ID ||
+    !isAddress(input.contractAddress) ||
+    getAddress(input.contractAddress) !== config.agentVouchAddress ||
+    !/^\d+$/.test(input.reportId)
+  ) {
+    throw new Error("Paid-purchase credit deployment identity is invalid.");
+  }
+  const reportId = BigInt(input.reportId);
+  if (reportId <= 0n || reportId > (1n << 64n) - 1n) {
+    throw new Error("Paid-purchase report id is outside uint64 range.");
+  }
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  await ensureBaseSepoliaInjectedChain(session.provider);
+  const [code, version, core, settlement, block] = await Promise.all([
+    publicClient.getCode({ address: config.agentVouchAddress }),
+    publicClient.readContract({
+      address: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "PROTOCOL_VERSION",
+    }),
+    publicClient.readContract({
+      address: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getPaidPurchaseReportCore",
+      args: [reportId],
+    }),
+    publicClient.readContract({
+      address: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getPaidPurchaseReportSettlement",
+      args: [reportId],
+    }),
+    publicClient.getBlock({ blockTag: "latest" }),
+  ]);
+  if (!code || version !== BASE_A1_PROTOCOL_VERSION) {
+    throw new Error("Selected Base contract is not protocol base-v1-a1.");
+  }
+  if (
+    String(namedOrIndexed(core, "buyer", 0)).toLowerCase() !==
+    session.address.toLowerCase()
+  ) {
+    throw new Error("Only the initiating buyer can claim this report credit.");
+  }
+  if (
+    Number(namedOrIndexed(core, "status", 8)) !==
+    PAID_PURCHASE_REPORT_STATUS_TERMINAL
+  ) {
+    throw new Error("Paid-purchase report credit is not terminal and funded.");
+  }
+  const buyerCredit = BigInt(
+    String(namedOrIndexed(settlement, "buyerCredit", 6) ?? 0)
+  );
+  const deadline = BigInt(
+    String(namedOrIndexed(settlement, "claimDeadline", 7) ?? 0)
+  );
+  if (
+    buyerCredit <= 0n ||
+    Boolean(namedOrIndexed(settlement, "creditHandled", 8)) ||
+    block.timestamp >= deadline
+  ) {
+    throw new Error("Paid-purchase report credit is unavailable or expired.");
+  }
+  await publicClient.simulateContract({
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+    functionName: "claimPaidPurchaseReportCredit",
+    args: [reportId],
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeFunctionData({
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "claimPaidPurchaseReportCredit",
+      args: [reportId],
+    })
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base paid-purchase report credit claim"
+  );
+  const event = findBasePaidReportEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "PaidPurchaseReportCreditClaimed"
+  );
+  if (
+    !event ||
+    String(event.args.reportId) !== input.reportId ||
+    String(event.args.buyer).toLowerCase() !== session.address.toLowerCase() ||
+    event.args.amount !== buyerCredit
+  ) {
+    throw new Error(
+      "Base paid-purchase credit receipt did not match the report."
+    );
+  }
+  return {
+    ref: txHash,
+    txHash,
+    reportId: input.reportId,
+    explorerUrl: `${BASE_SEPOLIA_EXPLORER_URL}/tx/${txHash}`,
+    paidGas: true,
+  };
+}
+
 export async function createBaseInjectedWalletSession(
   provider: Eip1193Provider
 ): Promise<BaseInjectedWalletSession> {
@@ -512,7 +969,7 @@ async function purchaseBaseSkillWithInjectedWallet(
 export function createBaseInjectedChainWallet(
   session: BaseInjectedWalletSession,
   disconnect: () => Promise<void>
-): ChainWallet {
+): PaidPurchaseReportChainWallet {
   return {
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     address: session.address.toLowerCase(),
@@ -530,12 +987,8 @@ export function createBaseInjectedChainWallet(
       }
       return signature;
     },
-    registerAgent: () =>
-      Promise.reject(
-        new Error(
-          "MetaMask author registration is not enabled yet; use Coinbase Smart Wallet for Base author actions."
-        )
-      ),
+    registerAgent: (metadataUri) =>
+      registerBaseAgentWithInjectedWallet(session, metadataUri),
     createSkillListing: () =>
       Promise.reject(
         new Error(
@@ -561,6 +1014,10 @@ export function createBaseInjectedChainWallet(
     vouchForAuthor: () => unsupportedAuthorWrite("Base vouching"),
     revokeVouch: () => unsupportedAuthorWrite("Base vouch revocation"),
     openAuthorReport: () => unsupportedAuthorWrite("Base author reports"),
+    openPaidPurchaseReport: (input) =>
+      openPaidPurchaseReportWithInjectedWallet(session, input),
+    claimPaidPurchaseReportCredit: (input) =>
+      claimPaidPurchaseReportWithInjectedWallet(session, input),
     claimVoucherRevenue: () => unsupportedAuthorWrite("Voucher revenue claim"),
     withdrawAuthorProceeds: () =>
       unsupportedAuthorWrite("Author proceeds withdrawal"),

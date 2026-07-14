@@ -10,10 +10,15 @@ import {
 import { resolveAgentIdentityByWallet } from "@/lib/agentIdentity";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import {
+  getEvmPaidPurchaseReportCandidate,
   hasChainUsdcPurchaseEntitlement,
   getUsdcPurchaseEntitlementSummary,
   hasUsdcPurchaseEntitlement,
 } from "@/lib/usdcPurchases";
+import {
+  BASE_A1_PROTOCOL_VERSION,
+  getBasePaidPurchaseReportContract,
+} from "@/lib/basePaidPurchaseReportVerification";
 import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { buildAgentTrustSummary } from "@/lib/agentDiscovery";
 import { buildTrustSignals } from "@/lib/trustSignals";
@@ -387,18 +392,40 @@ export async function GET(
     }
 
     if (canCheckEvmBuyer && buyerEvmAddress && normalizedBuyerChainContext) {
+      const isA1Deployment =
+        skillSnapshot.on_chain_protocol_version === BASE_A1_PROTOCOL_VERSION &&
+        normalizedBuyerChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
+        Boolean(skillSnapshot.evm_listing_id);
+      const buyerPurchaseSummary = isA1Deployment
+        ? await (async () => {
+            const contractAddress =
+              getBasePaidPurchaseReportContract(skillSnapshot);
+            return getEvmPaidPurchaseReportCandidate({
+              skillDbId,
+              chainContext: normalizedBuyerChainContext,
+              contractAddress,
+              protocolVersion: BASE_A1_PROTOCOL_VERSION,
+              buyerAddress: buyerEvmAddress,
+              listingId: String(skillSnapshot.evm_listing_id),
+            });
+          })().catch(() => null)
+        : null;
+      // The legacy entitlement key collapses deployments. Once A1 is selected, only an exact
+      // append-only receipt from that deployment counts as the buyer's purchase context.
       const buyerHasPurchased = priceUsdcMicros
-        ? await hasChainUsdcPurchaseEntitlement(skillDbId, {
-            buyerChainContext: normalizedBuyerChainContext,
-            buyerAddress: buyerEvmAddress,
-          }).catch(() => false)
+        ? isA1Deployment
+          ? Boolean(buyerPurchaseSummary)
+          : await hasChainUsdcPurchaseEntitlement(skillDbId, {
+              buyerChainContext: normalizedBuyerChainContext,
+              buyerAddress: buyerEvmAddress,
+            }).catch(() => false)
         : false;
 
       return NextResponse.json(
         {
           ...skillSnapshot,
           buyerHasPurchased,
-          buyerPurchaseSummary: null,
+          buyerPurchaseSummary,
         },
         {
           headers: {

@@ -61,9 +61,11 @@ reclaim. Deployment preflight now requires the settlement library's code hash to
 compiled artifact after solc's embedded self-address is linked. Security review and live Base Sepolia
 evidence remain launch blockers.
 
-The reusable local-only rehearsal is `script/RehearseA1.s.sol`; it requires chain ID 84532 and distinct
-unlocked Anvil actors supplied through the `LOCAL_A1_*` environment variables. Its terminal assertions
-cover the exact buyer-credit, reserve, and voucher-residual balance deltas.
+The reusable local-only rehearsal is `script/RehearseA1.s.sol`; the one-command driver at
+`scripts/local-a1-rehearsal.sh` starts a disposable Anvil chain with ID 84532, derives local-only test
+actors, broadcasts the uninitialized deploy, pause-before-initialize, complete role handoff, and full
+settlement lifecycle, then stops the node. Its terminal assertions cover exact buyer-credit, reserve,
+and voucher-residual balance deltas while the contract is re-paused.
 
 The purchase lanes are:
 
@@ -85,7 +87,9 @@ contract changes (every fn keys off `msg.sender`, so a smart account is the acto
   register → bond → vouch → list → purchase → voucher claim → author proceeds through a
   real EntryPoint v0.7 + a sponsoring paymaster, asserting smart accounts spend 0 ETH
   and the USDC split is correct. The targeted test is included in the 116-test full suite.
-- **Deploy:** `script/Deploy.s.sol` (Base Sepolia + Circle testnet USDC).
+- **Deploy:** `script/Deploy.s.sol` creates an uninitialized facade with a non-broadcaster staging admin.
+- **Stage:** `script/StageA1.s.sol` verifies artifacts, pauses, initializes, hands off every role, and
+  leaves the candidate paused.
 - **Live harness:** `harness/` — viem + Coinbase Smart Account demo against Base Sepolia
   via a Coinbase Developer Platform paymaster. Prints per-flow sponsored gas and the
   resulting USDC split. See `harness/README.md`. The harness ABI is synchronized to the local A1
@@ -93,6 +97,7 @@ contract changes (every fn keys off `msg.sender`, so a smart account is the acto
 
 ```bash
 forge test --match-path "test/gasless/*"        # the gas-free proof
-forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL # dry-run only without explicit approval
+contracts/base-poc/scripts/local-a1-rehearsal.sh
+forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL # dry-run only; broadcast requires approval
 cd harness && npm i && cp .env.example .env     # then fill .env and `npm run demo`
 ```

@@ -188,7 +188,7 @@ describe("Base injected ChainWallet", () => {
     });
   });
 
-  it("keeps author writes unsupported for the buyer-only MetaMask pass", async () => {
+  it("adds buyer registration and paid reports while keeping author writes unsupported", async () => {
     const session: BaseInjectedWalletSession = {
       provider: provider({ isMetaMask: true }),
       address: getAddress("0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854"),
@@ -196,9 +196,9 @@ describe("Base injected ChainWallet", () => {
     };
     const wallet = createBaseInjectedChainWallet(session, async () => {});
 
-    await expect(wallet.registerAgent("ipfs://agent")).rejects.toThrow(
-      /Coinbase Smart Wallet/
-    );
+    expect(typeof wallet.registerAgent).toBe("function");
+    expect(typeof wallet.openPaidPurchaseReport).toBe("function");
+    expect(typeof wallet.claimPaidPurchaseReportCredit).toBe("function");
     await expect(
       wallet.createSkillListing({
         skillId: "demo",

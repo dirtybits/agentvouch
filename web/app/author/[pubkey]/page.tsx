@@ -998,7 +998,7 @@ export default function AuthorProfilePage() {
       return;
     }
 
-    if (!isBaseTrustWrite && !selectedClaimSkillValue) {
+    if (!selectedClaimSkillValue) {
       setClaimStatus({
         success: false,
         message: "Choose the listed skill this report is about.",
@@ -1022,29 +1022,6 @@ export default function AuthorProfilePage() {
     setClaimTxExplorerUrl(null);
 
     try {
-      if (isBaseTrustWrite && activeChainWallet && evmAuthorAddress) {
-        const result = await activeChainWallet.openAuthorReport({
-          authorAddress: evmAuthorAddress,
-          evidenceUri,
-        });
-        setClaimStatus({
-          success: true,
-          message: result.reportId
-            ? `Report #${result.reportId} opened. The reporter bond is held until founder/admin resolution.`
-            : "Report opened. The reporter bond is held until founder/admin resolution.",
-        });
-        setClaimTx(result.ref);
-        setClaimTxExplorerUrl(result.explorerUrl);
-        setClaimRouteDismissed(true);
-        setShowClaimModal(false);
-        clearClaimRouteParams();
-        setClaimReason("malicious-skill");
-        setClaimSkillContext("");
-        setClaimEvidenceUri("");
-        setTimeout(loadData, 2000);
-        return;
-      }
-
       const selectedSkillListing = address(
         selectedClaimSkillValue.slice("skill:".length)
       );
@@ -1194,9 +1171,11 @@ export default function AuthorProfilePage() {
                     Report this author
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    {isBaseTrustWrite
-                      ? "Open an author-wide Base report. The reporter bond is held until founder/admin resolution."
-                      : "Open a skill-linked author dispute. The protocol always snapshots the author's current backing set for visibility. Free-skill disputes cap slashing at author bond; paid-skill disputes can continue into vouchers after author bond."}
+                    Open a skill-linked author dispute. The protocol always
+                    snapshots the author&apos;s current backing set for
+                    visibility. Free-skill disputes cap slashing at author bond;
+                    paid-skill disputes can continue into vouchers after author
+                    bond.
                   </p>
                 </div>
 
@@ -1234,52 +1213,46 @@ export default function AuthorProfilePage() {
                         </select>
                       </div>
 
-                      {!isBaseTrustWrite && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Related skill
-                          </label>
-                          <select
-                            value={claimSkillContext}
-                            onChange={(e) =>
-                              setClaimSkillContext(e.target.value)
-                            }
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
-                          >
-                            {claimSkillOptions.map((skill) => (
-                              <option key={skill.value} value={skill.value}>
-                                {skill.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Related skill
+                        </label>
+                        <select
+                          value={claimSkillContext}
+                          onChange={(e) => setClaimSkillContext(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-sm text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent outline-none"
+                        >
+                          {claimSkillOptions.map((skill) => (
+                            <option key={skill.value} value={skill.value}>
+                              {skill.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                      {!isBaseTrustWrite && (
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Author-wide backing snapshot
-                          </label>
-                          <div className="rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
-                            <p className="text-sm text-gray-600 dark:text-gray-300">
-                              This report records the offending listed skill and
-                              the author&apos;s full backing snapshot. You
-                              cannot choose individual backers.
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {authorWideBackingVouches.length > 0
-                                ? `The protocol will snapshot ${
-                                    authorWideBackingVouches.length
-                                  } current backing ${
-                                    authorWideBackingVouches.length === 1
-                                      ? "voucher"
-                                      : "vouchers"
-                                  } when you open the report. Free-skill disputes keep that snapshot for transparency only; paid-skill disputes may also slash it after author bond.`
-                                : "This author has no live backing vouchers right now, so only author bond can be economically in scope."}
-                            </p>
-                          </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Author-wide backing snapshot
+                        </label>
+                        <div className="rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
+                            This report records the offending listed skill and
+                            the author&apos;s full backing snapshot. You cannot
+                            choose individual backers.
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {authorWideBackingVouches.length > 0
+                              ? `The protocol will snapshot ${
+                                  authorWideBackingVouches.length
+                                } current backing ${
+                                  authorWideBackingVouches.length === 1
+                                    ? "voucher"
+                                    : "vouchers"
+                                } when you open the report. Free-skill disputes keep that snapshot for transparency only; paid-skill disputes may also slash it after author bond.`
+                              : "This author has no live backing vouchers right now, so only author bond can be economically in scope."}
+                          </p>
                         </div>
-                      )}
+                      </div>
 
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
