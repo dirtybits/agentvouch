@@ -9,6 +9,7 @@ import {
 import { buildSkillPageMetadata } from "@/lib/skillPageMetadata";
 import { CHAIN_SKILL_PREFIX } from "@/lib/skillUrls";
 import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
+import { isStripeCheckoutUiEnabled } from "@/lib/stripe";
 
 // Cache the rendered HTML at the edge (ISR). Skill data changes only via the
 // daily refresh-snapshots cron, so 300s staleness is safe and turns the former
@@ -59,5 +60,11 @@ export default async function SkillDetailSlugPage({
     notFound();
   }
 
-  return <SkillDetailClient id={route.id} initialSkill={initialSkill} />;
+  return (
+    <SkillDetailClient
+      id={route.id}
+      initialSkill={initialSkill}
+      stripeCheckoutEnabled={isStripeCheckoutUiEnabled()}
+    />
+  );
 }

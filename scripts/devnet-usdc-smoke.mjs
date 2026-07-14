@@ -183,6 +183,11 @@ async function fetchNullable(fetcher, address) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const generatedSkillId = `a1smoke-${Date.now().toString(36)}`;
+  const smokeContentBaseUrl = (
+    process.env.AGENTVOUCH_SMOKE_CONTENT_BASE_URL ||
+    "https://agentvouch.xyz/smoke"
+  ).replace(/\/+$/, "");
+  const smokeContentUrl = (fileName) => `${smokeContentBaseUrl}/${fileName}`;
   const stateDir = path.resolve(options.stateDir);
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
 
@@ -702,7 +707,7 @@ async function main() {
 
   if (!(await accountExists(connection, actorProfile))) {
     const tx = await program.methods
-      .registerAgent("https://agentvouch.xyz/smoke/actor.json")
+      .registerAgent(smokeContentUrl("actor.json"))
       .accountsStrict({
         agentProfile: actorProfile,
         authority: actor.publicKey,
@@ -715,7 +720,7 @@ async function main() {
 
   if (!(await accountExists(connection, authorProfile))) {
     const tx = await program.methods
-      .registerAgent("https://agentvouch.xyz/smoke/author.json")
+      .registerAgent(smokeContentUrl("author.json"))
       .accountsStrict({
         agentProfile: authorProfile,
         authority: author.publicKey,
@@ -760,7 +765,7 @@ async function main() {
     const tx = await program.methods
       .createSkillListing(
         persistedSkillId,
-        `https://agentvouch.xyz/smoke/${persistedSkillId}.md`,
+        smokeContentUrl("devnet-usdc.md"),
         "M11 Devnet Smoke",
         "USDC-native devnet smoke listing",
         bn(options.priceUsdcMicros)
@@ -919,7 +924,7 @@ async function main() {
           program.methods
             .createSkillListing(
               pauseSkillId,
-              `https://agentvouch.xyz/smoke/${pauseSkillId}.md`,
+              smokeContentUrl("devnet-usdc.md"),
               "A3 Pause Smoke",
               "Pause smoke listing",
               bn(options.priceUsdcMicros)
@@ -968,7 +973,7 @@ async function main() {
     const tx = await program.methods
       .createSkillListing(
         pauseSkillId,
-        `https://agentvouch.xyz/smoke/${pauseSkillId}.md`,
+        smokeContentUrl("devnet-usdc.md"),
         "A3 Pause Smoke",
         "Pause smoke listing",
         bn(options.priceUsdcMicros)
@@ -1055,7 +1060,7 @@ async function main() {
       .openAuthorDispute(
         bn(options.disputeId),
         { failedDelivery: {} },
-        `https://agentvouch.xyz/smoke/${persistedSkillId}/evidence.json`
+        smokeContentUrl("evidence.json")
       )
       .accountsStrict({
         authorDispute,

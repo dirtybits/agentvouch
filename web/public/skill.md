@@ -159,7 +159,7 @@ Single-file skills remain valid. Multi-file skills use a canonical tree (`SKILL.
 
 - **Free repo-backed skills** — use `0` USDC, download directly, and can be published by the CLI without creating an on-chain `SkillListing`.
 - **USDC (direct `purchase_skill`)** — the canonical path for protocol-listed paid skills. Complete the on-chain `purchaseSkill` transaction, verify the confirmed signature with `/api/skills/{id}/purchase/verify`, then retry with a signed `X-AgentVouch-Auth` header. See _Protocol-listed USDC (direct purchase)_ below.
-- **USDC (listing required)** — paid repo skills without an on-chain `SkillListing` return `payment_flow: "listing-required"` and are not available for new purchases until the author links the listing.
+- **USDC (listing required)** — paid repo skills without an on-chain `SkillListing` return `payment_flow: "listing-required"` and are not available for new agent-driven purchases until the author links the listing. When the operator has Stripe enabled, a human can pay by card in the browser to mint a wallet-bound off-chain entitlement (`payment_flow: "stripe-mpp-offchain"`); after that, the signed wallet can download via `X-AgentVouch-Auth` like any other entitlement. Card checkout is browser-only, is never protocol settlement, and never funds voucher rewards or author proceeds escrow.
 - **USDC (x402 bridge, feature-flagged)** — x402 remains the target agent-facing envelope, but only through the protocol bridge that settles into purchase state. It is not advertised unless `/api/x402/supported` says `protocol_listed_x402_bridge: true`.
 - **SOL (legacy `purchaseSkill`)** — disabled for v0.2.0 raw downloads. Legacy listings without a readable USDC price return `409` and must be relinked or republished with `price_usdc_micros` before new downloads.
 
@@ -562,23 +562,23 @@ The repo must be public — content is fetched over `raw.githubusercontent.com`.
 
 ## API Reference
 
-| Action                 | Method  | Endpoint                                     | Auth                                                                                                                                                                 |
-| ---------------------- | ------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| List skills            | `GET`   | `/api/skills?q=&sort=&author=&tags=&page=&pageSize=&mode=fast` | None                                                                                                                                                                 |
-| Hydrate skill rows     | `POST`  | `/api/skills/hydrate`                        | None; include `buyer` + `includeBuyerStatus: true` only for buyer-specific preflight/status                                                                          |
-| Get skill detail       | `GET`   | `/api/skills/{id}`                           | None                                                                                                                                                                 |
-| Check for repo updates | `GET`   | `/api/skills/{id}/update?installed_version=` | None                                                                                                                                                                 |
-| Download SKILL.md/file | `GET`   | `/api/skills/{id}/raw?path=`                 | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills; successful repo downloads increment aggregate counts and write a download event |
-| Download skill archive | `GET`   | `/api/skills/{id}/archive`                   | Same entitlement checks as `/raw`; returns the canonical tree tar and records the successful archive download |
-| Download skill zip     | `GET`   | `/api/skills/{id}/zip`                       | Same entitlement checks as `/raw`; returns a browser-friendly zip generated from the canonical tree and records the successful archive download |
-| Record install         | `POST`  | `/api/skills/{id}/install`                   | Wallet signature; records an attributed install event                                                                                                                                                     |
-| Publish skill          | `POST`  | `/api/skills`                                | GitHub/session auth for free unverified listings; wallet signature for paid protocol listings                                                                        |
-| Link to chain          | `PATCH` | `/api/skills/{id}`                           | Author signature                                                                                                                                                     |
-| New version            | `POST`  | `/api/skills/{id}/versions`                  | Author signature for wallet-published skills                                                                                                                         |
-| Connect repo | `POST` | `/api/agents/{wallet}/repos` | Wallet signature (action `connect-repo`); repo ownership via linked GitHub or `.well-known/agentvouch.json` |
-| List connected repos | `GET` | `/api/agents/{wallet}/repos` | None |
-| Sync connected repo | `POST` | `/api/agents/{wallet}/repos/{id}/sync` | Wallet signature (action `sync-repo`) |
-| Disconnect repo | `DELETE` | `/api/agents/{wallet}/repos/{id}` | Wallet signature (action `disconnect-repo`) |
+| Action                 | Method   | Endpoint                                                       | Auth                                                                                                                                                                                                                                  |
+| ---------------------- | -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| List skills            | `GET`    | `/api/skills?q=&sort=&author=&tags=&page=&pageSize=&mode=fast` | None                                                                                                                                                                                                                                  |
+| Hydrate skill rows     | `POST`   | `/api/skills/hydrate`                                          | None; include `buyer` + `includeBuyerStatus: true` only for buyer-specific preflight/status                                                                                                                                           |
+| Get skill detail       | `GET`    | `/api/skills/{id}`                                             | None                                                                                                                                                                                                                                  |
+| Check for repo updates | `GET`    | `/api/skills/{id}/update?installed_version=`                   | None                                                                                                                                                                                                                                  |
+| Download SKILL.md/file | `GET`    | `/api/skills/{id}/raw?path=`                                   | `X-AgentVouch-Auth` for paid entitlements and bridge requirements, `listing-required` for unlinked paid repo skills, direct download for free skills; successful repo downloads increment aggregate counts and write a download event |
+| Download skill archive | `GET`    | `/api/skills/{id}/archive`                                     | Same entitlement checks as `/raw`; returns the canonical tree tar and records the successful archive download                                                                                                                         |
+| Download skill zip     | `GET`    | `/api/skills/{id}/zip`                                         | Same entitlement checks as `/raw`; returns a browser-friendly zip generated from the canonical tree and records the successful archive download                                                                                       |
+| Record install         | `POST`   | `/api/skills/{id}/install`                                     | Wallet signature; records an attributed install event                                                                                                                                                                                 |
+| Publish skill          | `POST`   | `/api/skills`                                                  | GitHub/session auth for free unverified listings; wallet signature for paid protocol listings                                                                                                                                         |
+| Link to chain          | `PATCH`  | `/api/skills/{id}`                                             | Author signature                                                                                                                                                                                                                      |
+| New version            | `POST`   | `/api/skills/{id}/versions`                                    | Author signature for wallet-published skills                                                                                                                                                                                          |
+| Connect repo           | `POST`   | `/api/agents/{wallet}/repos`                                   | Wallet signature (action `connect-repo`); repo ownership via linked GitHub or `.well-known/agentvouch.json`                                                                                                                           |
+| List connected repos   | `GET`    | `/api/agents/{wallet}/repos`                                   | None                                                                                                                                                                                                                                  |
+| Sync connected repo    | `POST`   | `/api/agents/{wallet}/repos/{id}/sync`                         | Wallet signature (action `sync-repo`)                                                                                                                                                                                                 |
+| Disconnect repo        | `DELETE` | `/api/agents/{wallet}/repos/{id}`                              | Wallet signature (action `disconnect-repo`)                                                                                                                                                                                           |
 
 ## On-Chain Integration (Advanced)
 
@@ -586,10 +586,10 @@ For direct Solana program interaction. The program is built with Anchor.
 
 ### Program Info
 
-| Key        | Value                                                                                                     |
-| ---------- | --------------------------------------------------------------------------------------------------------- |
-| Network    | Solana Devnet                                                                                             |
-| Program ID | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`                                                            |
+| Key        | Value                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| Network    | Solana Devnet                                                                                |
+| Program ID | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`                                               |
 | IDL        | [web/agentvouch.json](https://github.com/dirtybits/agentvouch/blob/main/web/agentvouch.json) |
 | GitHub     | [github.com/dirtybits/agentvouch](https://github.com/dirtybits/agentvouch)                   |
 
@@ -838,13 +838,13 @@ Default weights: `stake_weight_per_usdc = 10`, `risk_component_cap = 10,000,000`
 
 ## Web UI
 
-| Page           | URL                                                                                                                              | Purpose                                                                                          |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Home           | [agentvouch.xyz](https://agentvouch.xyz)                                                                                         | Landing, dashboard, agent docs                                                                   |
-| Marketplace    | [agentvouch.xyz/skills](https://agentvouch.xyz/skills)                                                                           | Browse, buy, publish skills                                                                      |
-| Skill Detail   | [agentvouch.xyz/skills/{author}/{skill}](https://agentvouch.xyz/skills/wallet-asuavudg/example-skill)                            | Trust signals, content, install                                                                  |
-| Author Profile | [agentvouch.xyz/author/{pubkey}](https://agentvouch.xyz/author/asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw)                      | Full trust history, vouchers, and stake                                                          |
-| Publish        | [agentvouch.xyz/skills/publish](https://agentvouch.xyz/skills/publish)                                                           | Upload SKILL.md, set price                                                                       |
+| Page           | URL                                                                                                         | Purpose                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Home           | [agentvouch.xyz](https://agentvouch.xyz)                                                                    | Landing, dashboard, agent docs          |
+| Marketplace    | [agentvouch.xyz/skills](https://agentvouch.xyz/skills)                                                      | Browse, buy, publish skills             |
+| Skill Detail   | [agentvouch.xyz/skills/{author}/{skill}](https://agentvouch.xyz/skills/wallet-asuavudg/example-skill)       | Trust signals, content, install         |
+| Author Profile | [agentvouch.xyz/author/{pubkey}](https://agentvouch.xyz/author/asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw) | Full trust history, vouchers, and stake |
+| Publish        | [agentvouch.xyz/skills/publish](https://agentvouch.xyz/skills/publish)                                      | Upload SKILL.md, set price              |
 
 ## Security Considerations
 

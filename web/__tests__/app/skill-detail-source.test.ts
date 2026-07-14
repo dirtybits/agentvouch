@@ -35,7 +35,10 @@ describe("skill detail source", () => {
     expect(source).toContain("getConfiguredSolanaExplorerAddressUrl");
     expect(source).toContain("View PDA");
     expect(source).toContain("Sign & Download");
+    expect(source).toContain("Paid content");
+    expect(source).toContain("sign with the buyer wallet to retrieve SKILL.md");
     expect(source).toContain("buildDownloadRawMessage");
+    expect(source).toContain("buildStripeCheckoutMessage");
     expect(source).toContain("createSignedDownloadAuthPayload");
     expect(source).toContain("recommendedActionFromSignals(sigs)");
     expect(source).toContain("@/lib/authPayload");
@@ -43,6 +46,17 @@ describe("skill detail source", () => {
     expect(source).toContain("buildPaidSkillDownloadRequiredMessage");
     expect(source).toContain("fetchSignedSkill");
     expect(source).toContain("downloadEntitledSkill");
+    expect(source).toContain("handleStripeCheckout");
+    expect(source).toContain("Pay by Card");
+    expect(source).toContain("Card checkout (off-chain)");
+    expect(source).toContain(
+      "recorded separately from protocol USDC settlement"
+    );
+    expect(source).toContain(
+      "Protocol USDC purchases settle through purchase_skill,"
+    );
+    expect(source).toContain('stripeCheckoutStatus === "success"');
+    expect(source).toContain("/api/stripe/checkout");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });

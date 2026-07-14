@@ -105,6 +105,16 @@ Current x402 bridge follow-up for the RC path:
 - Prove the full bridge path: buyer auth message, x402 requirement generation, facilitator verify/settle, settlement vault credit, backend `settle_x402_purchase`, purchase PDA creation, entitlement recording, and raw download.
 - Record the required env, settlement authority custody, facilitator config, monitoring, rollback, and any failure/reconciliation steps in the production runbook before treating x402 bridge as release-candidate-ready.
 
+### Payment rail sequencing — 2026-07-01
+
+Three commerce lanes, in priority order (details in `docs/BASE_X402_PAYMENT_RAIL_SPEC.md`, `docs/STRIPE_FEASIBILITY.md`, `docs/STRIPE_MPP_POLICY.md`):
+
+1. **Protocol-visible commerce** (preferred): direct Solana USDC `purchase_skill`, Base USDC purchases, and protocol-listed x402. Only these fund voucher rewards, author proceeds escrow, and dispute/refund state. With Base as the canonical-chain frontrunner, Base Lane B (EIP-3009 in-contract) is the preferred agent rail.
+2. **Card-funded early sales**: Stripe MPP mints a wallet-bound off-chain entitlement (`stripe-mpp-offchain`) so humans can buy now. Never counted as protocol settlement; excluded from purchase metrics, voucher yield, and refund state. Excluded on Base protocol listings until chain-qualified card entitlements exist.
+3. **Future smart-account UX**: Base smart-account/paymaster work carries the wallet-abstraction bet; it does not make Stripe a settlement ledger.
+
+Before Stripe Tier 2, choose the graduation model (card on-ramp to protocol settlement vs. parallel MPP marketplace vs. limited early-sales rail) — see the decision list in `docs/STRIPE_FEASIBILITY.md`.
+
 ### Base full-logic POC
 
 Base remains the strongest expansion candidate for a USDC/x402-native AgentVouch lane, but it should be tested as a **port by spec**, not a migration by transpilation. The plan lives in `.agents/plans/base-full-logic-poc.plan.md`.

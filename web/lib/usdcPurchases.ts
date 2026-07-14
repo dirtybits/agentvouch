@@ -395,6 +395,20 @@ export async function ensureUsdcPurchaseSchema() {
       ADD COLUMN IF NOT EXISTS legacy_refund_eligible BOOLEAN DEFAULT FALSE
     `;
 
+    // Off-chain revocation (e.g. Stripe refund/chargeback): a revoked
+    // entitlement no longer grants downloads. A genuinely new receipt for the
+    // same buyer+skill reinstates it (see the upsert in
+    // recordUsdcPurchaseReceipt).
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ
+    `;
+
+    await db`
+      ALTER TABLE usdc_purchase_entitlements
+      ADD COLUMN IF NOT EXISTS revoked_reason TEXT
+    `;
+
     await db`
       UPDATE usdc_purchase_entitlements
       SET
@@ -422,6 +436,23 @@ export async function ensureUsdcPurchaseSchema() {
       ON usdc_purchase_entitlements(skill_db_id, buyer_chain_context, buyer_address)
       WHERE buyer_chain_context IS NOT NULL
         AND buyer_address IS NOT NULL
+    `;
+
+    // The row is a per-payment terminal-state gate: fulfillment can reuse a
+    // fulfilled row, while refund/dispute atomically promotes it to revoked.
+    await db`
+      CREATE TABLE IF NOT EXISTS usdc_payment_revocations (
+        payment_tx_signature VARCHAR(128) PRIMARY KEY,
+        status VARCHAR(16) NOT NULL DEFAULT 'revoked',
+        reason TEXT NOT NULL,
+        revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    await db`
+      ALTER TABLE usdc_payment_revocations
+      ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'revoked'
     `;
 
     await db`
@@ -726,6 +757,7 @@ export async function hasUsdcPurchaseEntitlement(
       FROM usdc_purchase_entitlements
       WHERE skill_db_id = ${skillDbId}::uuid
         AND buyer_pubkey = ${buyerPubkey}
+        AND revoked_at IS NULL
     ) AS has_entitlement
   `;
 
@@ -756,10 +788,283 @@ export async function hasChainUsdcPurchaseEntitlement(
       WHERE skill_db_id = ${skillDbId}::uuid
         AND buyer_chain_context = ${buyerChainContext}
         AND buyer_address = ${buyerAddress}
+        AND revoked_at IS NULL
     ) AS has_entitlement
   `;
 
   return rows[0]?.has_entitlement ?? false;
+}
+
+export async function getUsdcPurchaseEntitlementStatus(
+  skillDbId: string,
+  buyerPubkey: string
+): Promise<{ exists: boolean; revoked: boolean }> {
+  await ensureUsdcPurchaseSchema();
+
+  const rows = await sql()<{
+    revoked_at: string | null;
+  }>`
+    SELECT revoked_at::text
+    FROM usdc_purchase_entitlements
+    WHERE skill_db_id = ${skillDbId}::uuid
+      AND buyer_pubkey = ${buyerPubkey}
+    LIMIT 1
+  `;
+
+  const row = rows[0];
+  if (!row) return { exists: false, revoked: false };
+  return { exists: true, revoked: row.revoked_at !== null };
+}
+
+export async function hasUsdcPurchaseReceiptForPaymentRef(
+  paymentTxSignature: string
+): Promise<boolean> {
+  await ensureUsdcPurchaseSchema();
+
+  const rows = await sql()<{ has_receipt: boolean }>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM usdc_purchase_receipts
+      WHERE payment_tx_signature = ${paymentTxSignature}
+    ) AS has_receipt
+  `;
+
+  return rows[0]?.has_receipt ?? false;
+}
+
+export async function recordRevocableUsdcPurchaseReceipt(input: {
+  skillDbId: string;
+  buyerPubkey: string;
+  paymentTxSignature: string;
+  recipientAta: string;
+  currencyMint: string;
+  amountMicros: string;
+  paymentFlow: string;
+}): Promise<{
+  receiptRecorded: boolean;
+  entitlementUpdated: boolean;
+  revoked: boolean;
+}> {
+  await ensureUsdcPurchaseSchema();
+
+  const [result] = await sql()<{
+    receipt_recorded: boolean;
+    entitlement_updated: boolean;
+    revoked: boolean;
+  }>`
+    WITH payment_state AS (
+      INSERT INTO usdc_payment_revocations (
+        payment_tx_signature,
+        status,
+        reason,
+        updated_at
+      )
+      VALUES (
+        ${input.paymentTxSignature},
+        'fulfilled',
+        'stripe-fulfillment',
+        NOW()
+      )
+      ON CONFLICT (payment_tx_signature)
+      DO UPDATE SET updated_at = NOW()
+      WHERE usdc_payment_revocations.status = 'fulfilled'
+      RETURNING status
+    ),
+    receipt AS (
+      INSERT INTO usdc_purchase_receipts (
+        skill_db_id,
+        buyer_pubkey,
+        payment_tx_signature,
+        recipient_ata,
+        currency_mint,
+        amount_micros,
+        payment_flow,
+        verified_at,
+        updated_at
+      )
+      SELECT
+        ${input.skillDbId}::uuid,
+        ${input.buyerPubkey},
+        ${input.paymentTxSignature},
+        ${input.recipientAta},
+        ${input.currencyMint},
+        ${input.amountMicros},
+        ${input.paymentFlow},
+        NOW(),
+        NOW()
+      FROM payment_state
+      WHERE payment_state.status = 'fulfilled'
+      ON CONFLICT (payment_tx_signature)
+      DO UPDATE SET
+        recipient_ata = EXCLUDED.recipient_ata,
+        currency_mint = EXCLUDED.currency_mint,
+        amount_micros = EXCLUDED.amount_micros,
+        payment_flow = EXCLUDED.payment_flow,
+        verified_at = GREATEST(
+          usdc_purchase_receipts.verified_at,
+          EXCLUDED.verified_at
+        ),
+        updated_at = NOW()
+      WHERE usdc_purchase_receipts.skill_db_id = EXCLUDED.skill_db_id
+        AND usdc_purchase_receipts.buyer_pubkey = EXCLUDED.buyer_pubkey
+      RETURNING id, verified_at
+    ),
+    entitlement AS (
+      INSERT INTO usdc_purchase_entitlements (
+        skill_db_id,
+        buyer_pubkey,
+        latest_receipt_id,
+        payment_tx_signature,
+        recipient_ata,
+        currency_mint,
+        amount_micros,
+        payment_flow,
+        first_verified_at,
+        last_verified_at,
+        created_at,
+        updated_at
+      )
+      SELECT
+        ${input.skillDbId}::uuid,
+        ${input.buyerPubkey},
+        receipt.id,
+        ${input.paymentTxSignature},
+        ${input.recipientAta},
+        ${input.currencyMint},
+        ${input.amountMicros},
+        ${input.paymentFlow},
+        receipt.verified_at,
+        receipt.verified_at,
+        NOW(),
+        NOW()
+      FROM receipt
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM usdc_purchase_entitlements live
+        WHERE live.skill_db_id = ${input.skillDbId}::uuid
+          AND live.buyer_pubkey = ${input.buyerPubkey}
+          AND live.revoked_at IS NULL
+      )
+      ON CONFLICT (skill_db_id, buyer_pubkey)
+      DO UPDATE SET
+        latest_receipt_id = EXCLUDED.latest_receipt_id,
+        buyer_chain_context = NULL,
+        buyer_address = NULL,
+        payment_tx_signature = EXCLUDED.payment_tx_signature,
+        recipient_ata = EXCLUDED.recipient_ata,
+        recipient_chain_context = NULL,
+        recipient_address = NULL,
+        currency_mint = EXCLUDED.currency_mint,
+        asset_chain_context = NULL,
+        asset_address = NULL,
+        amount_micros = EXCLUDED.amount_micros,
+        payment_flow = EXCLUDED.payment_flow,
+        protocol_version = NULL,
+        on_chain_program_id = NULL,
+        chain_context = NULL,
+        on_chain_address = NULL,
+        evm_listing_id = NULL,
+        evm_purchase_id = NULL,
+        purchase_pda = NULL,
+        listing_revision = NULL,
+        settlement_pda = NULL,
+        author_proceeds_vault = NULL,
+        x402_payment_ref_hash = NULL,
+        x402_settlement_signature_hash = NULL,
+        x402_settlement_receipt_pda = NULL,
+        x402_settlement_vault = NULL,
+        refund_status = 'none',
+        legacy_refund_eligible = FALSE,
+        last_verified_at = EXCLUDED.last_verified_at,
+        updated_at = NOW(),
+        revoked_at = NULL,
+        revoked_reason = NULL
+      WHERE usdc_purchase_entitlements.revoked_at IS NOT NULL
+      RETURNING 1
+    )
+    SELECT
+      EXISTS (SELECT 1 FROM receipt) AS receipt_recorded,
+      EXISTS (SELECT 1 FROM entitlement) AS entitlement_updated,
+      NOT EXISTS (SELECT 1 FROM payment_state) AS revoked
+  `;
+
+  if (!result) {
+    throw new Error("Failed to record revocable purchase receipt");
+  }
+  if (!result.receipt_recorded && !result.revoked) {
+    throw new Error(
+      "Payment transaction signature is already recorded for another skill or buyer"
+    );
+  }
+  return {
+    receiptRecorded: result.receipt_recorded,
+    entitlementUpdated: result.entitlement_updated,
+    revoked: result.revoked,
+  };
+}
+
+export async function recordAndApplyUsdcPaymentRevocation(
+  paymentTxSignature: string,
+  reason: string
+): Promise<Array<{ skill_db_id: string; buyer_pubkey: string }>> {
+  await ensureUsdcPurchaseSchema();
+
+  return await sql()<{
+    skill_db_id: string;
+    buyer_pubkey: string;
+  }>`
+    WITH marker AS (
+      INSERT INTO usdc_payment_revocations (
+        payment_tx_signature,
+        status,
+        reason,
+        updated_at
+      )
+      VALUES (${paymentTxSignature}, 'revoked', ${reason}, NOW())
+      ON CONFLICT (payment_tx_signature)
+      DO UPDATE SET
+        status = 'revoked',
+        reason = EXCLUDED.reason,
+        updated_at = NOW()
+      RETURNING payment_tx_signature
+    )
+    UPDATE usdc_purchase_entitlements
+    SET
+      revoked_at = NOW(),
+      revoked_reason = ${reason},
+      updated_at = NOW()
+    FROM marker
+    WHERE usdc_purchase_entitlements.payment_tx_signature = marker.payment_tx_signature
+      AND usdc_purchase_entitlements.revoked_at IS NULL
+    RETURNING
+      usdc_purchase_entitlements.skill_db_id::text AS skill_db_id,
+      usdc_purchase_entitlements.buyer_pubkey
+  `;
+}
+
+// Revokes entitlements whose CURRENT backing receipt is this payment (e.g. a
+// Stripe refund or chargeback). If the buyer has since re-purchased through
+// any rail, the entitlement's payment_tx_signature no longer matches and it
+// is deliberately left untouched.
+export async function revokeUsdcEntitlementsByPaymentRef(
+  paymentTxSignature: string,
+  reason: string
+): Promise<Array<{ skill_db_id: string; buyer_pubkey: string }>> {
+  await ensureUsdcPurchaseSchema();
+
+  return await sql()<{
+    skill_db_id: string;
+    buyer_pubkey: string;
+  }>`
+    UPDATE usdc_purchase_entitlements
+    SET
+      revoked_at = NOW(),
+      revoked_reason = ${reason},
+      updated_at = NOW()
+    WHERE payment_tx_signature = ${paymentTxSignature}
+      AND revoked_at IS NULL
+    RETURNING skill_db_id::text AS skill_db_id, buyer_pubkey
+  `;
 }
 
 export async function getX402SettlementEntitlement(
@@ -956,6 +1261,7 @@ export async function getUsdcPurchaseEntitlementSummary(
     FROM usdc_purchase_entitlements
     WHERE skill_db_id = ${skillDbId}::uuid
       AND buyer_pubkey = ${buyerPubkey}
+      AND revoked_at IS NULL
     LIMIT 1
   `;
 
@@ -1009,27 +1315,37 @@ export async function recordUsdcPurchaseReceipt(input: {
   const onChainProgramId = input.onChainProgramId ?? null;
   const chainContext = normalizeChainContextForStorage(input.chainContext);
   const onChainAddress = input.onChainAddress ?? null;
+  // Chain-qualified address columns are only meaningful alongside a chain
+  // context: chain-aware lookups require both, and off-chain rails (e.g.
+  // Stripe) would otherwise leak sentinels like "USD" / "stripe-offchain"
+  // into address columns that chain-aware grouping and explorers consume.
   const buyerChainContext = normalizeChainContextForStorage(
     input.buyerChainContext ?? chainContext
   );
-  const buyerAddress = normalizeChainAddress(
-    buyerChainContext,
-    input.buyerAddress ?? input.buyerPubkey
-  );
+  const buyerAddress = buyerChainContext
+    ? normalizeChainAddress(
+        buyerChainContext,
+        input.buyerAddress ?? input.buyerPubkey
+      )
+    : null;
   const recipientChainContext = normalizeChainContextForStorage(
     input.recipientChainContext ?? chainContext
   );
-  const recipientAddress = normalizeChainAddress(
-    recipientChainContext,
-    input.recipientAddress ?? input.recipientAta
-  );
+  const recipientAddress = recipientChainContext
+    ? normalizeChainAddress(
+        recipientChainContext,
+        input.recipientAddress ?? input.recipientAta
+      )
+    : null;
   const assetChainContext = normalizeChainContextForStorage(
     input.assetChainContext ?? chainContext
   );
-  const assetAddress = normalizeChainAddress(
-    assetChainContext,
-    input.assetAddress ?? input.currencyMint
-  );
+  const assetAddress = assetChainContext
+    ? normalizeChainAddress(
+        assetChainContext,
+        input.assetAddress ?? input.currencyMint
+      )
+    : null;
   const evmListingId = input.evmListingId ?? null;
   const evmPurchaseId = input.evmPurchaseId ?? null;
   const purchasePda = input.purchasePda ?? null;
@@ -1380,6 +1696,16 @@ export async function recordUsdcPurchaseReceipt(input: {
         WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
           THEN EXCLUDED.legacy_refund_eligible
         ELSE usdc_purchase_entitlements.legacy_refund_eligible
+      END,
+      revoked_at = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN NULL
+        ELSE usdc_purchase_entitlements.revoked_at
+      END,
+      revoked_reason = CASE
+        WHEN EXCLUDED.last_verified_at >= usdc_purchase_entitlements.last_verified_at
+          THEN NULL
+        ELSE usdc_purchase_entitlements.revoked_reason
       END,
       first_verified_at = LEAST(
         usdc_purchase_entitlements.first_verified_at,

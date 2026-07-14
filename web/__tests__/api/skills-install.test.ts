@@ -243,6 +243,31 @@ describe("POST /api/skills/[id]/install", () => {
     expect(body.total_installs).toBe(9);
   });
 
+  it("allows linked paid repo installs with a Stripe entitlement", async () => {
+    mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
+    mockHasUsdcEntitlement.mockResolvedValue(true);
+
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "uuid-2",
+          on_chain_address: "ChainAddr",
+          price_usdc_micros: "50000000",
+        },
+      ])
+      .mockResolvedValueOnce([{ id: "uuid-2", total_installs: 10 }]);
+    mockSql.mockReturnValue(dbQuery);
+
+    const { req, params } = makeRequest("uuid-2", {
+      auth: { pubkey: "Wallet1" },
+    });
+    const res = await POST(req, { params });
+
+    expect(res.status).toBe(200);
+    expect(mockHasUsdcEntitlement).toHaveBeenCalledWith("uuid-2", "Wallet1");
+  });
+
   it("returns 404 when repo skill not found", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
 

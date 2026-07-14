@@ -8,6 +8,7 @@ export {
   buildDownloadRawMessage,
   buildPublisherAuthMessage,
   buildSignMessage,
+  buildStripeCheckoutMessage,
   createSignedDownloadAuthPayload,
   normalizeProtocolNewlines,
   type AuthPayload,
@@ -28,6 +29,12 @@ export function verifyWalletSignature(payload: AuthPayload): {
 } {
   try {
     const { pubkey, signature, message, timestamp } = payload;
+
+    // A non-numeric timestamp (e.g. a string in the JSON body) would make the
+    // age check NaN-compare to false on both bounds and bypass expiry.
+    if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+      return { valid: false, pubkey: null, error: "Invalid timestamp" };
+    }
 
     const age = Date.now() - timestamp;
     if (age > AUTH_PAYLOAD_MAX_AGE_MS || age < -AUTH_PAYLOAD_MAX_AGE_MS) {
