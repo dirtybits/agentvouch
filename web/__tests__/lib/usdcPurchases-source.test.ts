@@ -35,4 +35,11 @@ describe("usdc purchase schema source", () => {
       "usdc_purchase_receipts.buyer_pubkey = EXCLUDED.buyer_pubkey"
     );
   });
+
+  it("serializes revocable fulfillment and revocation by payment state", () => {
+    expect(source).toContain("recordRevocableUsdcPurchaseReceipt");
+    expect(source).toContain("recordAndApplyUsdcPaymentRevocation");
+    expect(source).toContain("usdc_payment_revocations.status = 'fulfilled'");
+    expect(source).toContain("status = 'revoked'");
+  });
 });

@@ -6,12 +6,11 @@ const mocks = vi.hoisted(() => ({
   isStripeEnabled: vi.fn(),
   verifyAndParseWebhook: vi.fn(),
   verifyWalletSignature: vi.fn(),
-  recordUsdcPurchaseReceipt: vi.fn(),
+  hasUsdcPurchaseEntitlement: vi.fn(),
+  recordRevocableUsdcPurchaseReceipt: vi.fn(),
+  recordAndApplyUsdcPaymentRevocation: vi.fn(),
   getUsdcPurchaseEntitlementStatus: vi.fn(),
-  hasUsdcPaymentRevocation: vi.fn(),
   hasUsdcPurchaseReceiptForPaymentRef: vi.fn(),
-  recordUsdcPaymentRevocation: vi.fn(),
-  revokeUsdcEntitlementsByPaymentRef: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -42,18 +41,16 @@ vi.mock("@/lib/auth", async (importOriginal) => {
 });
 
 vi.mock("@/lib/usdcPurchases", () => ({
-  recordUsdcPurchaseReceipt: (...args: unknown[]) =>
-    mocks.recordUsdcPurchaseReceipt(...args),
+  hasUsdcPurchaseEntitlement: (...args: unknown[]) =>
+    mocks.hasUsdcPurchaseEntitlement(...args),
+  recordRevocableUsdcPurchaseReceipt: (...args: unknown[]) =>
+    mocks.recordRevocableUsdcPurchaseReceipt(...args),
+  recordAndApplyUsdcPaymentRevocation: (...args: unknown[]) =>
+    mocks.recordAndApplyUsdcPaymentRevocation(...args),
   getUsdcPurchaseEntitlementStatus: (...args: unknown[]) =>
     mocks.getUsdcPurchaseEntitlementStatus(...args),
-  hasUsdcPaymentRevocation: (...args: unknown[]) =>
-    mocks.hasUsdcPaymentRevocation(...args),
   hasUsdcPurchaseReceiptForPaymentRef: (...args: unknown[]) =>
     mocks.hasUsdcPurchaseReceiptForPaymentRef(...args),
-  recordUsdcPaymentRevocation: (...args: unknown[]) =>
-    mocks.recordUsdcPaymentRevocation(...args),
-  revokeUsdcEntitlementsByPaymentRef: (...args: unknown[]) =>
-    mocks.revokeUsdcEntitlementsByPaymentRef(...args),
 }));
 
 import { POST as checkoutPOST } from "@/app/api/stripe/checkout/route";
@@ -164,9 +161,13 @@ describe("Stripe checkout and webhook routes", () => {
       revoked: false,
     });
     mocks.hasUsdcPurchaseReceiptForPaymentRef.mockResolvedValue(false);
-    mocks.hasUsdcPaymentRevocation.mockResolvedValue(false);
-    mocks.recordUsdcPaymentRevocation.mockResolvedValue(undefined);
-    mocks.revokeUsdcEntitlementsByPaymentRef.mockResolvedValue([]);
+    mocks.hasUsdcPurchaseEntitlement.mockResolvedValue(false);
+    mocks.recordRevocableUsdcPurchaseReceipt.mockResolvedValue({
+      receiptRecorded: true,
+      entitlementUpdated: true,
+      revoked: false,
+    });
+    mocks.recordAndApplyUsdcPaymentRevocation.mockResolvedValue([]);
     mockSkillRow();
   });
 
@@ -262,6 +263,19 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 
+  it("refuses a repeat card checkout for a wallet with access", async () => {
+    mocks.hasUsdcPurchaseEntitlement.mockResolvedValue(true);
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId, auth: signedCheckoutAuth() })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toContain("already has access");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
   it("records webhook entitlements for the buyer wallet in Stripe metadata", async () => {
     mockSql.mockReturnValue(
       vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: null }])
@@ -273,7 +287,7 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.entitled).toBe(buyerPubkey);
-    expect(mocks.recordUsdcPurchaseReceipt).toHaveBeenCalledWith({
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).toHaveBeenCalledWith({
       skillDbId: skillId,
       buyerPubkey,
       paymentTxSignature: "stripe:pi_test_123",
@@ -297,7 +311,7 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("without payment_intent");
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
   });
 
   it("does not fulfill after a skill becomes a Base protocol listing", async () => {
@@ -311,7 +325,7 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("Base protocol listings");
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
   });
 
   it("does not mint an entitlement when the Stripe amount mismatches metadata", async () => {
@@ -327,7 +341,7 @@ describe("Stripe checkout and webhook routes", () => {
     // no entitlement is written and the reason is surfaced for reconciliation.
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("charged amount does not match");
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
   });
 
   it("acks unpaid completed sessions without minting (async payment flow)", async () => {
@@ -340,10 +354,10 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("not paid");
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
   });
 
-  it("does not overwrite an existing entitlement on duplicate or late webhooks", async () => {
+  it("records repeat charges without overwriting an existing entitlement", async () => {
     mockSql.mockReturnValue(vi.fn().mockResolvedValue([{ id: skillId }]));
     mocks.getUsdcPurchaseEntitlementStatus.mockResolvedValue({
       exists: true,
@@ -356,11 +370,11 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.alreadyEntitled).toBe(true);
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).toHaveBeenCalled();
   });
 
   it("revokes the entitlement on a full charge refund", async () => {
-    mocks.revokeUsdcEntitlementsByPaymentRef.mockResolvedValue([
+    mocks.recordAndApplyUsdcPaymentRevocation.mockResolvedValue([
       { skill_db_id: skillId, buyer_pubkey: buyerPubkey },
     ]);
     mocks.verifyAndParseWebhook.mockReturnValue({
@@ -381,11 +395,7 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.revoked).toBe(1);
-    expect(mocks.revokeUsdcEntitlementsByPaymentRef).toHaveBeenCalledWith(
-      "stripe:pi_test_123",
-      "stripe-refund"
-    );
-    expect(mocks.recordUsdcPaymentRevocation).toHaveBeenCalledWith(
+    expect(mocks.recordAndApplyUsdcPaymentRevocation).toHaveBeenCalledWith(
       "stripe:pi_test_123",
       "stripe-refund"
     );
@@ -403,7 +413,7 @@ describe("Stripe checkout and webhook routes", () => {
     const res = await webhookPOST(webhookRequest({}));
 
     expect(res.status).toBe(200);
-    expect(mocks.revokeUsdcEntitlementsByPaymentRef).toHaveBeenCalledWith(
+    expect(mocks.recordAndApplyUsdcPaymentRevocation).toHaveBeenCalledWith(
       "stripe:pi_test_123",
       "stripe-dispute"
     );
@@ -428,7 +438,7 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.ignored).toBe("partial refund");
-    expect(mocks.revokeUsdcEntitlementsByPaymentRef).not.toHaveBeenCalled();
+    expect(mocks.recordAndApplyUsdcPaymentRevocation).not.toHaveBeenCalled();
   });
 
   it("does not re-mint when a revoked payment's webhook is replayed", async () => {
@@ -445,14 +455,18 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("stays revoked");
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
   });
 
   it("does not mint when a refund arrived before checkout completion", async () => {
     mockSql.mockReturnValue(
       vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: null }])
     );
-    mocks.hasUsdcPaymentRevocation.mockResolvedValue(true);
+    mocks.recordRevocableUsdcPurchaseReceipt.mockResolvedValue({
+      receiptRecorded: false,
+      entitlementUpdated: false,
+      revoked: true,
+    });
     mocks.verifyAndParseWebhook.mockReturnValue(paidSessionEvent());
 
     const res = await webhookPOST(webhookRequest({}));
@@ -460,7 +474,7 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("stays revoked");
-    expect(mocks.recordUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).toHaveBeenCalled();
   });
 
   it("re-mints a revoked entitlement for a genuinely new payment", async () => {
@@ -477,6 +491,6 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.entitled).toBe(buyerPubkey);
-    expect(mocks.recordUsdcPurchaseReceipt).toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).toHaveBeenCalled();
   });
 });

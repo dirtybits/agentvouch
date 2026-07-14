@@ -16,6 +16,7 @@ purchase state.
 - `STRIPE_SECRET_KEY` uses a test-mode key.
 - `STRIPE_WEBHOOK_SECRET` is configured from the matching test-mode webhook
   endpoint.
+- `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=true` is set for the same deployment.
 - `AGENTVOUCH_PUBLIC_BASE_URL` points at the preview or local tunnel that Stripe
   redirects back to.
 - Checkout is disabled unless both Stripe secrets are present.
@@ -34,7 +35,7 @@ purchase state.
 5. Pay with a Stripe test card.
 6. Verify webhook delivery for `checkout.session.completed`.
 7. Confirm `usdc_purchase_receipts.payment_tx_signature` is
-   `stripe:{payment_intent_or_session}`.
+   `stripe:{payment_intent}`.
 8. Confirm `usdc_purchase_entitlements` has the signed wallet as buyer.
 9. Return to the skill page and verify `Sign & Download` works for that wallet.
 10. Verify another wallet cannot redeem the entitlement.
@@ -50,8 +51,10 @@ purchase state.
 - Webhook with amount mismatch is acked with an `ignored` reason (so Stripe
   stops retrying) and does not grant entitlement; the reason is logged for the
   reconciliation queue.
-- Duplicate webhook delivery is idempotent, acks `alreadyEntitled`, and does
-  not create duplicate access or overwrite an existing entitlement.
+- Duplicate webhook delivery is idempotent. A second captured payment is kept
+  as an append-only receipt for reconciliation without overwriting the existing
+  entitlement provenance.
+- Checkout returns 409 when the signed wallet already has an entitlement.
 - Checkout for a price below $0.50 returns 400 before any Stripe call.
 - Checkout for a Base protocol listing returns 409 (card entitlements are not
   redeemable on the Base download gate yet).

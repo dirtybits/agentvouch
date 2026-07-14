@@ -41,6 +41,10 @@ export function isStripeEnabled(): boolean {
   return Boolean(config?.secretKey && config.webhookSecret);
 }
 
+export function isStripeCheckoutUiEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED === "true";
+}
+
 // Stripe charges integer minor units (cents). We treat one USDC micro-unit as
 // 1e-6 USD (1 USDC ~= 1 USD), so cents = round(micros / 10_000).
 // This 1:1 assumption is flagged in the feasibility note and is a real

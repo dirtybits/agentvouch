@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  isStripeCheckoutUiEnabled,
   isStripeEnabled,
   verifyAndParseWebhook,
   usdcMicrosToUsdCents,
@@ -12,6 +13,16 @@ describe("stripe helpers", () => {
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
     delete process.env.STRIPE_API_BASE;
+    delete process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED;
+  });
+
+  it("uses a public flag for render-affecting checkout UI", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    expect(isStripeCheckoutUiEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED = "true";
+    expect(isStripeCheckoutUiEnabled()).toBe(true);
   });
 
   it("requires both API and webhook secrets before checkout is enabled", () => {

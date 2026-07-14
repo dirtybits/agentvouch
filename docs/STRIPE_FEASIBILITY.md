@@ -205,6 +205,9 @@ and settled on-chain. Worth an explicit product decision before Tier 2.
 - `STRIPE_WEBHOOK_SECRET` — `whsec_...`, for webhook signature verification.
   Required before checkout is enabled so paid sessions cannot be created
   without a fulfillment path.
+- `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED` — set to `true` to render card checkout
+  controls. Keep this aligned with the server secrets above and redeploy after
+  changing it.
 - `STRIPE_API_BASE` — optional, defaults to `https://api.stripe.com`.
 - `AGENTVOUCH_PUBLIC_BASE_URL` — optional, for checkout success/cancel URLs;
   falls back to `NEXT_PUBLIC_APP_URL`, then the request origin.

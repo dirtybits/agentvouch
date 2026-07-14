@@ -8,7 +8,7 @@ import {
 import { CHAIN_SKILL_PREFIX } from "@/lib/skillUrls";
 import { buildSkillPageMetadata } from "@/lib/skillPageMetadata";
 import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
-import { isStripeEnabled } from "@/lib/stripe";
+import { isStripeCheckoutUiEnabled } from "@/lib/stripe";
 
 export async function generateMetadata({
   params,
@@ -51,7 +51,7 @@ export default async function SkillDetailPage({
     <SkillDetailClient
       id={route.id}
       initialSkill={initialSkill}
-      stripeCheckoutEnabled={isStripeEnabled()}
+      stripeCheckoutEnabled={isStripeCheckoutUiEnabled()}
     />
   );
 }

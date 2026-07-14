@@ -12,11 +12,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import {
   getUsdcPurchaseEntitlementStatus,
-  hasUsdcPaymentRevocation,
   hasUsdcPurchaseReceiptForPaymentRef,
-  recordUsdcPurchaseReceipt,
-  recordUsdcPaymentRevocation,
-  revokeUsdcEntitlementsByPaymentRef,
+  recordAndApplyUsdcPaymentRevocation,
+  recordRevocableUsdcPurchaseReceipt,
 } from "@/lib/usdcPurchases";
 import {
   STRIPE_CURRENCY_SENTINEL,
@@ -125,8 +123,7 @@ export async function POST(req: NextRequest) {
       await initializeDatabase();
       const reason =
         event.type === "charge.refunded" ? "stripe-refund" : "stripe-dispute";
-      await recordUsdcPaymentRevocation(paymentRef, reason);
-      const revoked = await revokeUsdcEntitlementsByPaymentRef(
+      const revoked = await recordAndApplyUsdcPaymentRevocation(
         paymentRef,
         reason
       );
@@ -253,13 +250,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (await hasUsdcPaymentRevocation(paymentRef)) {
-      return ackUnprocessable(
-        session.id,
-        "payment was refunded or disputed; entitlement stays revoked"
-      );
-    }
-
     // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
     // through for a buyer who already holds a live entitlement (e.g. a real
     // on-chain purchase, or a duplicate delivery) would null out its
@@ -270,13 +260,6 @@ export async function POST(req: NextRequest) {
       skillDbId,
       buyerPubkey
     );
-    if (entitlement.exists && !entitlement.revoked) {
-      return NextResponse.json({
-        received: true,
-        entitled: buyerPubkey,
-        alreadyEntitled: true,
-      });
-    }
     if (
       entitlement.revoked &&
       (await hasUsdcPurchaseReceiptForPaymentRef(paymentRef))
@@ -287,7 +270,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await recordUsdcPurchaseReceipt({
+    const recorded = await recordRevocableUsdcPurchaseReceipt({
       skillDbId,
       buyerPubkey,
       paymentTxSignature: paymentRef,
@@ -296,8 +279,18 @@ export async function POST(req: NextRequest) {
       amountMicros: micros.toString(),
       paymentFlow: STRIPE_PAYMENT_FLOW,
     });
+    if (recorded.revoked) {
+      return ackUnprocessable(
+        session.id,
+        "payment was refunded or disputed; entitlement stays revoked"
+      );
+    }
 
-    return NextResponse.json({ received: true, entitled: buyerPubkey });
+    return NextResponse.json({
+      received: true,
+      entitled: buyerPubkey,
+      alreadyEntitled: entitlement.exists && !entitlement.revoked,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: getErrorMessage(error) },

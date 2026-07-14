@@ -16,6 +16,7 @@ import {
   type AuthPayload,
 } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 
 type SkillPriceRow = {
   id: string;
@@ -143,6 +144,13 @@ export async function POST(req: NextRequest) {
             "AgentVouch Stripe Checkout\\nAction: stripe-checkout\\nSkill id: {id}\\nAmount (USDC micros): {micros}\\nTimestamp: {ms}",
         },
         { status: 401 }
+      );
+    }
+
+    if (await hasUsdcPurchaseEntitlement(skill.id, verification.pubkey)) {
+      return NextResponse.json(
+        { error: "This wallet already has access to the skill" },
+        { status: 409 }
       );
     }
 

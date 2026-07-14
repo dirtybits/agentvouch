@@ -33,6 +33,8 @@ on-chain settlement design is approved.
 Do not enable Stripe checkout unless all of the following are true:
 
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are configured together.
+- `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=true` is set only on deployments where
+  those server secrets and the webhook endpoint are active.
 - Webhook delivery is monitored and failed webhook retries are visible.
 - Operators can reconcile Stripe payment ids against
   `usdc_purchase_receipts.payment_tx_signature`.
