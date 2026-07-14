@@ -40,12 +40,16 @@ import {
   getBaseWalletConfig,
 } from "./baseWalletConfig";
 import type {
-  ChainWallet,
+  ClaimPaidPurchaseReportCreditInput,
+  ClaimPaidPurchaseReportCreditResult,
   ClaimVoucherRevenueInput,
   CreateSkillListingInput,
   DepositAuthorBondInput,
   OpenAuthorReportInput,
   OpenAuthorReportResult,
+  OpenPaidPurchaseReportInput,
+  OpenPaidPurchaseReportResult,
+  PaidPurchaseReportChainWallet,
   PurchaseSkillResult,
   PurchaseSkillInput,
   RevokeVouchInput,
@@ -61,13 +65,26 @@ import {
   requireBaseEvmAddress,
   skillIdHashFrom,
 } from "./baseListing";
+import {
+  AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+  BASE_A1_PROTOCOL_VERSION,
+  PAID_PURCHASE_REPORT_BOND_USDC_MICROS,
+  PAID_PURCHASE_REPORT_STATUS_TERMINAL,
+  assertBaseA1ReportPreflight,
+  assertPaidPurchaseReportInput,
+  findBasePaidReportEvent,
+  isKnownUsdcAllowanceFailure,
+  normalizeBaseA1Purchase,
+  type BaseA1Config,
+  type BaseA1Listing,
+} from "./basePaidPurchaseReports";
 
 export { computeListingId, skillIdHashFrom } from "./baseListing";
 
 const PASSKEY_STORAGE_KEY = "agentvouch:base-sepolia:passkey";
 const PASSKEY_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:passkey:active";
 const BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE =
-  "General Base author reports were removed in base-v1-a1. Paid-purchase reports are not exposed through the current wallet interface.";
+  "General Base author reports were removed in base-v1-a1. Use the receipt-bound paid-purchase report capability instead.";
 
 export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
   ...AGENTVOUCH_EVM_READ_ABI,
@@ -311,7 +328,7 @@ export function findBaseWalletEvent(
   return null;
 }
 
-async function sendBaseUserOperation(
+export async function sendBaseUserOperation(
   account: BasePasskeySmartAccount,
   calls: unknown[]
 ): Promise<BaseUserOperationResult> {
@@ -645,6 +662,352 @@ async function ensureBaseAgentRegistered(
     account,
     `agentvouch://base-passkey/${account.address.toLowerCase()}`
   );
+}
+
+function namedOrIndexed(value: unknown, name: string, index: number): unknown {
+  const tuple = value as Record<string | number, unknown>;
+  return tuple[name] ?? tuple[index];
+}
+
+function normalizeBaseA1Config(value: unknown): BaseA1Config {
+  const usdc = requireBaseEvmAddress(
+    String(namedOrIndexed(value, "usdc", 0) ?? ""),
+    "Base A1 config USDC"
+  );
+  return {
+    usdc,
+    chainContext: String(namedOrIndexed(value, "chainContext", 1) ?? ""),
+    disputeBondUsdcMicros: BigInt(
+      String(namedOrIndexed(value, "disputeBondUsdcMicros", 3) ?? 0)
+    ),
+    refundClaimWindowSeconds: BigInt(
+      String(namedOrIndexed(value, "refundClaimWindowSeconds", 11) ?? 0)
+    ),
+  };
+}
+
+function normalizeBaseA1Listing(value: unknown): BaseA1Listing {
+  return {
+    author: requireBaseEvmAddress(
+      String(namedOrIndexed(value, "author", 0) ?? ""),
+      "Base A1 listing author"
+    ),
+    exists: Boolean(namedOrIndexed(value, "exists", 11)),
+  };
+}
+
+async function readAndAssertBaseA1Deployment(input: {
+  publicClient: ReturnType<typeof createBasePublicClient>;
+  contractAddress: Address;
+}): Promise<{ config: BaseA1Config; paused: boolean }> {
+  const [code, protocolVersion, paused, rawConfig] = await Promise.all([
+    input.publicClient.getCode({ address: input.contractAddress }),
+    input.publicClient.readContract({
+      address: input.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "PROTOCOL_VERSION",
+    }),
+    input.publicClient.readContract({
+      address: input.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "paused",
+    }),
+    input.publicClient.readContract({
+      address: input.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getConfig",
+    }),
+  ]);
+  const config = normalizeBaseA1Config(rawConfig);
+  if (!code || code === "0x") {
+    throw new Error("Selected Base A1 contract has no code.");
+  }
+  if (protocolVersion !== BASE_A1_PROTOCOL_VERSION) {
+    throw new Error("Selected Base contract is not protocol base-v1-a1.");
+  }
+  return { config, paused: Boolean(paused) };
+}
+
+export async function openBasePaidPurchaseReport(
+  account: BasePasskeySmartAccount,
+  input: OpenPaidPurchaseReportInput
+): Promise<OpenPaidPurchaseReportResult> {
+  const config = requireBasePaymasterWriteConfig();
+  const bound = assertPaidPurchaseReportInput({
+    request: input,
+    selectedContract: config.agentVouchAddress,
+  });
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  const deployment = await readAndAssertBaseA1Deployment({
+    publicClient,
+    contractAddress: bound.contractAddress,
+  });
+  if (deployment.paused) {
+    throw new Error(
+      "Paid-purchase reports are paused on the selected deployment."
+    );
+  }
+
+  let buyerProfile = await publicClient.readContract({
+    address: bound.contractAddress,
+    abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+    functionName: "getProfile",
+    args: [account.address],
+  });
+  if (!Boolean(namedOrIndexed(buyerProfile, "registered", 0))) {
+    await registerBaseAgent(
+      account,
+      `agentvouch://base-paid-report/${account.address.toLowerCase()}`
+    );
+    buyerProfile = await publicClient.readContract({
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getProfile",
+      args: [account.address],
+    });
+  }
+
+  const [authorProfile, rawPurchase, rawListing, block, balance, allowance] =
+    await Promise.all([
+      publicClient.readContract({
+        address: bound.contractAddress,
+        abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+        functionName: "getProfile",
+        args: [bound.authorAddress],
+      }),
+      publicClient.readContract({
+        address: bound.contractAddress,
+        abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+        functionName: "getPurchase",
+        args: [bound.purchaseId],
+      }),
+      publicClient.readContract({
+        address: bound.contractAddress,
+        abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+        functionName: "getListing",
+        args: [bound.listingId],
+      }),
+      publicClient.getBlock({ blockTag: "latest" }),
+      publicClient.readContract({
+        address: config.usdcAddress,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [account.address],
+      }),
+      publicClient.readContract({
+        address: config.usdcAddress,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [account.address, bound.contractAddress],
+      }),
+    ]);
+  if (!Boolean(namedOrIndexed(buyerProfile, "registered", 0))) {
+    throw new Error("The connected Base buyer is not registered.");
+  }
+  if (!Boolean(namedOrIndexed(authorProfile, "registered", 0))) {
+    throw new Error("The paid-purchase author is not registered.");
+  }
+
+  const purchase = normalizeBaseA1Purchase(rawPurchase);
+  assertBaseA1ReportPreflight({
+    protocolVersion: BASE_A1_PROTOCOL_VERSION,
+    paused: deployment.paused,
+    code: "0x01",
+    config: deployment.config,
+    buyer: account.address,
+    author: bound.authorAddress,
+    listingId: bound.listingId,
+    purchase,
+    listing: normalizeBaseA1Listing(rawListing),
+    nowSeconds: block.timestamp,
+  });
+  assertSufficientBaseUsdc({
+    balance,
+    amountUsdcMicros: PAID_PURCHASE_REPORT_BOND_USDC_MICROS,
+    purpose: "paid-purchase report bond",
+  });
+
+  try {
+    await publicClient.simulateContract({
+      account: account.address,
+      address: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "openPaidPurchaseReport",
+      args: [
+        bound.authorAddress,
+        bound.listingId,
+        bound.purchaseId,
+        input.evidenceUri,
+      ],
+    });
+  } catch (error) {
+    if (
+      allowance >= PAID_PURCHASE_REPORT_BOND_USDC_MICROS ||
+      !isKnownUsdcAllowanceFailure(error)
+    ) {
+      throw error;
+    }
+  }
+
+  const approvalCalls = buildExactUsdcApprovalCalls({
+    allowance,
+    spender: bound.contractAddress,
+    amountUsdcMicros: PAID_PURCHASE_REPORT_BOND_USDC_MICROS,
+    usdcAddress: config.usdcAddress,
+  });
+  const result = await sendBaseUserOperation(account, [
+    ...approvalCalls,
+    {
+      to: bound.contractAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "openPaidPurchaseReport",
+      args: [
+        bound.authorAddress,
+        bound.listingId,
+        bound.purchaseId,
+        input.evidenceUri,
+      ],
+    },
+  ]);
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base paid-purchase report"
+  );
+  const event = findBasePaidReportEvent(
+    receipt.logs,
+    bound.contractAddress,
+    "PaidPurchaseReportOpened"
+  );
+  if (
+    !event ||
+    !sameEvmAddress(event.args.buyer, account.address) ||
+    !sameEvmAddress(event.args.author, bound.authorAddress) ||
+    event.args.listingId !== bound.listingId ||
+    event.args.purchaseId !== bound.purchaseId ||
+    event.args.bond !== PAID_PURCHASE_REPORT_BOND_USDC_MICROS ||
+    event.args.evidenceUri !== input.evidenceUri
+  ) {
+    throw new Error(
+      "Base paid-purchase report receipt did not match the submitted purchase."
+    );
+  }
+  const reportId = String(event.args.reportId);
+  return {
+    ...result,
+    reportId,
+    txHash: result.txHash,
+    userOpHash: result.userOpHash,
+  };
+}
+
+export async function claimBasePaidPurchaseReportCredit(
+  account: BasePasskeySmartAccount,
+  input: ClaimPaidPurchaseReportCreditInput
+): Promise<ClaimPaidPurchaseReportCreditResult> {
+  const config = requireBasePaymasterWriteConfig();
+  if (
+    input.chainContext !== BASE_SEPOLIA_CHAIN_CONTEXT ||
+    input.chainId !== BASE_SEPOLIA_CHAIN_ID ||
+    !isAddress(input.contractAddress) ||
+    getAddress(input.contractAddress) !== config.agentVouchAddress
+  ) {
+    throw new Error("Paid-purchase credit deployment identity is invalid.");
+  }
+  if (!/^\d+$/.test(input.reportId)) {
+    throw new Error("Paid-purchase report id is invalid.");
+  }
+  const reportId = BigInt(input.reportId);
+  if (reportId <= 0n || reportId > (1n << 64n) - 1n) {
+    throw new Error("Paid-purchase report id is outside uint64 range.");
+  }
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  const deployment = await readAndAssertBaseA1Deployment({
+    publicClient,
+    contractAddress: config.agentVouchAddress,
+  });
+  void deployment.paused; // Claims intentionally remain available while paused.
+  const [core, settlement, block] = await Promise.all([
+    publicClient.readContract({
+      address: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getPaidPurchaseReportCore",
+      args: [reportId],
+    }),
+    publicClient.readContract({
+      address: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "getPaidPurchaseReportSettlement",
+      args: [reportId],
+    }),
+    publicClient.getBlock({ blockTag: "latest" }),
+  ]);
+  if (!sameEvmAddress(namedOrIndexed(core, "buyer", 0), account.address)) {
+    throw new Error("Only the initiating buyer can claim this report credit.");
+  }
+  if (
+    Number(namedOrIndexed(core, "status", 8)) !==
+    PAID_PURCHASE_REPORT_STATUS_TERMINAL
+  ) {
+    throw new Error("Paid-purchase report credit is not terminal and funded.");
+  }
+  const buyerCredit = BigInt(
+    String(namedOrIndexed(settlement, "buyerCredit", 6) ?? 0)
+  );
+  const claimDeadline = BigInt(
+    String(namedOrIndexed(settlement, "claimDeadline", 7) ?? 0)
+  );
+  const creditHandled = Boolean(namedOrIndexed(settlement, "creditHandled", 8));
+  if (buyerCredit <= 0n || creditHandled) {
+    throw new Error("Paid-purchase report credit is unavailable or handled.");
+  }
+  if (block.timestamp >= claimDeadline) {
+    throw new Error("Paid-purchase report credit claim window has expired.");
+  }
+
+  await publicClient.simulateContract({
+    account: account.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+    functionName: "claimPaidPurchaseReportCredit",
+    args: [reportId],
+  });
+  const result = await sendBaseUserOperation(account, [
+    {
+      to: config.agentVouchAddress,
+      abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+      functionName: "claimPaidPurchaseReportCredit",
+      args: [reportId],
+    },
+  ]);
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    result.txHash,
+    "Base paid-purchase report credit claim"
+  );
+  const event = findBasePaidReportEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "PaidPurchaseReportCreditClaimed"
+  );
+  if (
+    !event ||
+    String(event.args.reportId) !== input.reportId ||
+    !sameEvmAddress(event.args.buyer, account.address) ||
+    event.args.amount !== buyerCredit
+  ) {
+    throw new Error(
+      "Base paid-purchase report credit receipt did not match the report."
+    );
+  }
+  return {
+    ...result,
+    reportId: input.reportId,
+    txHash: result.txHash,
+    userOpHash: result.userOpHash,
+  };
 }
 
 export async function createBaseSkillListing(
@@ -1227,7 +1590,7 @@ export async function withdrawBaseAuthorProceeds(
 export function createBasePasskeyChainWallet(
   account: BasePasskeySmartAccount,
   disconnect: () => Promise<void>
-): ChainWallet {
+): PaidPurchaseReportChainWallet {
   return {
     chainContext: BASE_SEPOLIA_CHAIN_CONTEXT,
     address: account.address,
@@ -1245,6 +1608,10 @@ export function createBasePasskeyChainWallet(
     vouchForAuthor: (input) => vouchForBaseAuthor(account, input),
     revokeVouch: (input) => revokeBaseVouch(account, input),
     openAuthorReport: (input) => openBaseAuthorReport(account, input),
+    openPaidPurchaseReport: (input) =>
+      openBasePaidPurchaseReport(account, input),
+    claimPaidPurchaseReportCredit: (input) =>
+      claimBasePaidPurchaseReportCredit(account, input),
     claimVoucherRevenue: (input) => claimBaseVoucherRevenue(account, input),
     withdrawAuthorProceeds: (input) =>
       withdrawBaseAuthorProceeds(account, input),

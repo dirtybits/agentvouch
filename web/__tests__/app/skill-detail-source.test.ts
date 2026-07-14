@@ -122,4 +122,25 @@ describe("skill detail source", () => {
     expect(pageSource).toContain("loadSkillDetailSnapshot(route.id)");
     expect(pageSource).toContain("initialSkill={initialSkill}");
   });
+
+  it("keeps the Base A1 paid-report UI purchase-bound and feature-gated", () => {
+    const detailSource = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
+      "utf8"
+    );
+    const reportSource = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/PaidPurchaseReportPanel.tsx"),
+      "utf8"
+    );
+
+    expect(detailSource).toContain('kind === "evm-paid-purchase"');
+    expect(detailSource).toContain("<PaidPurchaseReportPanel");
+    expect(reportSource).toContain("BASE_PAID_PURCHASE_REPORTS_ENABLED");
+    expect(reportSource).toContain("purchase.purchaseId");
+    expect(reportSource).toContain("/paid-reports/verify");
+    expect(reportSource).toContain("A paid report posts a 5 USDC bond");
+    expect(reportSource).toContain("Founder/operator review is");
+    expect(reportSource).toContain("centralized. Rejection");
+    expect(reportSource).toContain("not a full-refund guarantee");
+  });
 });

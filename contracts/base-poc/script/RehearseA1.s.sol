@@ -6,13 +6,12 @@ import {AgentVouchEvm} from "../src/AgentVouchEvm.sol";
 import {AgentVouchTypes} from "../src/libraries/AgentVouchTypes.sol";
 import {PaidPurchaseSettlement} from "../src/libraries/PaidPurchaseSettlement.sol";
 import {MockUSDC} from "../test/mocks/MockUSDC.sol";
-import {LinkedLibraryVerifier} from "./LinkedLibraryVerifier.sol";
+import {A1DeploymentConfig} from "./A1DeploymentConfig.sol";
 
 /// @notice Local-only linked deployment and paid-purchase report rehearsal.
 /// @dev Run only against a disposable Anvil node with chain ID 84532 and unlocked
 ///      accounts. The companion shell driver supplies distinct funded actors.
-contract RehearseA1 is LinkedLibraryVerifier {
-    uint256 internal constant BASE_SEPOLIA_CHAIN_ID = 84532;
+contract RehearseA1 is A1DeploymentConfig {
     uint256 internal constant ACTOR_BALANCE = 100_000_000;
     uint256 internal constant AUTHOR_BOND = 20_000_000;
     uint256 internal constant VOUCH_ONE_STAKE = 4_000_000;
@@ -25,40 +24,76 @@ contract RehearseA1 is LinkedLibraryVerifier {
     function run() external {
         if (block.chainid != BASE_SEPOLIA_CHAIN_ID) revert RehearsalInvariant("chain-id");
 
-        address deployer = vm.envAddress("LOCAL_A1_DEPLOYER");
-        address author = vm.envAddress("LOCAL_A1_AUTHOR");
-        address buyer = vm.envAddress("LOCAL_A1_BUYER");
-        address voucherOne = vm.envAddress("LOCAL_A1_VOUCHER_ONE");
-        address voucherTwo = vm.envAddress("LOCAL_A1_VOUCHER_TWO");
-        address resolver = vm.envAddress("LOCAL_A1_RESOLVER");
-        address reserve = vm.envAddress("LOCAL_A1_RESERVE");
-        _requireDistinct(deployer, author, buyer, voucherOne, voucherTwo, resolver, reserve);
+        uint256 broadcasterPk = vm.envUint("LOCAL_A1_BROADCASTER_PRIVATE_KEY");
+        uint256 stagingAdminPk = vm.envUint("LOCAL_A1_STAGING_ADMIN_PRIVATE_KEY");
+        uint256 finalAdminPk = vm.envUint("LOCAL_A1_FINAL_ADMIN_PRIVATE_KEY");
+        uint256 authorPk = vm.envUint("LOCAL_A1_AUTHOR_PRIVATE_KEY");
+        uint256 buyerPk = vm.envUint("LOCAL_A1_BUYER_PRIVATE_KEY");
+        uint256 voucherOnePk = vm.envUint("LOCAL_A1_VOUCHER_ONE_PRIVATE_KEY");
+        uint256 voucherTwoPk = vm.envUint("LOCAL_A1_VOUCHER_TWO_PRIVATE_KEY");
+        uint256 resolverPk = vm.envUint("LOCAL_A1_RESOLVER_PRIVATE_KEY");
+        uint256 pauseAuthorityPk = vm.envUint("LOCAL_A1_PAUSE_AUTHORITY_PRIVATE_KEY");
+        address broadcaster = vm.addr(broadcasterPk);
+        address stagingAdmin = vm.addr(stagingAdminPk);
+        address finalAdmin = vm.addr(finalAdminPk);
+        address author = vm.addr(authorPk);
+        address buyer = vm.addr(buyerPk);
+        address voucherOne = vm.addr(voucherOnePk);
+        address voucherTwo = vm.addr(voucherTwoPk);
+        address resolver = vm.addr(resolverPk);
+        address pauseAuthority = vm.addr(pauseAuthorityPk);
+        address reserve = finalAdmin;
+        _requireDistinct(
+            broadcaster, stagingAdmin, finalAdmin, author, buyer, voucherOne, voucherTwo, resolver, pauseAuthority
+        );
 
         address settlementLibrary = address(PaidPurchaseSettlement);
         (bytes32 expectedLibraryCodeHash, bytes32 actualLibraryCodeHash) =
             _assertExpectedSettlementLibrary(settlementLibrary);
 
-        vm.startBroadcast(deployer);
+        vm.startBroadcast(broadcasterPk);
         MockUSDC usdc = new MockUSDC();
-        AgentVouchEvm av = new AgentVouchEvm(address(usdc), deployer);
-        av.initializeConfig(_cfg(address(usdc), reserve));
+        AgentVouchEvm av = new AgentVouchEvm(address(usdc), stagingAdmin);
+        vm.stopBroadcast();
+
+        _assertFreshDeployment(av, broadcaster, stagingAdmin, address(usdc));
+        _assertExpectedAgentVouch(av, settlementLibrary, address(usdc));
+
+        vm.startBroadcast(stagingAdminPk);
+        av.setPaused(true);
+        av.initializeConfig(_cfg(address(usdc), 50, reserve));
+        av.grantRole(av.DEFAULT_ADMIN_ROLE(), finalAdmin);
+        av.grantRole(av.CONFIG_ROLE(), finalAdmin);
         av.grantRole(av.RESOLVER_ROLE(), resolver);
-        av.revokeRole(av.RESOLVER_ROLE(), deployer);
+        av.grantRole(av.SETTLEMENT_ROLE(), finalAdmin);
+        av.grantRole(av.PAUSE_ROLE(), pauseAuthority);
+        av.revokeRole(av.CONFIG_ROLE(), stagingAdmin);
+        av.revokeRole(av.RESOLVER_ROLE(), stagingAdmin);
+        av.revokeRole(av.SETTLEMENT_ROLE(), stagingAdmin);
+        av.revokeRole(av.PAUSE_ROLE(), stagingAdmin);
+        av.revokeRole(av.DEFAULT_ADMIN_ROLE(), stagingAdmin);
+        vm.stopBroadcast();
+
+        _assertFinalRoles(av, stagingAdmin, finalAdmin, finalAdmin, resolver, finalAdmin, pauseAuthority);
+        if (!av.configInitialized() || !av.paused()) revert RehearsalInvariant("dormant-staging");
+
+        vm.startBroadcast(broadcasterPk);
         usdc.mint(author, ACTOR_BALANCE);
         usdc.mint(buyer, ACTOR_BALANCE);
         usdc.mint(voucherOne, ACTOR_BALANCE);
         usdc.mint(voucherTwo, ACTOR_BALANCE);
         vm.stopBroadcast();
 
-        if (!av.hasRole(av.RESOLVER_ROLE(), resolver) || av.hasRole(av.RESOLVER_ROLE(), deployer)) {
-            revert RehearsalInvariant("resolver-handoff");
-        }
-        _seed(av, usdc, author, "ipfs://local-author");
-        _seed(av, usdc, buyer, "ipfs://local-buyer");
-        _seed(av, usdc, voucherOne, "ipfs://local-voucher-one");
-        _seed(av, usdc, voucherTwo, "ipfs://local-voucher-two");
+        _seed(av, usdc, authorPk, "ipfs://local-author");
+        _seed(av, usdc, buyerPk, "ipfs://local-buyer");
+        _seed(av, usdc, voucherOnePk, "ipfs://local-voucher-one");
+        _seed(av, usdc, voucherTwoPk, "ipfs://local-voucher-two");
 
-        vm.startBroadcast(author);
+        vm.startBroadcast(pauseAuthorityPk);
+        av.setPaused(false);
+        vm.stopBroadcast();
+
+        vm.startBroadcast(authorPk);
         av.depositAuthorBond(AUTHOR_BOND);
         bytes32 listingId = av.createSkillListing(
             keccak256("local-a1-rehearsal"),
@@ -69,54 +104,64 @@ contract RehearseA1 is LinkedLibraryVerifier {
         );
         vm.stopBroadcast();
 
-        vm.startBroadcast(voucherOne);
+        vm.startBroadcast(voucherOnePk);
         av.vouch(author, VOUCH_ONE_STAKE);
         vm.stopBroadcast();
-        vm.startBroadcast(voucherTwo);
+        vm.startBroadcast(voucherTwoPk);
         av.vouch(author, VOUCH_TWO_STAKE);
         vm.stopBroadcast();
 
-        vm.startBroadcast(buyer);
+        vm.startBroadcast(buyerPk);
         bytes32 purchaseId = av.purchaseSkill(listingId);
         uint64 reportId = av.openPaidPurchaseReport(author, listingId, purchaseId, "ipfs://local-a1-evidence");
         vm.stopBroadcast();
 
-        vm.startBroadcast(resolver);
+        vm.startBroadcast(resolverPk);
         av.reviewPaidPurchaseReport(reportId, true);
+        vm.stopBroadcast();
+
+        // Re-pause before terminal settlement. Resolution, slashing, funded-credit
+        // claims, restitution reserve claims, and residual exits must remain live.
+        vm.startBroadcast(pauseAuthorityPk);
+        av.setPaused(true);
+        vm.stopBroadcast();
+
+        vm.startBroadcast(resolverPk);
         av.resolvePaidPurchaseReport(reportId, uint8(AgentVouchTypes.PaidPurchaseReportRuling.Upheld));
         vm.stopBroadcast();
 
         address[] memory firstPage = new address[](1);
         firstPage[0] = voucherOne;
-        vm.startBroadcast(voucherOne);
+        vm.startBroadcast(voucherOnePk);
         av.slashPaidPurchaseReportVouches(reportId, firstPage);
         vm.stopBroadcast();
 
         address[] memory secondPage = new address[](1);
         secondPage[0] = voucherTwo;
-        vm.startBroadcast(voucherTwo);
+        vm.startBroadcast(voucherTwoPk);
         av.slashPaidPurchaseReportVouches(reportId, secondPage);
         vm.stopBroadcast();
 
         uint256 buyerBefore = usdc.balanceOf(buyer);
-        vm.startBroadcast(buyer);
+        vm.startBroadcast(buyerPk);
         av.claimPaidPurchaseReportCredit(reportId);
         vm.stopBroadcast();
         uint256 buyerCreditPaid = usdc.balanceOf(buyer) - buyerBefore;
 
         uint256 reserveBefore = usdc.balanceOf(reserve);
-        vm.startBroadcast(reserve);
+        vm.startBroadcast(finalAdminPk);
         av.claimRestitutionReserve();
         vm.stopBroadcast();
         uint256 reservePaid = usdc.balanceOf(reserve) - reserveBefore;
 
         uint256 voucherBefore = usdc.balanceOf(voucherOne);
-        vm.startBroadcast(voucherOne);
+        vm.startBroadcast(voucherOnePk);
         av.revokeVouch(author);
         vm.stopBroadcast();
         uint256 residualPaid = usdc.balanceOf(voucherOne) - voucherBefore;
 
         _assertSettlement(av, reportId, buyerCreditPaid, reservePaid, residualPaid);
+        if (!av.paused()) revert RehearsalInvariant("terminal-path-unpaused");
         if (keccak256(bytes(av.PROTOCOL_VERSION())) != keccak256("base-v1-a1")) {
             revert RehearsalInvariant("protocol-version");
         }
@@ -135,10 +180,11 @@ contract RehearseA1 is LinkedLibraryVerifier {
         console2.log("buyerCreditPaid", buyerCreditPaid);
         console2.log("reservePaid", reservePaid);
         console2.log("voucherResidualPaid", residualPaid);
+        console2.log("pausedAfterTerminalSettlement", av.paused());
     }
 
-    function _seed(AgentVouchEvm av, MockUSDC usdc, address actor, string memory metadataUri) private {
-        vm.startBroadcast(actor);
+    function _seed(AgentVouchEvm av, MockUSDC usdc, uint256 actorPk, string memory metadataUri) private {
+        vm.startBroadcast(actorPk);
         usdc.approve(address(av), type(uint256).max);
         av.registerAgent(metadataUri);
         vm.stopBroadcast();
@@ -179,29 +225,22 @@ contract RehearseA1 is LinkedLibraryVerifier {
         if (residualPaid != 2_000_000) revert RehearsalInvariant("voucher-residual");
     }
 
-    function _cfg(address usdc, address reserve) private pure returns (AgentVouchTypes.Config memory c) {
-        c.usdc = usdc;
-        c.chainContext = "eip155:84532";
-        c.minVouchStakeUsdcMicros = 1_000_000;
-        c.disputeBondUsdcMicros = REPORT_BOND;
-        c.minAuthorBondForFreeListingUsdcMicros = 1_000_000;
-        c.minPaidListingPriceUsdcMicros = 10_000;
-        c.authorShareBps = 6_000;
-        c.voucherShareBps = 4_000;
-        c.slashPercentage = 50;
-        c.refundClaimWindowSeconds = 7 days;
-        c.treasuryRecipient = reserve;
-    }
-
-    function _requireDistinct(address a, address b, address c, address d, address e, address f, address g)
-        private
-        pure
-    {
-        address[7] memory actors = [a, b, c, d, e, f, g];
-        for (uint256 i; i < actors.length; ++i) {
-            if (actors[i] == address(0)) revert RehearsalInvariant("zero-actor");
-            for (uint256 j = i + 1; j < actors.length; ++j) {
-                if (actors[i] == actors[j]) revert RehearsalInvariant("duplicate-actor");
+    function _requireDistinct(
+        address a,
+        address b,
+        address c,
+        address d,
+        address e,
+        address f,
+        address g,
+        address h,
+        address ninth
+    ) private pure {
+        address[9] memory actors = [a, b, c, d, e, f, g, h, ninth];
+        for (uint256 index; index < actors.length; ++index) {
+            if (actors[index] == address(0)) revert RehearsalInvariant("zero-actor");
+            for (uint256 j = index + 1; j < actors.length; ++j) {
+                if (actors[index] == actors[j]) revert RehearsalInvariant("duplicate-actor");
             }
         }
     }

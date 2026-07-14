@@ -71,7 +71,7 @@ describe("author page source", () => {
     expect(source).toContain("FiSettings");
   });
 
-  it("routes Base author trust writes through the writable ChainWallet seam", () => {
+  it("routes Base vouch/self-stake writes through ChainWallet but keeps reports Solana-only", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/author/[pubkey]/page.tsx"),
       "utf8"
@@ -80,11 +80,12 @@ describe("author page source", () => {
     expect(source).toContain("useWritableChainWallet");
     expect(source).toContain("BASE_SEPOLIA_CHAIN_CONTEXT");
     expect(source).toContain("activeChainWallet.vouchForAuthor");
-    expect(source).toContain("activeChainWallet.openAuthorReport");
+    expect(source).not.toContain("activeChainWallet.openAuthorReport");
+    expect(source).not.toContain("Open an author-wide Base report");
     expect(source).toContain("authorCanReceiveTrust");
     expect(source).toContain("isEvmAddress(pubkey)");
     expect(source).toContain("setVouchTxExplorerUrl(result.explorerUrl)");
-    expect(source).toContain("setClaimTxExplorerUrl(result.explorerUrl)");
+    expect(source).toContain("setClaimTxExplorerUrl(getSolanaFmTxUrl(tx))");
     expect(source).toContain(
       'const [vouchAmount, setVouchAmount] = useState("1")'
     );

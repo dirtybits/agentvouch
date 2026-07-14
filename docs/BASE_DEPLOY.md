@@ -1,123 +1,133 @@
-# AgentVouch Base Deploy Runbook
+# AgentVouch Base Sepolia A1 Deployment Runbook
 
-This runbook covers the Base Sepolia linked `AgentVouchEvm` `base-v1-a1` candidate under
-`contracts/base-poc`. It mirrors `docs/DEPLOY.md` for the Solana program, but this path is a fresh
-EVM contract deploy, not an in-place upgrade.
+This runbook covers the fresh linked `AgentVouchEvm` `base-v1-a1` candidate. Deployment,
+configuration, smoke, and activation are separate human-gated stages. Completing one does not
+authorize the next.
 
-## Current Scope
+## Scope and current state
 
-- Target chain: Base Sepolia (`eip155:84532`)
-- Contract source: `contracts/base-poc/src/AgentVouchEvm.sol`
-- Deploy script: `contracts/base-poc/script/Deploy.s.sol`
-- Base Sepolia USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
-- Linked library: `contracts/base-poc/src/libraries/PaidPurchaseSettlement.sol`
-- Expected protocol version after this deploy: `base-v1-a1`
+- Target: Base Sepolia (`eip155:84532`) only.
+- Native test USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
+- Facade: `contracts/base-poc/src/AgentVouchEvm.sol`.
+- Linked library: `contracts/base-poc/src/libraries/PaidPurchaseSettlement.sol`.
+- Protocol version: `base-v1-a1`.
+- Current selected deployment: `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`,
+  `base-v1-candidate` (pre-A1).
+- A1 deployment record: [`BASE_SEPOLIA_A1_STATE.md`](./BASE_SEPOLIA_A1_STATE.md).
+- Authoritative activation gates:
+  [`.agents/plans/base-paid-report-activation-sepolia.plan.md`](../.agents/plans/base-paid-report-activation-sepolia.plan.md).
 
-This is still **testnet only**, and the current A1 plan does not authorize even a Sepolia broadcast
-without a new explicit operator approval. Do not deploy Base mainnet (`eip155:8453`) from this runbook. Base
-mainnet remains blocked by the Phase 10 gate: custody, security review, chain parameterization, and
-mainnet-specific readiness must pass first.
+No A1 public-network transaction is currently authorized. Base mainnet (`eip155:8453`) is not
+supported by these scripts and remains blocked by `docs/MAINNET_READINESS.md`.
 
-## Current Deployment Status
+## Safety model
 
-The configured Base Sepolia contract remains `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`
-(`base-v1-candidate`, pre-A1). The local `base-v1-a1` source is size-feasible but has not been deployed,
-verified, live-smoked, or selected by web configuration. The clean break removes the generic
-`openReport`/`resolveReport` path; the replacement accepts only an eligible stored paid-purchase receipt.
+The release uses three independent stages:
 
-## Preflight
+1. `Deploy.s.sol` deploys the facade with a non-broadcaster staging admin. It does not initialize,
+   pause, unpause, or transfer a role.
+2. `StageA1.s.sol` verifies the exact facade/library/USDC artifacts, pauses first, initializes while
+   paused, hands off every final role, removes every staging-admin role, and leaves the contract
+   paused.
+3. A later, separately approved operator action may unpause only for an isolated smoke or activation.
 
-Run from the repo root:
+The deploy broadcaster must never hold an AgentVouch role. The staging admin must be distinct from
+the broadcaster and every final role holder. `DEFAULT_ADMIN_ROLE` is transferred and revoked last.
+
+## Gate A: local pre-broadcast proof
+
+Run from the repository root with Node 24:
 
 ```bash
-cd /Users/andysustic/Repos/agentvouch
 export PATH="$HOME/.nvm/versions/node/v24.1.0/bin:$PATH"
+forge fmt --root contracts/base-poc --check
+forge test --root contracts/base-poc -vv
+forge build --root contracts/base-poc --sizes
+npm run verify:base-size
+npm run verify:chain-map
+contracts/base-poc/scripts/local-a1-rehearsal.sh
 ```
 
-Confirm the worktree and intended branch:
+The local driver starts a disposable Anvil node on chain ID `84532`, derives local-only test keys,
+broadcasts the full lifecycle, and stops the node. Success requires both sentinels:
+
+```text
+LOCAL_A1_REHEARSAL_OK
+LOCAL_A1_DRIVER_OK
+```
+
+The rehearsal proves:
+
+- exact linked-library and facade runtime code hashes;
+- uninitialized/unpaused fresh deployment with no broadcaster role;
+- pause before initialization and complete final-role handoff;
+- no staging role remains;
+- approved unpause before new exposure;
+- re-pause after report acceptance; and
+- resolution, paginated slashing, buyer credit, reserve credit, and voucher residual remain live
+  while paused.
+
+Do not proceed until Gate A in the activation plan is explicitly approved.
+
+### Read-only deployment preflight and monitor
+
+The operations driver has only `preflight` (default) and `monitor` modes. It never loads a private
+key or constructs a wallet client; `--apply`, write modes, and secret-bearing command arguments are
+hard failures. Configure the exact candidate explicitly—there is no fallback to the currently
+selected web contract:
 
 ```bash
-git status --short
-git branch --show-current
+export BASE_A1_OPS_RPC_URL="https://..."
+export BASE_A1_OPS_CONTRACT_ADDRESS="0x..."
+export BASE_A1_OPS_LIBRARY_ADDRESS="0x..."
+export BASE_A1_OPS_DEPLOYMENT_BLOCK="..."
+export BASE_A1_EXPECTED_FACADE_RUNTIME_HASH="0x..."
+export BASE_A1_EXPECTED_LIBRARY_RUNTIME_HASH="0x..."
+export BASE_A1_EXPECTED_USDC_ADDRESS="0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+export BASE_A1_EXPECTED_PAUSED="true"
+export BASE_A1_EXPECTED_ROLE_HOLDERS_JSON='{"DEFAULT_ADMIN_ROLE":["0x..."],"CONFIG_ROLE":["0x..."],"RESOLVER_ROLE":["0x..."],"SETTLEMENT_ROLE":["0x..."],"PAUSE_ROLE":["0x..."]}'
+
+npm run base:a1:ops --workspace @agentvouch/web -- preflight
+npm run base:a1:ops --workspace @agentvouch/web -- monitor
 ```
 
-Confirm Foundry is available:
+The driver scans deployment events in inclusive chunks of at most 1,999 blocks, reconstructs the
+complete AccessControl holder sets, verifies a checkpoint block hash before resuming, validates
+fallback voucher candidates through `getVouch`, and records only machine-readable, non-secret
+artifacts under `.agent-keys/base-paid-report/<deployment>/`. Reserve credit is explicitly labeled
+event-derived because the frozen contract has no public reserve-credit getter. Reports, pause state,
+and buyer-credit status are re-read from the exact deployment; the DB/index is never authority.
 
-```bash
-forge --version
-cast --version
-```
+## Gate B1: deploy uninitialized
 
-Set deployment environment variables without printing secret values:
+This section is an operator reference, not current broadcast authorization.
+
+Set inputs without printing secrets:
 
 ```bash
 export BASE_SEPOLIA_RPC_URL="https://..."
 export DEPLOYER_PRIVATE_KEY="0x..."
+export ADMIN_ADDRESS="<distinct staging admin>"
 export USDC_ADDRESS="0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-export SLASH_PERCENTAGE="<approved integer from 1 through 100>"
-export TREASURY_RECIPIENT="<approved immutable restitution-reserve recipient>"
 ```
 
-For the Phase 9 smoke deploy, leave `ADMIN_ADDRESS` unset unless you intentionally want an
-uninitialized contract and have a separate `initializeConfig` transaction ready. When
-`ADMIN_ADDRESS` is unset, the deployer becomes the temporary Sepolia admin and
-`Deploy.s.sol` calls `initializeConfig(...)` in the same broadcast.
+Confirm the chain, broadcaster, balance, nonce, approved staging admin, expected library address,
+facade address, and artifact hashes in `docs/BASE_SEPOLIA_A1_STATE.md`. The dry run must print:
 
-Confirm the deployer address and balance:
+- exact expected/actual library code hash;
+- exact expected/actual facade code hash;
+- `config initialized: false`;
+- `paused: false`;
+- a broadcaster distinct from the staging admin.
 
 ```bash
-export DEPLOYER_ADDRESS="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
-echo "$DEPLOYER_ADDRESS"
-cast balance "$DEPLOYER_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL" --ether
-cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL"
+cd contracts/base-poc
+forge script script/Deploy.s.sol:Deploy --rpc-url "$BASE_SEPOLIA_RPC_URL" -vvvv
 ```
 
-The chain id must be `84532`.
-
-## Build And Test
-
-Run the Base contract suite before any public broadcast:
+Only after the exact Gate B1 broadcast is explicitly approved:
 
 ```bash
-forge test --root contracts/base-poc -vv
-npm run verify:base-size
-```
-
-Optionally inspect size and protocol-version references:
-
-```bash
-forge build --root contracts/base-poc --sizes
-rg 'PROTOCOL_VERSION|openPaidPurchaseReport|resolvePaidPurchaseReport|getPaidPurchaseReport' contracts/base-poc/src contracts/base-poc/script
-```
-
-## Dry Run
-
-Dry-run the deployment script first. This simulates the deploy and config initialization without
-broadcasting a transaction:
-
-```bash
-cd /Users/andysustic/Repos/agentvouch/contracts/base-poc
-forge script script/Deploy.s.sol:Deploy \
-  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
-  -vvvv
-```
-
-Review the printed address, USDC address, admin address, and `config initialized: true`. If config
-would not initialize, stop and fix the admin/config plan before broadcasting.
-
-Return to repo root after the dry run:
-
-```bash
-cd /Users/andysustic/Repos/agentvouch
-```
-
-## Deploy
-
-Broadcast only after the dry run and tests are green, and after the human operator has explicitly
-accepted the testnet transaction.
-
-```bash
-cd /Users/andysustic/Repos/agentvouch/contracts/base-poc
 forge script script/Deploy.s.sol:Deploy \
   --rpc-url "$BASE_SEPOLIA_RPC_URL" \
   --broadcast \
@@ -125,212 +135,101 @@ forge script script/Deploy.s.sol:Deploy \
   -vvvv
 ```
 
-Record from the broadcast artifact:
+Immediately record transaction hash, block, nonce, library/facade addresses, both runtime code
+hashes, USDC, broadcaster, staging admin, `configInitialized == false`, `paused == false`, and all
+five staging-admin roles. Do not change any client, Vercel, indexer, or paymaster pointer.
 
-- deployed `PaidPurchaseSettlement` address and code hash
-- deployed `AgentVouchEvm` address
-- deploy transaction hash
-- block number
-- deployer/admin address
-- USDC address
-- whether config was initialized
+## Gate B2: verify, pause, initialize, and hand off
 
-Then return to repo root:
+Explorer/source verification and independent bytecode checks must finish before staging. Record the
+verification URLs and exact compiler/link inputs.
+
+Set the already approved values:
 
 ```bash
-cd /Users/andysustic/Repos/agentvouch
-export BASE_V1_AGENTVOUCH_ADDRESS="0x..."
+export STAGING_ADMIN_PRIVATE_KEY="0x..."
+export AGENTVOUCH_ADDRESS="0x..."
+export PAID_PURCHASE_SETTLEMENT_ADDRESS="0x..."
+export FINAL_ADMIN_ADDRESS="0x..."
+export CONFIG_AUTHORITY_ADDRESS="0x..."
+export RESOLVER_ADDRESS="0x..."
+export SETTLEMENT_AUTHORITY_ADDRESS="0x..."
+export PAUSE_AUTHORITY_ADDRESS="0x..."
+export SLASH_PERCENTAGE="<approved 1-100 integer>"
+export TREASURY_RECIPIENT="<approved immutable restitution recipient>"
 ```
 
-## Post-Deploy Verification
+`StageA1.s.sol` rejects a missing/wrong facade, library, USDC, protocol artifact, initialized
+contract, paused contract, missing staging admin, zero role holder, or retained staging role. Its
+locked config fixes the 5 USDC bond, 7-day credit claim window, 60/40 purchase split, zero protocol
+fee, and zero reporter/keeper reward.
 
-Confirm code exists and the Phase 9 selectors are present:
+Dry run first:
 
 ```bash
-cast code "$BASE_V1_AGENTVOUCH_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL" | wc -c
-OPEN_SELECTOR="$(cast sig 'openPaidPurchaseReport(address,bytes32,bytes32,string)')"
-CORE_READ_SELECTOR="$(cast sig 'getPaidPurchaseReportCore(uint64)')"
-
-CODE="$(cast code "$BASE_V1_AGENTVOUCH_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-case "$CODE" in *"${OPEN_SELECTOR#0x}"*) ;; *) echo "paid report selector missing"; exit 1 ;; esac
-case "$CODE" in *"${CORE_READ_SELECTOR#0x}"*) ;; *) echo "paid report read selector missing"; exit 1 ;; esac
+forge script script/StageA1.s.sol:StageA1 --rpc-url "$BASE_SEPOLIA_RPC_URL" -vvvv
 ```
 
-Confirm version, pause state, and config:
+Only after a separate Gate B2 approval:
 
 ```bash
-cast call "$BASE_V1_AGENTVOUCH_ADDRESS" \
-  'PROTOCOL_VERSION()(string)' \
-  --rpc-url "$BASE_SEPOLIA_RPC_URL"
-
-cast call "$BASE_V1_AGENTVOUCH_ADDRESS" \
-  'paused()(bool)' \
-  --rpc-url "$BASE_SEPOLIA_RPC_URL"
-
-cast call "$BASE_V1_AGENTVOUCH_ADDRESS" \
-  'configInitialized()(bool)' \
-  --rpc-url "$BASE_SEPOLIA_RPC_URL"
-```
-
-Expected:
-
-- protocol version is `base-v1-a1`
-- paused is `false`
-- configInitialized is `true`
-
-## Web Env Pointer — Separate Approval
-
-Do not repoint local, preview, or production web merely because deployment succeeds. First complete the
-fresh-state contract smoke and Base passkey regression, then obtain explicit cutover approval. The
-old-candidate and A1 profile tuples are selected by exact `PROTOCOL_VERSION`, so keeping the existing
-address preserves pre-A1 reads.
-
-After approval, point local web at the new Base Sepolia contract and restart the dev server:
-
-```bash
-perl -0pi -e 's/^NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS=.*/NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS='"$BASE_V1_AGENTVOUCH_ADDRESS"'/m' web/.env.local
-rg '^NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS=' web/.env.local
-```
-
-If `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` is missing, append it:
-
-```bash
-printf '\nNEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS=%s\n' "$BASE_V1_AGENTVOUCH_ADDRESS" >> web/.env.local
-```
-
-For Vercel preview/prod, update only after the local smoke passes. Use the Vercel dashboard or CLI
-from the `web/` project context; do not run `vercel env pull` over an active local smoke env unless
-you intend to replace it.
-
-```bash
-cd /Users/andysustic/Repos/agentvouch/web
-printf '%s\n' "$BASE_V1_AGENTVOUCH_ADDRESS" | vercel env add NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS preview
-printf '%s\n' "$BASE_V1_AGENTVOUCH_ADDRESS" | vercel env add NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS production
-```
-
-Do not print or paste private keys into PR comments, plan files, logs, or screenshots.
-
-## Fresh-State Smoke Setup
-
-A fresh Base contract has no profiles, vouches, listings, purchases, or reports. Do not reuse old
-contract state as evidence.
-
-For the report smoke, create at least two registered actors on the new contract:
-
-1. Reporter: the Coinbase/passkey smart account used by the web UI.
-2. Target author: any separate Base Sepolia account you control, such as the deployer or a test EOA.
-
-Register a target author EOA with gas-paid `cast send`:
-
-```bash
-export TARGET_AUTHOR_PRIVATE_KEY="0x..."
-export TARGET_AUTHOR_ADDRESS="$(cast wallet address --private-key "$TARGET_AUTHOR_PRIVATE_KEY")"
-
-cast send "$BASE_V1_AGENTVOUCH_ADDRESS" \
-  'registerAgent(string)' \
-  'agentvouch://base-v1-smoke-author' \
+forge script script/StageA1.s.sol:StageA1 \
   --rpc-url "$BASE_SEPOLIA_RPC_URL" \
-  --private-key "$TARGET_AUTHOR_PRIVATE_KEY"
+  --broadcast \
+  --slow \
+  -vvvv
 ```
 
-The web/passkey reporter can be registered by any UI flow that calls `registerAgent`, such as the
-Base paid publish path. If it is already registered on the new contract, duplicate registration will
-fail with `AlreadyRegistered()` and should be treated as harmless by ensure-registered flows.
+Success requires `A1_STAGED_PAUSED_OK`. Independently read back:
 
-## Paid-Purchase Report Smoke
+- `PROTOCOL_VERSION == base-v1-a1`;
+- exact USDC and config;
+- `configInitialized == true`;
+- `paused == true`;
+- each intended final role present;
+- no staging-admin or broadcaster role; and
+- default admin handoff transaction last.
 
-There is deliberately no Base paid-report UI write in this change. Use the reviewed smoke driver required
-by the A1 plan. It must create a fresh paid listing and Direct or Authorization receipt, open the exact
-receipt within seven days, prove Pending purchases remain open, accept and freeze author-wide purchases,
-uphold, crank at least two voucher pages, claim buyer credit, pull reserve excess, and reclaim a slashed
-vouch residual. Record every transaction hash, block, deadline, event, role/config value, and explicit-block
-USDC delta. Lane-C receipts must be rejected.
+The deployment is now only **deployed, verified, configured, and paused**. It is not active.
 
-Read back the target profile:
+## Gate C: isolated lifecycle smoke
 
-```bash
-cast call "$BASE_V1_AGENTVOUCH_ADDRESS" \
-  'getProfile(address)((bool,string,uint256,uint64,uint64,uint256,uint256,uint64,uint64,uint64,uint64,uint256,uint256,uint64,uint64,uint256,uint256))' \
-  "$TARGET_AUTHOR_ADDRESS" \
-  --rpc-url "$BASE_SEPOLIA_RPC_URL"
+Gate C requires a new approval that names the fixtures, unpause signer, resolver, cranker, exposure
+cap, and monitoring owner. Use fresh Direct or Authorization receipts on the new deployment. Lane-C
+settlement receipts and every pre-A1 receipt are ineligible.
+
+The smoke must record exact transaction/UserOp hashes, blocks, block hashes, events, deadlines,
+multi-page slash progress, and USDC balances at explicit block numbers for:
+
+```text
+purchase -> open -> review -> resolve -> slash pages
+         -> buyer credit -> reserve credit -> voucher residual
 ```
 
-## Web Verification
+Rejection, expiry, replay, duplicate, wrong-role, wrong-deployment, paused-entry, premature claim,
+and settlement-lane paths must also be checked. Re-pause and reconcile every liability before any
+preview pointer change.
 
-After env pointer and smoke:
+## Gate D: client activation
 
-```bash
-npm run format:check
-npm run lint --workspace @agentvouch/web
-npm run typecheck --workspace @agentvouch/web
-npm test --workspace @agentvouch/web
-npm exec --workspace @agentvouch/web next -- build --webpack
-```
+Deployment does not authorize an app pointer, indexer, Vercel, paymaster, or shared-testnet change.
+Preview activation is approved separately after Gate C. Shared Sepolia promotion is another explicit
+decision after preview rollback has been exercised.
 
-For docs-only updates, record which web gates were skipped and why. For any code/env change that
-affects Base writes, run the relevant browser smoke before marking the Phase 9 item complete.
+The purchase-bound client is additionally hidden unless
+`NEXT_PUBLIC_BASE_PAID_PURCHASE_REPORTS_ENABLED=true`. This is a UX exposure flag only; the exact A1
+deployment address and its on-chain pause state remain authoritative. Gate D must update and verify
+the deployment pointer, paymaster policy, and this flag as separate recorded changes. Merging this
+code leaves the flag off by default.
 
-## Rollback
+Rollback order:
 
-Local rollback:
+1. Pause new exposure with the final `PAUSE_ROLE` holder.
+2. Restore the previous deployment-qualified client pointer.
+3. Preserve direct access and sponsorship for terminal reports and funded buyer claims on the A1
+   deployment.
+4. Reconcile reports, remaining slash work, credits, reserve, and residual exits.
+5. Record the incident and abandoned/paused deployment state; never delete or relabel history.
 
-```bash
-git diff -- web/.env.local
-```
-
-Restore `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` to the previous contract address and restart the dev
-server.
-
-Preview/prod rollback:
-
-1. Restore the previous `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` value in Vercel.
-2. Redeploy or promote the last known-good deployment.
-3. Confirm the web continues using the previous deployment identity and does not advertise the obsolete Base general-report path.
-
-Do not delete the new contract; it is immutable on-chain. Instead, stop pointing app envs at it and
-record why it was abandoned.
-
-## Common Failure Modes
-
-### Paid-Purchase Report Selector Missing
-
-The smoke tool is pointed at a contract that does not implement `base-v1-a1`.
-
-```bash
-cast sig 'openPaidPurchaseReport(address,bytes32,bytes32,string)'
-cast call "$NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS" 'PROTOCOL_VERSION()(string)' --rpc-url "$BASE_SEPOLIA_RPC_URL"
-```
-
-Do not update an env pointer to compensate. Verify the linked deployment artifact and obtain cutover approval.
-
-### `NotInitialized()`
-
-The contract deployed but `initializeConfig` was not called. For the current deploy script this
-happens when `ADMIN_ADDRESS` is set to an address different from the deployer. Either redeploy for
-the smoke path with `ADMIN_ADDRESS` unset or submit a reviewed config-initialization transaction from
-the `CONFIG_ROLE` holder.
-
-### `NotRegistered()`
-
-One of the actors is not registered on the fresh contract. Register both the reporter and target
-author on the new contract before vouching or reporting.
-
-### `Insufficient Base Sepolia USDC`
-
-The reporter needs enough Base Sepolia USDC for the report bond and any vouch stake. Confirm:
-
-```bash
-cast call "$USDC_ADDRESS" 'balanceOf(address)(uint256)' "$REPORTER_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL"
-cast call "$USDC_ADDRESS" 'allowance(address,address)(uint256)' "$REPORTER_ADDRESS" "$BASE_V1_AGENTVOUCH_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL"
-```
-
-### Sponsored UserOp Fails
-
-Confirm the CDP paymaster policy allowlists:
-
-- the new `AgentVouchEvm` address
-- Base Sepolia USDC `approve`
-- any other called contract/function in the batched UserOp
-
-If the policy still points at the old contract, the wallet flow can fail even though direct
-`cast call` reads pass.
+Do not print or commit private keys. Do not describe a paused deployment as active. Do not enable
+Base mainnet from this runbook.

@@ -65,6 +65,9 @@ import {
   getConfiguredSolanaExplorerTxUrl,
 } from "@/lib/chains";
 import { BASE_SEPOLIA_EXPLORER_URL } from "@/lib/adapters/baseWalletConfig";
+import PaidPurchaseReportPanel, {
+  type BasePaidPurchaseSummary,
+} from "./PaidPurchaseReportPanel";
 import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
 import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
@@ -194,13 +197,17 @@ interface SkillDetail {
   purchaseRiskWarning?: string | null;
   priceDisclosure?: string | null;
   buyerHasPurchased?: boolean;
-  buyerPurchaseSummary?: {
-    purchasePda: string | null;
-    listingRevision: string | null;
-    settlementPda: string | null;
-    refundStatus: string;
-    legacyRefundEligible: boolean;
-  } | null;
+  buyerPurchaseSummary?:
+    | {
+        kind?: "solana-purchase";
+        purchasePda: string | null;
+        listingRevision: string | null;
+        settlementPda: string | null;
+        refundStatus: string;
+        legacyRefundEligible: boolean;
+      }
+    | BasePaidPurchaseSummary
+    | null;
 }
 
 function shortAddr(addr: string): string {
@@ -2532,6 +2539,7 @@ export default function SkillDetailPage({
                 )}
                 {buyerHasPurchased &&
                   skill.buyerPurchaseSummary &&
+                  skill.buyerPurchaseSummary.kind !== "evm-paid-purchase" &&
                   !isAuthor && (
                     <div className="mt-3 rounded-sm border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/40 p-3">
                       <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -2554,6 +2562,14 @@ export default function SkillDetailPage({
                         </p>
                       )}
                     </div>
+                  )}
+                {buyerHasPurchased &&
+                  skill.buyerPurchaseSummary?.kind === "evm-paid-purchase" &&
+                  !isAuthor && (
+                    <PaidPurchaseReportPanel
+                      skillId={skill.id}
+                      purchase={skill.buyerPurchaseSummary}
+                    />
                   )}
                 {skill.priceDisclosure &&
                   hasLegacySolPrice &&

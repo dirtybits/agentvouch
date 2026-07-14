@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { normalizeInputChainContext } from "@/lib/chains";
+import { normalizeChainAddressForStorage } from "@/lib/chainAddress";
 
 let schemaReady: Promise<void> | null = null;
 
@@ -28,6 +29,53 @@ export type X402SettlementEntitlement = {
   evmListingId: string | null;
   evmPurchaseId: string | null;
   listingRevision: string | null;
+};
+
+export type EvmPaidPurchaseReceipt = {
+  id: string;
+  skillDbId: string;
+  buyerAddress: string;
+  chainContext: string;
+  contractAddress: string;
+  protocolVersion: string;
+  listingId: string;
+  purchaseId: string;
+  paymentFlow: string | null;
+  paymentTxHash: string;
+};
+
+export type EvmPaidPurchaseReportCandidate = {
+  kind: "evm-paid-purchase";
+  buyerAddress: string;
+  chainContext: string;
+  contractAddress: string;
+  protocolVersion: string;
+  listingId: string;
+  purchaseId: string;
+  listingRevision: string | null;
+  amountMicros: string;
+  paymentFlow: string | null;
+};
+
+export type EvmPaidPurchaseReportIndex = {
+  skillDbId: string;
+  purchaseReceiptId: string;
+  chainContext: string;
+  contractAddress: string;
+  protocolVersion: string;
+  buyerAddress: string;
+  authorAddress: string;
+  listingId: string;
+  purchaseId: string;
+  reportId: string;
+  openedTxHash: string;
+  openedBlockHash: string;
+  openedBlockNumber: string;
+  openedLogIndex: string;
+  filedAt: string;
+  reviewDeadline: string;
+  bondUsdcMicros: string;
+  evidenceUri: string;
 };
 
 function normalizeChainContextForStorage(
@@ -432,6 +480,44 @@ export async function ensureUsdcPurchaseSchema() {
     `;
 
     await db`
+      CREATE TABLE IF NOT EXISTS evm_paid_purchase_report_index (
+        skill_db_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+        purchase_receipt_id UUID NOT NULL REFERENCES usdc_purchase_receipts(id) ON DELETE RESTRICT,
+        chain_context VARCHAR(64) NOT NULL,
+        contract_address VARCHAR(42) NOT NULL,
+        protocol_version VARCHAR(64) NOT NULL,
+        buyer_address VARCHAR(42) NOT NULL,
+        author_address VARCHAR(42) NOT NULL,
+        listing_id VARCHAR(66) NOT NULL,
+        purchase_id VARCHAR(66) NOT NULL,
+        report_id NUMERIC(20, 0) NOT NULL,
+        opened_tx_hash VARCHAR(66) NOT NULL,
+        opened_block_hash VARCHAR(66) NOT NULL,
+        opened_block_number NUMERIC(78, 0) NOT NULL,
+        opened_log_index BIGINT NOT NULL,
+        filed_at NUMERIC(20, 0) NOT NULL,
+        review_deadline NUMERIC(20, 0) NOT NULL,
+        bond_usdc_micros NUMERIC(78, 0) NOT NULL,
+        evidence_uri TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (chain_context, contract_address, report_id),
+        UNIQUE (chain_context, contract_address, purchase_id),
+        UNIQUE (chain_context, contract_address, opened_tx_hash, opened_log_index)
+      )
+    `;
+
+    await db`
+      CREATE INDEX IF NOT EXISTS idx_evm_paid_purchase_report_lookup
+      ON evm_paid_purchase_report_index(
+        skill_db_id,
+        chain_context,
+        contract_address,
+        buyer_address,
+        purchase_id
+      )
+    `;
+
+    await db`
       CREATE TABLE IF NOT EXISTS usdc_x402_settlement_attempts (
         payment_ref_hash VARCHAR(64) PRIMARY KEY,
         skill_db_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
@@ -710,6 +796,377 @@ export async function ensureUsdcPurchaseSchema() {
   });
 
   return schemaReady;
+}
+
+export async function getEvmPaidPurchaseReceipt(input: {
+  skillDbId: string;
+  chainContext: string;
+  contractAddress: string;
+  protocolVersion: string;
+  buyerAddress: string;
+  listingId: string;
+  purchaseId: string;
+}): Promise<EvmPaidPurchaseReceipt | null> {
+  await ensureUsdcPurchaseSchema();
+
+  const chainContext = normalizeChainContextForStorage(input.chainContext);
+  const contractAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.contractAddress,
+  });
+  const buyerAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.buyerAddress,
+  });
+  if (!chainContext || !contractAddress || !buyerAddress) return null;
+
+  const rows = await sql()<{
+    id: string;
+    skill_db_id: string;
+    buyer_address: string;
+    chain_context: string;
+    contract_address: string;
+    protocol_version: string;
+    listing_id: string;
+    purchase_id: string;
+    payment_flow: string | null;
+    payment_tx_hash: string;
+  }>`
+    SELECT
+      id::text,
+      skill_db_id::text,
+      buyer_address,
+      chain_context,
+      on_chain_program_id AS contract_address,
+      protocol_version,
+      evm_listing_id AS listing_id,
+      evm_purchase_id AS purchase_id,
+      payment_flow,
+      payment_tx_signature AS payment_tx_hash
+    FROM usdc_purchase_receipts
+    WHERE skill_db_id = ${input.skillDbId}::uuid
+      AND chain_context = ${chainContext}
+      AND LOWER(on_chain_program_id) = ${contractAddress}
+      AND protocol_version = ${input.protocolVersion}
+      AND LOWER(buyer_address) = ${buyerAddress}
+      AND LOWER(evm_listing_id) = ${input.listingId.toLowerCase()}
+      AND LOWER(evm_purchase_id) = ${input.purchaseId.toLowerCase()}
+    ORDER BY verified_at DESC, created_at DESC, id DESC
+    LIMIT 1
+  `;
+
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    skillDbId: row.skill_db_id,
+    buyerAddress: row.buyer_address,
+    chainContext: row.chain_context,
+    contractAddress: row.contract_address,
+    protocolVersion: row.protocol_version,
+    listingId: row.listing_id,
+    purchaseId: row.purchase_id,
+    paymentFlow: row.payment_flow,
+    paymentTxHash: row.payment_tx_hash,
+  };
+}
+
+export async function getEvmPaidPurchaseReportCandidate(input: {
+  skillDbId: string;
+  chainContext: string;
+  contractAddress: string;
+  protocolVersion: string;
+  buyerAddress: string;
+  listingId: string;
+}): Promise<EvmPaidPurchaseReportCandidate | null> {
+  await ensureUsdcPurchaseSchema();
+  const chainContext = normalizeChainContextForStorage(input.chainContext);
+  const contractAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.contractAddress,
+  });
+  const buyerAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.buyerAddress,
+  });
+  if (!chainContext || !contractAddress || !buyerAddress) return null;
+
+  const rows = await sql()<{
+    buyer_address: string;
+    chain_context: string;
+    contract_address: string;
+    protocol_version: string;
+    listing_id: string;
+    purchase_id: string;
+    listing_revision: string | null;
+    amount_micros: string;
+    payment_flow: string | null;
+  }>`
+    SELECT
+      buyer_address,
+      chain_context,
+      on_chain_program_id AS contract_address,
+      protocol_version,
+      evm_listing_id AS listing_id,
+      evm_purchase_id AS purchase_id,
+      listing_revision::text,
+      amount_micros::text,
+      payment_flow
+    FROM usdc_purchase_receipts
+    WHERE skill_db_id = ${input.skillDbId}::uuid
+      AND chain_context = ${chainContext}
+      AND LOWER(on_chain_program_id) = ${contractAddress}
+      AND protocol_version = ${input.protocolVersion}
+      AND LOWER(buyer_address) = ${buyerAddress}
+      AND LOWER(evm_listing_id) = ${input.listingId.toLowerCase()}
+      AND evm_purchase_id IS NOT NULL
+    ORDER BY verified_at DESC, created_at DESC, id DESC
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    kind: "evm-paid-purchase",
+    buyerAddress: row.buyer_address,
+    chainContext: row.chain_context,
+    contractAddress: row.contract_address,
+    protocolVersion: row.protocol_version,
+    listingId: row.listing_id,
+    purchaseId: row.purchase_id,
+    listingRevision: row.listing_revision,
+    amountMicros: row.amount_micros,
+    paymentFlow: row.payment_flow,
+  };
+}
+
+function normalizeEvmPaidPurchaseReportIndex(
+  input: EvmPaidPurchaseReportIndex
+): EvmPaidPurchaseReportIndex {
+  const chainContext = normalizeChainContextForStorage(input.chainContext);
+  const contractAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.contractAddress,
+  });
+  const buyerAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.buyerAddress,
+  });
+  const authorAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.authorAddress,
+  });
+  if (!chainContext || !contractAddress || !buyerAddress || !authorAddress) {
+    throw new Error(
+      "Paid-purchase report index requires valid chain-qualified EVM addresses"
+    );
+  }
+  return {
+    ...input,
+    chainContext,
+    contractAddress,
+    buyerAddress,
+    authorAddress,
+    listingId: input.listingId.toLowerCase(),
+    purchaseId: input.purchaseId.toLowerCase(),
+    openedTxHash: input.openedTxHash.toLowerCase(),
+    openedBlockHash: input.openedBlockHash.toLowerCase(),
+  };
+}
+
+function indexedReportFromRow(row: {
+  skill_db_id: string;
+  purchase_receipt_id: string;
+  chain_context: string;
+  contract_address: string;
+  protocol_version: string;
+  buyer_address: string;
+  author_address: string;
+  listing_id: string;
+  purchase_id: string;
+  report_id: string;
+  opened_tx_hash: string;
+  opened_block_hash: string;
+  opened_block_number: string;
+  opened_log_index: string;
+  filed_at: string;
+  review_deadline: string;
+  bond_usdc_micros: string;
+  evidence_uri: string;
+}): EvmPaidPurchaseReportIndex {
+  return {
+    skillDbId: row.skill_db_id,
+    purchaseReceiptId: row.purchase_receipt_id,
+    chainContext: row.chain_context,
+    contractAddress: row.contract_address,
+    protocolVersion: row.protocol_version,
+    buyerAddress: row.buyer_address,
+    authorAddress: row.author_address,
+    listingId: row.listing_id,
+    purchaseId: row.purchase_id,
+    reportId: row.report_id,
+    openedTxHash: row.opened_tx_hash,
+    openedBlockHash: row.opened_block_hash,
+    openedBlockNumber: row.opened_block_number,
+    openedLogIndex: row.opened_log_index,
+    filedAt: row.filed_at,
+    reviewDeadline: row.review_deadline,
+    bondUsdcMicros: row.bond_usdc_micros,
+    evidenceUri: row.evidence_uri,
+  };
+}
+
+type IndexedReportDbRow = Parameters<typeof indexedReportFromRow>[0];
+
+export async function recordEvmPaidPurchaseReportIndex(
+  rawInput: EvmPaidPurchaseReportIndex
+): Promise<EvmPaidPurchaseReportIndex> {
+  await ensureUsdcPurchaseSchema();
+  const input = normalizeEvmPaidPurchaseReportIndex(rawInput);
+  const db = sql();
+
+  await db`
+    INSERT INTO evm_paid_purchase_report_index (
+      skill_db_id,
+      purchase_receipt_id,
+      chain_context,
+      contract_address,
+      protocol_version,
+      buyer_address,
+      author_address,
+      listing_id,
+      purchase_id,
+      report_id,
+      opened_tx_hash,
+      opened_block_hash,
+      opened_block_number,
+      opened_log_index,
+      filed_at,
+      review_deadline,
+      bond_usdc_micros,
+      evidence_uri
+    )
+    VALUES (
+      ${input.skillDbId}::uuid,
+      ${input.purchaseReceiptId}::uuid,
+      ${input.chainContext},
+      ${input.contractAddress},
+      ${input.protocolVersion},
+      ${input.buyerAddress},
+      ${input.authorAddress},
+      ${input.listingId},
+      ${input.purchaseId},
+      ${input.reportId}::numeric,
+      ${input.openedTxHash},
+      ${input.openedBlockHash},
+      ${input.openedBlockNumber}::numeric,
+      ${input.openedLogIndex}::bigint,
+      ${input.filedAt}::numeric,
+      ${input.reviewDeadline}::numeric,
+      ${input.bondUsdcMicros}::numeric,
+      ${input.evidenceUri}
+    )
+    ON CONFLICT DO NOTHING
+  `;
+
+  const matchingRows = await db<IndexedReportDbRow>`
+    SELECT
+      skill_db_id::text,
+      purchase_receipt_id::text,
+      chain_context,
+      contract_address,
+      protocol_version,
+      buyer_address,
+      author_address,
+      listing_id,
+      purchase_id,
+      report_id::text,
+      opened_tx_hash,
+      opened_block_hash,
+      opened_block_number::text,
+      opened_log_index::text,
+      filed_at::text,
+      review_deadline::text,
+      bond_usdc_micros::text,
+      evidence_uri
+    FROM evm_paid_purchase_report_index
+    WHERE chain_context = ${input.chainContext}
+      AND contract_address = ${input.contractAddress}
+      AND (
+        report_id = ${input.reportId}::numeric
+        OR purchase_id = ${input.purchaseId}
+      )
+  `;
+  const exactRow = matchingRows.find(
+    (row) =>
+      row.report_id === input.reportId && row.purchase_id === input.purchaseId
+  );
+  const existing = exactRow ? indexedReportFromRow(exactRow) : null;
+  if (!existing) {
+    throw new Error(
+      "Paid-purchase report index conflict could not be resolved"
+    );
+  }
+
+  for (const key of Object.keys(
+    input
+  ) as (keyof EvmPaidPurchaseReportIndex)[]) {
+    if (existing[key] !== input[key]) {
+      throw new Error(
+        `Paid-purchase report index conflict on immutable field ${key}`
+      );
+    }
+  }
+  return existing;
+}
+
+export async function getEvmPaidPurchaseReportIndex(input: {
+  skillDbId: string;
+  chainContext: string;
+  contractAddress: string;
+  buyerAddress: string;
+  purchaseId: string;
+}): Promise<EvmPaidPurchaseReportIndex | null> {
+  await ensureUsdcPurchaseSchema();
+  const chainContext = normalizeChainContextForStorage(input.chainContext);
+  const contractAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.contractAddress,
+  });
+  const buyerAddress = normalizeChainAddressForStorage({
+    chainContext,
+    value: input.buyerAddress,
+  });
+  if (!chainContext || !contractAddress || !buyerAddress) return null;
+
+  const rows = await sql()<IndexedReportDbRow>`
+    SELECT
+      skill_db_id::text,
+      purchase_receipt_id::text,
+      chain_context,
+      contract_address,
+      protocol_version,
+      buyer_address,
+      author_address,
+      listing_id,
+      purchase_id,
+      report_id::text,
+      opened_tx_hash,
+      opened_block_hash,
+      opened_block_number::text,
+      opened_log_index::text,
+      filed_at::text,
+      review_deadline::text,
+      bond_usdc_micros::text,
+      evidence_uri
+    FROM evm_paid_purchase_report_index
+    WHERE skill_db_id = ${input.skillDbId}::uuid
+      AND chain_context = ${chainContext}
+      AND contract_address = ${contractAddress}
+      AND buyer_address = ${buyerAddress}
+      AND purchase_id = ${input.purchaseId.toLowerCase()}
+    LIMIT 1
+  `;
+  return rows[0] ? indexedReportFromRow(rows[0]) : null;
 }
 
 export async function hasUsdcPurchaseEntitlement(

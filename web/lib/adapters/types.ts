@@ -102,6 +102,50 @@ export interface OpenAuthorReportResult extends TxResult {
   reportId?: string;
 }
 
+export interface OpenPaidPurchaseReportInput {
+  chainContext: ChainContext;
+  chainId: number;
+  contractAddress: string;
+  authorAddress: string;
+  listingId: string;
+  purchaseId: string;
+  evidenceUri: string;
+  expectedBondUsdcMicros: bigint;
+}
+
+export interface OpenPaidPurchaseReportResult extends TxResult {
+  reportId: string;
+  txHash: string;
+  userOpHash?: string;
+}
+
+export interface ClaimPaidPurchaseReportCreditInput {
+  chainContext: ChainContext;
+  chainId: number;
+  contractAddress: string;
+  reportId: string;
+}
+
+export interface ClaimPaidPurchaseReportCreditResult extends TxResult {
+  reportId: string;
+  txHash: string;
+  userOpHash?: string;
+}
+
+// Base-only optional capability. It intentionally does not expand ChainWallet:
+// Solana and pre-A1 EVM wallets must not acquire incompatible paid-report stubs.
+export interface PaidPurchaseReportWalletCapability {
+  openPaidPurchaseReport(
+    input: OpenPaidPurchaseReportInput
+  ): Promise<OpenPaidPurchaseReportResult>;
+  claimPaidPurchaseReportCredit(
+    input: ClaimPaidPurchaseReportCreditInput
+  ): Promise<ClaimPaidPurchaseReportCreditResult>;
+}
+
+export type PaidPurchaseReportChainWallet = ChainWallet &
+  PaidPurchaseReportWalletCapability;
+
 export interface X402Payment {
   header: string;
   payload: unknown;
