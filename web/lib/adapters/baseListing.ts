@@ -8,6 +8,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { isEvmShapedAddress } from "@/lib/chainAddress";
 
 const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
 
@@ -52,16 +53,14 @@ export function getExpectedBaseContract(input: {
     input.configuredContract,
     "Base AgentVouch contract address"
   );
+  const legacyProgramId = input.skill.on_chain_program_id;
   const linked = input.skill.evm_contract_address
     ? requireBaseEvmAddress(
         input.skill.evm_contract_address,
         "Skill Base contract"
       )
-    : input.skill.on_chain_program_id?.startsWith("0x")
-    ? requireBaseEvmAddress(
-        input.skill.on_chain_program_id,
-        "Skill Base contract"
-      )
+    : legacyProgramId && isEvmShapedAddress(legacyProgramId)
+    ? requireBaseEvmAddress(legacyProgramId, "Skill Base contract")
     : null;
 
   if (linked && linked !== configured) {

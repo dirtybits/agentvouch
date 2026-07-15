@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getExpectedBaseCurrency } from "@/lib/adapters/baseListing";
+import {
+  getExpectedBaseContract,
+  getExpectedBaseCurrency,
+} from "@/lib/adapters/baseListing";
 import { BASE_NATIVE_USDC_ADDRESS } from "@/lib/adapters/baseConfig";
 import { isSameSkillRawUri } from "@/lib/baseListingVerification";
 
@@ -10,6 +13,7 @@ import { isSameSkillRawUri } from "@/lib/baseListingVerification";
 const CONFIGURED = BASE_NATIVE_USDC_ADDRESS;
 const NATIVE = BASE_NATIVE_USDC_ADDRESS;
 const SOLANA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Solana USDC mint
+const BASE_CONTRACT = "0x1111111111111111111111111111111111111111";
 
 describe("getExpectedBaseCurrency", () => {
   it("treats a null currency_mint as native Base USDC (the Phase 8a Base paid default)", () => {
@@ -45,6 +49,32 @@ describe("getExpectedBaseCurrency", () => {
         usage: "listings",
       })
     ).toThrow(/valid EVM address/i);
+  });
+});
+
+describe("getExpectedBaseContract", () => {
+  it("uses the shared EVM-shape helper for legacy on_chain_program_id fallback", () => {
+    expect(
+      getExpectedBaseContract({
+        skill: {
+          evm_contract_address: null,
+          on_chain_program_id: BASE_CONTRACT,
+        },
+        configuredContract: BASE_CONTRACT,
+      })
+    ).toBe(BASE_CONTRACT);
+  });
+
+  it("ignores a non-EVM legacy program id and retains the configured Base contract", () => {
+    expect(
+      getExpectedBaseContract({
+        skill: {
+          evm_contract_address: null,
+          on_chain_program_id: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
+        },
+        configuredContract: BASE_CONTRACT,
+      })
+    ).toBe(BASE_CONTRACT);
   });
 });
 
