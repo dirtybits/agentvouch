@@ -14,6 +14,7 @@
     "db:widen-protocol-version": "tsx scripts/widen-protocol-version-columns.ts",
     "x402:bridge-poc": "tsx scripts/x402-bridge-poc.ts",
     "base:a1:ops": "tsx scripts/base-paid-report-e2e-smoke.ts",
+    "stripe:ops": "tsx scripts/stripe-limited-preview-ops.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -16,6 +16,9 @@ purchase state.
 - `STRIPE_SECRET_KEY` uses a test-mode key.
 - `STRIPE_WEBHOOK_SECRET` is configured from the matching test-mode webhook
   endpoint.
+- `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true` enables session creation on the
+  test deployment. Leave the webhook configured when this flag is later turned
+  off so outstanding refunds/disputes still process.
 - `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=true` is set for the same deployment.
 - `AGENTVOUCH_PUBLIC_BASE_URL` points at the preview or local tunnel that Stripe
   redirects back to.
@@ -25,6 +28,8 @@ purchase state.
   `charge.dispute.created`.
 - Operators can access Stripe Dashboard test events and Vercel/API logs for the
   checkout and webhook routes.
+- `npm run stripe:ops --workspace @agentvouch/web -- preflight` passes in the
+  deployment environment.
 
 ## Happy-Path Test
 
@@ -43,14 +48,16 @@ purchase state.
 ## Negative Tests
 
 - Missing `STRIPE_SECRET_KEY` or missing `STRIPE_WEBHOOK_SECRET` returns 501.
+- Missing `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true` returns 501 for checkout
+  creation without disabling webhook processing.
 - Checkout without wallet auth returns 401.
 - Checkout auth signed for a different skill is rejected.
 - Webhook with an invalid Stripe signature is rejected.
 - Webhook with non-USD currency is acked with an `ignored` reason and does not
   grant entitlement.
 - Webhook with amount mismatch is acked with an `ignored` reason (so Stripe
-  stops retrying) and does not grant entitlement; the reason is logged for the
-  reconciliation queue.
+  stops retrying) and does not grant entitlement; the reason is persisted in
+  `stripe_webhook_outcomes` for operator reconciliation.
 - Duplicate webhook delivery is idempotent. A second captured payment is kept
   as an append-only receipt for reconciliation without overwriting the existing
   entitlement provenance.
@@ -67,6 +74,17 @@ purchase state.
 - Cancelled checkout returns to the skill page without entitlement.
 
 ## Reconciliation Checks
+
+Run the read-only monitor in the same environment as the intended database:
+
+```bash
+npm run stripe:ops --workspace @agentvouch/web -- monitor
+```
+
+It exits non-zero for activation blockers or unresolved review items. Resolve
+items only after comparing the Stripe event/payment id with the receipt,
+entitlement, refund/revocation marker, and expected policy; the monitor never
+mutates Stripe or database state.
 
 - Dashboard payment id matches `payment_tx_signature`.
 - Stripe amount, metadata `price_usdc_micros`, and DB `amount_micros` match.
@@ -92,13 +110,16 @@ AgentVouch wallet, not a Base-native protocol purchase.
 
 - Partial-refund and dispute-won reconciliation (full-refund/dispute revocation is handled).
 - Entitlement suspension/revocation status fields.
-- Operator reconciliation queue for paid-but-not-entitled and
-  refunded-but-still-entitled cases.
+- Richer operator dashboard and resolution workflow. The limited-preview
+  baseline now persists review items and exposes the read-only monitor.
 - Author payout policy: Stripe Connect, manual operator payout, or fiat -> USDC
   protocol settlement.
 - Public support copy that separates card refunds from protocol disputes/refunds.
-- Abuse controls on checkout/session creation.
-- Monitoring for webhook failures and entitlement-write failures.
+- Verified external Vercel Firewall/WAF rule on checkout/session creation. The
+  route-level per-instance limiter is defense in depth only.
+- Monitoring for webhook failures and entitlement-write failures. The durable
+  queue covers webhook events the app received; Stripe Dashboard delivery
+  failures remain a separate operator alert/source of truth.
 
 ## Exit Criteria
 
@@ -110,3 +131,5 @@ Test-mode Stripe can move from prototype to limited preview only when:
 - Product copy labels the path as card checkout / off-chain entitlement.
 - Metrics exclude Stripe MPP receipts from protocol purchase, voucher yield,
   author proceeds, and dispute recovery totals.
+- Production is still blocked until the Vercel Firewall/WAF rule is verified
+  and `AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true` is explicitly set.

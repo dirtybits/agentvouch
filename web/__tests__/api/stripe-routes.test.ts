@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   createCheckoutSession: vi.fn(),
+  getStripeCheckoutActivation: vi.fn(),
   isStripeEnabled: vi.fn(),
   verifyAndParseWebhook: vi.fn(),
   verifyWalletSignature: vi.fn(),
@@ -12,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   recordAndApplyUsdcPaymentRevocation: vi.fn(),
   getUsdcPurchaseEntitlementStatus: vi.fn(),
   hasUsdcPurchaseReceiptForPaymentRef: vi.fn(),
+  checkRateLimit: vi.fn(),
+  recordStripeWebhookOutcome: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -26,10 +29,21 @@ vi.mock("@/lib/stripe", () => ({
   STRIPE_MIN_CHARGE_USD_CENTS: 50,
   createCheckoutSession: (...args: unknown[]) =>
     mocks.createCheckoutSession(...args),
+  getStripeCheckoutActivation: () => mocks.getStripeCheckoutActivation(),
   isStripeEnabled: () => mocks.isStripeEnabled(),
   usdcMicrosToUsdCents: (micros: bigint) => Number((micros + 5000n) / 10000n),
   verifyAndParseWebhook: (...args: unknown[]) =>
     mocks.verifyAndParseWebhook(...args),
+}));
+
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimit: (...args: unknown[]) => mocks.checkRateLimit(...args),
+  clientIpFromRequest: () => "127.0.0.1",
+}));
+
+vi.mock("@/lib/stripeReconciliation", () => ({
+  recordStripeWebhookOutcome: (...args: unknown[]) =>
+    mocks.recordStripeWebhookOutcome(...args),
 }));
 
 vi.mock("@/lib/auth", async (importOriginal) => {
@@ -154,7 +168,20 @@ function paidSessionEvent(
 describe("Stripe checkout and webhook routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: false,
+    });
     mocks.isStripeEnabled.mockReturnValue(true);
+    mocks.checkRateLimit.mockReturnValue({
+      ok: true,
+      remaining: 4,
+      retryAfterSeconds: 0,
+    });
+    mocks.recordStripeWebhookOutcome.mockResolvedValue(undefined);
     mocks.createCheckoutSession.mockResolvedValue({
       id: "cs_test_123",
       url: "https://checkout.stripe.test/cs_test_123",
@@ -188,6 +215,44 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
     // Auth is rejected before any database work.
     expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("requires the server-side checkout activation gate", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: false,
+      stripeConfigured: true,
+      serverFlagEnabled: false,
+      productionEdgeRateLimitReady: true,
+      production: false,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId, auth: signedCheckoutAuth() })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(501);
+    expect(body.error).toContain("AGENTVOUCH_STRIPE_CHECKOUT_ENABLED");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("rate limits session creation before database work", async () => {
+    mocks.checkRateLimit.mockReturnValueOnce({
+      ok: false,
+      remaining: 0,
+      retryAfterSeconds: 42,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId, auth: signedCheckoutAuth() })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("42");
+    expect(body.error).toContain("Too many");
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("binds checkout sessions to the signed buyer wallet, price, and amount", async () => {
@@ -322,6 +387,13 @@ describe("Stripe checkout and webhook routes", () => {
       amountMicros: "1000000",
       paymentFlow: "stripe-mpp-offchain",
     });
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_1",
+        outcome: "fulfilled",
+        needsReview: false,
+      })
+    );
   });
 
   it("does not fulfill a paid session without a payment intent", async () => {
@@ -368,6 +440,13 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("charged amount does not match");
     expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_1",
+        outcome: "needs-review",
+        needsReview: true,
+      })
+    );
   });
 
   it("acks unpaid completed sessions without minting (async payment flow)", async () => {
@@ -425,6 +504,13 @@ describe("Stripe checkout and webhook routes", () => {
       "stripe:pi_test_123",
       "stripe-refund"
     );
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_2",
+        outcome: "revoked",
+        needsReview: false,
+      })
+    );
   });
 
   it("revokes the entitlement when a dispute is opened", async () => {
@@ -465,6 +551,28 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(200);
     expect(body.ignored).toBe("partial refund");
     expect(mocks.recordAndApplyUsdcPaymentRevocation).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_4",
+        outcome: "needs-review",
+        reason: "partial refund",
+      })
+    );
+  });
+
+  it("returns 500 when a terminal outcome cannot be persisted", async () => {
+    mocks.recordStripeWebhookOutcome.mockRejectedValueOnce(
+      new Error("database unavailable")
+    );
+    mocks.verifyAndParseWebhook.mockReturnValue(
+      paidSessionEvent({ amount_total: 99 })
+    );
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toContain("persist Stripe webhook outcome");
   });
 
   it("does not re-mint when a revoked payment's webhook is replayed", async () => {

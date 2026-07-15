@@ -25,6 +25,10 @@ import {
   verifyAndParseWebhook,
 } from "@/lib/stripe";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  recordStripeWebhookOutcome,
+  type RecordStripeWebhookOutcomeInput,
+} from "@/lib/stripeReconciliation";
 
 type SessionObject = {
   id: string;
@@ -60,15 +64,58 @@ function metadataString(
   return value || null;
 }
 
+async function recordOutcomeOrRetry(
+  input: RecordStripeWebhookOutcomeInput,
+  response: NextResponse
+): Promise<NextResponse> {
+  try {
+    await recordStripeWebhookOutcome(input);
+    return response;
+  } catch (error) {
+    // A durable audit/review record is part of processing. Returning 500 keeps
+    // Stripe retries active instead of silently losing an operator action.
+    return NextResponse.json(
+      {
+        error: `Failed to persist Stripe webhook outcome: ${getErrorMessage(
+          error
+        )}`,
+      },
+      { status: 500 }
+    );
+  }
+}
+
 // Terminal ack for events this endpoint will never be able to fulfill.
-// Logged so paid-but-not-entitled cases stay visible to reconciliation.
-function ackUnprocessable(sessionId: string | undefined, reason: string) {
+// Persisted before ACK so paid-but-not-entitled cases survive log retention.
+async function ackUnprocessable(input: {
+  eventId: string;
+  eventType: string;
+  objectId?: string | null;
+  paymentRef?: string | null;
+  skillDbId?: string | null;
+  buyerKey?: string | null;
+  reason: string;
+  needsReview?: boolean;
+}) {
   console.error(
-    `Stripe webhook unprocessable (session ${
-      sessionId ?? "unknown"
-    }): ${reason}`
+    `Stripe webhook unprocessable (object ${input.objectId ?? "unknown"}): ${
+      input.reason
+    }`
   );
-  return NextResponse.json({ received: true, ignored: reason });
+  return recordOutcomeOrRetry(
+    {
+      eventId: input.eventId,
+      eventType: input.eventType,
+      objectId: input.objectId,
+      paymentRef: input.paymentRef,
+      skillDbId: input.skillDbId,
+      buyerKey: input.buyerKey,
+      outcome: input.needsReview === false ? "ignored" : "needs-review",
+      reason: input.reason,
+      needsReview: input.needsReview !== false,
+    },
+    NextResponse.json({ received: true, ignored: input.reason })
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -105,10 +152,12 @@ export async function POST(req: NextRequest) {
     const object = event.data.object as RefundOrDisputeObject;
     const paymentRef = stripePaymentRef(object.payment_intent);
     if (!paymentRef) {
-      return ackUnprocessable(
-        object.id,
-        `${event.type} without payment_intent`
-      );
+      return await ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: object.id,
+        reason: `${event.type} without payment_intent`,
+      });
     }
     if (event.type === "charge.refunded" && object.refunded !== true) {
       console.warn(
@@ -116,7 +165,19 @@ export async function POST(req: NextRequest) {
           object.amount_refunded ?? "?"
         }); entitlement kept — reconcile manually.`
       );
-      return NextResponse.json({ received: true, ignored: "partial refund" });
+      return await recordOutcomeOrRetry(
+        {
+          eventId: event.id,
+          eventType: event.type,
+          objectId: object.id,
+          paymentRef,
+          outcome: "needs-review",
+          reason: "partial refund",
+          needsReview: true,
+          details: { amountRefunded: object.amount_refunded ?? null },
+        },
+        NextResponse.json({ received: true, ignored: "partial refund" })
+      );
     }
 
     try {
@@ -137,7 +198,22 @@ export async function POST(req: NextRequest) {
           `Stripe ${reason} on ${paymentRef}: no live entitlement matched (already revoked, superseded by a newer purchase, or never minted) — reconcile manually.`
         );
       }
-      return NextResponse.json({ received: true, revoked: revoked.length });
+      return await recordOutcomeOrRetry(
+        {
+          eventId: event.id,
+          eventType: event.type,
+          objectId: object.id,
+          paymentRef,
+          outcome: revoked.length > 0 ? "revoked" : "needs-review",
+          reason:
+            revoked.length > 0
+              ? reason
+              : `${reason}: no live entitlement matched`,
+          needsReview: revoked.length === 0,
+          details: { revokedEntitlements: revoked.length },
+        },
+        NextResponse.json({ received: true, revoked: revoked.length })
+      );
     } catch (error) {
       return NextResponse.json(
         { error: getErrorMessage(error) },
@@ -168,19 +244,33 @@ export async function POST(req: NextRequest) {
   if (paymentFlow !== STRIPE_PAYMENT_FLOW) {
     // Not a session this app created (e.g. dashboard-created session on a
     // shared Stripe account). Never fulfillable here.
-    return ackUnprocessable(
-      session.id,
-      "payment_flow is not an AgentVouch Stripe payment"
-    );
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      reason: "payment_flow is not an AgentVouch Stripe payment",
+    });
   }
   if (!skillDbId || !buyerPubkey || !checkoutPriceMicros) {
-    return ackUnprocessable(
-      session.id,
-      "missing skill_db_id, buyer_pubkey, or price_usdc_micros metadata"
-    );
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey: buyerPubkey,
+      reason:
+        "missing skill_db_id, buyer_pubkey, or price_usdc_micros metadata",
+    });
   }
   if (session.mode !== "payment") {
-    return ackUnprocessable(session.id, "session is not a one-time payment");
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey: buyerPubkey,
+      reason: "session is not a one-time payment",
+    });
   }
   if (session.payment_status !== "paid") {
     // Normal ordering for delayed payment methods: `completed` arrives with
@@ -192,26 +282,51 @@ export async function POST(req: NextRequest) {
     });
   }
   if ((session.currency ?? "").toLowerCase() !== "usd") {
-    return ackUnprocessable(session.id, "session currency is not USD");
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey: buyerPubkey,
+      reason: "session currency is not USD",
+    });
   }
 
   let micros: bigint;
   try {
     micros = BigInt(checkoutPriceMicros);
   } catch {
-    return ackUnprocessable(session.id, "price_usdc_micros is invalid");
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey: buyerPubkey,
+      reason: "price_usdc_micros is invalid",
+    });
   }
   if (micros <= 0n) {
-    return ackUnprocessable(session.id, "price_usdc_micros must be positive");
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey: buyerPubkey,
+      reason: "price_usdc_micros must be positive",
+    });
   }
   if (
     typeof session.amount_total !== "number" ||
     session.amount_total !== usdcMicrosToUsdCents(micros)
   ) {
-    return ackUnprocessable(
-      session.id,
-      "charged amount does not match checkout metadata price"
-    );
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey: buyerPubkey,
+      reason: "charged amount does not match checkout metadata price",
+    });
   }
 
   try {
@@ -231,23 +346,38 @@ export async function POST(req: NextRequest) {
       LIMIT 1
     `;
     if (!rows[0]) {
-      return ackUnprocessable(session.id, "skill no longer exists");
+      return await ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: session.id,
+        skillDbId,
+        buyerKey: buyerPubkey,
+        reason: "skill no longer exists",
+      });
     }
     if (rows[0].evm_listing_id) {
-      return ackUnprocessable(
-        session.id,
-        "card checkout is unavailable for Base protocol listings"
-      );
+      return await ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: session.id,
+        skillDbId,
+        buyerKey: buyerPubkey,
+        reason: "card checkout is unavailable for Base protocol listings",
+      });
     }
 
     // Stripe payment reference + wallet buyer identity from checkout metadata.
     // `payment_tx_signature` is UNIQUE, giving us idempotency on retries.
     const paymentRef = stripePaymentRef(session.payment_intent);
     if (!paymentRef) {
-      return ackUnprocessable(
-        session.id,
-        "paid session without payment_intent"
-      );
+      return await ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: session.id,
+        skillDbId,
+        buyerKey: buyerPubkey,
+        reason: "paid session without payment_intent",
+      });
     }
 
     // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
@@ -264,10 +394,16 @@ export async function POST(req: NextRequest) {
       entitlement.revoked &&
       (await hasUsdcPurchaseReceiptForPaymentRef(paymentRef))
     ) {
-      return ackUnprocessable(
-        session.id,
-        "payment was refunded or disputed; entitlement stays revoked"
-      );
+      return await ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: session.id,
+        paymentRef,
+        skillDbId,
+        buyerKey: buyerPubkey,
+        reason: "payment was refunded or disputed; entitlement stays revoked",
+        needsReview: false,
+      });
     }
 
     const recorded = await recordRevocableUsdcPurchaseReceipt({
@@ -280,17 +416,39 @@ export async function POST(req: NextRequest) {
       paymentFlow: STRIPE_PAYMENT_FLOW,
     });
     if (recorded.revoked) {
-      return ackUnprocessable(
-        session.id,
-        "payment was refunded or disputed; entitlement stays revoked"
-      );
+      return await ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: session.id,
+        paymentRef,
+        skillDbId,
+        buyerKey: buyerPubkey,
+        reason: "payment was refunded or disputed; entitlement stays revoked",
+        needsReview: false,
+      });
     }
 
-    return NextResponse.json({
-      received: true,
-      entitled: buyerPubkey,
-      alreadyEntitled: entitlement.exists && !entitlement.revoked,
-    });
+    return await recordOutcomeOrRetry(
+      {
+        eventId: event.id,
+        eventType: event.type,
+        objectId: session.id,
+        paymentRef,
+        skillDbId,
+        buyerKey: buyerPubkey,
+        outcome: "fulfilled",
+        reason: "wallet-bound entitlement recorded",
+        needsReview: false,
+        details: {
+          alreadyEntitled: entitlement.exists && !entitlement.revoked,
+        },
+      },
+      NextResponse.json({
+        received: true,
+        entitled: buyerPubkey,
+        alreadyEntitled: entitlement.exists && !entitlement.revoked,
+      })
+    );
   } catch (error) {
     return NextResponse.json(
       { error: getErrorMessage(error) },
