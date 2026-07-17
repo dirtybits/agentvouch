@@ -1,12 +1,12 @@
 // Tier 1 Stripe checkout — PROTOTYPE. See docs/STRIPE_FEASIBILITY.md.
 // Creates a Stripe Checkout Session for a paid skill's listed price. No-ops
-// with 501 unless Stripe is configured.
+// with 501 unless Stripe is configured and checkout is explicitly activated.
 import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase, sql } from "@/lib/db";
 import {
   STRIPE_MIN_CHARGE_USD_CENTS,
   createCheckoutSession,
-  isStripeEnabled,
+  getStripeCheckoutActivation,
   usdcMicrosToUsdCents,
 } from "@/lib/stripe";
 import {
@@ -18,6 +18,10 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { hasOnChainPurchase } from "@/lib/x402";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/rateLimit";
+
+const STRIPE_CHECKOUT_IP_LIMIT = { limit: 20, windowMs: 15 * 60_000 };
+const STRIPE_CHECKOUT_WALLET_LIMIT = { limit: 5, windowMs: 10 * 60_000 };
 
 type SkillPriceRow = {
   id: string;
@@ -36,11 +40,16 @@ function resolveBaseUrl(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isStripeEnabled()) {
+  const activation = getStripeCheckoutActivation();
+  if (!activation.enabled) {
+    const reason = !activation.stripeConfigured
+      ? "Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET."
+      : !activation.serverFlagEnabled
+      ? "Set AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true."
+      : "Install the production edge rate limit, then set AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true.";
     return NextResponse.json(
       {
-        error:
-          "Stripe payments are not enabled. Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET before accepting checkout payments.",
+        error: `Stripe checkout is not enabled. ${reason}`,
       },
       { status: 501 }
     );
@@ -73,6 +82,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: verification.error || "Invalid wallet auth" },
       { status: 401 }
+    );
+  }
+
+  // Defense in depth only: this limiter is per runtime instance. Production
+  // activation separately requires an operator acknowledgement that a Vercel
+  // Firewall/WAF rule protects this route at the edge.
+  const ipLimit = checkRateLimit(
+    `stripe-checkout:ip:${clientIpFromRequest(req)}`,
+    STRIPE_CHECKOUT_IP_LIMIT
+  );
+  if (!ipLimit.ok) {
+    return NextResponse.json(
+      { error: "Too many card checkout attempts. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(ipLimit.retryAfterSeconds) },
+      }
+    );
+  }
+
+  const walletLimit = checkRateLimit(
+    `stripe-checkout:wallet:${verification.pubkey}`,
+    STRIPE_CHECKOUT_WALLET_LIMIT
+  );
+  if (!walletLimit.ok) {
+    return NextResponse.json(
+      { error: "Too many card checkout attempts. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(walletLimit.retryAfterSeconds) },
+      }
     );
   }
 

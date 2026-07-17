@@ -33,8 +33,15 @@ on-chain settlement design is approved.
 Do not enable Stripe checkout unless all of the following are true:
 
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are configured together.
+- `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true` is set only on deployments where
+  new Checkout Sessions should be created. Disabling this flag must not disable
+  webhook processing for outstanding payments, refunds, disputes, or retries.
 - `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=true` is set only on deployments where
   those server secrets and the webhook endpoint are active.
+- Production additionally has a verified Vercel Firewall/WAF rate limit on
+  `POST /api/stripe/checkout` and
+  `AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true`. The route's in-memory limit
+  is defense in depth, not the distributed control.
 - Webhook delivery is monitored and failed webhook retries are visible.
 - Operators can reconcile Stripe payment ids against
   `usdc_purchase_receipts.payment_tx_signature`.
@@ -49,6 +56,25 @@ message. Re-downloads use the existing `X-AgentVouch-Auth` raw download flow.
 
 Email-only buyers remain out of scope until there is an identity link table or
 customer session model that can map Stripe customers to an AgentVouch buyer key.
+
+### Walletless identity direction
+
+The durable design should introduce a chain-neutral buyer account with linked
+identities (verified Google/email, GitHub, embedded wallet, Solana address, and
+Base address) plus an explicit marketplace access-grant record. Do not derive a
+fake Solana or EVM address from an email, and do not treat a Stripe customer id
+as a wallet address.
+
+Phantom embedded Google sign-in is a useful lower-risk onboarding experiment:
+the user does not need an extension or seed phrase, but the embedded Solana
+wallet remains the actual entitlement key. That improves UX without solving the
+chain-neutral email identity model.
+
+For Base-listed skills, a future card purchase should create an off-chain
+marketplace access grant redeemable by the signed-in buyer account. It must not
+create a Base purchase id, claim protocol settlement, or weaken the existing
+Base USDC/x402 verification path. Implement and verify that seam on Base Sepolia
+before any separately approved Base mainnet work.
 
 ## Payouts
 
@@ -120,8 +146,12 @@ Before treating Stripe MPP as production-ready, resolve:
 - Refund and chargeback webhook handling. (Shipped: full-refund and dispute revocation; partial refunds and dispute-won reinstatement remain manual.)
 - Entitlement revocation schema (shipped: `revoked_at`/`revoked_reason`) and UI copy for revoked buyers.
 - Author payout process, including tax/KYC responsibilities.
-- Operator reconciliation dashboard or runbook.
-- Rate limits and abuse monitoring on checkout/session creation.
+- Operator reconciliation dashboard or runbook. (Shipped for limited preview:
+  durable webhook outcome queue plus read-only `npm run stripe:ops --workspace
+@agentvouch/web -- monitor`; a richer dashboard remains optional.)
+- Rate limits and abuse monitoring on checkout/session creation. (Shipped in
+  code: per-instance defense-in-depth limit and production activation gate;
+  external Vercel Firewall/WAF rule still requires operator setup and proof.)
 - Public documentation that separates card checkout from protocol settlement.
 
 Use `docs/STRIPE_TEST_MODE_ROLLOUT.md` as the test-mode activation checklist.

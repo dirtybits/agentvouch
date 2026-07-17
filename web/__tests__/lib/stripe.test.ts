@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  getStripeCheckoutActivation,
   isStripeCheckoutUiEnabled,
   isStripeEnabled,
   verifyAndParseWebhook,
@@ -14,6 +15,9 @@ describe("stripe helpers", () => {
     delete process.env.STRIPE_WEBHOOK_SECRET;
     delete process.env.STRIPE_API_BASE;
     delete process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED;
+    delete process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED;
+    delete process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY;
+    delete process.env.VERCEL_ENV;
   });
 
   it("uses a public flag for render-affecting checkout UI", () => {
@@ -33,6 +37,33 @@ describe("stripe helpers", () => {
 
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
     expect(isStripeEnabled()).toBe(true);
+  });
+
+  it("keeps checkout behind a separate server activation flag", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+
+    expect(getStripeCheckoutActivation().enabled).toBe(false);
+
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+    });
+  });
+
+  it("requires an edge-rate-limit acknowledgement in production", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.VERCEL_ENV = "production";
+
+    expect(getStripeCheckoutActivation().enabled).toBe(false);
+
+    process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY = "true";
+    expect(getStripeCheckoutActivation().enabled).toBe(true);
   });
 
   it("rounds USDC micros into Stripe USD cents", () => {

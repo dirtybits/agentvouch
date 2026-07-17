@@ -110,13 +110,15 @@ Does:
   purchase state, so the pubkey-keyed off-chain entitlement would be
   unredeemable).
 - Webhook response policy: permanently-unprocessable events (bad metadata,
-  amount mismatch, deleted skill) are ACKed with 200 plus a logged reason so
-  Stripe stops retrying; non-2xx is reserved for signature failures and
-  transient errors. An existing entitlement is never overwritten — late or
+  amount mismatch, deleted skill) are durably queued before they are ACKed with
+  200 so Stripe stops retrying; non-2xx is reserved for signature failures,
+  transient errors, and failure to persist the outcome. An existing entitlement is never overwritten — late or
   duplicate Stripe webhooks ack `alreadyEntitled` instead of clobbering
   on-chain purchase provenance in the entitlement upsert.
-- Is feature-flagged: every entry point no-ops with 501 unless both
-  `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are set.
+- Checkout session creation is separately feature-flagged: it no-ops with 501
+  unless both Stripe secrets and `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true` are
+  set; production also requires the edge-rate-limit acknowledgement. Webhook
+  processing deliberately remains enabled when only checkout creation is off.
 
 Does **not** (deliberately out of scope — these are the Tier 2/3 hard parts):
 
@@ -126,11 +128,12 @@ Does **not** (deliberately out of scope — these are the Tier 2/3 hard parts):
 - No email-only buyer identity. Buyers still need a wallet signature so the
   off-chain Stripe entitlement can be redeemed through the existing download
   auth path — see Obstacle 1.
-- Minimal refund / chargeback handling only: `charge.refunded` (full) and
+- Limited-preview refund / chargeback handling: `charge.refunded` (full) and
   `charge.dispute.created` revoke the wallet-bound entitlement
-  (`usdc_purchase_entitlements.revoked_at`), partial refunds are logged, and a
-  genuinely new payment re-mints. No automated reconciliation beyond logs and
-  the receipt table's `UNIQUE(payment_tx_signature)` idempotency.
+  (`usdc_purchase_entitlements.revoked_at`), partial refunds are durably queued,
+  and a genuinely new payment re-mints. The read-only operator monitor surfaces
+  unresolved items; partial-refund decisions and dispute-won reinstatement are
+  still manual.
 
 ## The hard parts (Tier 2 / Tier 3)
 
@@ -205,9 +208,15 @@ and settled on-chain. Worth an explicit product decision before Tier 2.
 - `STRIPE_WEBHOOK_SECRET` — `whsec_...`, for webhook signature verification.
   Required before checkout is enabled so paid sessions cannot be created
   without a fulfillment path.
+- `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED` — server-only session-creation gate.
+  Keep webhooks configured when this is false so delayed events and reversals
+  still process.
 - `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED` — set to `true` to render card checkout
   controls. Keep this aligned with the server secrets above and redeploy after
   changing it.
+- `AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY` — required in Vercel production as
+  an operator acknowledgement that a real Vercel Firewall/WAF rate limit is
+  installed for `POST /api/stripe/checkout`. It does not create the rule.
 - `STRIPE_API_BASE` — optional, defaults to `https://api.stripe.com`.
 - `AGENTVOUCH_PUBLIC_BASE_URL` — optional, for checkout success/cancel URLs;
   falls back to `NEXT_PUBLIC_APP_URL`, then the request origin.

@@ -41,6 +41,44 @@ export function isStripeEnabled(): boolean {
   return Boolean(config?.secretKey && config.webhookSecret);
 }
 
+export type StripeCheckoutActivation = {
+  enabled: boolean;
+  stripeConfigured: boolean;
+  serverFlagEnabled: boolean;
+  productionEdgeRateLimitReady: boolean;
+  production: boolean;
+};
+
+/**
+ * Checkout session creation is a separate activation boundary from webhook
+ * processing. Webhooks must remain live after checkout is disabled so delayed
+ * payments, refunds, disputes, and retries can still converge.
+ */
+export function getStripeCheckoutActivation(
+  env: Readonly<Record<string, string | undefined>> = process.env
+): StripeCheckoutActivation {
+  const stripeConfigured = Boolean(
+    env.STRIPE_SECRET_KEY?.trim() && env.STRIPE_WEBHOOK_SECRET?.trim()
+  );
+  const serverFlagEnabled = env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED === "true";
+  const production = env.VERCEL_ENV === "production";
+  const productionEdgeRateLimitReady =
+    !production || env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY === "true";
+
+  return {
+    enabled:
+      stripeConfigured && serverFlagEnabled && productionEdgeRateLimitReady,
+    stripeConfigured,
+    serverFlagEnabled,
+    productionEdgeRateLimitReady,
+    production,
+  };
+}
+
+export function isStripeCheckoutServerEnabled(): boolean {
+  return getStripeCheckoutActivation().enabled;
+}
+
 export function isStripeCheckoutUiEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED === "true";
 }
