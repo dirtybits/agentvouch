@@ -25,7 +25,7 @@ todos:
     status: completed
   - id: handle-empty-monitor-bootstrap
     content: Make the read-only preview monitor report zero reconciliation items before the first webhook creates the additive table; verified live after deployment.
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
@@ -158,3 +158,14 @@ npm run stripe:ops --workspace @agentvouch/web -- monitor
 ### 2026-07-16 live-preview divergence
 
 The first branch-scoped preview monitor reached the intended database but failed because `stripe_webhook_outcomes` did not yet exist. The monitor deliberately avoids bootstrap DDL, so it must use a read-only `to_regclass` check and treat a missing table as an empty pre-first-event state. This follow-up does not change webhook schema creation or production activation.
+
+## Live Preview Verification Results (2026-07-16)
+
+- Signed commit `590efbe` deployed successfully as Vercel preview deployment `dpl_4GQ9FUKYq7m2jT543LdzLmjQpuzz`; the build used branch `ops/stripe-test-listing` and exact commit `590efbe`.
+- The read-only monitor passed before and after the payment smoke with checkout enabled, zero blockers, zero open review items, and zero alerts. Vercel does not download branch-scoped sensitive values to local `env run`, so non-secret presence markers were supplied only for the monitor's boolean activation checks; live route probes separately proved the deployed server and webhook configuration.
+- Stable preview alias `https://agentvouch-stripe-test-listing.vercel.app` now resolves to the verified deployment. Production was not promoted and production flags were not changed.
+- Dedicated buyer `asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw` was denied raw access with `402` before payment, then completed Stripe test Checkout session `cs_test_a1FXhQqfS6rTcdaWg5TnODCP8FvZvl4JafYwY7x2qisD61p72V3jOa5JSn` for $1.00 using Stripe's successful interactive test card.
+- Stripe reported payment intent `pi_3Tu4lNA2jEYsGvGP01cbtB2C` as paid. The append-only receipt matched `stripe:pi_3Tu4lNA2jEYsGvGP01cbtB2C`, `amount_micros=1000000`, `payment_flow=stripe-mpp-offchain`, `recipient_ata=stripe-offchain`, and `currency_mint=USD`; protocol purchase, settlement, EVM, and x402 fields remained null.
+- The buyer's signed raw download changed from `402` to `200`, returned 349 bytes of Markdown, and matched the stored content SHA-256 `99dfd32607fe61c12aeea6ec1c3c59434ab450da5b16f86a93056fbe71cee148`.
+- A duplicate checkout attempt returned `409` before creating another session, and an unrelated fresh wallet remained denied with `402`.
+- Invalid-signature webhook and unauthenticated checkout probes returned `400` and `401` respectively. The exact deployment had no error-level Vercel logs during the smoke window.
