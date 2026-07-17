@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: implement-buyer-sessions
     content: Add provider-agnostic Google/email buyer sessions with CSRF, redirect, logout, expiry, and recovery tests.
-    status: in_progress
+    status: completed
   - id: implement-wallet-linking
     content: Let an authenticated buyer link Solana and Base addresses using chain-specific signed ownership challenges without synthesizing wallet addresses from email.
     status: pending
@@ -44,7 +44,7 @@ Let a buyer sign in with Google or email, pay by card, and later download the pu
 ## Dependencies
 
 - PR #109, `ops/stripe-test-listing`, must land first. This branch consumes its explicit checkout activation, webhook reconciliation, and read-only monitoring behavior.
-- Clerk is the approved buyer-auth provider. `@clerk/nextjs` is committed behind separate server/public buyer-auth flags; Vercel provisioning and live Google/email configuration remain rollout steps.
+- Clerk is the approved buyer-auth provider. `@clerk/nextjs` is committed behind separate server/public buyer-auth flags; the Vercel-managed development instance is provisioned for Google and email-code auth on this branch's isolated preview.
 - Any production database migration must target the Vercel-managed `agentvouch-postgres` project, be rehearsed on a disposable Neon branch, and be gated by `EXPECTED_DATABASE_HOST`.
 
 ## Scope
@@ -186,7 +186,7 @@ Required behavioral checks:
 
 ## Open Blockers
 
-- Clerk Vercel integration/keys, Google OAuth, and email-code policy are not provisioned on a preview yet; live provider smokes remain pending.
+- Interactive end-user Google redirect and email-code component smokes remain pending under `verify-walletless-base-sepolia`; the server session boundary and opaque first-login account creation are live-smoked on the isolated preview.
 - Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
 - Base Sepolia live regression evidence; Base mainnet remains blocked regardless of this plan's outcome.
@@ -200,3 +200,7 @@ Required behavioral checks:
 - **2026-07-17:** Vercel preview `dpl_6wWa79CEe9pntBsbe7ocN2Xdh3z8` reached `READY` for signed head `0297cace`. With buyer-auth env still absent, the deployed session endpoint returned `200` with `configured=false, enabled=false`, `/sign-in` returned `404`, and the deployment emitted no error/fatal runtime logs during the verification window.
 - **2026-07-17:** Exact evidence head `65fcd8c` deployed as preview `dpl_3FwAPhdPcpgsJRihxVRuHMKvNLtb` and reached `READY`. Its session endpoint again returned `200` with `configured=false, enabled=false, authenticated=false, accountId=null`, and `/sign-in` remained intentionally unavailable with `404` while Clerk was unprovisioned.
 - **2026-07-17:** The guarded account-schema migration was rehearsed against disposable branch `br-billowing-pine-af5amekf` (`codex-walletless-buyers-20260717`) created from `main` (`br-quiet-base-afn4qzxf`) in the verified live Vercel-managed `agentvouch-postgres` project (`calm-meadow-36819154`), not the legacy project. Read-only preflight found all four tables absent and safe to add. `migrate` passed, an immediate second `migrate` proved idempotency, and final preflight plus catalog queries verified the expected primary keys, foreign keys, unique constraints, check constraints, and three supporting indexes. The new tables remained empty and the copied `skills` row count stayed `89`. No production preflight or migration was run; the disposable branch was deleted after evidence capture.
+- **2026-07-17:** Installed the Vercel Marketplace Clerk resource `clerk-fulvous-school` (integration config `icfg_FjE12dej0sc2boNTF0FBk2yb`, Clerk app `app_3GeSJqpU5xwloLK3nVGFlTCVHSb`, development instance `ins_3GeSJoMqt9aVT3gd5VtK6exVv4q`). Vercel provisioned `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. The Clerk dashboard was configured for Google using shared credentials and passwordless email verification codes; password, phone, username, and passkey sign-in were disabled. Only preview branch `feat/walletless-base-card-access` received `AGENTVOUCH_BUYER_AUTH_ENABLED=true` and `NEXT_PUBLIC_AGENTVOUCH_BUYER_AUTH_ENABLED=true`; production has no buyer-auth flags and remains fail-closed.
+- **2026-07-17:** Created expiring Neon child branch `br-empty-hat-afcrsu56` (`codex-walletless-auth-preview-20260717`, expiry `2026-07-20T00:00:00Z`) from live-project main and scoped its `DATABASE_URL` only to the feature-branch preview. The guarded migration and post-migration preflight passed there; production was not queried or migrated. Preview `dpl_ETokjp6RLhYVAYc2LBZcaMNJufMB` reached `READY`, and anonymous `/api/auth/buyer/session` returned `configured=true, enabled=true, authenticated=false` while `/sign-in` returned `200` with the Clerk client and sign-in component mounted.
+- **2026-07-17:** The first synthetic authenticated request against `dpl_ETokjp6RLhYVAYc2LBZcaMNJufMB` exposed a PostgreSQL data-modifying-CTE visibility bug: the account and identity rows were inserted, but the same statement's final join could not see the new base-table row, so the route returned `500`. Commit `7eaf5c4` now carries status through `created_account`/`selected_account` CTE output and joins that returned row. A direct first-identity execution on temporary branch `br-empty-hat-afcrsu56` returned one active opaque account. Local verification passed: format, lint, typecheck, 732 Vitest tests, chain-map verification, and the webpack production build; the first sandboxed build attempt failed only because Google Fonts DNS was blocked, and the network-enabled rerun passed.
+- **2026-07-17:** Exact fix head `7eaf5c41b3c85d087352ce1912e688e4a71b9a07` deployed as `dpl_8cbfNeptUmWyXsGZ4J5fNn2DEfqK` and reached `READY`. A fresh synthetic Clerk session's first request returned `200` with `authenticated=true` and opaque account `4e430869-1189-400d-98a6-1a7d19da00bb`; Neon showed exactly one matching active `clerk` identity link, and same-origin logout returned `success=true, revoked=true`. Runtime monitoring showed two `200` requests and no error/fatal logs. Both synthetic Clerk users were deleted after the smoke. `https://agentvouch-walletless-preview.vercel.app` points to this non-production evidence deployment; browser automation still rejected navigation to the new preview hostname before page load, so the interactive Google/email component flows remain explicitly unverified. Base mainnet was not enabled.
