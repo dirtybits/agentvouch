@@ -208,6 +208,10 @@ export async function listOpenStripeReconciliationItems(
 export async function listOpenStripeReconciliationItemsReadOnly(
   limit = 100
 ): Promise<StripeReconciliationItem[]> {
+  const rows = await sql()<{ table_name: string | null }>`
+    SELECT to_regclass('public.stripe_webhook_outcomes')::text AS table_name
+  `;
+  if (!rows[0]?.table_name) return [];
   return queryOpenStripeReconciliationItems(limit);
 }
 

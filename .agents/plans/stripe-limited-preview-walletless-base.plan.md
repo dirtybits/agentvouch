@@ -23,6 +23,9 @@ todos:
   - id: verify-limited-preview
     content: Run focused tests and the full web quality gate, update policy/runbook documentation, and record any manual or live checks not performed.
     status: completed
+  - id: handle-empty-monitor-bootstrap
+    content: Make the read-only preview monitor report zero reconciliation items before the first webhook creates the additive table; verified live after deployment.
+    status: in_progress
 isProject: false
 ---
 
@@ -151,3 +154,7 @@ npm run stripe:ops --workspace @agentvouch/web -- monitor
 - `npm exec --workspace @agentvouch/web -- next build --webpack`: passed. The build emitted the pre-existing `ox/tempo` dynamic-dependency warning and sandbox DNS fallback warnings for Neon/Helius during static generation; page generation and build completion still succeeded.
 - Read-only Stripe preflight command: passed with placeholder configured values and reported no secret values.
 - Not run: live `monitor` against the preview/production database, webhook creation of the new additive table, Vercel Firewall rule verification, a new live Stripe payment, or any deployment. Those remain rollout checks, not local-code verification.
+
+### 2026-07-16 live-preview divergence
+
+The first branch-scoped preview monitor reached the intended database but failed because `stripe_webhook_outcomes` did not yet exist. The monitor deliberately avoids bootstrap DDL, so it must use a read-only `to_regclass` check and treat a missing table as an empty pre-first-event state. This follow-up does not change webhook schema creation or production activation.
