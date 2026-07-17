@@ -169,3 +169,5 @@ The first branch-scoped preview monitor reached the intended database but failed
 - The buyer's signed raw download changed from `402` to `200`, returned 349 bytes of Markdown, and matched the stored content SHA-256 `99dfd32607fe61c12aeea6ec1c3c59434ab450da5b16f86a93056fbe71cee148`.
 - A duplicate checkout attempt returned `409` before creating another session, and an unrelated fresh wallet remained denied with `402`.
 - Invalid-signature webhook and unauthenticated checkout probes returned `400` and `401` respectively. The exact deployment had no error-level Vercel logs during the smoke window.
+- Full Stripe test refund `re_3Tu4lNA2jEYsGvGP0DKG17jv` succeeded for the same payment intent. The buyer's signed raw access returned from `200` to `402`, the entitlement recorded `revoked_reason=stripe-refund`, and the append-only receipt count remained exactly one.
+- The post-refund read-only monitor still reported zero blockers, zero open review items, and zero alerts; the stable preview had no error-level Vercel logs during the revocation window.
