@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.5.16",
     "@codama/nodes-from-anchor": "^1.3.9",
     "@codama/renderers-js": "^2.0.3",
     "@neondatabase/serverless": "^1.0.2",
