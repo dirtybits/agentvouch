@@ -4,16 +4,16 @@ overview: Add Google/email buyer accounts and Base Sepolia-compatible Stripe acc
 todos:
   - id: finalize-identity-contract
     content: Choose the buyer authentication provider and freeze session, account-linking, recovery, and deletion semantics before adding dependencies or schema.
-    status: in_progress
+    status: completed
   - id: land-stripe-preview-dependency
     content: Land PR #109 and rebase this branch so checkout activation, reconciliation, and operator monitoring are inherited rather than duplicated.
     status: completed
   - id: rehearse-additive-account-schema
     content: Implement a guarded preflight/migrate script for buyer accounts, identity links, wallet links, and marketplace access grants; rehearse it on a disposable branch of the live Neon project.
-    status: pending
+    status: in_progress
   - id: implement-buyer-sessions
     content: Add provider-agnostic Google/email buyer sessions with CSRF, redirect, logout, expiry, and recovery tests.
-    status: pending
+    status: in_progress
   - id: implement-wallet-linking
     content: Let an authenticated buyer link Solana and Base addresses using chain-specific signed ownership challenges without synthesizing wallet addresses from email.
     status: pending
@@ -44,7 +44,7 @@ Let a buyer sign in with Google or email, pay by card, and later download the pu
 ## Dependencies
 
 - PR #109, `ops/stripe-test-listing`, must land first. This branch consumes its explicit checkout activation, webhook reconciliation, and read-only monitoring behavior.
-- The auth-provider choice requires explicit approval because it may add a dependency and determines account recovery, session storage, and data-retention behavior.
+- Clerk is the approved buyer-auth provider. `@clerk/nextjs` is committed behind separate server/public buyer-auth flags; Vercel provisioning and live Google/email configuration remain rollout steps.
 - Any production database migration must target the Vercel-managed `agentvouch-postgres` project, be rehearsed on a disposable Neon branch, and be gated by `EXPECTED_DATABASE_HOST`.
 
 ## Scope
@@ -91,9 +91,9 @@ Evaluate the provider against the repository's Next.js/Vercel runtime, Google OA
 
 Existing GitHub OAuth is publisher/profile-specific and is not reused as the buyer account without an explicit merge design. Phantom embedded Google sign-in remains a useful fast-path for a no-extension Solana wallet experience, but it is still a wallet identity rather than chain-neutral email access.
 
-### Provisional provider decision (2026-07-16)
+### Approved provider decision (2026-07-17)
 
-Recommend Clerk, pending explicit approval to add `@clerk/nextjs`. Its current Next.js SDK directly supports Google OAuth, passwordless email verification codes, server-side session verification, configurable session lifetimes, account deletion, and signed user lifecycle webhooks. Descope remains the fallback if visual flow-builder control becomes more important than the smaller AgentVouch adapter surface; Auth0 is not preferred for this first consumer flow because passwordless and social identities are separate connection types and require more explicit account-linking machinery.
+Use Clerk through `@clerk/nextjs`. Its current Next.js SDK directly supports Google OAuth, passwordless email verification codes, server-side session verification, configurable session lifetimes, account deletion, and signed user lifecycle webhooks. Descope remains the fallback if visual flow-builder control becomes more important than the smaller AgentVouch adapter surface; Auth0 is not preferred for this first consumer flow because passwordless and social identities are separate connection types and require more explicit account-linking machinery.
 
 Freeze these buyer-auth semantics before implementation:
 
@@ -186,7 +186,7 @@ Required behavioral checks:
 
 ## Open Blockers
 
-- Human approval of Clerk and the new `@clerk/nextjs` dependency.
+- Clerk Vercel integration/keys, Google OAuth, and email-code policy are not provisioned on a preview yet; live provider smokes remain pending.
 - Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
 - Rehearsed migration evidence from the correct Neon project.
@@ -196,3 +196,5 @@ Required behavioral checks:
 
 - **2026-07-16:** PR #109 merged as `2b088b23` after the exact head passed GitHub `test`, `contracts`, and Vercel checks. This branch was rebased onto that merge, so the Stripe activation, webhook reconciliation, monitoring, and refund-revocation implementation are inherited rather than duplicated.
 - **2026-07-16:** Current official provider documentation was re-checked. Clerk is the provisional recommendation for Google plus passwordless email-code auth; dependency installation remains blocked on explicit human approval.
+- **2026-07-17:** Clerk was approved and `@clerk/nextjs@7.5.16` was committed. A provider-neutral `buyerSession.ts` boundary, separately gated Clerk provider/proxy/sign-in controls, same-origin logout, opaque account resolver, and guarded `walletless-buyer-migration.ts` preflight/migrate script were added. The migration was not run against any database.
+- **2026-07-17:** Dormant local smoke passed with all auth env absent: `/api/auth/buyer/session` returned `200` with `enabled=false`, `/sign-in` returned `404`, and logout returned `503`. Migration invalid-usage and missing-`EXPECTED_DATABASE_HOST` checks rejected before database access. Local gates passed: format, lint, typecheck, 732 Vitest tests, webpack production build, and chain-map verification. Live Clerk Google/email behavior and disposable-Neon rehearsal remain open.
