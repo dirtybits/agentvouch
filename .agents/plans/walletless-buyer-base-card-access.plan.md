@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: rehearse-additive-account-schema
     content: Implement a guarded preflight/migrate script for buyer accounts, identity links, wallet links, and marketplace access grants; rehearse it on a disposable branch of the live Neon project.
-    status: in_progress
+    status: completed
   - id: implement-buyer-sessions
     content: Add provider-agnostic Google/email buyer sessions with CSRF, redirect, logout, expiry, and recovery tests.
     status: in_progress
@@ -189,7 +189,6 @@ Required behavioral checks:
 - Clerk Vercel integration/keys, Google OAuth, and email-code policy are not provisioned on a preview yet; live provider smokes remain pending.
 - Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
-- Rehearsed migration evidence from the correct Neon project.
 - Base Sepolia live regression evidence; Base mainnet remains blocked regardless of this plan's outcome.
 
 ## Dated Progress Notes
@@ -199,3 +198,5 @@ Required behavioral checks:
 - **2026-07-17:** Clerk was approved and `@clerk/nextjs@7.5.16` was committed. A provider-neutral `buyerSession.ts` boundary, separately gated Clerk provider/proxy/sign-in controls, same-origin logout, opaque account resolver, and guarded `walletless-buyer-migration.ts` preflight/migrate script were added. The migration was not run against any database.
 - **2026-07-17:** Dormant local smoke passed with all auth env absent: `/api/auth/buyer/session` returned `200` with `enabled=false`, `/sign-in` returned `404`, and logout returned `503`. Migration invalid-usage and missing-`EXPECTED_DATABASE_HOST` checks rejected before database access. Local gates passed: format, lint, typecheck, 732 Vitest tests, webpack production build, and chain-map verification. Live Clerk Google/email behavior and disposable-Neon rehearsal remain open.
 - **2026-07-17:** Vercel preview `dpl_6wWa79CEe9pntBsbe7ocN2Xdh3z8` reached `READY` for signed head `0297cace`. With buyer-auth env still absent, the deployed session endpoint returned `200` with `configured=false, enabled=false`, `/sign-in` returned `404`, and the deployment emitted no error/fatal runtime logs during the verification window.
+- **2026-07-17:** Exact evidence head `65fcd8c` deployed as preview `dpl_3FwAPhdPcpgsJRihxVRuHMKvNLtb` and reached `READY`. Its session endpoint again returned `200` with `configured=false, enabled=false, authenticated=false, accountId=null`, and `/sign-in` remained intentionally unavailable with `404` while Clerk was unprovisioned.
+- **2026-07-17:** The guarded account-schema migration was rehearsed against disposable branch `br-billowing-pine-af5amekf` (`codex-walletless-buyers-20260717`) created from `main` (`br-quiet-base-afn4qzxf`) in the verified live Vercel-managed `agentvouch-postgres` project (`calm-meadow-36819154`), not the legacy project. Read-only preflight found all four tables absent and safe to add. `migrate` passed, an immediate second `migrate` proved idempotency, and final preflight plus catalog queries verified the expected primary keys, foreign keys, unique constraints, check constraints, and three supporting indexes. The new tables remained empty and the copied `skills` row count stayed `89`. No production preflight or migration was run; the disposable branch was deleted after evidence capture.
