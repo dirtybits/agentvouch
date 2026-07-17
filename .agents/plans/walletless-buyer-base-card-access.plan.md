@@ -7,7 +7,7 @@ todos:
     status: in_progress
   - id: land-stripe-preview-dependency
     content: Land PR #109 and rebase this branch so checkout activation, reconciliation, and operator monitoring are inherited rather than duplicated.
-    status: pending
+    status: completed
   - id: rehearse-additive-account-schema
     content: Implement a guarded preflight/migrate script for buyer accounts, identity links, wallet links, and marketplace access grants; rehearse it on a disposable branch of the live Neon project.
     status: pending
@@ -91,6 +91,20 @@ Evaluate the provider against the repository's Next.js/Vercel runtime, Google OA
 
 Existing GitHub OAuth is publisher/profile-specific and is not reused as the buyer account without an explicit merge design. Phantom embedded Google sign-in remains a useful fast-path for a no-extension Solana wallet experience, but it is still a wallet identity rather than chain-neutral email access.
 
+### Provisional provider decision (2026-07-16)
+
+Recommend Clerk, pending explicit approval to add `@clerk/nextjs`. Its current Next.js SDK directly supports Google OAuth, passwordless email verification codes, server-side session verification, configurable session lifetimes, account deletion, and signed user lifecycle webhooks. Descope remains the fallback if visual flow-builder control becomes more important than the smaller AgentVouch adapter surface; Auth0 is not preferred for this first consumer flow because passwordless and social identities are separate connection types and require more explicit account-linking machinery.
+
+Freeze these buyer-auth semantics before implementation:
+
+- Enable only Google and email verification code for the first release; do not add passwords, SMS, magic links, organizations, or publisher GitHub OAuth.
+- Keep Clerk's default seven-day maximum session lifetime for preview and disable multi-session support. Require a fresh authentication step before wallet linking, identity changes, or account deletion.
+- Create the opaque AgentVouch buyer account synchronously on the first verified server session and link it to the stable Clerk user id. Clerk webhooks reconcile lifecycle changes but are not required to finish sign-in.
+- Allow Google and email-code identities to converge only when Clerk has verified the shared email. Different-email linking requires the already-authenticated user to add and verify the second email; AgentVouch never merges accounts by comparing email strings itself.
+- Treat passwordless email-code sign-in as recovery. A changed or inaccessible email is not silently reassigned; recovery outside an already-linked verified identity is a support-reviewed operation.
+- On deletion, revoke provider sessions and soft-delete the buyer account. Retain payment and access-grant audit rows under the opaque account id as required for refunds and financial records, but deny access while the account is deleted and remove provider/email attributes through the provider lifecycle handler.
+- Verify Clerk sessions only inside `buyerSession.ts`; route handlers consume the provider-neutral account id. State-changing routes also enforce same-origin/CSRF checks and never trust client-supplied user ids.
+
 ## Stripe Fulfillment Contract
 
 When an authenticated buyer starts Stripe Checkout, the server includes only the opaque buyer account id plus the existing skill/payment identifiers in signed Stripe metadata. The webhook—not the success redirect—creates access.
@@ -172,8 +186,13 @@ Required behavioral checks:
 
 ## Open Blockers
 
-- Human approval of the authentication provider and any new dependency.
-- Account recovery, deletion, and identity-conflict policy.
+- Human approval of Clerk and the new `@clerk/nextjs` dependency.
+- Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
 - Rehearsed migration evidence from the correct Neon project.
 - Base Sepolia live regression evidence; Base mainnet remains blocked regardless of this plan's outcome.
+
+## Dated Progress Notes
+
+- **2026-07-16:** PR #109 merged as `2b088b23` after the exact head passed GitHub `test`, `contracts`, and Vercel checks. This branch was rebased onto that merge, so the Stripe activation, webhook reconciliation, monitoring, and refund-revocation implementation are inherited rather than duplicated.
+- **2026-07-16:** Current official provider documentation was re-checked. Clerk is the provisional recommendation for Google plus passwordless email-code auth; dependency installation remains blocked on explicit human approval.
