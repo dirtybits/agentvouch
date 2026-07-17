@@ -46,21 +46,25 @@ export async function resolveBuyerAccountForIdentity(input: {
       txn`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
       txn`
         WITH existing_identity AS (
-          SELECT buyer_account_id
+          SELECT
+            buyer_identity_links.buyer_account_id AS id,
+            buyer_accounts.status
           FROM buyer_identity_links
-          WHERE provider = ${input.provider}
-            AND provider_subject = ${input.providerSubject}
+          JOIN buyer_accounts
+            ON buyer_accounts.id = buyer_identity_links.buyer_account_id
+          WHERE buyer_identity_links.provider = ${input.provider}
+            AND buyer_identity_links.provider_subject = ${input.providerSubject}
         ),
         created_account AS (
           INSERT INTO buyer_accounts (status)
           SELECT 'active'
           WHERE NOT EXISTS (SELECT 1 FROM existing_identity)
-          RETURNING id
+          RETURNING id, status
         ),
         selected_account AS (
-          SELECT buyer_account_id AS id FROM existing_identity
+          SELECT id, status FROM existing_identity
           UNION ALL
-          SELECT id FROM created_account
+          SELECT id, status FROM created_account
           LIMIT 1
         ),
         linked_identity AS (
@@ -82,10 +86,10 @@ export async function resolveBuyerAccountForIdentity(input: {
         )
         SELECT
           linked_identity.buyer_account_id,
-          buyer_accounts.status
+          selected_account.status
         FROM linked_identity
-        JOIN buyer_accounts
-          ON buyer_accounts.id = linked_identity.buyer_account_id
+        JOIN selected_account
+          ON selected_account.id = linked_identity.buyer_account_id
       `,
     ]);
 
