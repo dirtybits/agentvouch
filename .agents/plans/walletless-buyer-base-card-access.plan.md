@@ -40,7 +40,7 @@ todos:
     status: completed
   - id: publish-walletless-pr
     content: Commit and push the verified lifecycle and regression evidence, open the walletless feature PR, and report its checks without enabling production flags or Base mainnet.
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
@@ -195,11 +195,13 @@ Required behavioral checks:
 
 ## Open Blockers
 
+- Evidence commit `30f728b` is unsigned because the 1Password SSH signer repeatedly failed (`agent returned an error` / `failed to fill whole buffer`). Amend it with a verified signature before merge; rewriting the published branch requires explicit approval.
 - Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
 
 ## Dated Progress Notes
 
+- **2026-07-17:** Walletless feature PR [#110](https://github.com/dirtybits/agentvouch/pull/110) is published at evidence head `30f728b`; the final lifecycle/Base proof was posted to its conversation. GitHub `test` passed in `1m37s`, `contracts` passed in `1m47s`, Vercel reported `Deployment has completed`, Cursor Bugbot was neutral/skipped, the PR is non-draft and mergeable, and the worktree is clean. The evidence commit is intentionally disclosed as unsigned after repeated 1Password signing-agent failures; it must be amended with `git commit --amend -S --no-edit` and repushed with explicit force-push approval before merge. Production flags and database were unchanged, and Base mainnet remains blocked.
 - **2026-07-17:** Clerk `user.deleted` reconciliation is webhook-proven on isolated Neon branch `br-empty-hat-afcrsu56`. Replacement endpoint deployment `dpl_GnzNv64GYVKd9vmi4ksjU2AMyZyo` reached `READY` after its branch-only signing secret was read directly from that endpoint's revealed field; the stable preview alias moved to it. Deleting disposable Clerk user `user_3GfFmgGCJPvUR4HPqZ9OXrd3Lmn` soft-deleted opaque account `160a89db-9782-4859-999f-d1d0e9bac130`, removed its sole identity link, retained its one synthetic audit grant, and reduced active account access to zero. The initial delivery and explicit single-message replay both returned `200`; after replay the account remained `deleted` with `deleted_at` set, zero identities, one retained grant, and zero active access. The obsolete endpoint was deleted after its mismatched-secret `400` attempts were distinguished from the replacement endpoint's `200` attempts. Failed-smoke artifact account `04cebac1-ac94-483d-9375-7d6649b4c0b9` was cleaned only on the isolated branch to the same deleted/zero-identity/retained-grant state. No production Clerk endpoint, database, feature flag, or Base mainnet surface was enabled.
 - **2026-07-17:** Fresh Base Sepolia x402 settlement passed with a newly generated dedicated relayer `0xd9C9…EE6C`; the deployer was not reused as relayer. Funding transaction `0xfcc57a…6328` transferred `0.001` test ETH, then the relayer submitted settlement `0x3dc21c…7ff0b` at block `44,292,096` with status `1`. The new DB-linked skill is `b98c102e-fc10-4b52-8ab4-f4f688b4a1b0`, listing transaction `0xbb0a75…d5b5a`, listing id `0xc4d957…ab5c`, and purchase id `0xe1e542…ce5c`. At blocks `44,292,095` → `44,292,096`, buyer USDC moved `2,000,000` → `1,000,000` micros, contract USDC moved `10,800,000` → `11,800,000`, and relayer ETH moved `1,000,000,000,000,000` → `997,881,138,149,415` wei. The harness observed anonymous `402`, paid raw `200`, duplicate retry `200` without a second settlement, signed re-download `200`, exactly one append-only chain-qualified receipt, and exactly one entitlement for `1,000,000` micros at revision `1`. The temporary relayer private-key file was destroyed after verification. Base mainnet remains blocked.
 - **2026-07-17:** The user approved closing the three remaining follow-ups: Clerk `user.deleted` reconciliation, a fresh x402 settlement using a newly provisioned dedicated Base Sepolia relayer, and publication of the walletless feature PR. Work resumes preview-only against isolated Neon branch `br-empty-hat-afcrsu56`; production flags stay off, the relayer will not reuse the deployer, and Base mainnet remains blocked.
