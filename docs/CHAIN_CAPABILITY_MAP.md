@@ -1,6 +1,6 @@
 # AgentVouch Chain Capability Map
 
-**Last verified:** 2026-07-13
+**Last verified:** 2026-07-17
 
 This is the canonical cross-chain instruction and capability map. Read it before changing chain-tagged protocol code, contract ABIs, adapters, deployment claims, or readiness status. Run `npm run verify:chain-map` after changing any mapped source surface.
 
@@ -18,6 +18,17 @@ Status meanings:
 - `LIVE_SEPOLIA_PRE_A1`: selector is present in the current pre-A1 Base Sepolia candidate.
 - `NOT_DEPLOYED`: merged source exists, but the selector is absent from that deployment.
 - `NOT_APPLICABLE`: deliberately folded into another EVM operation or specific to Solana accounts/rent.
+
+## Off-chain card-access seam
+
+Stripe card checkout is not a chain capability and therefore does not appear as
+a row in the instruction map below. In the walletless preview, an authenticated
+opaque buyer account may receive a `marketplace_access_grants` row for a Solana
+or Base Sepolia skill. That grant authorizes only the off-chain marketplace
+download. It creates no Solana purchase PDA, Base purchase id, x402 settlement,
+protocol receipt, author proceeds, voucher rewards, or dispute state. Optional
+linked wallets are proven separately and do not become the grant key. Base
+mainnet remains blocked.
 
 ## Current surface
 

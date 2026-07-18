@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { type TrustData } from "@/components/TrustBadge";
@@ -107,6 +108,20 @@ interface ContentVerification {
   all_versions_pinned: boolean;
   current_cid_consistent: boolean;
   status: "verified" | "drift_detected" | "unverified";
+}
+
+function BuyerAccountSessionObserver({
+  onSignedInChange,
+}: {
+  onSignedInChange: (isSignedIn: boolean) => void;
+}) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (isLoaded) onSignedInChange(Boolean(isSignedIn));
+  }, [isLoaded, isSignedIn, onSignedInChange]);
+
+  return null;
 }
 
 function isBaseListingExistsError(error: unknown): boolean {
@@ -465,6 +480,7 @@ export default function SkillDetailPage({
   const [buyerAccountAuthenticated, setBuyerAccountAuthenticated] =
     useState(false);
   const [buyerAccountHasAccess, setBuyerAccountHasAccess] = useState(false);
+  const [buyerAuthSignedIn, setBuyerAuthSignedIn] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setRequestedAuthorAction(params.get("authorAction"));
@@ -554,7 +570,7 @@ export default function SkillDetailPage({
       window.setTimeout(refresh, delay)
     );
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [refreshBuyerAccountAccess]);
+  }, [buyerAuthSignedIn, refreshBuyerAccountAccess]);
 
   useEffect(() => {
     // SSR already hydrated the snapshot (incl. cached author trust), so skip the
@@ -2127,6 +2143,9 @@ export default function SkillDetailPage({
 
   return (
     <main className="font-heading min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
+      {buyerCardAccessEnabled && (
+        <BuyerAccountSessionObserver onSignedInChange={setBuyerAuthSignedIn} />
+      )}
       <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
         {/* ===== HERO ===== */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -2941,7 +2960,8 @@ export default function SkillDetailPage({
                       rel="noopener noreferrer"
                       className="underline font-mono"
                     >
-                      {usdcPurchaseTx.slice(0, 8)}...{usdcPurchaseTx.slice(-8)}
+                      {usdcPurchaseTx.slice(0, 8)}...
+                      {usdcPurchaseTx.slice(-8)}
                     </a>
                   </p>
                 )}

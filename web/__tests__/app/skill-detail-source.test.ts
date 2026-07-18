@@ -63,6 +63,9 @@ describe("skill detail source", () => {
     expect(source).toContain("accountCanAuthorizeStripeCheckout");
     expect(source).toContain("Account download complete.");
     expect(source).toContain("[750, 2_000, 5_000]");
+    expect(source).toContain("BuyerAccountSessionObserver");
+    expect(source).toContain("const { isLoaded, isSignedIn } = useAuth()");
+    expect(source).toContain("[buyerAuthSignedIn, refreshBuyerAccountAccess]");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });
@@ -87,7 +90,7 @@ describe("skill detail source", () => {
     );
 
     expect(source).toContain(
-      "Repo-backed listings stay pinned to the canonical raw"
+      "Repo-backed listings stay pinned to the canonical"
     );
     expect(source).toContain("endpoint.");
     expect(source).toContain("Publish New Version");
