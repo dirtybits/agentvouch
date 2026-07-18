@@ -22,6 +22,18 @@ vi.mock("@/lib/usdcPurchases", () => ({
   hasUsdcPurchaseEntitlement: vi.fn(),
 }));
 
+vi.mock("@/lib/buyerAuthConfig", () => ({
+  isBuyerCardAccessServerEnabled: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/lib/buyerSession", () => ({
+  getBuyerSession: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/buyerAccessGrants", () => ({
+  hasActiveMarketplaceAccessGrant: vi.fn().mockResolvedValue(false),
+}));
+
 import { POST } from "@/app/api/skills/[id]/install/route";
 import { sql } from "@/lib/db";
 import { verifyWalletSignature } from "@/lib/auth";

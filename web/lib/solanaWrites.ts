@@ -82,6 +82,7 @@ export type SolanaWriteSession = {
   walletAddress: Address;
   connectorSigner: ConnectorTransactionSigner | null;
   canSignSponsored: boolean;
+  signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | null;
 };
 
 type SendInstructionAccount = {

@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
+const buyerAccessMocks = vi.hoisted(() => ({
+  isBuyerCardAccessServerEnabled: vi.fn(),
+  getBuyerSession: vi.fn(),
+  hasActiveMarketplaceAccessGrant: vi.fn(),
+}));
+
 vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
   initializeDatabase: vi.fn().mockResolvedValue(undefined),
@@ -116,6 +122,21 @@ vi.mock("@/lib/x402ProtocolBridge", () => ({
 
 vi.mock("@/lib/skillStorage", () => ({
   getFileForVersion: vi.fn(),
+}));
+
+vi.mock("@/lib/buyerAuthConfig", () => ({
+  isBuyerCardAccessServerEnabled: () =>
+    buyerAccessMocks.isBuyerCardAccessServerEnabled(),
+}));
+
+vi.mock("@/lib/buyerSession", () => ({
+  getBuyerSession: (...args: unknown[]) =>
+    buyerAccessMocks.getBuyerSession(...args),
+}));
+
+vi.mock("@/lib/buyerAccessGrants", () => ({
+  hasActiveMarketplaceAccessGrant: (...args: unknown[]) =>
+    buyerAccessMocks.hasActiveMarketplaceAccessGrant(...args),
 }));
 
 import { GET } from "@/app/api/skills/[id]/raw/route";
@@ -272,6 +293,9 @@ function validAuthHeader(
 describe("GET /api/skills/[id]/raw", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    buyerAccessMocks.isBuyerCardAccessServerEnabled.mockReturnValue(false);
+    buyerAccessMocks.getBuyerSession.mockResolvedValue(null);
+    buyerAccessMocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(false);
     mockBridgeEnabled.mockReturnValue(false);
     mockHasPurchase.mockResolvedValue(false);
     mockHasChainUsdcEntitlement.mockResolvedValue(false);
@@ -458,6 +482,83 @@ describe("GET /api/skills/[id]/raw", () => {
       priceUsdcMicros: 1000000n,
     });
     expect(mockOnChain).not.toHaveBeenCalled();
+  });
+
+  it("returns a structured 402 for a historical Base listing that cannot use the current x402 contract", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([BASE_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    mockBuildBaseX402Requirement.mockRejectedValueOnce(
+      new Error("Skill is linked to an unsupported Base contract")
+    );
+
+    const { req, params } = makeRequest("uuid-base-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("PAYMENT-REQUIRED")).toBeNull();
+    const body = await res.json();
+    expect(body).toMatchObject({
+      error: "Base listing migration required",
+      reason: "Skill is linked to an unsupported Base contract",
+      payment_flow: "base-listing-migration-required",
+      amount_micros: "1000000",
+      chain_context: "eip155:84532",
+      evm_listing_id: BASE_USDC_SKILL.evm_listing_id,
+      evm_contract_address: BASE_USDC_SKILL.evm_contract_address,
+    });
+    expect(body.message).toContain("account-scoped card checkout");
+  });
+
+  it("serves a Base paid skill to the signed-in account with an active card grant", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([BASE_USDC_SKILL])
+      .mockResolvedValue([]);
+    mockSql.mockReturnValue(dbQuery);
+    buyerAccessMocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    buyerAccessMocks.getBuyerSession.mockResolvedValue({
+      accountId: "00000000-0000-4000-8000-000000000002",
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    buyerAccessMocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(true);
+
+    const { req, params } = makeRequest("uuid-base-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SKILL_CONTENT);
+    expect(
+      buyerAccessMocks.hasActiveMarketplaceAccessGrant
+    ).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000002",
+      "uuid-base-usdc"
+    );
+    expect(mockBuildBaseX402Requirement).not.toHaveBeenCalled();
+    expect(mockRecordUsdcReceipt).not.toHaveBeenCalled();
+  });
+
+  it("rejects a different signed-in account without the card grant", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([BASE_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    buyerAccessMocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    buyerAccessMocks.getBuyerSession.mockResolvedValue({
+      accountId: "00000000-0000-4000-8000-000000000099",
+      provider: "clerk",
+      providerSubject: "user_other",
+      sessionId: "sess_other",
+      issuedAt: null,
+    });
+    buyerAccessMocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(false);
+
+    const { req, params } = makeRequest("uuid-base-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(mockBuildBaseX402Requirement).toHaveBeenCalled();
+    expect(mockRecordUsdcReceipt).not.toHaveBeenCalled();
   });
 
   it("settles a Base EIP-3009 x402 payment before serving raw content", async () => {

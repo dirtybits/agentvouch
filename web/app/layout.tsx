@@ -9,6 +9,7 @@ import { VercelAnalytics } from "@/components/VercelAnalytics";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import Script from "next/script";
 import { buildDefaultMetadata } from "@/lib/seo";
+import { BuyerAuthProvider } from "@/components/BuyerAuthProvider";
 
 const inconsolata = Inconsolata({
   subsets: ["latin"],
@@ -54,17 +55,19 @@ export default function RootLayout({
       <body
         className={`${inconsolata.variable} ${crimsonText.variable} ${crimsonPro.variable} font-mono`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem={false}
-        >
-          <WalletContextProvider>
-            <AppNavbar />
-            {children}
-            <AppFooter />
-          </WalletContextProvider>
-        </ThemeProvider>
+        <BuyerAuthProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem={false}
+          >
+            <WalletContextProvider>
+              <AppNavbar />
+              {children}
+              <AppFooter />
+            </WalletContextProvider>
+          </ThemeProvider>
+        </BuyerAuthProvider>
         <VercelAnalytics />
         <SpeedInsights />
       </body>

@@ -17,7 +17,7 @@ import type { ChainWallet } from "@/lib/adapters/types";
 
 export function useWritableChainWallet(): ChainWallet | null {
   const chain = useChainWallet();
-  const { signer, connectorSigner, capabilities } =
+  const { signer, connectorSigner, capabilities, signMessage } =
     useAgentVouchTransactionSigner();
 
   const solanaConnected =
@@ -37,6 +37,7 @@ export function useWritableChainWallet(): ChainWallet | null {
         walletAddress: solanaAccount as Address,
         connectorSigner: connectorSigner ?? null,
         canSignSponsored: capabilities.canSign,
+        signMessage,
       },
       disconnect: solanaDisconnect,
     });
@@ -48,5 +49,6 @@ export function useWritableChainWallet(): ChainWallet | null {
     signer,
     connectorSigner,
     capabilities.canSign,
+    signMessage,
   ]);
 }

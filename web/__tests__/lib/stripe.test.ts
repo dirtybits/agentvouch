@@ -1,8 +1,9 @@
 import { createHmac } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getStripeCheckoutActivation,
+  createCheckoutSession,
   isStripeCheckoutUiEnabled,
   isStripeEnabled,
   verifyAndParseWebhook,
@@ -71,6 +72,43 @@ describe("stripe helpers", () => {
     expect(usdcMicrosToUsdCents(10_000n)).toBe(1);
     expect(usdcMicrosToUsdCents(14_999n)).toBe(1);
     expect(usdcMicrosToUsdCents(15_000n)).toBe(2);
+  });
+
+  it("copies opaque account metadata onto the session and PaymentIntent", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ id: "cs_test_123", url: "https://checkout.test" }),
+          { status: 200 }
+        )
+      );
+
+    await createCheckoutSession({
+      skillDbId: "00000000-0000-4000-8000-000000000001",
+      skillName: "Paid Skill",
+      buyer: {
+        kind: "account",
+        accountId: "00000000-0000-4000-8000-000000000002",
+      },
+      amountUsdcMicros: "1000000",
+      amountUsdCents: 100,
+      successUrl: "https://example.test/success",
+      cancelUrl: "https://example.test/cancel",
+    });
+
+    const request = fetchSpy.mock.calls[0]?.[1];
+    const params = new URLSearchParams(String(request?.body));
+    expect(params.get("metadata[payment_flow]")).toBe("stripe-account-access");
+    expect(params.get("metadata[buyer_account_id]")).toBe(
+      "00000000-0000-4000-8000-000000000002"
+    );
+    expect(params.get("payment_intent_data[metadata][buyer_account_id]")).toBe(
+      "00000000-0000-4000-8000-000000000002"
+    );
+    expect(params.has("metadata[buyer_pubkey]")).toBe(false);
+    fetchSpy.mockRestore();
   });
 
   it("accepts any valid v1 webhook signature in the Stripe header", () => {

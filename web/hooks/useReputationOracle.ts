@@ -662,6 +662,7 @@ export function useReputationOracle() {
     signer: activeSigner,
     connectorSigner,
     capabilities,
+    signMessage,
   } = useAgentVouchTransactionSigner();
 
   const walletAddress: Address | null = connected ? (account as Address) : null;
@@ -687,9 +688,10 @@ export function useReputationOracle() {
             walletAddress,
             connectorSigner: connectorSigner ?? null,
             canSignSponsored: capabilities.canSign,
+            signMessage,
           }
         : null,
-    [signer, walletAddress, connectorSigner, capabilities.canSign]
+    [signer, walletAddress, connectorSigner, capabilities.canSign, signMessage]
   );
 
   const registerAgent = useCallback(

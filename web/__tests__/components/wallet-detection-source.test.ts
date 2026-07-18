@@ -65,6 +65,19 @@ describe("wallet detection source", () => {
     expect(transactionSignerSource).toContain("direct.kitSigner");
   });
 
+  it("invalidates a stale Base passkey restore before switching to Solana", () => {
+    expect(providerSource).toContain("baseRestoreGenerationRef");
+    expect(providerSource).toContain(
+      "baseRestoreGenerationRef.current !== restoreGeneration"
+    );
+    expect(providerSource).toContain("baseRestoreGenerationRef.current += 1");
+    expect(buttonSource).toContain("baseWallet.disconnect()");
+    expect(buttonSource).toContain(
+      ".then(() => wallet.connectPhantomExtension())"
+    );
+    expect(buttonSource).toContain("onPointerDownCapture");
+  });
+
   it("deduplicates extension wallet entries by display name", () => {
     expect(buttonSource).toContain("dedupeConnectorsByName");
     expect(buttonSource).toContain("connector.name.toLowerCase()");

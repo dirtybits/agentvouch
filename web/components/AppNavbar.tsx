@@ -8,6 +8,7 @@ import { FiMenu, FiX } from "react-icons/fi";
 import favicon from "@/app/favicon.png";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { GithubAuthButton } from "@/components/GithubAuthButton";
+import { BuyerAuthButton } from "@/components/BuyerAuthButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { navIconButtonClass } from "@/lib/buttonStyles";
 
@@ -131,6 +132,7 @@ export function AppNavbar() {
           <div className="hidden md:block">
             <GithubAuthButton />
           </div>
+          <BuyerAuthButton />
           <ClientWalletButton />
           <ThemeToggle />
           <button
@@ -174,7 +176,10 @@ export function AppNavbar() {
               })}
             </div>
             <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-800">
-              <GithubAuthButton />
+              <div className="flex flex-wrap items-center gap-2">
+                <GithubAuthButton />
+                <BuyerAuthButton />
+              </div>
             </div>
           </div>
         </div>

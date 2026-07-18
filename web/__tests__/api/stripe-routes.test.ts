@@ -15,6 +15,13 @@ const mocks = vi.hoisted(() => ({
   hasUsdcPurchaseReceiptForPaymentRef: vi.fn(),
   checkRateLimit: vi.fn(),
   recordStripeWebhookOutcome: vi.fn(),
+  isBuyerCardAccessServerEnabled: vi.fn(),
+  getBuyerSession: vi.fn(),
+  isSameOriginMutation: vi.fn(),
+  hasActiveMarketplaceAccessGrant: vi.fn(),
+  recordStripeMarketplaceAccessGrant: vi.fn(),
+  revokeStripeMarketplaceAccessGrant: vi.fn(),
+  revokeStripeMarketplaceAccessGrantsByPaymentReference: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -23,6 +30,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/stripe", () => ({
+  STRIPE_ACCOUNT_PAYMENT_FLOW: "stripe-account-access",
   STRIPE_CURRENCY_SENTINEL: "USD",
   STRIPE_PAYMENT_FLOW: "stripe-mpp-offchain",
   STRIPE_RECIPIENT_SENTINEL: "stripe-offchain",
@@ -34,6 +42,27 @@ vi.mock("@/lib/stripe", () => ({
   usdcMicrosToUsdCents: (micros: bigint) => Number((micros + 5000n) / 10000n),
   verifyAndParseWebhook: (...args: unknown[]) =>
     mocks.verifyAndParseWebhook(...args),
+}));
+
+vi.mock("@/lib/buyerAuthConfig", () => ({
+  isBuyerCardAccessServerEnabled: () => mocks.isBuyerCardAccessServerEnabled(),
+}));
+
+vi.mock("@/lib/buyerSession", () => ({
+  getBuyerSession: (...args: unknown[]) => mocks.getBuyerSession(...args),
+  isSameOriginMutation: (...args: unknown[]) =>
+    mocks.isSameOriginMutation(...args),
+}));
+
+vi.mock("@/lib/buyerAccessGrants", () => ({
+  hasActiveMarketplaceAccessGrant: (...args: unknown[]) =>
+    mocks.hasActiveMarketplaceAccessGrant(...args),
+  recordStripeMarketplaceAccessGrant: (...args: unknown[]) =>
+    mocks.recordStripeMarketplaceAccessGrant(...args),
+  revokeStripeMarketplaceAccessGrant: (...args: unknown[]) =>
+    mocks.revokeStripeMarketplaceAccessGrant(...args),
+  revokeStripeMarketplaceAccessGrantsByPaymentReference: (...args: unknown[]) =>
+    mocks.revokeStripeMarketplaceAccessGrantsByPaymentReference(...args),
 }));
 
 vi.mock("@/lib/rateLimit", () => ({
@@ -81,6 +110,7 @@ const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
 const skillId = "00000000-0000-0000-0000-000000000001";
 const buyerPubkey = "Buyer111111111111111111111111111111111111111";
+const buyerAccountId = "00000000-0000-4000-8000-000000000002";
 
 function jsonRequest(url: string, body: unknown, headers?: HeadersInit) {
   return new NextRequest(url, {
@@ -90,8 +120,8 @@ function jsonRequest(url: string, body: unknown, headers?: HeadersInit) {
   });
 }
 
-function checkoutRequest(body: unknown) {
-  return jsonRequest("http://localhost/api/stripe/checkout", body);
+function checkoutRequest(body: unknown, headers?: HeadersInit) {
+  return jsonRequest("http://localhost/api/stripe/checkout", body, headers);
 }
 
 function webhookRequest(body: unknown) {
@@ -165,6 +195,17 @@ function paidSessionEvent(
   };
 }
 
+function paidAccountSessionEvent() {
+  const event = paidSessionEvent({
+    metadata: {
+      buyer_account_id: buyerAccountId,
+      payment_flow: "stripe-account-access",
+    },
+  });
+  delete (event.data.object.metadata as Record<string, string>).buyer_pubkey;
+  return event;
+}
+
 describe("Stripe checkout and webhook routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -182,6 +223,15 @@ describe("Stripe checkout and webhook routes", () => {
       retryAfterSeconds: 0,
     });
     mocks.recordStripeWebhookOutcome.mockResolvedValue(undefined);
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(false);
+    mocks.getBuyerSession.mockResolvedValue(null);
+    mocks.isSameOriginMutation.mockReturnValue(true);
+    mocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(false);
+    mocks.recordStripeMarketplaceAccessGrant.mockResolvedValue("active");
+    mocks.revokeStripeMarketplaceAccessGrant.mockResolvedValue("revoked");
+    mocks.revokeStripeMarketplaceAccessGrantsByPaymentReference.mockResolvedValue(
+      []
+    );
     mocks.createCheckoutSession.mockResolvedValue({
       id: "cs_test_123",
       url: "https://checkout.stripe.test/cs_test_123",
@@ -270,13 +320,63 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mocks.createCheckoutSession).toHaveBeenCalledWith({
       skillDbId: skillId,
       skillName: "Paid Skill",
-      buyerPubkey,
+      buyer: { kind: "wallet", pubkey: buyerPubkey },
       amountUsdcMicros: "1000000",
       amountUsdCents: 100,
       successUrl: `http://localhost/skills/${skillId}?stripe=success`,
       cancelUrl: `http://localhost/skills/${skillId}?stripe=cancelled`,
       customerEmail: "buyer@example.com",
     });
+  });
+
+  it("creates a same-origin account checkout without wallet auth", async () => {
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    mockSkillRow({ evm_listing_id: "0x1234" });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.hasActiveMarketplaceAccessGrant).toHaveBeenCalledWith(
+      buyerAccountId,
+      skillId
+    );
+    expect(mocks.verifyWalletSignature).not.toHaveBeenCalled();
+    expect(mocks.createCheckoutSession).toHaveBeenCalledWith({
+      skillDbId: skillId,
+      skillName: "Paid Skill",
+      buyer: { kind: "account", accountId: buyerAccountId },
+      amountUsdcMicros: "1000000",
+      amountUsdCents: 100,
+      successUrl: `http://localhost/skills/${skillId}?stripe=success`,
+      cancelUrl: `http://localhost/skills/${skillId}?stripe=cancelled`,
+      customerEmail: undefined,
+    });
+  });
+
+  it("rejects cross-origin account checkout", async () => {
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    mocks.isSameOriginMutation.mockReturnValue(false);
+
+    const res = await checkoutPOST(checkoutRequest({ skillId }));
+
+    expect(res.status).toBe(403);
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("rejects checkout auth scoped to a different message", async () => {
@@ -396,6 +496,47 @@ describe("Stripe checkout and webhook routes", () => {
     );
   });
 
+  it("records an account grant without creating a protocol or wallet receipt", async () => {
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: "0x1234" }])
+    );
+    mocks.verifyAndParseWebhook.mockReturnValue(paidAccountSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.grantedAccount).toBe(buyerAccountId);
+    expect(mocks.recordStripeMarketplaceAccessGrant).toHaveBeenCalledWith({
+      accountId: buyerAccountId,
+      skillDbId: skillId,
+      paymentRef: "stripe:pi_test_123",
+    });
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "fulfilled",
+        reason: "account-scoped marketplace access grant recorded",
+        details: { protocolReceiptRecorded: false },
+      })
+    );
+  });
+
+  it("keeps an account grant revoked when completion is replayed", async () => {
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: "0x1234" }])
+    );
+    mocks.recordStripeMarketplaceAccessGrant.mockResolvedValue("revoked");
+    mocks.verifyAndParseWebhook.mockReturnValue(paidAccountSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toContain("account grant stays revoked");
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+  });
+
   it("does not fulfill a paid session without a payment intent", async () => {
     mockSql.mockReturnValue(
       vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: null }])
@@ -509,6 +650,48 @@ describe("Stripe checkout and webhook routes", () => {
         eventId: "evt_2",
         outcome: "revoked",
         needsReview: false,
+      })
+    );
+  });
+
+  it("revokes or tombstones the exact account grant on a full refund", async () => {
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_account_refund",
+      type: "charge.refunded",
+      data: {
+        object: {
+          id: "ch_test_account",
+          payment_intent: "pi_test_123",
+          refunded: true,
+          amount_refunded: 100,
+          metadata: {
+            payment_flow: "stripe-account-access",
+            buyer_account_id: buyerAccountId,
+            skill_db_id: skillId,
+          },
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.revoked).toBe(1);
+    expect(mocks.revokeStripeMarketplaceAccessGrant).toHaveBeenCalledWith({
+      accountId: buyerAccountId,
+      skillDbId: skillId,
+      paymentRef: "stripe:pi_test_123",
+      reason: "stripe-refund",
+    });
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buyerKey: buyerAccountId,
+        outcome: "revoked",
+        details: {
+          revokedWalletEntitlements: 0,
+          revokedAccountGrants: 1,
+        },
       })
     );
   });

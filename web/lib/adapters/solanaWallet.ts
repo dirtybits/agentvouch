@@ -6,6 +6,7 @@
 // useWritableChainWallet, which composes the wallet context with the transaction signer.
 
 import { address } from "@solana/kit";
+import { encodeBase64 } from "@/lib/base64";
 import {
   getConfiguredSolanaChainContext,
   getConfiguredSolanaExplorerAddressUrl,
@@ -53,6 +54,12 @@ export function createSolanaChainWallet(input: {
     chainContext: getConfiguredSolanaChainContext(),
     address: String(session.walletAddress),
     disconnect,
+    signMessage: session.signMessage
+      ? async (message) =>
+          encodeBase64(
+            await session.signMessage!(new TextEncoder().encode(message))
+          )
+      : undefined,
 
     async registerAgent(metadataUri: string): Promise<RegisterAgentResult> {
       const { tx, agentProfile, sponsored } = await registerSolanaAgent(

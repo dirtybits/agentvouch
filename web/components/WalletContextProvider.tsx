@@ -556,6 +556,7 @@ function AgentVouchWalletBridge({
     useState<BaseInjectedWalletSession | null>(null);
   const [baseError, setBaseError] = useState<string | null>(null);
   const directAutoConnectAttemptedRef = useRef(false);
+  const baseRestoreGenerationRef = useRef(0);
 
   const connectorWalletName = useMemo(
     () =>
@@ -668,6 +669,7 @@ function AgentVouchWalletBridge({
     if (!baseWalletConfigured) return;
 
     let cancelled = false;
+    const restoreGeneration = baseRestoreGenerationRef.current;
     const setDetectedProvider = (provider: Eip1193Provider | null) => {
       if (cancelled || !provider) return;
       setBaseInjectedProvider((current) => current ?? provider);
@@ -694,13 +696,19 @@ function AgentVouchWalletBridge({
     void import("@/lib/adapters/baseWallet")
       .then(({ restoreBasePasskeyAccount }) => restoreBasePasskeyAccount())
       .then((account) => {
-        if (cancelled || !account) return;
+        if (
+          cancelled ||
+          baseRestoreGenerationRef.current !== restoreGeneration ||
+          !account
+        )
+          return;
         setBaseSmartAccount(account);
         setBaseStatus("connected");
         setBaseError(null);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (cancelled || baseRestoreGenerationRef.current !== restoreGeneration)
+          return;
         console.warn("Failed to restore Base passkey wallet:", error);
         // Surface the failure instead of leaving the user silently
         // disconnected; restoreBasePasskeyAccount has already cleared the
@@ -907,6 +915,10 @@ function AgentVouchWalletBridge({
   }, [baseSmartAccount]);
 
   const disconnectBasePasskey = useCallback(async () => {
+    // A Solana connect can arrive while the asynchronous passkey restore is
+    // still resolving. Invalidate that result before clearing the persisted
+    // passkey session so the stale restore cannot reclaim the active wallet.
+    baseRestoreGenerationRef.current += 1;
     const { disconnectBasePasskeyAccount } = await import(
       "@/lib/adapters/baseWallet"
     );
@@ -923,6 +935,7 @@ function AgentVouchWalletBridge({
       throw new Error(BASE_WALLET_UNCONFIGURED_MESSAGE);
     }
 
+    baseRestoreGenerationRef.current += 1;
     setBaseStatus("connecting");
     setBaseError(null);
     try {
@@ -963,6 +976,7 @@ function AgentVouchWalletBridge({
       throw new Error(message);
     }
 
+    baseRestoreGenerationRef.current += 1;
     setBaseStatus("connecting");
     setBaseError(null);
     try {

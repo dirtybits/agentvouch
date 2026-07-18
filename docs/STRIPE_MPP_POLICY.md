@@ -6,14 +6,17 @@ AgentVouch on-chain economics.
 
 ## Scope
 
-Stripe checkout is an off-chain marketplace purchase path. It can unlock paid
-skill content for a buyer wallet by writing an AgentVouch entitlement after a
-verified Stripe payment. It does not create a Solana `Purchase` PDA, fund
-author proceeds escrow, fund voucher rewards, or create protocol refund state.
+Stripe checkout is an off-chain marketplace purchase path. After a verified
+payment, it can unlock paid skill content through either a legacy wallet-bound
+entitlement or an account-scoped marketplace access grant. It does not create a
+Solana `Purchase` PDA, a Base purchase id, author proceeds escrow, voucher
+rewards, or protocol refund state.
 
-The current implementation is wallet-bound: the buyer signs a checkout message
-before Stripe session creation, and the webhook records the entitlement against
-that wallet pubkey.
+The account-scoped path binds Checkout Session and PaymentIntent metadata to an
+opaque AgentVouch buyer account and skill UUID. Fulfillment writes only
+`marketplace_access_grants`; it does not synthesize a wallet, write a protocol
+receipt, or expose Google/email identity onchain. The signed-wallet path remains
+available for backwards compatibility.
 
 ## Rail Positioning
 
@@ -38,43 +41,42 @@ Do not enable Stripe checkout unless all of the following are true:
   webhook processing for outstanding payments, refunds, disputes, or retries.
 - `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=true` is set only on deployments where
   those server secrets and the webhook endpoint are active.
+- Account-scoped checkout is enabled independently with
+  `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED=true` and
+  `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED=true`; disabling these
+  flags must not disable webhook revocation for outstanding payments.
 - Production additionally has a verified Vercel Firewall/WAF rate limit on
   `POST /api/stripe/checkout` and
   `AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true`. The route's in-memory limit
   is defense in depth, not the distributed control.
 - Webhook delivery is monitored and failed webhook retries are visible.
-- Operators can reconcile Stripe payment ids against
-  `usdc_purchase_receipts.payment_tx_signature`.
+- Operators can reconcile account grants through
+  `marketplace_access_grants.source_payment_reference` and legacy wallet sales
+  through `usdc_purchase_receipts.payment_tx_signature`.
 - Product copy clearly labels this as card checkout / off-chain entitlement,
   not protocol settlement.
 - Refund, chargeback, and payout responsibilities below are accepted.
 
 ## Buyer Access
 
-Card checkout grants access only to the wallet that signed the checkout
-message. Re-downloads use the existing `X-AgentVouch-Auth` raw download flow.
+Account checkout grants access only to the authenticated opaque buyer account.
+The same active session authorizes re-download without a wallet signature.
+Legacy wallet checkout still grants access only to the wallet that signed the
+checkout message and re-downloads through `X-AgentVouch-Auth`.
 
-Email-only buyers remain out of scope until there is an identity link table or
-customer session model that can map Stripe customers to an AgentVouch buyer key.
+### Walletless identity boundary
 
-### Walletless identity direction
+The shipped preview model uses a chain-neutral buyer account with verified
+Google/email identities, optional signed Solana/Base wallet links, and explicit
+marketplace access grants. It never derives a fake Solana or EVM address from an
+email or treats a Stripe customer id as a wallet address. GitHub remains a
+publisher identity and is not silently merged into the buyer account.
 
-The durable design should introduce a chain-neutral buyer account with linked
-identities (verified Google/email, GitHub, embedded wallet, Solana address, and
-Base address) plus an explicit marketplace access-grant record. Do not derive a
-fake Solana or EVM address from an email, and do not treat a Stripe customer id
-as a wallet address.
-
-Phantom embedded Google sign-in is a useful lower-risk onboarding experiment:
-the user does not need an extension or seed phrase, but the embedded Solana
-wallet remains the actual entitlement key. That improves UX without solving the
-chain-neutral email identity model.
-
-For Base-listed skills, a future card purchase should create an off-chain
-marketplace access grant redeemable by the signed-in buyer account. It must not
-create a Base purchase id, claim protocol settlement, or weaken the existing
-Base USDC/x402 verification path. Implement and verify that seam on Base Sepolia
-before any separately approved Base mainnet work.
+For Base-listed skills, card purchase creates only an off-chain marketplace
+grant redeemable by the signed-in buyer account. It does not create a Base
+purchase id, claim protocol settlement, or weaken the existing Base USDC/x402
+verification path. This seam is limited to Base Sepolia preview testing; Base
+mainnet requires separately approved readiness work.
 
 ## Payouts
 
@@ -99,10 +101,10 @@ Solana refund pool exists.
 Minimum handling before production:
 
 - `charge.refunded` (full refund) and `charge.dispute.created` are handled:
-  they set `revoked_at` / `revoked_reason` on the matching wallet-bound
-  entitlement, and revoked entitlements no longer grant downloads. Partial
-  refunds are logged for manual reconciliation. The Stripe webhook endpoint
-  must be subscribed to these event types.
+  they set `revoked_at` / `revoked_reason` on the matching account grant or
+  legacy wallet entitlement, and revoked access no longer grants downloads.
+  Partial refunds are logged for manual reconciliation. The Stripe webhook
+  endpoint must be subscribed to these event types.
 - A replayed webhook for a refunded payment stays revoked; a genuinely new
   payment (new payment intent) re-mints the entitlement. Winning a dispute
   requires manual reinstatement (clear `revoked_at`) for now.
@@ -114,7 +116,12 @@ Minimum handling before production:
 
 ## Reporting
 
-Stripe MPP receipts should remain visibly distinct from protocol purchases:
+Account-scoped Stripe sales stay outside protocol receipt tables. Their durable
+record is a `marketplace_access_grants` row keyed by source payment reference,
+skill, and opaque buyer account.
+
+Legacy wallet Stripe receipts should remain visibly distinct from protocol
+purchases:
 
 - `payment_flow = "stripe-mpp-offchain"`
 - `currency_mint = "USD"`
@@ -135,8 +142,8 @@ Before broad production rollout, choose exactly one Stripe model:
 2. **Parallel MPP marketplace.** Stripe Connect or an explicit operator payout
    process handles author payment off-chain. Sales remain separate from
    protocol economics, and voucher rewards stay at `0`.
-3. **Limited early-sales rail.** Stripe stays available only for
-   wallet-bound access experiments while protocol USDC/x402 remains the
+3. **Limited early-sales rail.** Stripe stays available only for account- or
+   wallet-scoped access experiments while protocol USDC/x402 remains the
    preferred commerce path.
 
 ## Production Blockers

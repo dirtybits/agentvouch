@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { AgentIdentityPanel } from "@/components/AgentIdentityPanel";
 import { type TrustData } from "@/components/TrustBadge";
@@ -107,6 +108,20 @@ interface ContentVerification {
   all_versions_pinned: boolean;
   current_cid_consistent: boolean;
   status: "verified" | "drift_detected" | "unverified";
+}
+
+function BuyerAccountSessionObserver({
+  onSignedInChange,
+}: {
+  onSignedInChange: (isSignedIn: boolean) => void;
+}) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (isLoaded) onSignedInChange(Boolean(isSignedIn));
+  }, [isLoaded, isSignedIn, onSignedInChange]);
+
+  return null;
 }
 
 function isBaseListingExistsError(error: unknown): boolean {
@@ -339,10 +354,12 @@ export default function SkillDetailPage({
   id,
   initialSkill = null,
   stripeCheckoutEnabled = false,
+  buyerCardAccessEnabled = false,
 }: {
   id: string;
   initialSkill?: SkillDetail | null;
   stripeCheckoutEnabled?: boolean;
+  buyerCardAccessEnabled?: boolean;
 }) {
   const { status, account, walletName } = useAgentVouchWallet();
   const {
@@ -460,6 +477,10 @@ export default function SkillDetailPage({
   const [stripeCheckoutStatus, setStripeCheckoutStatus] = useState<
     string | null
   >(null);
+  const [buyerAccountAuthenticated, setBuyerAccountAuthenticated] =
+    useState(false);
+  const [buyerAccountHasAccess, setBuyerAccountHasAccess] = useState(false);
+  const [buyerAuthSignedIn, setBuyerAuthSignedIn] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setRequestedAuthorAction(params.get("authorAction"));
@@ -516,6 +537,40 @@ export default function SkillDetailPage({
     },
     [id]
   );
+
+  const refreshBuyerAccountAccess = useCallback(async () => {
+    if (!buyerCardAccessEnabled) {
+      setBuyerAccountAuthenticated(false);
+      setBuyerAccountHasAccess(false);
+      return;
+    }
+    const response = await fetch(
+      `/api/account/access-grants/${encodeURIComponent(id)}`,
+      { cache: "no-store" }
+    );
+    const body = (await response.json().catch(() => null)) as {
+      authenticated?: boolean;
+      hasAccess?: boolean;
+    } | null;
+    setBuyerAccountAuthenticated(Boolean(body?.authenticated));
+    setBuyerAccountHasAccess(Boolean(body?.hasAccess));
+  }, [buyerCardAccessEnabled, id]);
+
+  useEffect(() => {
+    const refresh = () =>
+      void refreshBuyerAccountAccess().catch(() => {
+        setBuyerAccountAuthenticated(false);
+        setBuyerAccountHasAccess(false);
+      });
+    refresh();
+    // Clerk's development-browser handshake can finish after the first client
+    // render. Retry a bounded number of times so an already signed-in buyer is
+    // not incorrectly offered only the wallet-bound checkout path.
+    const timers = [750, 2_000, 5_000].map((delay) =>
+      window.setTimeout(refresh, delay)
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [buyerAuthSignedIn, refreshBuyerAccountAccess]);
 
   useEffect(() => {
     // SSR already hydrated the snapshot (incl. cached author trust), so skip the
@@ -576,23 +631,30 @@ export default function SkillDetailPage({
     if (stripeCheckoutStatus === "success") {
       setInstallResult({
         success: true,
-        message:
-          "Card checkout complete. When Stripe confirms the payment, this wallet can Sign & Download.",
+        message: buyerAccountAuthenticated
+          ? "Card checkout complete. When Stripe confirms the payment, this account can download without a wallet."
+          : "Card checkout complete. When Stripe confirms the payment, this wallet can Sign & Download.",
       });
       if (walletAddress) {
         // Webhook delivery lags the redirect; refresh a few times so the
         // page picks up the entitlement without a manual reload.
         const timers = [1500, 5000, 15000].map((delay) =>
           window.setTimeout(() => {
-            void refreshSkill({
-              includeBuyer: true,
-              buyerAddress: walletAddress,
-            });
+            if (walletAddress) {
+              void refreshSkill({
+                includeBuyer: true,
+                buyerAddress: walletAddress,
+              });
+            }
+            void refreshBuyerAccountAccess();
           }, delay)
         );
         return () => timers.forEach((timer) => window.clearTimeout(timer));
       }
-      return;
+      const timers = [1500, 5000, 15000].map((delay) =>
+        window.setTimeout(() => void refreshBuyerAccountAccess(), delay)
+      );
+      return () => timers.forEach((timer) => window.clearTimeout(timer));
     }
 
     if (stripeCheckoutStatus === "cancelled") {
@@ -601,7 +663,13 @@ export default function SkillDetailPage({
         message: "Card checkout was cancelled.",
       });
     }
-  }, [refreshSkill, stripeCheckoutStatus, walletAddress]);
+  }, [
+    refreshBuyerAccountAccess,
+    refreshSkill,
+    stripeCheckoutStatus,
+    buyerAccountAuthenticated,
+    walletAddress,
+  ]);
 
   useEffect(() => {
     if (
@@ -646,6 +714,34 @@ export default function SkillDetailPage({
   // multi-file skills, otherwise SKILL.md. Returns true when the archive was
   // delivered (used to phrase the success message).
   const downloadEntitledSkill = useCallback(async (): Promise<boolean> => {
+    if (!skill) throw new Error("Skill is not loaded.");
+    const isMultiFile = (skill.files?.length ?? 0) > 1;
+
+    if (buyerAccountHasAccess) {
+      const response = await fetch(
+        `/api/skills/${id}/${isMultiFile ? "zip" : "raw"}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+          message?: string;
+        } | null;
+        throw new Error(
+          body?.error || body?.message || "Account download failed"
+        );
+      }
+      if (isMultiFile) {
+        triggerBrowserDownload(
+          `${skill.skill_id || "skill"}.zip`,
+          await response.blob()
+        );
+      } else {
+        downloadSkillFile(skill.skill_id, await response.text());
+      }
+      return isMultiFile;
+    }
+
     const downloadWalletAddress = activeWalletAddress ?? walletAddress;
     const downloadSignMessage =
       activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
@@ -654,10 +750,9 @@ export default function SkillDetailPage({
             activeChainWallet.signMessage!(new TextDecoder().decode(message))
         : signMessage;
 
-    if (!skill || !downloadWalletAddress || !downloadSignMessage) {
+    if (!downloadWalletAddress || !downloadSignMessage) {
       throw new Error("Connect a wallet to download this skill.");
     }
-    const isMultiFile = (skill.files?.length ?? 0) > 1;
     const res = await fetchSignedSkill({
       id,
       walletAddress: downloadWalletAddress,
@@ -676,6 +771,7 @@ export default function SkillDetailPage({
     return isMultiFile;
   }, [
     skill,
+    buyerAccountHasAccess,
     activeChainContext,
     activeChainWallet,
     activeWalletAddress,
@@ -1291,7 +1387,9 @@ export default function SkillDetailPage({
 
   const handleStripeCheckout = async () => {
     if (!skill) return;
-    if (!connected || !walletAddress || !signMessage) {
+    const useAccountCheckout =
+      buyerCardAccessEnabled && buyerAccountAuthenticated;
+    if (!useAccountCheckout && (!connected || !walletAddress || !signMessage)) {
       return;
     }
 
@@ -1299,23 +1397,35 @@ export default function SkillDetailPage({
     setInstallResult(null);
     setDownloadResult(null);
     try {
-      const timestamp = Date.now();
-      const message = buildStripeCheckoutMessage(
-        skill.id,
-        String(skill.price_usdc_micros ?? 0),
-        timestamp
-      );
-      const signatureBytes = await signMessage(
-        new TextEncoder().encode(message)
-      );
-      const signature = encodeBase64(signatureBytes);
+      let auth:
+        | {
+            pubkey: string;
+            signature: string;
+            message: string;
+            timestamp: number;
+          }
+        | undefined;
+      if (!useAccountCheckout) {
+        const timestamp = Date.now();
+        const message = buildStripeCheckoutMessage(
+          skill.id,
+          String(skill.price_usdc_micros ?? 0),
+          timestamp
+        );
+        const signatureBytes = await signMessage!(
+          new TextEncoder().encode(message)
+        );
+        auth = {
+          pubkey: walletAddress!,
+          signature: encodeBase64(signatureBytes),
+          message,
+          timestamp,
+        };
+      }
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          skillId: skill.id,
-          auth: { pubkey: walletAddress, signature, message, timestamp },
-        }),
+        body: JSON.stringify({ skillId: skill.id, ...(auth ? { auth } : {}) }),
       });
       const body = (await response.json().catch(() => null)) as {
         error?: string;
@@ -1340,6 +1450,7 @@ export default function SkillDetailPage({
 
   const handleSignedDownload = async () => {
     const canSignActiveDownload =
+      buyerAccountHasAccess ||
       (activeChainContext === BASE_SEPOLIA_CHAIN_CONTEXT &&
         Boolean(activeWalletAddress && activeChainWallet?.signMessage)) ||
       Boolean(connected && walletAddress && signMessage);
@@ -1348,7 +1459,11 @@ export default function SkillDetailPage({
     }
 
     const priceUsdcMicros = BigInt(skill.price_usdc_micros ?? 0);
-    if (priceUsdcMicros > 0n && !skill.buyerHasPurchased) {
+    if (
+      priceUsdcMicros > 0n &&
+      !skill.buyerHasPurchased &&
+      !buyerAccountHasAccess
+    ) {
       setDownloadResult({
         success: false,
         message: buildPaidSkillDownloadRequiredMessage(),
@@ -1363,7 +1478,9 @@ export default function SkillDetailPage({
 
       setDownloadResult({
         success: true,
-        message: "Signed download complete.",
+        message: buyerAccountHasAccess
+          ? "Account download complete."
+          : "Signed download complete.",
       });
     } catch (error: unknown) {
       setDownloadResult({
@@ -1831,21 +1948,35 @@ export default function SkillDetailPage({
     hasUsdcPrimary &&
     isBlockingPurchaseStatus(purchasePreflightStatus);
   const isPaidSkill = hasUsdcPrimary;
-  const buyerHasPurchased = Boolean(skill.buyerHasPurchased);
-  // Card checkout requires Stripe to be configured server-side, and is
-  // excluded on Base protocol listings: their download gate only honors
-  // chain-qualified purchase state, so the pubkey-keyed off-chain entitlement
-  // would be unredeemable.
+  const buyerHasPurchased = Boolean(
+    skill.buyerHasPurchased || buyerAccountHasAccess
+  );
+  const accountCanAuthorizeStripeCheckout = Boolean(
+    buyerCardAccessEnabled && buyerAccountAuthenticated
+  );
+  // Account checkout can grant off-chain marketplace access for Base Sepolia
+  // without claiming a protocol purchase. Legacy wallet checkout remains
+  // unavailable for Base protocol listings because it cannot redeem there.
   const stripeCheckoutAvailable = Boolean(
     stripeCheckoutEnabled &&
-      !isBaseProtocolSkill &&
       primaryUsdcPrice &&
       !buyerHasPurchased &&
-      !isAuthor
+      !isAuthor &&
+      (!isBaseProtocolSkill || accountCanAuthorizeStripeCheckout)
   );
   const walletCanAuthorizeStripeCheckout = Boolean(
-    connected && walletAddress && signMessage && stripeCheckoutAvailable
+    !isBaseProtocolSkill &&
+      connected &&
+      walletAddress &&
+      signMessage &&
+      stripeCheckoutAvailable
   );
+  const canAuthorizeStripeCheckout = Boolean(
+    accountCanAuthorizeStripeCheckout || walletCanAuthorizeStripeCheckout
+  );
+  const cardAccessSubject = accountCanAuthorizeStripeCheckout
+    ? "AgentVouch account"
+    : "wallet";
   const walletCanAuthorizeDirectUsdc = Boolean(
     protocolTransactionSigner && signMessage && !isPhantomEmbeddedWallet
   );
@@ -1892,7 +2023,7 @@ export default function SkillDetailPage({
   const installCommand = hasUsdcPrimary
     ? isListingRequired
       ? stripeCheckoutEnabled
-        ? `# Primary price: ${usdcPriceLabel} via wallet-bound card checkout (browser only)\n# A human can pay by card on this page to create an off-chain entitlement for the signed wallet; the raw endpoint then works with X-AgentVouch-Auth.\ncurl -sL ${installUrl}`
+        ? `# Primary price: ${usdcPriceLabel} via off-chain card checkout (browser only)\n# A human can pay by card on this page to create an account- or wallet-scoped marketplace entitlement.\ncurl -sL ${installUrl}`
         : `# Primary price: ${usdcPriceLabel}\n# This paid repo skill is not purchasable until the author links an on-chain SkillListing.\ncurl -sL ${installUrl}`
       : paymentFlow === "direct-purchase-skill"
       ? isBaseProtocolSkill
@@ -1915,14 +2046,16 @@ export default function SkillDetailPage({
     ? isAuthor
       ? `This paid skill is priced at ${usdcPriceLabel}, but it is not purchasable until you create and link its on-chain SkillListing.`
       : stripeCheckoutAvailable
-      ? `This paid skill is priced at ${usdcPriceLabel}. Card checkout can unlock this AgentVouch wallet now while on-chain listing setup is pending.`
+      ? `This paid skill is priced at ${usdcPriceLabel}. Card checkout can unlock this ${cardAccessSubject} now while on-chain listing setup is pending.`
       : `This paid skill is priced at ${usdcPriceLabel}, but purchases are unavailable while the author links the on-chain listing.`
     : isAuthor
     ? primaryUsdcPrice
       ? `This listing is priced at ${usdcPriceLabel}.`
       : "This connected wallet is the author for this skill. Use the author actions below to manage the listing instead of purchasing it."
     : buyerHasPurchased
-    ? signedRedownloadAvailable
+    ? buyerAccountHasAccess
+      ? "This skill is purchased for your AgentVouch account. Download it without connecting or signing with a wallet."
+      : signedRedownloadAvailable
       ? "This skill is already purchased for your connected wallet. Sign to download the file."
       : isBaseProtocolSkill
       ? "This Base purchase is verified for your connected wallet. Base signed re-download authorization is not enabled yet."
@@ -1934,10 +2067,10 @@ export default function SkillDetailPage({
       ? isBaseProtocolSkill
         ? `Pay ${usdcPriceLabel} from this page with Base Sepolia USDC.`
         : stripeCheckoutAvailable
-        ? `Pay ${usdcPriceLabel} through protocol USDC settlement, or use card checkout for an off-chain wallet entitlement.`
+        ? `Pay ${usdcPriceLabel} through protocol USDC settlement, or use card checkout for an off-chain ${cardAccessSubject} entitlement.`
         : `Pay ${usdcPriceLabel} from this page. After checkout, SKILL.md downloads immediately and future re-downloads use Sign & Download.`
       : stripeCheckoutAvailable
-      ? `This listing is priced in ${usdcPriceLabel}. Card checkout can unlock this wallet and is recorded separately from protocol USDC settlement.`
+      ? `This listing is priced in ${usdcPriceLabel}. Card checkout can unlock this ${cardAccessSubject} and is recorded separately from protocol USDC settlement.`
       : `This listing is priced in ${usdcPriceLabel}. This wallet cannot use browser x402; use direct purchase or the agent/API fallback below.`
     : hasLegacySolPrice
     ? "This historical SOL-priced listing is not available for new USDC checkout."
@@ -1991,7 +2124,7 @@ export default function SkillDetailPage({
   const renderPayByCardButton = (buttonClass: string) => (
     <button
       onClick={handleStripeCheckout}
-      disabled={startingStripeCheckout || !walletCanAuthorizeStripeCheckout}
+      disabled={startingStripeCheckout || !canAuthorizeStripeCheckout}
       className={`${buttonClass} w-full justify-center`}
     >
       {startingStripeCheckout ? (
@@ -2010,6 +2143,9 @@ export default function SkillDetailPage({
 
   return (
     <main className="font-heading min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
+      {buyerCardAccessEnabled && (
+        <BuyerAccountSessionObserver onSignedInChange={setBuyerAuthSignedIn} />
+      )}
       <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
         {/* ===== HERO ===== */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -2594,7 +2730,10 @@ export default function SkillDetailPage({
                         </>
                       )}
                     </button>
-                  ) : connected || activeBaseWalletReady ? (
+                  ) : connected ||
+                    activeBaseWalletReady ||
+                    accountCanAuthorizeStripeCheckout ||
+                    buyerAccountHasAccess ? (
                     isAuthor ? (
                       <Link
                         href="#author-actions"
@@ -2612,12 +2751,16 @@ export default function SkillDetailPage({
                           {downloading ? (
                             <>
                               <FiLoader className="w-4 h-4 animate-spin" />
-                              Signing…
+                              {buyerAccountHasAccess
+                                ? "Downloading…"
+                                : "Signing…"}
                             </>
                           ) : (
                             <>
                               <FiDownload className="w-4 h-4" />
-                              Sign & Download
+                              {buyerAccountHasAccess
+                                ? "Download"
+                                : "Sign & Download"}
                             </>
                           )}
                         </button>
@@ -2632,16 +2775,18 @@ export default function SkillDetailPage({
                         <FiAlertTriangle className="w-3.5 h-3.5" />
                         Use an extension wallet
                       </p>
-                    ) : isListingRequired &&
-                      stripeCheckoutAvailable &&
-                      connected ? (
+                    ) : isListingRequired && stripeCheckoutAvailable ? (
                       renderPayByCardButton(navButtonPrimaryInlineClass)
                     ) : isListingRequired ? (
                       <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
                         <FiAlertTriangle className="w-3.5 h-3.5" />
                         Listing setup required
                       </p>
-                    ) : isBaseProtocolSkill && !activeBaseWalletReady ? (
+                    ) : isBaseProtocolSkill &&
+                      !activeBaseWalletReady &&
+                      !(
+                        stripeCheckoutAvailable && canAuthorizeStripeCheckout
+                      ) ? (
                       <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
                         <FiAlertTriangle className="w-3.5 h-3.5" />
                         Connect Base wallet
@@ -2670,11 +2815,12 @@ export default function SkillDetailPage({
                             </>
                           )}
                         </button>
-                        {stripeCheckoutAvailable && connected
+                        {stripeCheckoutAvailable && canAuthorizeStripeCheckout
                           ? renderPayByCardButton(navButtonSecondaryInlineClass)
                           : null}
                       </div>
-                    ) : stripeCheckoutAvailable && connected ? (
+                    ) : stripeCheckoutAvailable &&
+                      canAuthorizeStripeCheckout ? (
                       renderPayByCardButton(navButtonPrimaryInlineClass)
                     ) : (
                       <p className="text-center text-xs text-gray-400 dark:text-gray-500">
@@ -2748,8 +2894,9 @@ export default function SkillDetailPage({
                   isListingRequired &&
                   (stripeCheckoutEnabled ? (
                     <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
-                      Card checkout records an off-chain entitlement for this
-                      wallet while on-chain listing setup is pending.
+                      Card checkout records an off-chain marketplace grant for
+                      this {cardAccessSubject} while on-chain listing setup is
+                      pending.
                     </p>
                   ) : (
                     <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
@@ -2762,8 +2909,8 @@ export default function SkillDetailPage({
                   stripeCheckoutAvailable && (
                     <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
                       Protocol USDC purchases settle through purchase_skill,
-                      Base, or x402; card checkout records an off-chain
-                      entitlement for this wallet.
+                      Base, or x402; card checkout records a separate off-chain
+                      marketplace grant for this {cardAccessSubject}.
                     </p>
                   )}
                 {skill.purchaseRiskWarning &&
@@ -2817,7 +2964,8 @@ export default function SkillDetailPage({
                       rel="noopener noreferrer"
                       className="underline font-mono"
                     >
-                      {usdcPurchaseTx.slice(0, 8)}...{usdcPurchaseTx.slice(-8)}
+                      {usdcPurchaseTx.slice(0, 8)}...
+                      {usdcPurchaseTx.slice(-8)}
                     </a>
                   </p>
                 )}

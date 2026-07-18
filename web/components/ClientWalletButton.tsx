@@ -418,7 +418,17 @@ export function ClientWalletButton() {
   );
 
   const socialSection = phantomConfigured ? (
-    <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
+    <div
+      className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800"
+      onPointerDownCapture={() => {
+        // The embedded Phantom control owns its click handler. Clear and
+        // invalidate any restored Base passkey session before it starts so an
+        // explicit Solana choice cannot lose the active-wallet race.
+        void baseWallet.disconnect().catch((error) => {
+          console.error("Failed to switch from Base to Phantom:", error);
+        });
+      }}
+    >
       <p className="text-xs font-normal text-gray-700 dark:text-gray-300 mb-2">
         Sign in with
       </p>
@@ -456,10 +466,13 @@ export function ClientWalletButton() {
               {wallet.phantomInstalled && (
                 <button
                   onClick={() => {
-                    void wallet.connectPhantomExtension().catch((error) => {
-                      console.error("Failed to connect Phantom:", error);
-                    });
-                    setShowMenu(false);
+                    void baseWallet
+                      .disconnect()
+                      .then(() => wallet.connectPhantomExtension())
+                      .then(() => setShowMenu(false))
+                      .catch((error) => {
+                        console.error("Failed to connect Phantom:", error);
+                      });
                   }}
                   className={`${walletMenuButtonClass} flex items-center gap-3`}
                 >
@@ -476,8 +489,16 @@ export function ClientWalletButton() {
                 <button
                   key={connector.id}
                   onClick={() => {
-                    void connect(connector.id);
-                    setShowMenu(false);
+                    void baseWallet
+                      .disconnect()
+                      .then(() => connect(connector.id))
+                      .then(() => setShowMenu(false))
+                      .catch((error) => {
+                        console.error(
+                          `Failed to connect ${connector.name}:`,
+                          error
+                        );
+                      });
                   }}
                   className={`${walletMenuButtonClass} flex items-center gap-3`}
                 >

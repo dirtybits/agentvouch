@@ -19,9 +19,13 @@ import { getErrorMessage } from "@/lib/errors";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { checkRateLimit, clientIpFromRequest } from "@/lib/rateLimit";
+import { getBuyerSession, isSameOriginMutation } from "@/lib/buyerSession";
+import { isBuyerCardAccessServerEnabled } from "@/lib/buyerAuthConfig";
+import { hasActiveMarketplaceAccessGrant } from "@/lib/buyerAccessGrants";
 
 const STRIPE_CHECKOUT_IP_LIMIT = { limit: 20, windowMs: 15 * 60_000 };
 const STRIPE_CHECKOUT_WALLET_LIMIT = { limit: 5, windowMs: 10 * 60_000 };
+const STRIPE_CHECKOUT_ACCOUNT_LIMIT = { limit: 5, windowMs: 10 * 60_000 };
 
 type SkillPriceRow = {
   id: string;
@@ -67,24 +71,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "skillId is required" }, { status: 400 });
   }
 
-  // This is a public endpoint: reject unauthenticated requests with pure-CPU
-  // checks before paying for any database round trip.
-  const auth = body.auth;
-  if (!auth) {
-    return NextResponse.json(
-      { error: "Wallet auth is required before Stripe checkout" },
-      { status: 401 }
-    );
-  }
-
-  const verification = verifyWalletSignature(auth);
-  if (!verification.valid || !verification.pubkey) {
-    return NextResponse.json(
-      { error: verification.error || "Invalid wallet auth" },
-      { status: 401 }
-    );
-  }
-
   // Defense in depth only: this limiter is per runtime instance. Production
   // activation separately requires an operator acknowledgement that a Vercel
   // Firewall/WAF rule protects this route at the edge.
@@ -102,16 +88,50 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const walletLimit = checkRateLimit(
-    `stripe-checkout:wallet:${verification.pubkey}`,
-    STRIPE_CHECKOUT_WALLET_LIMIT
+  const accountCardAccessEnabled = isBuyerCardAccessServerEnabled();
+  const buyerSession = accountCardAccessEnabled
+    ? await getBuyerSession(req)
+    : null;
+  const accountCheckout = Boolean(buyerSession);
+  if (accountCheckout && !isSameOriginMutation(req)) {
+    return NextResponse.json(
+      { error: "Same-origin request required for account checkout." },
+      { status: 403 }
+    );
+  }
+
+  const auth = body.auth;
+  const verification = accountCheckout
+    ? { valid: false, pubkey: null, error: null }
+    : auth
+    ? verifyWalletSignature(auth)
+    : { valid: false, pubkey: null, error: "Wallet auth is required" };
+  if (!accountCheckout && (!verification.valid || !verification.pubkey)) {
+    return NextResponse.json(
+      {
+        error: accountCardAccessEnabled
+          ? verification.error || "Sign in or provide valid wallet auth"
+          : verification.error ||
+            "Wallet auth is required before Stripe checkout",
+      },
+      { status: 401 }
+    );
+  }
+
+  const buyerLimit = checkRateLimit(
+    accountCheckout
+      ? `stripe-checkout:account:${buyerSession!.accountId}`
+      : `stripe-checkout:wallet:${verification.pubkey}`,
+    accountCheckout
+      ? STRIPE_CHECKOUT_ACCOUNT_LIMIT
+      : STRIPE_CHECKOUT_WALLET_LIMIT
   );
-  if (!walletLimit.ok) {
+  if (!buyerLimit.ok) {
     return NextResponse.json(
       { error: "Too many card checkout attempts. Try again shortly." },
       {
         status: 429,
-        headers: { "Retry-After": String(walletLimit.retryAfterSeconds) },
+        headers: { "Retry-After": String(buyerLimit.retryAfterSeconds) },
       }
     );
   }
@@ -145,11 +165,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Base-protocol-listed skills gate downloads on chain-qualified purchase
-    // state (Base x402 / purchase verify); the pubkey-keyed off-chain
-    // entitlement this route mints would be unredeemable there. Refuse rather
-    // than charge a card for content the buyer cannot download.
-    if (skill.evm_listing_id) {
+    // Legacy wallet-bound card access cannot redeem Base protocol downloads.
+    // Signed-in account checkout mints a separate marketplace grant and is
+    // intentionally allowed for Base Sepolia without a protocol receipt.
+    if (skill.evm_listing_id && !accountCheckout) {
       return NextResponse.json(
         {
           error:
@@ -170,34 +189,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // The signed message binds skill id AND the exact amount the buyer saw, so
-    // a price change between page load and checkout invalidates the auth
-    // instead of silently charging the new price.
-    const expectedMessage = buildStripeCheckoutMessage(
-      skill.id,
-      micros.toString(),
-      auth.timestamp
-    );
-    if (normalizeProtocolNewlines(auth.message) !== expectedMessage) {
-      return NextResponse.json(
-        {
-          error:
-            "Message scope mismatch. If the listing price changed, reload the page and try again.",
-          expected_format:
-            "AgentVouch Stripe Checkout\\nAction: stripe-checkout\\nSkill id: {id}\\nAmount (USDC micros): {micros}\\nTimestamp: {ms}",
-        },
-        { status: 401 }
+    if (!accountCheckout) {
+      // Wallet checkout binds skill id and exact amount to the signature.
+      const expectedMessage = buildStripeCheckoutMessage(
+        skill.id,
+        micros.toString(),
+        auth!.timestamp
       );
+      if (normalizeProtocolNewlines(auth!.message) !== expectedMessage) {
+        return NextResponse.json(
+          {
+            error:
+              "Message scope mismatch. If the listing price changed, reload the page and try again.",
+            expected_format:
+              "AgentVouch Stripe Checkout\\nAction: stripe-checkout\\nSkill id: {id}\\nAmount (USDC micros): {micros}\\nTimestamp: {ms}",
+          },
+          { status: 401 }
+        );
+      }
     }
 
-    const alreadyPurchased =
-      (await hasUsdcPurchaseEntitlement(skill.id, verification.pubkey)) ||
-      (skill.on_chain_address
-        ? await hasOnChainPurchase(verification.pubkey, skill.on_chain_address)
-        : false);
+    const alreadyPurchased = accountCheckout
+      ? await hasActiveMarketplaceAccessGrant(buyerSession!.accountId, skill.id)
+      : (await hasUsdcPurchaseEntitlement(skill.id, verification.pubkey!)) ||
+        (skill.on_chain_address
+          ? await hasOnChainPurchase(
+              verification.pubkey!,
+              skill.on_chain_address
+            )
+          : false);
     if (alreadyPurchased) {
       return NextResponse.json(
-        { error: "This wallet already has access to the skill" },
+        {
+          error: accountCheckout
+            ? "This account already has access to the skill"
+            : "This wallet already has access to the skill",
+        },
         { status: 409 }
       );
     }
@@ -206,7 +233,9 @@ export async function POST(req: NextRequest) {
     const session = await createCheckoutSession({
       skillDbId: skill.id,
       skillName: skill.name,
-      buyerPubkey: verification.pubkey,
+      buyer: accountCheckout
+        ? { kind: "account", accountId: buyerSession!.accountId }
+        : { kind: "wallet", pubkey: verification.pubkey! },
       amountUsdcMicros: micros.toString(),
       amountUsdCents,
       successUrl: `${base}/skills/${skill.id}?stripe=success`,

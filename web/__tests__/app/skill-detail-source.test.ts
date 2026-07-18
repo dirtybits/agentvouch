@@ -3,6 +3,24 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 describe("skill detail source", () => {
+  it("passes card-access rollout state through both skill routes", () => {
+    const legacyRoute = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      "utf8"
+    );
+    const canonicalRoute = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/[skill]/page.tsx"),
+      "utf8"
+    );
+
+    for (const source of [legacyRoute, canonicalRoute]) {
+      expect(source).toContain("isBuyerCardAccessUiEnabled");
+      expect(source).toContain(
+        "buyerCardAccessEnabled={isBuyerCardAccessUiEnabled()}"
+      );
+    }
+  });
+
   it("shows USDC price, receipt rent, and preflight warnings", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
@@ -57,6 +75,18 @@ describe("skill detail source", () => {
     );
     expect(source).toContain('stripeCheckoutStatus === "success"');
     expect(source).toContain("/api/stripe/checkout");
+    expect(source).toContain("buyerCardAccessEnabled");
+    expect(source).toContain("buyerAccountHasAccess");
+    expect(source).toContain("/api/account/access-grants/");
+    expect(source).toContain("accountCanAuthorizeStripeCheckout");
+    expect(source).toMatch(
+      /!\(\s*stripeCheckoutAvailable && canAuthorizeStripeCheckout\s*\)/
+    );
+    expect(source).toContain("Account download complete.");
+    expect(source).toContain("[750, 2_000, 5_000]");
+    expect(source).toContain("BuyerAccountSessionObserver");
+    expect(source).toContain("const { isLoaded, isSignedIn } = useAuth()");
+    expect(source).toContain("[buyerAuthSignedIn, refreshBuyerAccountAccess]");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });
@@ -81,7 +111,7 @@ describe("skill detail source", () => {
     );
 
     expect(source).toContain(
-      "Repo-backed listings stay pinned to the canonical raw"
+      "Repo-backed listings stay pinned to the canonical"
     );
     expect(source).toContain("endpoint.");
     expect(source).toContain("Publish New Version");
