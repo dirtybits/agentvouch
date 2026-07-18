@@ -3,6 +3,24 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 describe("skill detail source", () => {
+  it("passes card-access rollout state through both skill routes", () => {
+    const legacyRoute = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/page.tsx"),
+      "utf8"
+    );
+    const canonicalRoute = fs.readFileSync(
+      path.join(process.cwd(), "app/skills/[id]/[skill]/page.tsx"),
+      "utf8"
+    );
+
+    for (const source of [legacyRoute, canonicalRoute]) {
+      expect(source).toContain("isBuyerCardAccessUiEnabled");
+      expect(source).toContain(
+        "buyerCardAccessEnabled={isBuyerCardAccessUiEnabled()}"
+      );
+    }
+  });
+
   it("shows USDC price, receipt rent, and preflight warnings", () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), "app/skills/[id]/SkillDetailClient.tsx"),
