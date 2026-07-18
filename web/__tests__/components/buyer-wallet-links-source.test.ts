@@ -23,4 +23,11 @@ describe("buyer wallet link client wiring", () => {
     expect(source).toContain("setPendingTarget(target)");
     expect(source).toContain("void linkConnectedWallet()");
   });
+
+  it("shows the connected wallet as linked instead of repeating verification", () => {
+    expect(source).toContain("normalizeChainAddressForStorage");
+    expect(source).toContain("currentWalletLinked");
+    expect(source).toContain('"Current wallet linked"');
+    expect(source).toContain("currentWalletLinked ||");
+  });
 });

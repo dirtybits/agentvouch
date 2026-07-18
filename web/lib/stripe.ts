@@ -12,6 +12,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const STRIPE_PAYMENT_FLOW = "stripe-mpp-offchain";
+export const STRIPE_ACCOUNT_PAYMENT_FLOW = "stripe-account-access";
 
 // Sentinels stored in chain-shaped receipt columns (see Obstacle 2 in the
 // feasibility note). These are placeholders, not real on-chain references.
@@ -100,11 +101,13 @@ export const STRIPE_MIN_CHARGE_USD_CENTS = 50;
 export type CreateCheckoutSessionInput = {
   skillDbId: string;
   skillName: string;
-  buyerPubkey: string;
   amountUsdcMicros: string;
   amountUsdCents: number;
   successUrl: string;
   cancelUrl: string;
+  buyer:
+    | { kind: "wallet"; pubkey: string }
+    | { kind: "account"; accountId: string };
   // Optional: a buyer-supplied email so Stripe can create/attach a customer.
   customerEmail?: string;
 };
@@ -122,20 +125,36 @@ export async function createCheckoutSession(
   const config = getStripeConfig();
   if (!config) throw new Error("Stripe is not configured");
 
+  const paymentFlow =
+    input.buyer.kind === "account"
+      ? STRIPE_ACCOUNT_PAYMENT_FLOW
+      : STRIPE_PAYMENT_FLOW;
+  const metadata: Record<string, string> = {
+    skill_db_id: input.skillDbId,
+    price_usdc_micros: input.amountUsdcMicros,
+    payment_flow: paymentFlow,
+    ...(input.buyer.kind === "account"
+      ? { buyer_account_id: input.buyer.accountId }
+      : { buyer_pubkey: input.buyer.pubkey }),
+  };
+
   const params: Record<string, string> = {
     mode: "payment",
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     client_reference_id: input.skillDbId,
-    "metadata[skill_db_id]": input.skillDbId,
-    "metadata[buyer_pubkey]": input.buyerPubkey,
-    "metadata[price_usdc_micros]": input.amountUsdcMicros,
-    "metadata[payment_flow]": STRIPE_PAYMENT_FLOW,
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": String(input.amountUsdCents),
     "line_items[0][price_data][product_data][name]": input.skillName,
   };
+  for (const [key, value] of Object.entries(metadata)) {
+    params[`metadata[${key}]`] = value;
+    // Charge refund/dispute events do not carry Checkout Session metadata.
+    // Copy the opaque identifiers onto the PaymentIntent so terminal events
+    // can revoke (or tombstone) the exact account grant before completion.
+    params[`payment_intent_data[metadata][${key}]`] = value;
+  }
   if (input.customerEmail) {
     params["customer_email"] = input.customerEmail;
   }

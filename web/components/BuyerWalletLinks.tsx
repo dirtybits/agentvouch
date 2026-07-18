@@ -13,7 +13,10 @@ import {
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import { getChainDisplayLabel } from "@/lib/chains";
-import { shortenChainAddress } from "@/lib/chainAddress";
+import {
+  normalizeChainAddressForStorage,
+  shortenChainAddress,
+} from "@/lib/chainAddress";
 import {
   BASE_PASSKEY_WALLET_NAME,
   BASE_PASSKEY_WALLET_SOURCE,
@@ -165,6 +168,19 @@ export function BuyerWalletLinks() {
     [chain.source]
   );
 
+  const currentWalletLinked = Boolean(
+    wallet &&
+      links.some(
+        (link) =>
+          link.chainContext === wallet.chainContext &&
+          link.normalizedAddress ===
+            normalizeChainAddressForStorage({
+              chainContext: wallet.chainContext,
+              value: wallet.address,
+            })
+      )
+  );
+
   const connectAndLink = useCallback(
     async (target: ConnectTarget) => {
       setMessage(null);
@@ -286,10 +302,17 @@ export function BuyerWalletLinks() {
         <button
           type="button"
           onClick={() => void linkConnectedWallet()}
-          disabled={linking || !!connectingTarget || !!pendingTarget}
+          disabled={
+            currentWalletLinked ||
+            linking ||
+            !!connectingTarget ||
+            !!pendingTarget
+          }
           className={navButtonPrimaryInlineClass}
         >
-          {linking
+          {currentWalletLinked
+            ? "Current wallet linked"
+            : linking
             ? "Linking…"
             : `Link current ${getChainDisplayLabel(
                 wallet.chainContext
@@ -306,6 +329,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("phantom")}
             disabled={
+              (targetIsConnected("phantom") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
               !!pendingTarget ||
@@ -313,7 +337,9 @@ export function BuyerWalletLinks() {
             }
             className={navButtonSecondaryInlineClass}
           >
-            {connectingTarget === "phantom"
+            {targetIsConnected("phantom") && currentWalletLinked
+              ? `${PHANTOM_LEGACY_WALLET_NAME} linked`
+              : connectingTarget === "phantom"
               ? "Connecting Phantom…"
               : targetIsConnected("phantom")
               ? `Link ${PHANTOM_LEGACY_WALLET_NAME}`
@@ -323,6 +349,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("base-passkey")}
             disabled={
+              (targetIsConnected("base-passkey") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
               !!pendingTarget ||
@@ -330,7 +357,9 @@ export function BuyerWalletLinks() {
             }
             className={navButtonSecondaryInlineClass}
           >
-            {connectingTarget === "base-passkey"
+            {targetIsConnected("base-passkey") && currentWalletLinked
+              ? `${BASE_PASSKEY_WALLET_NAME} linked`
+              : connectingTarget === "base-passkey"
               ? "Opening passkey…"
               : targetIsConnected("base-passkey")
               ? `Link ${BASE_PASSKEY_WALLET_NAME}`
@@ -340,6 +369,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("base-injected")}
             disabled={
+              (targetIsConnected("base-injected") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
               !!pendingTarget ||
@@ -348,7 +378,9 @@ export function BuyerWalletLinks() {
             }
             className={navButtonSecondaryInlineClass}
           >
-            {connectingTarget === "base-injected"
+            {targetIsConnected("base-injected") && currentWalletLinked
+              ? `${BASE_INJECTED_WALLET_NAME} linked`
+              : connectingTarget === "base-injected"
               ? "Opening MetaMask…"
               : targetIsConnected("base-injected")
               ? `Link ${BASE_INJECTED_WALLET_NAME}`

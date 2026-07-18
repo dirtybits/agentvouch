@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getBuyerAuthConfiguration,
+  isBuyerCardAccessServerEnabled,
+  isBuyerCardAccessUiEnabled,
   isBuyerAuthServerEnabled,
   isBuyerAuthUiEnabled,
 } from "@/lib/buyerAuthConfig";
@@ -10,6 +12,8 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_AGENTVOUCH_BUYER_AUTH_ENABLED",
   "CLERK_SECRET_KEY",
   "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+  "AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED",
+  "NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED",
 ] as const;
 
 afterEach(() => {
@@ -43,5 +47,22 @@ describe("buyer auth configuration", () => {
     process.env.NEXT_PUBLIC_AGENTVOUCH_BUYER_AUTH_ENABLED = "TRUE";
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_example";
     expect(isBuyerAuthUiEnabled()).toBe(true);
+  });
+
+  it("gates account card access separately from buyer authentication", () => {
+    process.env.AGENTVOUCH_BUYER_AUTH_ENABLED = "true";
+    process.env.NEXT_PUBLIC_AGENTVOUCH_BUYER_AUTH_ENABLED = "true";
+    process.env.CLERK_SECRET_KEY = "sk_test_example";
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_example";
+
+    expect(isBuyerCardAccessServerEnabled()).toBe(false);
+    expect(isBuyerCardAccessUiEnabled()).toBe(false);
+
+    process.env.AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED = "true";
+    expect(isBuyerCardAccessServerEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED = "true";
+    expect(isBuyerCardAccessServerEnabled()).toBe(true);
+    expect(isBuyerCardAccessUiEnabled()).toBe(true);
   });
 });

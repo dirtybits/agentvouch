@@ -63,6 +63,9 @@ import {
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import type { SkillFileManifestEntry } from "@/lib/skillStorage";
 import { isEvmShapedAddress } from "@/lib/chainAddress";
+import { getBuyerSession } from "@/lib/buyerSession";
+import { isBuyerCardAccessServerEnabled } from "@/lib/buyerAuthConfig";
+import { hasActiveMarketplaceAccessGrant } from "@/lib/buyerAccessGrants";
 
 const CHAIN_PREFIX = "chain-";
 const TOKEN_PROGRAM_ID = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -1185,6 +1188,21 @@ export async function resolveSkillAccess(
   }
 
   const skill = rows[0];
+
+  // Account-scoped Stripe access is an independent off-chain authorization
+  // path. It never fabricates a wallet identity or a Base/Solana protocol
+  // receipt, and disabling the separate card-access flag removes this path
+  // without affecting wallet entitlements or x402 settlement.
+  if (isBuyerCardAccessServerEnabled()) {
+    const buyerSession = await getBuyerSession(request);
+    if (
+      buyerSession &&
+      (await hasActiveMarketplaceAccessGrant(buyerSession.accountId, id))
+    ) {
+      return accessGranted(skill);
+    }
+  }
+
   let onChainPriceResolved = false;
   if (skill.on_chain_address && !normalizeUsdcMicros(skill.price_usdc_micros)) {
     const listing = await getOnChainUsdcPrice(skill.on_chain_address);

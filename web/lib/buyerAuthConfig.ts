@@ -37,3 +37,23 @@ export function isBuyerAuthUiEnabled() {
     Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim())
   );
 }
+
+/**
+ * Account-scoped card access is a separate rollout boundary from buyer auth.
+ * Both server and public flags must agree so SSR, hydration, checkout, webhook
+ * fulfillment, and raw access fail closed together.
+ */
+export function isBuyerCardAccessServerEnabled() {
+  return (
+    isBuyerAuthServerEnabled() &&
+    enabled(process.env.AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED) &&
+    enabled(process.env.NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED)
+  );
+}
+
+export function isBuyerCardAccessUiEnabled() {
+  return (
+    isBuyerAuthUiEnabled() &&
+    enabled(process.env.NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED)
+  );
+}

@@ -57,6 +57,11 @@ describe("skill detail source", () => {
     );
     expect(source).toContain('stripeCheckoutStatus === "success"');
     expect(source).toContain("/api/stripe/checkout");
+    expect(source).toContain("buyerCardAccessEnabled");
+    expect(source).toContain("buyerAccountHasAccess");
+    expect(source).toContain("/api/account/access-grants/");
+    expect(source).toContain("accountCanAuthorizeStripeCheckout");
+    expect(source).toContain("Account download complete.");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");
   });

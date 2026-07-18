@@ -19,13 +19,13 @@ todos:
     status: in_progress
   - id: issue-card-access-grants
     content: Attach an opaque buyer account id to Stripe Checkout metadata and grant or revoke account-scoped marketplace access from verified webhook outcomes.
-    status: pending
+    status: completed
   - id: enforce-raw-access-grants
     content: Extend raw-download authorization to accept a valid buyer-session access grant while preserving wallet entitlements and Base protocol purchase verification.
-    status: pending
+    status: completed
   - id: separate-protocol-and-card-signals
     content: Keep card grants out of Base purchase ids, protocol receipts, author proceeds, voucher rewards, dispute records, and protocol activity metrics.
-    status: pending
+    status: completed
   - id: verify-walletless-base-sepolia
     content: Run the full web gate and browser/API smokes for Google, email, linked-wallet, refund, non-buyer rejection, and Base Sepolia protocol regressions.
     status: pending
@@ -193,6 +193,8 @@ Required behavioral checks:
 
 ## Dated Progress Notes
 
+- **2026-07-17:** Account-scoped card access implementation is locally complete behind `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` plus `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED`. Checkout prefers an authenticated opaque buyer account with same-origin enforcement, copies account/skill identifiers to Checkout Session and PaymentIntent metadata, and permits Base Sepolia only through a separate `marketplace_access_grants` row. Webhook completion never writes a protocol/wallet receipt for this flow; refund/dispute creates a revoked tombstone so replay cannot restore access. `resolveSkillAccess` accepts only an active grant owned by an active account, while anonymous and different-account requests continue to `402`. The existing wallet-bound Stripe path remains covered. Full local verification passed: format, lint, typecheck, 119 Vitest files / 762 tests, chain-map verification, and the webpack production build. The build logged expected sandbox DNS fallbacks plus the existing viem dynamic-dependency warning but completed successfully. Preview deployment and live card/download/refund smoke remain under `verify-walletless-base-sepolia`; Base mainnet remains blocked.
+- **2026-07-17:** User approved implementing the linked-wallet state, account-scoped Stripe fulfillment/revocation, and signed-in raw-download path as one slice. Work remains preview-only behind separate buyer-auth/card-access flags; wallet-bound Stripe compatibility is preserved, Base Sepolia card access stays an off-chain marketplace grant, and Base mainnet remains blocked.
 - **2026-07-17:** Manual account-page verification exposed two client regressions before wallet-linking could be called complete. Clerk `useReverification` decodes a returned `Response`, but the caller treated the decoded challenge object as another `Response` and called `.json()` (`e.json is not a function`). Separately, an explicit Phantom selection could race the automatic Base passkey restore and leave the default Base Sepolia session active. The wallet-linking todo was reopened for a decoded-payload fix, explicit connect-and-link account actions, stale Base-restore invalidation, regression coverage, and a repeat live signature smoke. Base mainnet remains blocked.
 - **2026-07-17:** The local regression fix now decodes the challenge inside Clerk's enhanced fetcher, validates the returned payload before signing, exposes explicit account-page `Connect & link` actions for Phantom, Coinbase Smart Wallet, and MetaMask, and invalidates in-flight Base passkey restoration before Solana connection starts. Focused coverage passed (15 tests); the full gate passed with format, lint, typecheck, 118 Vitest files / 750 tests, chain-map verification, and the webpack production build. The build's static data fetches logged expected sandbox DNS fallbacks but completed successfully. Live Phantom/Base signature confirmation remains required before returning `implement-wallet-linking` to completed.
 

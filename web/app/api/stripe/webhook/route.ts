@@ -17,6 +17,7 @@ import {
   recordRevocableUsdcPurchaseReceipt,
 } from "@/lib/usdcPurchases";
 import {
+  STRIPE_ACCOUNT_PAYMENT_FLOW,
   STRIPE_CURRENCY_SENTINEL,
   STRIPE_PAYMENT_FLOW,
   STRIPE_RECIPIENT_SENTINEL,
@@ -24,6 +25,11 @@ import {
   usdcMicrosToUsdCents,
   verifyAndParseWebhook,
 } from "@/lib/stripe";
+import {
+  recordStripeMarketplaceAccessGrant,
+  revokeStripeMarketplaceAccessGrant,
+  revokeStripeMarketplaceAccessGrantsByPaymentReference,
+} from "@/lib/buyerAccessGrants";
 import { getErrorMessage } from "@/lib/errors";
 import {
   recordStripeWebhookOutcome,
@@ -50,7 +56,15 @@ type RefundOrDisputeObject = {
   payment_intent?: string | null;
   refunded?: boolean | null;
   amount_refunded?: number | null;
+  metadata?: Record<string, string> | null;
 };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null): value is string {
+  return Boolean(value && UUID_PATTERN.test(value));
+}
 
 function stripePaymentRef(paymentIntent: string | null | undefined) {
   return paymentIntent ? `stripe:${paymentIntent}`.slice(0, 128) : null;
@@ -143,8 +157,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Refunds and chargebacks revoke the wallet-bound entitlement the payment
-  // minted. Partial refunds are logged but do not revoke.
+  // Refunds and chargebacks revoke both legacy wallet entitlements and the
+  // newer account-scoped grant. Partial refunds are reviewed but do not revoke.
   if (
     event.type === "charge.refunded" ||
     event.type === "charge.dispute.created"
@@ -184,16 +198,42 @@ export async function POST(req: NextRequest) {
       await initializeDatabase();
       const reason =
         event.type === "charge.refunded" ? "stripe-refund" : "stripe-dispute";
-      const revoked = await recordAndApplyUsdcPaymentRevocation(
+      const walletRevoked = await recordAndApplyUsdcPaymentRevocation(
         paymentRef,
         reason
       );
-      for (const row of revoked) {
+      const accountId = metadataString(object.metadata, "buyer_account_id");
+      const skillDbId = metadataString(object.metadata, "skill_db_id");
+      const paymentFlow = metadataString(object.metadata, "payment_flow");
+      let accountRevoked = 0;
+      if (
+        paymentFlow === STRIPE_ACCOUNT_PAYMENT_FLOW &&
+        isUuid(accountId) &&
+        isUuid(skillDbId)
+      ) {
+        await revokeStripeMarketplaceAccessGrant({
+          accountId,
+          skillDbId,
+          paymentRef,
+          reason,
+        });
+        accountRevoked = 1;
+      } else {
+        accountRevoked = (
+          await revokeStripeMarketplaceAccessGrantsByPaymentReference(
+            paymentRef,
+            reason
+          )
+        ).length;
+      }
+
+      for (const row of walletRevoked) {
         console.warn(
           `Stripe ${reason}: revoked entitlement skill=${row.skill_db_id} buyer=${row.buyer_pubkey} ref=${paymentRef}`
         );
       }
-      if (revoked.length === 0) {
+      const totalRevoked = walletRevoked.length + accountRevoked;
+      if (totalRevoked === 0) {
         console.warn(
           `Stripe ${reason} on ${paymentRef}: no live entitlement matched (already revoked, superseded by a newer purchase, or never minted) — reconcile manually.`
         );
@@ -204,15 +244,20 @@ export async function POST(req: NextRequest) {
           eventType: event.type,
           objectId: object.id,
           paymentRef,
-          outcome: revoked.length > 0 ? "revoked" : "needs-review",
+          skillDbId: isUuid(skillDbId) ? skillDbId : null,
+          buyerKey: isUuid(accountId) ? accountId : null,
+          outcome: totalRevoked > 0 ? "revoked" : "needs-review",
           reason:
-            revoked.length > 0
+            totalRevoked > 0
               ? reason
               : `${reason}: no live entitlement matched`,
-          needsReview: revoked.length === 0,
-          details: { revokedEntitlements: revoked.length },
+          needsReview: totalRevoked === 0,
+          details: {
+            revokedWalletEntitlements: walletRevoked.length,
+            revokedAccountGrants: accountRevoked,
+          },
         },
-        NextResponse.json({ received: true, revoked: revoked.length })
+        NextResponse.json({ received: true, revoked: totalRevoked })
       );
     } catch (error) {
       return NextResponse.json(
@@ -235,13 +280,18 @@ export async function POST(req: NextRequest) {
     metadataString(session.metadata, "skill_db_id") ||
     session.client_reference_id?.trim();
   const buyerPubkey = metadataString(session.metadata, "buyer_pubkey");
+  const buyerAccountId = metadataString(session.metadata, "buyer_account_id");
   const checkoutPriceMicros = metadataString(
     session.metadata,
     "price_usdc_micros"
   );
   const paymentFlow = metadataString(session.metadata, "payment_flow");
 
-  if (paymentFlow !== STRIPE_PAYMENT_FLOW) {
+  const accountPayment = paymentFlow === STRIPE_ACCOUNT_PAYMENT_FLOW;
+  const walletPayment = paymentFlow === STRIPE_PAYMENT_FLOW;
+  const buyerKey = accountPayment ? buyerAccountId : buyerPubkey;
+
+  if (!accountPayment && !walletPayment) {
     // Not a session this app created (e.g. dashboard-created session on a
     // shared Stripe account). Never fulfillable here.
     return await ackUnprocessable({
@@ -251,15 +301,29 @@ export async function POST(req: NextRequest) {
       reason: "payment_flow is not an AgentVouch Stripe payment",
     });
   }
-  if (!skillDbId || !buyerPubkey || !checkoutPriceMicros) {
+  if (
+    !skillDbId ||
+    !checkoutPriceMicros ||
+    (accountPayment ? !buyerAccountId : !buyerPubkey)
+  ) {
     return await ackUnprocessable({
       eventId: event.id,
       eventType: event.type,
       objectId: session.id,
       skillDbId,
-      buyerKey: buyerPubkey,
+      buyerKey,
       reason:
-        "missing skill_db_id, buyer_pubkey, or price_usdc_micros metadata",
+        "missing skill_db_id, buyer identity, or price_usdc_micros metadata",
+    });
+  }
+  if (!isUuid(skillDbId) || (accountPayment && !isUuid(buyerAccountId))) {
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey,
+      reason: "skill_db_id or buyer_account_id metadata is invalid",
     });
   }
   if (session.mode !== "payment") {
@@ -268,7 +332,7 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       objectId: session.id,
       skillDbId,
-      buyerKey: buyerPubkey,
+      buyerKey,
       reason: "session is not a one-time payment",
     });
   }
@@ -287,7 +351,7 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       objectId: session.id,
       skillDbId,
-      buyerKey: buyerPubkey,
+      buyerKey,
       reason: "session currency is not USD",
     });
   }
@@ -301,7 +365,7 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       objectId: session.id,
       skillDbId,
-      buyerKey: buyerPubkey,
+      buyerKey,
       reason: "price_usdc_micros is invalid",
     });
   }
@@ -311,7 +375,7 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       objectId: session.id,
       skillDbId,
-      buyerKey: buyerPubkey,
+      buyerKey,
       reason: "price_usdc_micros must be positive",
     });
   }
@@ -324,7 +388,7 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       objectId: session.id,
       skillDbId,
-      buyerKey: buyerPubkey,
+      buyerKey,
       reason: "charged amount does not match checkout metadata price",
     });
   }
@@ -332,10 +396,9 @@ export async function POST(req: NextRequest) {
   try {
     await initializeDatabase();
 
-    // Re-read to ensure the skill still exists and has not become a Base
-    // protocol listing since checkout creation. Fulfillment uses the
-    // checkout-time amount stored in Stripe metadata, so price changes do not
-    // strand paid buyers.
+    // Re-read the durable skill id. Checkout-time amount metadata is still the
+    // fulfillment amount, so a later listing price change cannot strand a paid
+    // buyer.
     const rows = await sql()<{
       id: string;
       evm_listing_id: string | null;
@@ -351,23 +414,21 @@ export async function POST(req: NextRequest) {
         eventType: event.type,
         objectId: session.id,
         skillDbId,
-        buyerKey: buyerPubkey,
+        buyerKey,
         reason: "skill no longer exists",
       });
     }
-    if (rows[0].evm_listing_id) {
+    if (rows[0].evm_listing_id && walletPayment) {
       return await ackUnprocessable({
         eventId: event.id,
         eventType: event.type,
         objectId: session.id,
         skillDbId,
-        buyerKey: buyerPubkey,
+        buyerKey,
         reason: "card checkout is unavailable for Base protocol listings",
       });
     }
 
-    // Stripe payment reference + wallet buyer identity from checkout metadata.
-    // `payment_tx_signature` is UNIQUE, giving us idempotency on retries.
     const paymentRef = stripePaymentRef(session.payment_intent);
     if (!paymentRef) {
       return await ackUnprocessable({
@@ -375,9 +436,52 @@ export async function POST(req: NextRequest) {
         eventType: event.type,
         objectId: session.id,
         skillDbId,
-        buyerKey: buyerPubkey,
+        buyerKey,
         reason: "paid session without payment_intent",
       });
+    }
+
+    if (accountPayment) {
+      const status = await recordStripeMarketplaceAccessGrant({
+        accountId: buyerAccountId!,
+        skillDbId,
+        paymentRef,
+      });
+      if (status !== "active") {
+        return await ackUnprocessable({
+          eventId: event.id,
+          eventType: event.type,
+          objectId: session.id,
+          paymentRef,
+          skillDbId,
+          buyerKey: buyerAccountId,
+          reason:
+            "payment was refunded or disputed; account grant stays revoked",
+          needsReview: false,
+        });
+      }
+
+      // This is deliberately not a protocol purchase receipt. It does not
+      // enter Base/Solana purchase ids, author proceeds, voucher rewards,
+      // dispute records, or chain-derived activity metrics.
+      return await recordOutcomeOrRetry(
+        {
+          eventId: event.id,
+          eventType: event.type,
+          objectId: session.id,
+          paymentRef,
+          skillDbId,
+          buyerKey: buyerAccountId,
+          outcome: "fulfilled",
+          reason: "account-scoped marketplace access grant recorded",
+          needsReview: false,
+          details: { protocolReceiptRecorded: false },
+        },
+        NextResponse.json({
+          received: true,
+          grantedAccount: buyerAccountId,
+        })
+      );
     }
 
     // The entitlement upsert is last-receipt-wins: letting a Stripe receipt
@@ -388,7 +492,7 @@ export async function POST(req: NextRequest) {
     // the same payment; only a genuinely new payment re-mints.
     const entitlement = await getUsdcPurchaseEntitlementStatus(
       skillDbId,
-      buyerPubkey
+      buyerPubkey!
     );
     if (
       entitlement.revoked &&
@@ -400,7 +504,7 @@ export async function POST(req: NextRequest) {
         objectId: session.id,
         paymentRef,
         skillDbId,
-        buyerKey: buyerPubkey,
+        buyerKey: buyerPubkey!,
         reason: "payment was refunded or disputed; entitlement stays revoked",
         needsReview: false,
       });
@@ -408,7 +512,7 @@ export async function POST(req: NextRequest) {
 
     const recorded = await recordRevocableUsdcPurchaseReceipt({
       skillDbId,
-      buyerPubkey,
+      buyerPubkey: buyerPubkey!,
       paymentTxSignature: paymentRef,
       recipientAta: STRIPE_RECIPIENT_SENTINEL,
       currencyMint: STRIPE_CURRENCY_SENTINEL,
@@ -422,7 +526,7 @@ export async function POST(req: NextRequest) {
         objectId: session.id,
         paymentRef,
         skillDbId,
-        buyerKey: buyerPubkey,
+        buyerKey: buyerPubkey!,
         reason: "payment was refunded or disputed; entitlement stays revoked",
         needsReview: false,
       });
@@ -435,7 +539,7 @@ export async function POST(req: NextRequest) {
         objectId: session.id,
         paymentRef,
         skillDbId,
-        buyerKey: buyerPubkey,
+        buyerKey: buyerPubkey!,
         outcome: "fulfilled",
         reason: "wallet-bound entitlement recorded",
         needsReview: false,
@@ -445,7 +549,7 @@ export async function POST(req: NextRequest) {
       },
       NextResponse.json({
         received: true,
-        entitled: buyerPubkey,
+        entitled: buyerPubkey!,
         alreadyEntitled: entitlement.exists && !entitlement.revoked,
       })
     );
