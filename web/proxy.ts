@@ -6,9 +6,10 @@ import {
 } from "next/server";
 import { isBuyerAuthServerEnabled } from "@/lib/buyerAuthConfig";
 
-const buyerAuthMiddleware = clerkMiddleware({
-  frontendApiProxy: { enabled: true },
-});
+// Development Clerk instances must call their accounts.dev Frontend API
+// directly. Clerk's Frontend API proxy is production-only and returns
+// `host_invalid` when used with the development keys used by Vercel previews.
+const buyerAuthMiddleware = clerkMiddleware();
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
   if (!isBuyerAuthServerEnabled()) return NextResponse.next();
