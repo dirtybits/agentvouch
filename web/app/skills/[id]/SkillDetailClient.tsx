@@ -541,10 +541,19 @@ export default function SkillDetailPage({
   }, [buyerCardAccessEnabled, id]);
 
   useEffect(() => {
-    void refreshBuyerAccountAccess().catch(() => {
-      setBuyerAccountAuthenticated(false);
-      setBuyerAccountHasAccess(false);
-    });
+    const refresh = () =>
+      void refreshBuyerAccountAccess().catch(() => {
+        setBuyerAccountAuthenticated(false);
+        setBuyerAccountHasAccess(false);
+      });
+    refresh();
+    // Clerk's development-browser handshake can finish after the first client
+    // render. Retry a bounded number of times so an already signed-in buyer is
+    // not incorrectly offered only the wallet-bound checkout path.
+    const timers = [750, 2_000, 5_000].map((delay) =>
+      window.setTimeout(refresh, delay)
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [refreshBuyerAccountAccess]);
 
   useEffect(() => {
