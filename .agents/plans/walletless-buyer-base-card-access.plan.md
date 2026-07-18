@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: implement-wallet-linking
     content: Let an authenticated buyer link Solana and Base addresses using chain-specific signed ownership challenges without synthesizing wallet addresses from email.
-    status: completed
+    status: in_progress
   - id: issue-card-access-grants
     content: Attach an opaque buyer account id to Stripe Checkout metadata and grant or revoke account-scoped marketplace access from verified webhook outcomes.
     status: pending
@@ -192,6 +192,9 @@ Required behavioral checks:
 - Base Sepolia live regression evidence; Base mainnet remains blocked regardless of this plan's outcome.
 
 ## Dated Progress Notes
+
+- **2026-07-17:** Manual account-page verification exposed two client regressions before wallet-linking could be called complete. Clerk `useReverification` decodes a returned `Response`, but the caller treated the decoded challenge object as another `Response` and called `.json()` (`e.json is not a function`). Separately, an explicit Phantom selection could race the automatic Base passkey restore and leave the default Base Sepolia session active. The wallet-linking todo was reopened for a decoded-payload fix, explicit connect-and-link account actions, stale Base-restore invalidation, regression coverage, and a repeat live signature smoke. Base mainnet remains blocked.
+- **2026-07-17:** The local regression fix now decodes the challenge inside Clerk's enhanced fetcher, validates the returned payload before signing, exposes explicit account-page `Connect & link` actions for Phantom, Coinbase Smart Wallet, and MetaMask, and invalidates in-flight Base passkey restoration before Solana connection starts. Focused coverage passed (15 tests); the full gate passed with format, lint, typecheck, 118 Vitest files / 750 tests, chain-map verification, and the webpack production build. The build's static data fetches logged expected sandbox DNS fallbacks but completed successfully. Live Phantom/Base signature confirmation remains required before returning `implement-wallet-linking` to completed.
 
 - **2026-07-16:** PR #109 merged as `2b088b23` after the exact head passed GitHub `test`, `contracts`, and Vercel checks. This branch was rebased onto that merge, so the Stripe activation, webhook reconciliation, monitoring, and refund-revocation implementation are inherited rather than duplicated.
 - **2026-07-16:** Current official provider documentation was re-checked. Clerk is the provisional recommendation for Google plus passwordless email-code auth; dependency installation remains blocked on explicit human approval.
