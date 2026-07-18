@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { auth } from "@clerk/nextjs/server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@clerk/nextjs/server", () => ({
@@ -11,8 +12,11 @@ vi.mock("@/lib/buyerAccounts", () => ({
 
 import {
   buildBuyerSessionFromClerkAuth,
+  hasFreshBuyerReverification,
   isSameOriginMutation,
 } from "@/lib/buyerSession";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("buyer session boundary", () => {
   it("maps the stable provider subject to an opaque active account", async () => {
@@ -85,5 +89,20 @@ describe("buyer session boundary", () => {
         new Request("https://agentvouch.xyz/api/auth/buyer/logout")
       )
     ).toBe(false);
+  });
+
+  it("uses Clerk's strict factor-verification age for sensitive mutations", async () => {
+    vi.stubEnv("AGENTVOUCH_BUYER_AUTH_ENABLED", "true");
+    vi.stubEnv("NEXT_PUBLIC_AGENTVOUCH_BUYER_AUTH_ENABLED", "true");
+    vi.stubEnv("CLERK_SECRET_KEY", "sk_test_example");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_example");
+    const has = vi.fn().mockReturnValue(true);
+    vi.mocked(auth).mockResolvedValue({
+      userId: "user_2abc",
+      sessionId: "sess_2abc",
+      has,
+    } as never);
+    await expect(hasFreshBuyerReverification()).resolves.toBe(true);
+    expect(has).toHaveBeenCalledWith({ reverification: "strict" });
   });
 });

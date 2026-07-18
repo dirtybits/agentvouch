@@ -37,6 +37,19 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     "created_at",
     "updated_at",
   ],
+  buyer_wallet_link_challenges: [
+    "id",
+    "buyer_account_id",
+    "session_id",
+    "chain_context",
+    "normalized_address",
+    "challenge_version",
+    "message",
+    "issued_at",
+    "expires_at",
+    "consumed_at",
+    "created_at",
+  ],
   marketplace_access_grants: [
     "id",
     "buyer_account_id",
@@ -63,6 +76,10 @@ const EXPECTED_CONSTRAINTS: Record<string, string[]> = {
     "buyer_wallet_links_pkey",
     "buyer_wallet_links_account_fkey",
     "buyer_wallet_links_chain_address_unique",
+  ],
+  buyer_wallet_link_challenges: [
+    "buyer_wallet_link_challenges_pkey",
+    "buyer_wallet_link_challenges_account_fkey",
   ],
   marketplace_access_grants: [
     "marketplace_access_grants_pkey",
@@ -114,6 +131,7 @@ async function inspectSchema(db: Db) {
         ('buyer_accounts'),
         ('buyer_identity_links'),
         ('buyer_wallet_links'),
+        ('buyer_wallet_link_challenges'),
         ('marketplace_access_grants')
     ) AS tables(table_name)
     LEFT JOIN information_schema.columns AS columns
@@ -283,6 +301,23 @@ async function migrate(db: Db): Promise<void> {
       )
     `,
     txn`
+      CREATE TABLE IF NOT EXISTS buyer_wallet_link_challenges (
+        id UUID CONSTRAINT buyer_wallet_link_challenges_pkey PRIMARY KEY,
+        buyer_account_id UUID NOT NULL
+          CONSTRAINT buyer_wallet_link_challenges_account_fkey
+          REFERENCES buyer_accounts(id) ON DELETE RESTRICT,
+        session_id VARCHAR(255) NOT NULL,
+        chain_context VARCHAR(64) NOT NULL,
+        normalized_address VARCHAR(128) NOT NULL,
+        challenge_version INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        issued_at TIMESTAMPTZ NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    txn`
       CREATE TABLE IF NOT EXISTS marketplace_access_grants (
         id UUID CONSTRAINT marketplace_access_grants_pkey PRIMARY KEY DEFAULT gen_random_uuid(),
         buyer_account_id UUID NOT NULL
@@ -312,6 +347,11 @@ async function migrate(db: Db): Promise<void> {
     txn`
       CREATE INDEX IF NOT EXISTS idx_buyer_wallet_links_account
       ON buyer_wallet_links(buyer_account_id)
+    `,
+    txn`
+      CREATE INDEX IF NOT EXISTS idx_buyer_wallet_link_challenges_active
+      ON buyer_wallet_link_challenges(buyer_account_id, expires_at)
+      WHERE consumed_at IS NULL
     `,
     txn`
       CREATE INDEX IF NOT EXISTS idx_marketplace_access_grants_active_account_skill

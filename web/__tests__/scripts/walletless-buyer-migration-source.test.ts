@@ -24,11 +24,12 @@ describe("walletless buyer migration safety", () => {
     );
   });
 
-  it("creates only the four additive account and grant tables", () => {
+  it("creates only the five additive account, challenge, and grant tables", () => {
     for (const table of [
       "buyer_accounts",
       "buyer_identity_links",
       "buyer_wallet_links",
+      "buyer_wallet_link_challenges",
       "marketplace_access_grants",
     ]) {
       expect(source).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);

@@ -13,6 +13,7 @@ describe("buyer auth navigation control", () => {
     expect(source).toContain("useAuth()");
     expect(source).toContain("if (!isSignedIn)");
     expect(source).toContain('href="/sign-in"');
+    expect(source).toContain('href="/account"');
     expect(source).toContain("<UserButton");
   });
 });

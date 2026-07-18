@@ -77,6 +77,16 @@ export async function getBuyerSession(
   return buildBuyerSessionFromClerkAuth(snapshot);
 }
 
+export async function hasFreshBuyerReverification(): Promise<boolean> {
+  if (!isBuyerAuthServerEnabled()) return false;
+  const snapshot = await auth();
+  return Boolean(
+    snapshot.userId &&
+      snapshot.sessionId &&
+      snapshot.has({ reverification: "strict" })
+  );
+}
+
 export async function revokeCurrentBuyerSession(): Promise<boolean> {
   if (!isBuyerAuthServerEnabled()) return false;
   const snapshot = await auth();

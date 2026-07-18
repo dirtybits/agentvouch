@@ -21,9 +21,14 @@ function EnabledBuyerAuthButton() {
     );
   }
   return (
-    <UserButton
-      appearance={{ elements: { avatarBox: "h-9 w-9" } }}
-      userProfileMode="modal"
-    />
+    <div className="flex items-center gap-2">
+      <Link href="/account" className={navButtonSecondaryInlineClass}>
+        Account
+      </Link>
+      <UserButton
+        appearance={{ elements: { avatarBox: "h-9 w-9" } }}
+        userProfileMode="modal"
+      />
+    </div>
   );
 }

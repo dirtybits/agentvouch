@@ -42,6 +42,7 @@ export function useMarketplaceOracle() {
     signer: activeSigner,
     connectorSigner,
     capabilities,
+    signMessage,
   } = useAgentVouchTransactionSigner();
 
   const walletAddress: Address | null = connected ? (account as Address) : null;
@@ -56,9 +57,10 @@ export function useMarketplaceOracle() {
             walletAddress,
             connectorSigner: connectorSigner ?? null,
             canSignSponsored: capabilities.canSign,
+            signMessage,
           }
         : null,
-    [signer, walletAddress, connectorSigner, capabilities.canSign]
+    [signer, walletAddress, connectorSigner, capabilities.canSign, signMessage]
   );
 
   const getAllSkillListings = useCallback(async () => {
