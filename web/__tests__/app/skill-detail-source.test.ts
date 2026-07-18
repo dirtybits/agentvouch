@@ -79,6 +79,9 @@ describe("skill detail source", () => {
     expect(source).toContain("buyerAccountHasAccess");
     expect(source).toContain("/api/account/access-grants/");
     expect(source).toContain("accountCanAuthorizeStripeCheckout");
+    expect(source).toMatch(
+      /!\(\s*stripeCheckoutAvailable && canAuthorizeStripeCheckout\s*\)/
+    );
     expect(source).toContain("Account download complete.");
     expect(source).toContain("[750, 2_000, 5_000]");
     expect(source).toContain("BuyerAccountSessionObserver");

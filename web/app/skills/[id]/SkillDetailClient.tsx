@@ -2782,7 +2782,11 @@ export default function SkillDetailPage({
                         <FiAlertTriangle className="w-3.5 h-3.5" />
                         Listing setup required
                       </p>
-                    ) : isBaseProtocolSkill && !activeBaseWalletReady ? (
+                    ) : isBaseProtocolSkill &&
+                      !activeBaseWalletReady &&
+                      !(
+                        stripeCheckoutAvailable && canAuthorizeStripeCheckout
+                      ) ? (
                       <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
                         <FiAlertTriangle className="w-3.5 h-3.5" />
                         Connect Base wallet
