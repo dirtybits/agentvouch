@@ -271,6 +271,43 @@ function listingRequired402(skill: RawSkillContentRow, priceMicros: bigint) {
   );
 }
 
+function unsupportedBaseListing402(
+  skill: RawSkillContentRow,
+  priceMicros: bigint,
+  reason: string
+) {
+  return NextResponse.json(
+    {
+      error: "Base listing migration required",
+      message:
+        "This skill is linked to a historical Base contract that cannot accept the current x402 payment flow. Sign in to use account-scoped card checkout, or ask the author to relink the skill to the current Base Sepolia contract.",
+      reason,
+      payment_flow: "base-listing-migration-required",
+      amount_micros: priceMicros.toString(),
+      currency_mint: skill.currency_mint,
+      chain_context: BASE_SEPOLIA_CHAIN_CONTEXT,
+      on_chain_program_id: skill.on_chain_program_id,
+      protocol_version: skill.on_chain_protocol_version,
+      evm_listing_id: skill.evm_listing_id,
+      evm_contract_address: skill.evm_contract_address,
+    },
+    {
+      status: 402,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
+function isUnsupportedBaseListingError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message === "Skill is linked to an unsupported Base contract" ||
+      error.message === "Skill is linked to an unsupported Base USDC asset")
+  );
+}
+
 function isProtocolListedUsdcSkill(
   skill: RawSkillContentRow,
   priceMicros: bigint
@@ -459,12 +496,26 @@ async function handleBaseX402Purchase(input: {
   skill: RawSkillContentRow & BaseX402Skill;
   priceMicros: bigint;
 }): Promise<SkillAccessResult> {
-  let paymentRequired = await buildBasePaymentRequiredBody({
-    request: input.request,
-    skillDbId: input.skillDbId,
-    skill: input.skill,
-    priceMicros: input.priceMicros,
-  });
+  let paymentRequired;
+  try {
+    paymentRequired = await buildBasePaymentRequiredBody({
+      request: input.request,
+      skillDbId: input.skillDbId,
+      skill: input.skill,
+      priceMicros: input.priceMicros,
+    });
+  } catch (error: unknown) {
+    if (isUnsupportedBaseListingError(error)) {
+      return accessDenied(
+        unsupportedBaseListing402(
+          input.skill,
+          input.priceMicros,
+          getErrorMessage(error)
+        )
+      );
+    }
+    throw error;
+  }
 
   const paymentHeader = input.request.headers.get("payment-signature");
   if (!paymentHeader) {

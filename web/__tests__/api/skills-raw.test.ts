@@ -484,6 +484,31 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(mockOnChain).not.toHaveBeenCalled();
   });
 
+  it("returns a structured 402 for a historical Base listing that cannot use the current x402 contract", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([BASE_USDC_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    mockBuildBaseX402Requirement.mockRejectedValueOnce(
+      new Error("Skill is linked to an unsupported Base contract")
+    );
+
+    const { req, params } = makeRequest("uuid-base-usdc");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("PAYMENT-REQUIRED")).toBeNull();
+    const body = await res.json();
+    expect(body).toMatchObject({
+      error: "Base listing migration required",
+      reason: "Skill is linked to an unsupported Base contract",
+      payment_flow: "base-listing-migration-required",
+      amount_micros: "1000000",
+      chain_context: "eip155:84532",
+      evm_listing_id: BASE_USDC_SKILL.evm_listing_id,
+      evm_contract_address: BASE_USDC_SKILL.evm_contract_address,
+    });
+    expect(body.message).toContain("account-scoped card checkout");
+  });
+
   it("serves a Base paid skill to the signed-in account with an active card grant", async () => {
     const dbQuery = vi
       .fn()
