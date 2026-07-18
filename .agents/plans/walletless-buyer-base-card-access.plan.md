@@ -34,13 +34,13 @@ todos:
     status: completed
   - id: reconcile-clerk-deletions
     content: Verify Clerk user lifecycle webhooks and soft-delete the matching opaque buyer account idempotently while retaining payment audit records and denying access.
-    status: in_progress
+    status: completed
   - id: fresh-base-x402-relayer-smoke
     content: Provision a fresh dedicated low-privilege Base Sepolia relayer and prove a new x402 settlement, idempotent replay, chain-qualified receipt, entitlement, and signed download.
-    status: pending
+    status: completed
   - id: publish-walletless-pr
     content: Commit and push the verified lifecycle and regression evidence, open the walletless feature PR, and report its checks without enabling production flags or Base mainnet.
-    status: pending
+    status: in_progress
 isProject: false
 ---
 
@@ -195,13 +195,13 @@ Required behavioral checks:
 
 ## Open Blockers
 
-- Clerk `user.deleted` lifecycle reconciliation is not provisioned on the preview: deleting the disposable Clerk test user removed the provider user but left its opaque `buyer_accounts` row active. Its Stripe grant was already revoked and the deleted provider subject cannot authenticate, but the account-status transition must be implemented and webhook-proven before a wider rollout.
 - Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
-- A fresh Base Sepolia x402 settlement was not broadcast in the final regression because the earlier dedicated relayer secret is no longer locally available. The current contract, anonymous requirement, recorded successful settlement, chain-qualified receipt/entitlement, and fresh signed re-download were all reverified without substituting the deployer as relayer. Base mainnet remains blocked regardless of this plan's outcome.
 
 ## Dated Progress Notes
 
+- **2026-07-17:** Clerk `user.deleted` reconciliation is webhook-proven on isolated Neon branch `br-empty-hat-afcrsu56`. Replacement endpoint deployment `dpl_GnzNv64GYVKd9vmi4ksjU2AMyZyo` reached `READY` after its branch-only signing secret was read directly from that endpoint's revealed field; the stable preview alias moved to it. Deleting disposable Clerk user `user_3GfFmgGCJPvUR4HPqZ9OXrd3Lmn` soft-deleted opaque account `160a89db-9782-4859-999f-d1d0e9bac130`, removed its sole identity link, retained its one synthetic audit grant, and reduced active account access to zero. The initial delivery and explicit single-message replay both returned `200`; after replay the account remained `deleted` with `deleted_at` set, zero identities, one retained grant, and zero active access. The obsolete endpoint was deleted after its mismatched-secret `400` attempts were distinguished from the replacement endpoint's `200` attempts. Failed-smoke artifact account `04cebac1-ac94-483d-9375-7d6649b4c0b9` was cleaned only on the isolated branch to the same deleted/zero-identity/retained-grant state. No production Clerk endpoint, database, feature flag, or Base mainnet surface was enabled.
+- **2026-07-17:** Fresh Base Sepolia x402 settlement passed with a newly generated dedicated relayer `0xd9C9…EE6C`; the deployer was not reused as relayer. Funding transaction `0xfcc57a…6328` transferred `0.001` test ETH, then the relayer submitted settlement `0x3dc21c…7ff0b` at block `44,292,096` with status `1`. The new DB-linked skill is `b98c102e-fc10-4b52-8ab4-f4f688b4a1b0`, listing transaction `0xbb0a75…d5b5a`, listing id `0xc4d957…ab5c`, and purchase id `0xe1e542…ce5c`. At blocks `44,292,095` → `44,292,096`, buyer USDC moved `2,000,000` → `1,000,000` micros, contract USDC moved `10,800,000` → `11,800,000`, and relayer ETH moved `1,000,000,000,000,000` → `997,881,138,149,415` wei. The harness observed anonymous `402`, paid raw `200`, duplicate retry `200` without a second settlement, signed re-download `200`, exactly one append-only chain-qualified receipt, and exactly one entitlement for `1,000,000` micros at revision `1`. The temporary relayer private-key file was destroyed after verification. Base mainnet remains blocked.
 - **2026-07-17:** The user approved closing the three remaining follow-ups: Clerk `user.deleted` reconciliation, a fresh x402 settlement using a newly provisioned dedicated Base Sepolia relayer, and publication of the walletless feature PR. Work resumes preview-only against isolated Neon branch `br-empty-hat-afcrsu56`; production flags stay off, the relayer will not reuse the deployer, and Base mainnet remains blocked.
 
 - **2026-07-17:** Final limited-preview verification completed all three approved follow-ups. Commit `7e381bf` makes historical Base-contract incompatibility fail as a structured `402` (`base-listing-migration-required`) instead of escaping as `500`; 119 Vitest files / 764 tests, format, lint, typecheck, chain-map verification, and the webpack production build passed. Git-triggered feature-branch deployment `dpl_GDwWNNtMN1d1MCfmwZuEjRgTu65D` reached `READY`, the stable preview alias moved to it, and anonymous raw access for legacy skill `efa82c9d-fcc1-47d6-8145-780bd9388783` live-returned the expected `402` with the historical `0x6Fd9…D854` contract and relink/card instructions. A direct local preview upload (`dpl_66BtwYhwe1qCaYbCaHhxFybGW5wQ`) was rejected as the final target after browser verification showed it lacked the feature-branch auth/card overrides; the alias was immediately restored to the Git deployment and reverified with `Account` plus `Pay by Card` visible. Production was unaffected.
