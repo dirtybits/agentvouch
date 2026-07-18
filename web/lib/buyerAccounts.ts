@@ -9,6 +9,11 @@ export type BuyerAccountIdentity = {
   status: BuyerAccountStatus;
 };
 
+export type DeletedBuyerAccountIdentity = {
+  accountId: string | null;
+  identityLinksRemoved: number;
+};
+
 type BuyerAccountIdentityRow = {
   buyer_account_id: string;
   status: BuyerAccountStatus;
@@ -103,6 +108,73 @@ export async function resolveBuyerAccountForIdentity(input: {
     if (code === "42P01") {
       throw new Error(
         "Buyer account schema is not installed. Run the guarded walletless-buyer migration before enabling buyer auth."
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Reconciles a provider-side identity deletion without deleting financial
+ * history. The account row becomes an access-denying tombstone and provider
+ * identity attributes are removed. Replays are intentionally successful even
+ * after the identity link has already been removed.
+ */
+export async function deleteBuyerAccountForIdentity(input: {
+  provider: "clerk";
+  providerSubject: string;
+}): Promise<DeletedBuyerAccountIdentity> {
+  validateProviderIdentity(input.provider, input.providerSubject);
+  const db = getBuyerAccountsDb();
+  const lockKey = `${input.provider}:${input.providerSubject}`;
+
+  try {
+    const results = await db.transaction((txn) => [
+      txn`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+      txn`
+        WITH matching_identity AS MATERIALIZED (
+          SELECT buyer_account_id
+          FROM buyer_identity_links
+          WHERE provider = ${input.provider}
+            AND provider_subject = ${input.providerSubject}
+        ),
+        deleted_account AS (
+          UPDATE buyer_accounts
+          SET
+            status = 'deleted',
+            deleted_at = COALESCE(deleted_at, NOW()),
+            updated_at = NOW()
+          WHERE id IN (SELECT buyer_account_id FROM matching_identity)
+          RETURNING id
+        ),
+        deleted_identities AS (
+          DELETE FROM buyer_identity_links
+          WHERE buyer_account_id IN (SELECT id FROM deleted_account)
+          RETURNING id
+        )
+        SELECT
+          deleted_account.id AS buyer_account_id,
+          (SELECT COUNT(*)::integer FROM deleted_identities)
+            AS identity_links_removed
+        FROM deleted_account
+      `,
+    ]);
+
+    const row = (
+      results[1] as {
+        buyer_account_id: string;
+        identity_links_removed: number;
+      }[]
+    )[0];
+    return {
+      accountId: row?.buyer_account_id ?? null,
+      identityLinksRemoved: row?.identity_links_removed ?? 0,
+    };
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code === "42P01") {
+      throw new Error(
+        "Buyer account schema is not installed. Run the guarded walletless-buyer migration before enabling Clerk lifecycle reconciliation."
       );
     }
     throw error;

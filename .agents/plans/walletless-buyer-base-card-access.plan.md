@@ -32,6 +32,15 @@ todos:
   - id: limited-rollout
     content: Roll out behind separate account-auth and Base-card-access flags with documented monitoring and rollback; do not enable Base mainnet.
     status: completed
+  - id: reconcile-clerk-deletions
+    content: Verify Clerk user lifecycle webhooks and soft-delete the matching opaque buyer account idempotently while retaining payment audit records and denying access.
+    status: in_progress
+  - id: fresh-base-x402-relayer-smoke
+    content: Provision a fresh dedicated low-privilege Base Sepolia relayer and prove a new x402 settlement, idempotent replay, chain-qualified receipt, entitlement, and signed download.
+    status: pending
+  - id: publish-walletless-pr
+    content: Commit and push the verified lifecycle and regression evidence, open the walletless feature PR, and report its checks without enabling production flags or Base mainnet.
+    status: pending
 isProject: false
 ---
 
@@ -192,6 +201,8 @@ Required behavioral checks:
 - A fresh Base Sepolia x402 settlement was not broadcast in the final regression because the earlier dedicated relayer secret is no longer locally available. The current contract, anonymous requirement, recorded successful settlement, chain-qualified receipt/entitlement, and fresh signed re-download were all reverified without substituting the deployer as relayer. Base mainnet remains blocked regardless of this plan's outcome.
 
 ## Dated Progress Notes
+
+- **2026-07-17:** The user approved closing the three remaining follow-ups: Clerk `user.deleted` reconciliation, a fresh x402 settlement using a newly provisioned dedicated Base Sepolia relayer, and publication of the walletless feature PR. Work resumes preview-only against isolated Neon branch `br-empty-hat-afcrsu56`; production flags stay off, the relayer will not reuse the deployer, and Base mainnet remains blocked.
 
 - **2026-07-17:** Final limited-preview verification completed all three approved follow-ups. Commit `7e381bf` makes historical Base-contract incompatibility fail as a structured `402` (`base-listing-migration-required`) instead of escaping as `500`; 119 Vitest files / 764 tests, format, lint, typecheck, chain-map verification, and the webpack production build passed. Git-triggered feature-branch deployment `dpl_GDwWNNtMN1d1MCfmwZuEjRgTu65D` reached `READY`, the stable preview alias moved to it, and anonymous raw access for legacy skill `efa82c9d-fcc1-47d6-8145-780bd9388783` live-returned the expected `402` with the historical `0x6Fd9…D854` contract and relink/card instructions. A direct local preview upload (`dpl_66BtwYhwe1qCaYbCaHhxFybGW5wQ`) was rejected as the final target after browser verification showed it lacked the feature-branch auth/card overrides; the alias was immediately restored to the Git deployment and reverified with `Account` plus `Pay by Card` visible. Production was unaffected.
 - **2026-07-17:** Clerk development test email `+clerk_test` with OTP `424242` created a distinct opaque buyer account `174a7c57-4105-474d-84c4-6a38428f98de`. Checkout Session `cs_test_a1X611BxD2VTsUuekINDdmI6djCqiShNzTVUp6AONYtytm8t1YlBdpvhH1` / PaymentIntent `pi_3TuQ43A2jEYsGvGP1kUy9JLn` completed for exactly `100` USD cents and granted only that account access to Base skill `efa82c9d-fcc1-47d6-8145-780bd9388783`; the browser rendered `Purchased` and `Account download complete.` Switching back through the real Google OAuth chooser to original account `aaa91d03-8469-4d75-b511-6dac15451fcf` rendered `Pay by Card`, no `Purchased`, and no `Download`, proving live account isolation. Refund `re_3TuQ43A2jEYsGvGP1v9O3okV` produced fulfilled event `evt_1TuQ45A2jEYsGvGPXXVLKpL9` and revocation event `evt_3TuQ43A2jEYsGvGP1RbUwQUr`; the grant is `revoked / stripe-refund`, wallet entitlements revoked stayed zero, no protocol receipt was recorded, and the final read-only monitor reported no blockers, open reviews, or alerts. The disposable Clerk user was deleted, which exposed the separate lifecycle-reconciliation blocker recorded above.
