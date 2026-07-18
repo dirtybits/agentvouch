@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: implement-wallet-linking
     content: Let an authenticated buyer link Solana and Base addresses using chain-specific signed ownership challenges without synthesizing wallet addresses from email.
-    status: in_progress
+    status: completed
   - id: issue-card-access-grants
     content: Attach an opaque buyer account id to Stripe Checkout metadata and grant or revoke account-scoped marketplace access from verified webhook outcomes.
     status: completed
@@ -28,10 +28,10 @@ todos:
     status: completed
   - id: verify-walletless-base-sepolia
     content: Run the full web gate and browser/API smokes for Google, email, linked-wallet, refund, non-buyer rejection, and Base Sepolia protocol regressions.
-    status: pending
+    status: in_progress
   - id: limited-rollout
     content: Roll out behind separate account-auth and Base-card-access flags with documented monitoring and rollback; do not enable Base mainnet.
-    status: pending
+    status: in_progress
 isProject: false
 ---
 
@@ -189,9 +189,12 @@ Required behavioral checks:
 - Interactive end-user Google redirect and email-code component smokes remain pending under `verify-walletless-base-sepolia`; the server session boundary and opaque first-login account creation are live-smoked on the isolated preview.
 - Final production retention period and support process for deleted-account purchase recovery.
 - Production author payout, tax/KYC, custody, and card-refund policy.
-- Base Sepolia live regression evidence; Base mainnet remains blocked regardless of this plan's outcome.
+- Existing Base Sepolia protocol USDC/x402 and a separate-account live regression remain pending; Base mainnet remains blocked regardless of this plan's outcome.
 
 ## Dated Progress Notes
+
+- **2026-07-17:** The limited walletless-card preview completed its first real Stripe test-mode purchase/download/refund loop on isolated Neon branch `br-empty-hat-afcrsu56`. Deployment `dpl_5DYs29GpGTGJRTfWxLuD5DNN9vso` (commit `8761d0c`) reached `READY` and the stable `agentvouch-walletless-preview.vercel.app` alias was moved to it after adding the feature-branch-only `AGENTVOUCH_PUBLIC_BASE_URL`. Checkout Session `cs_test_a1wK6Zwup8LzXSyvvf09nBBytdLL2P7OTN55vdspb6XbPsqo0VuheoQbyx` / PaymentIntent `pi_3TuP0pA2jEYsGvGP0GI4FRAs` created exactly one active Stripe access grant for opaque account `aaa91d03-8469-4d75-b511-6dac15451fcf` and Base Sepolia skill `efa82c9d-fcc1-47d6-8145-780bd9388783`. The signed-in browser rendered `Purchased`, downloaded without a Base wallet, and reported `Account download complete.` Refund `re_3TuP0pA2jEYsGvGP0CEpMX9k` then produced `charge.refunded` event `evt_3TuP0pA2jEYsGvGP0iucVFZv`, revoked the grant with `stripe-refund`, and restored `Pay by Card`. Both webhook outcomes required no review; wallet entitlements revoked remained zero, and the append-only protocol receipt count remained zero before and after refund. The post-refund read-only monitor reported checkout/config flags ready, no blockers, zero open reviews, and no alerts. The selected historical Base listing fails closed for an anonymous raw request with `500` (`unsupported Base contract`) rather than the supported-v1 fixture's tested `402`; live separate-account and current Base protocol regressions therefore remain open instead of being overstated. Production flags remain off and Base mainnet remains blocked.
+- **2026-07-17:** Account-page live verification now shows the successfully linked Solana Devnet address, disables `Current wallet linked`, and disables `Phantom linked`, so repeated connect attempts no longer create or replay links. The chain-specific challenge, address-ownership conflict, and Base Sepolia signature paths remain covered by focused tests; the broader multi-provider browser matrix stays under `verify-walletless-base-sepolia`.
 
 - **2026-07-17:** First live skill-page smoke on the card-enabled preview showed Clerk's development-browser handshake finishing after the initial account-access request. The header/account page was signed in, but the skill detail temporarily labeled checkout as wallet-scoped. The client now retries account access at 0.75s, 2s, and 5s after mount; the full local gate re-passed with 119 Vitest files / 762 tests, chain-map verification, and the webpack build before redeployment.
 - **2026-07-17:** Account-scoped card access implementation is locally complete behind `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` plus `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED`. Checkout prefers an authenticated opaque buyer account with same-origin enforcement, copies account/skill identifiers to Checkout Session and PaymentIntent metadata, and permits Base Sepolia only through a separate `marketplace_access_grants` row. Webhook completion never writes a protocol/wallet receipt for this flow; refund/dispute creates a revoked tombstone so replay cannot restore access. `resolveSkillAccess` accepts only an active grant owned by an active account, while anonymous and different-account requests continue to `402`. The existing wallet-bound Stripe path remains covered. Full local verification passed: format, lint, typecheck, 119 Vitest files / 762 tests, chain-map verification, and the webpack production build. The build logged expected sandbox DNS fallbacks plus the existing viem dynamic-dependency warning but completed successfully. Preview deployment and live card/download/refund smoke remain under `verify-walletless-base-sepolia`; Base mainnet remains blocked.
