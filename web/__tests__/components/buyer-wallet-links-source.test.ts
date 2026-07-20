@@ -10,7 +10,9 @@ const source = readFileSync(
 describe("buyer wallet link client wiring", () => {
   it("passes decoded challenge payloads through Clerk reverification", () => {
     expect(source).toContain("const requestChallenge = useReverification(");
-    expect(source).toContain("response.json().catch(() => null)");
+    expect(source).toContain("const payload = (await response");
+    expect(source).toContain(".json()");
+    expect(source).toContain(".catch(() => null)");
     expect(source).toContain("const challenge = challengeResponse");
     expect(source).not.toContain("challengeResponse.json()");
   });
@@ -22,6 +24,19 @@ describe("buyer wallet link client wiring", () => {
     expect(source).toContain('connectAndLink("base-injected")');
     expect(source).toContain("setPendingTarget(target)");
     expect(source).toContain("void linkConnectedWallet()");
+  });
+
+  it("does not request another signature after switching to an already-linked wallet", () => {
+    expect(source).toContain("resolvePendingWalletLinkAction");
+    expect(source).toContain('action === "already-linked"');
+    expect(source).toContain("is already linked to this account.");
+    expect(source).toContain("setPendingTarget(null)");
+  });
+
+  it("renders wallet-link failures as an accessible terminal state", () => {
+    expect(source).toContain("walletLinkResponseError");
+    expect(source).toContain('role={notice.kind === "error" ? "alert"');
+    expect(source).toContain("setLinking(false)");
   });
 
   it("shows the connected wallet as linked instead of repeating verification", () => {

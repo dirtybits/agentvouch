@@ -26,6 +26,10 @@ import {
   BASE_INJECTED_WALLET_SOURCE,
 } from "@/lib/adapters/baseInjectedWallet";
 import { PHANTOM_LEGACY_WALLET_NAME } from "@/lib/phantomLegacyWalletStandard";
+import {
+  resolvePendingWalletLinkAction,
+  walletLinkResponseError,
+} from "@/lib/buyerWalletLinkClient";
 
 type WalletLink = {
   chainContext: string;
@@ -40,15 +44,7 @@ type ChallengeResponse = {
 
 type ChallengePayload = ChallengeResponse | { error?: unknown };
 type ConnectTarget = "phantom" | "base-passkey" | "base-injected";
-
-async function responseError(response: Response): Promise<string> {
-  const body = (await response.json().catch(() => null)) as {
-    error?: unknown;
-  } | null;
-  return typeof body?.error === "string"
-    ? body.error
-    : `Request failed (${response.status}).`;
-}
+type WalletLinkNotice = { kind: "success" | "error"; text: string };
 
 export function BuyerWalletLinks() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -63,7 +59,7 @@ export function BuyerWalletLinks() {
   const [pendingTarget, setPendingTarget] = useState<ConnectTarget | null>(
     null
   );
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<WalletLinkNotice | null>(null);
 
   const loadLinks = useCallback(async () => {
     if (!isSignedIn) {
@@ -73,7 +69,7 @@ export function BuyerWalletLinks() {
     const response = await fetch("/api/account/wallet-links", {
       cache: "no-store",
     });
-    if (!response.ok) throw new Error(await responseError(response));
+    if (!response.ok) throw new Error(await walletLinkResponseError(response));
     const body = (await response.json()) as { links?: WalletLink[] };
     setLinks(Array.isArray(body.links) ? body.links : []);
     setLoading(false);
@@ -81,9 +77,11 @@ export function BuyerWalletLinks() {
 
   useEffect(() => {
     void loadLinks().catch((error: unknown) => {
-      setMessage(
-        error instanceof Error ? error.message : "Could not load wallets."
-      );
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error ? error.message : "Could not load wallets.",
+      });
       setLoading(false);
     });
   }, [loadLinks]);
@@ -107,11 +105,14 @@ export function BuyerWalletLinks() {
 
   const linkConnectedWallet = useCallback(async () => {
     if (!wallet?.signMessage) {
-      setMessage("Connect a wallet that supports message signing first.");
+      setNotice({
+        kind: "error",
+        text: "Connect a wallet that supports message signing first.",
+      });
       return;
     }
     setLinking(true);
-    setMessage(null);
+    setNotice(null);
     try {
       const challengeResponse = await requestChallenge(
         wallet.chainContext,
@@ -145,15 +146,17 @@ export function BuyerWalletLinks() {
         }),
       });
       if (!verifyResponse.ok) {
-        throw new Error(await responseError(verifyResponse));
+        throw new Error(await walletLinkResponseError(verifyResponse));
       }
       await loadLinks();
-      setMessage("Wallet linked.");
+      setNotice({ kind: "success", text: "Wallet linked." });
     } catch (error: unknown) {
-      setMessage(
-        error instanceof Error ? error.message : "Wallet linking failed."
-      );
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Wallet linking failed.",
+      });
     } finally {
+      setPendingTarget(null);
       setLinking(false);
     }
   }, [loadLinks, requestChallenge, wallet]);
@@ -183,7 +186,7 @@ export function BuyerWalletLinks() {
 
   const connectAndLink = useCallback(
     async (target: ConnectTarget) => {
-      setMessage(null);
+      setNotice(null);
       if (targetIsConnected(target) && wallet?.signMessage) {
         await linkConnectedWallet();
         return;
@@ -206,9 +209,13 @@ export function BuyerWalletLinks() {
         }
         setPendingTarget(target);
       } catch (error: unknown) {
-        setMessage(
-          error instanceof Error ? error.message : "Wallet connection failed."
-        );
+        setNotice({
+          kind: "error",
+          text:
+            error instanceof Error
+              ? error.message
+              : "Wallet connection failed.",
+        });
       } finally {
         setConnectingTarget(null);
       }
@@ -217,19 +224,37 @@ export function BuyerWalletLinks() {
   );
 
   useEffect(() => {
-    if (
-      !pendingTarget ||
-      connectingTarget ||
-      linking ||
-      !wallet?.signMessage ||
-      !targetIsConnected(pendingTarget)
-    )
-      return;
+    const action = resolvePendingWalletLinkAction({
+      hasPendingTarget: Boolean(pendingTarget),
+      connecting: Boolean(connectingTarget),
+      linking,
+      canSign: Boolean(wallet?.signMessage),
+      targetConnected: Boolean(
+        pendingTarget && targetIsConnected(pendingTarget)
+      ),
+      currentWalletLinked,
+    });
+    if (action === "wait" || !pendingTarget) return;
 
+    const settledTarget = pendingTarget;
     setPendingTarget(null);
+    if (action === "already-linked") {
+      const walletName =
+        settledTarget === "phantom"
+          ? PHANTOM_LEGACY_WALLET_NAME
+          : settledTarget === "base-passkey"
+          ? BASE_PASSKEY_WALLET_NAME
+          : BASE_INJECTED_WALLET_NAME;
+      setNotice({
+        kind: "success",
+        text: `${walletName} is already linked to this account.`,
+      });
+      return;
+    }
     void linkConnectedWallet();
   }, [
     connectingTarget,
+    currentWalletLinked,
     linkConnectedWallet,
     linking,
     pendingTarget,
@@ -297,6 +322,20 @@ export function BuyerWalletLinks() {
           No wallets linked yet.
         </p>
       )}
+
+      {notice ? (
+        <p
+          role={notice.kind === "error" ? "alert" : "status"}
+          aria-live={notice.kind === "error" ? "assertive" : "polite"}
+          className={
+            notice.kind === "error"
+              ? "rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+              : "rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+          }
+        >
+          {notice.text}
+        </p>
+      ) : null}
 
       {wallet?.signMessage ? (
         <button
@@ -393,9 +432,6 @@ export function BuyerWalletLinks() {
           </p>
         ) : null}
       </div>
-      {message ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
-      ) : null}
     </section>
   );
 }
