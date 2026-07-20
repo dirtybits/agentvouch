@@ -12,6 +12,7 @@ import {
 } from "@/lib/buyerSession";
 import { clientIpFromRequest, checkRateLimit } from "@/lib/rateLimit";
 import { verifyWalletLinkChallengeSignature } from "@/lib/walletLinkChallenge";
+import { WALLET_OWNED_BY_OTHER_ACCOUNT_CODE } from "@/lib/buyerWalletLinkClient";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -110,7 +111,10 @@ export async function POST(request: Request) {
   }
   if (result === "owned-by-other-account") {
     return NextResponse.json(
-      { error: "This wallet is already linked to another AgentVouch account." },
+      {
+        code: WALLET_OWNED_BY_OTHER_ACCOUNT_CODE,
+        error: "This wallet is already linked to another AgentVouch account.",
+      },
       { status: 409 }
     );
   }

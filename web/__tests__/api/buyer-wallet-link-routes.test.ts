@@ -207,6 +207,7 @@ describe("buyer wallet link routes", () => {
     );
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
+      code: "wallet_owned_by_other_account",
       error: "This wallet is already linked to another AgentVouch account.",
     });
   });
