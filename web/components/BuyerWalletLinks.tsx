@@ -53,6 +53,7 @@ export function BuyerWalletLinks() {
   const wallet = useWritableChainWallet();
   const [links, setLinks] = useState<WalletLink[]>([]);
   const [loading, setLoading] = useState(true);
+  const [linksLoaded, setLinksLoaded] = useState(false);
   const [linking, setLinking] = useState(false);
   const [connectingTarget, setConnectingTarget] =
     useState<ConnectTarget | null>(null);
@@ -63,15 +64,19 @@ export function BuyerWalletLinks() {
 
   const loadLinks = useCallback(async () => {
     if (!isSignedIn) {
+      setLinksLoaded(false);
       setLoading(false);
       return;
     }
+    setLinksLoaded(false);
+    setLoading(true);
     const response = await fetch("/api/account/wallet-links", {
       cache: "no-store",
     });
     if (!response.ok) throw new Error(await walletLinkResponseError(response));
     const body = (await response.json()) as { links?: WalletLink[] };
     setLinks(Array.isArray(body.links) ? body.links : []);
+    setLinksLoaded(true);
     setLoading(false);
   }, [isSignedIn]);
 
@@ -228,6 +233,7 @@ export function BuyerWalletLinks() {
       hasPendingTarget: Boolean(pendingTarget),
       connecting: Boolean(connectingTarget),
       linking,
+      linksLoaded,
       canSign: Boolean(wallet?.signMessage),
       targetConnected: Boolean(
         pendingTarget && targetIsConnected(pendingTarget)
@@ -257,6 +263,7 @@ export function BuyerWalletLinks() {
     currentWalletLinked,
     linkConnectedWallet,
     linking,
+    linksLoaded,
     pendingTarget,
     targetIsConnected,
     wallet,
@@ -342,6 +349,7 @@ export function BuyerWalletLinks() {
           type="button"
           onClick={() => void linkConnectedWallet()}
           disabled={
+            !linksLoaded ||
             currentWalletLinked ||
             linking ||
             !!connectingTarget ||
@@ -368,6 +376,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("phantom")}
             disabled={
+              !linksLoaded ||
               (targetIsConnected("phantom") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
@@ -388,6 +397,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("base-passkey")}
             disabled={
+              !linksLoaded ||
               (targetIsConnected("base-passkey") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
@@ -408,6 +418,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("base-injected")}
             disabled={
+              !linksLoaded ||
               (targetIsConnected("base-injected") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||

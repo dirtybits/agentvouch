@@ -7,6 +7,7 @@ export function resolvePendingWalletLinkAction(input: {
   hasPendingTarget: boolean;
   connecting: boolean;
   linking: boolean;
+  linksLoaded: boolean;
   canSign: boolean;
   targetConnected: boolean;
   currentWalletLinked: boolean;
@@ -15,6 +16,7 @@ export function resolvePendingWalletLinkAction(input: {
     !input.hasPendingTarget ||
     input.connecting ||
     input.linking ||
+    !input.linksLoaded ||
     !input.canSign ||
     !input.targetConnected
   ) {
