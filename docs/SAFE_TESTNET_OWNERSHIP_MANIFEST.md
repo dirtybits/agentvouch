@@ -9,6 +9,12 @@
 - Approval status: **unapproved draft**
 - Existing Safe address: not supplied; deployment pending
 - Safe version: pending selection
+- Safe singleton/master copy: pending selection
+- Safe proxy runtime bytecode hash: pending deployment
+- Enabled modules: none approved
+- Guard: none approved
+- Module guard: none approved
+- Fallback handler: pending explicit selection and approval
 - Proposed threshold: 2-of-3, unapproved
 - Expected Safe nonce: pending Safe address and live-state verification
 
@@ -20,11 +26,11 @@ mnemonics, passwords, resolved secret values, or keystore JSON.
 No owner address is approved yet. Complete every field and obtain explicit
 human approval before creating or deploying the Safe.
 
-| Slot | Public address | Signing system | Independent controller | Recovery verified | Approved |
-| --- | --- | --- | --- | --- | --- |
-| Owner 1 | pending | hardware wallet preferred | pending | no | no |
-| Owner 2 | pending | hardware wallet or testnet Foundry keystore | pending | no | no |
-| Owner 3 | pending | hardware wallet or testnet Foundry keystore | pending | no | no |
+| Slot    | Public address | Signing system                              | Independent controller | Recovery verified | Approved |
+| ------- | -------------- | ------------------------------------------- | ---------------------- | ----------------- | -------- |
+| Owner 1 | pending        | hardware wallet preferred                   | pending                | no                | no       |
+| Owner 2 | pending        | hardware wallet or testnet Foundry keystore | pending                | no                | no       |
+| Owner 3 | pending        | hardware wallet or testnet Foundry keystore | pending                | no                | no       |
 
 An operator must not control enough production owner credentials to satisfy the
 threshold. Exportable Foundry owners are testnet-only unless production custody
@@ -32,11 +38,11 @@ receives separate explicit approval.
 
 ## Proposer And Executor
 
-| Responsibility | Public address | Signing system | Gas source | Approved |
-| --- | --- | --- | --- | --- |
-| Transaction proposer | pending | pending | none required | no |
-| Execution gas payer | pending | dedicated testnet account preferred | Base Sepolia ETH | no |
-| Temporary deployer | pending | dedicated testnet Foundry keystore | Base Sepolia ETH | no |
+| Responsibility       | Public address | Signing system                      | Gas source       | Approved |
+| -------------------- | -------------- | ----------------------------------- | ---------------- | -------- |
+| Transaction proposer | pending        | pending                             | none required    | no       |
+| Execution gas payer  | pending        | dedicated testnet account preferred | Base Sepolia ETH | no       |
+| Temporary deployer   | pending        | dedicated testnet Foundry keystore  | Base Sepolia ETH | no       |
 
 The proposer or executor is not automatically a Safe owner. The temporary
 deployer must not retain final administrative authority.
@@ -45,14 +51,16 @@ deployer must not retain final administrative authority.
 
 Complete one row for every privileged contract role before deployment.
 
-| Contract and address | Role or authority | Temporary holder | Final Safe | Verification read | Status |
-| --- | --- | --- | --- | --- | --- |
-| pending | pending | pending | pending | pending | not started |
+| Contract and address | Role or authority | Temporary holder | Final Safe | Verification read | Status      |
+| -------------------- | ----------------- | ---------------- | ---------- | ----------------- | ----------- |
+| pending              | pending           | pending          | pending    | pending           | not started |
 
 Required transition:
 
-1. Deploy with the dedicated deployer in the intended paused state.
-2. Initialize only the reviewed configuration.
+1. Deploy with the dedicated deployer according to the reviewed deployment
+   sequence.
+2. Initialize only the reviewed configuration and pause at the earliest
+   supported step.
 3. Grant or transfer each final authority to the approved Safe.
 4. Verify every Safe-held authority onchain.
 5. Revoke every temporary deployer authority and verify removal.

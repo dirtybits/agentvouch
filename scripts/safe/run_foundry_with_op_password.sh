@@ -26,7 +26,7 @@ path. OP_REF must use the op://vault/item/field form.
 
 Example:
   scripts/safe/run_foundry_with_op_password.sh \
-    --password-ref 'op://pt_bastion_vault/AgentVouch Safe Test Owner 1/password' \
+    --password-ref 'op://APPROVED_TESTNET_VAULT/AgentVouch Safe Test Owner 1/password' \
     -- cast wallet address \
       --keystore "$HOME/.foundry/keystores/agentvouch-safe-test-owner-1" \
       --password-file {password_file}

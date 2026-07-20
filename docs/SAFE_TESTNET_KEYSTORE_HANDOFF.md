@@ -13,21 +13,8 @@ key. Safe transactions must collect the configured owner threshold and execute
 through the Safe contract.
 
 AgentVouch's proposed 2-of-3 Safe layout remains unapproved. Historical wallet
-addresses and unrelated ParaFi CCV keystores are not approved AgentVouch
-custody and must not be reused.
-
-## Reference Provenance
-
-This package adapts two operator-machine references:
-
-- `/Users/andysustic/Repos/calypso-infra/scripts/chainlink/create_ccv_test_accounts.sh`
-  demonstrates the testnet keystore lifecycle.
-- `/Users/andysustic/Repos/calypso-infra/docs/chainlink/chainlink_ccv_key_custody.md`
-  defines the exportable-test-key versus non-exportable-production boundary.
-
-They are references only. Do not reuse either file unchanged, and do not reuse
-their account names, 1Password items, passwords, keystores, or addresses. This
-AgentVouch package has no runtime dependency on the Calypso repository.
+addresses and keystores created for unrelated projects are not approved
+AgentVouch custody and must not be reused.
 
 ## Required Human Inputs
 
@@ -57,7 +44,7 @@ keystore attachment in the selected vault.
 cd "$(git rev-parse --show-toplevel)"
 
 ./scripts/safe/create_safe_test_accounts.sh \
-  --vault pt_bastion_vault \
+  --vault APPROVED_TESTNET_VAULT \
   --project-tag agentvouch \
   --account agentvouch-safe-test-owner-1 \
     "AgentVouch Safe Test Owner 1" owner \
@@ -67,6 +54,8 @@ cd "$(git rev-parse --show-toplevel)"
 
 The helper:
 
+- requires an explicit approved vault through `--vault` or `OP_VAULT` and has
+  no real-vault default;
 - refuses to overwrite an existing keystore;
 - stops if a keystore and 1Password password do not match;
 - stops rather than replacing a missing or mismatched backup on an existing
@@ -75,8 +64,14 @@ The helper:
 - derives and prints only public addresses;
 - uploads the encrypted keystore to its matching 1Password item;
 - downloads and compares the backup byte-for-byte;
+- reads each generated password into a temporary `0600` file and supplies it
+  through Foundry's hidden terminal prompt; it never puts the resolved
+  password in process arguments or an environment variable;
 - never deploys a Safe, changes owners, signs a Safe transaction, or
   broadcasts.
+
+The account helper requires the local `expect` command because `cast wallet
+new` does not accept a password file directly.
 
 Storing a password and encrypted keystore in the same 1Password item is a
 testnet convenience, not an approved production custody model.
@@ -88,7 +83,7 @@ Use the wrapper for `cast` or `forge` commands that accept `--password-file`:
 ```bash
 ./scripts/safe/run_foundry_with_op_password.sh \
   --password-ref \
-    'op://pt_bastion_vault/AgentVouch Safe Test Owner 1/password' \
+    'op://APPROVED_TESTNET_VAULT/AgentVouch Safe Test Owner 1/password' \
   -- cast wallet address \
     --keystore \
       "$HOME/.foundry/keystores/agentvouch-safe-test-owner-1" \
@@ -144,10 +139,11 @@ review:
    threshold.
 7. Execution transaction hash and post-transaction state.
 
-For a deployment authority handoff, deploy in the intended paused state,
-transfer each final role to the approved Safe, verify the grants onchain, remove
-temporary deployer authority, and only then consider activation. The broadcaster
-must not silently retain final administrative roles.
+For a deployment authority handoff, follow the reviewed deployment sequence,
+pause at its earliest supported step, transfer each final role to the approved
+Safe, verify the grants onchain, remove temporary deployer authority, and only
+then consider activation. The broadcaster must not silently retain final
+administrative roles.
 
 ## Production Boundary
 

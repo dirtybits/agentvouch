@@ -11,7 +11,8 @@ fi
 
 set -euo pipefail
 
-OP_VAULT="${OP_VAULT:-pt_bastion_vault}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OP_VAULT="${OP_VAULT:-}"
 KEYSTORE_DIR="${KEYSTORE_DIR:-$HOME/.foundry/keystores}"
 PROJECT_TAG="${PROJECT_TAG:-agentvouch}"
 TEMP_DIR=""
@@ -27,7 +28,7 @@ Create or verify encrypted Foundry keystores for a testnet Safe workflow and
 back up each encrypted keystore to its matching 1Password item.
 
 Options:
-  --vault NAME          1Password vault (default: $OP_VAULT)
+  --vault NAME          Approved 1Password vault (required unless OP_VAULT is set)
   --keystore-dir PATH   Foundry keystore directory (default: $KEYSTORE_DIR)
   --project-tag TAG     1Password project tag (default: $PROJECT_TAG)
   --account ACCOUNT ITEM ROLE
@@ -36,7 +37,7 @@ Options:
 
 Example:
   $(basename "$0") \\
-    --vault pt_bastion_vault \\
+    --vault APPROVED_TESTNET_VAULT \\
     --project-tag agentvouch \\
     --account agentvouch-safe-test-owner-1 \\
       "AgentVouch Safe Test Owner 1" owner \\
@@ -99,6 +100,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ ${#ACCOUNT_NAMES[@]} -gt 0 ]] || error "at least one --account is required"
+[[ -n "$OP_VAULT" ]] ||
+  error "an explicit 1Password vault is required via --vault or OP_VAULT"
+case "$OP_VAULT" in
+  *'/'* | *$'\n'* | *$'\r'*)
+    error "1Password vault names cannot contain slashes or newlines"
+    ;;
+esac
 [[ "$PROJECT_TAG" =~ ^[a-zA-Z0-9._-]+$ ]] ||
   error "--project-tag may contain only letters, digits, dots, underscores, and hyphens"
 
@@ -117,7 +125,7 @@ for ((index = 0; index < ${#ACCOUNT_NAMES[@]}; index++)); do
   done
 done
 
-for command_name in op cast mktemp cmp; do
+for command_name in op cast expect mktemp cmp; do
   command -v "$command_name" >/dev/null 2>&1 ||
     error "required command not found: $command_name"
 done
@@ -159,13 +167,22 @@ create_keystore() {
   local item="$2"
   local keystore="$KEYSTORE_DIR/$account"
   local secret_ref="op://$OP_VAULT/$item/password"
+  local password_file="$TEMP_DIR/$account.create-password"
 
   [[ ! -e "$keystore" ]] ||
     error "refusing to overwrite existing keystore: $keystore"
 
+  op read -n "$secret_ref" >"$password_file" ||
+    error "cannot read the password field from 1Password item '$item'"
+  chmod 600 "$password_file"
+
   info "Creating encrypted Foundry keystore '$account'"
-  CAST_PASSWORD="$secret_ref" op run -- \
-    cast wallet new "$KEYSTORE_DIR" "$account" >&2
+  if ! "$SCRIPT_DIR/create_foundry_keystore.expect" \
+    "$password_file" "$KEYSTORE_DIR" "$account"; then
+    rm -f -- "$password_file"
+    error "Foundry could not create keystore '$account'"
+  fi
+  rm -f -- "$password_file"
   chmod 600 "$keystore"
 }
 
