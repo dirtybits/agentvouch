@@ -33,6 +33,13 @@ describe("buyer wallet link client wiring", () => {
     expect(source).toContain("setPendingTarget(null)");
   });
 
+  it("waits for the authoritative wallet inventory before enabling link actions", () => {
+    expect(source).toContain("const [linksLoaded, setLinksLoaded]");
+    expect(source).toContain("setLinksLoaded(true)");
+    expect(source).toContain("linksLoaded,");
+    expect(source.match(/!linksLoaded \|\|/g)).toHaveLength(4);
+  });
+
   it("renders wallet-link failures as an accessible terminal state", () => {
     expect(source).toContain("walletLinkResponseError");
     expect(source).toContain('role={notice.kind === "error" ? "alert"');
