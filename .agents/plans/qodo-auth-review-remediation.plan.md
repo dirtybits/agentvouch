@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: publish-and-resolve
     content: Create a signed commit and focused PR, wait for required checks, then reply to and resolve both original Qodo review threads.
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
@@ -78,3 +78,4 @@ Close the two actionable Qodo findings on PRs #112 and #113 without changing pro
 - **2026-07-20:** The client now distinguishes a successfully loaded wallet inventory from a stopped spinner. Provider settlement and every manual link control wait for that successful boundary, so a slow or failed fetch cannot trigger a redundant signature. Targeted helper/wiring coverage passed (2 files / 17 tests), and the static chain-capability verifier passed with 25 Solana instructions, 22 Base state-changing functions, and 26 mapped rows.
 - **2026-07-20:** Current plan evidence retains public commit, PR, domain, route, time, status-code, and behavioral proof while removing exact opaque Vercel, Clerk, Neon, deployment, database-host/branch, and disposable-account identifiers. Historical Git rewriting is intentionally unnecessary because the reviewed values were operational metadata, not credentials.
 - **2026-07-20:** The substantive gate passed under Node 24: repository format check, web ESLint, Next route type generation plus `tsc --noEmit`, 121 Vitest files / 787 tests, and the webpack production build with all 151 static pages generated. The first build attempt could not resolve Google Fonts inside the restricted network; the approved network-enabled rerun succeeded. `git diff --check` and targeted identifier scans also passed.
+- **2026-07-20:** Signed commit `0b05dc9` opened PR #114. GitHub `test` and `contracts` checks passed, and Vercel completed its preview deployment. The PR deliberately does not change production flags or deploy to the production alias; the final authenticated provider-signing interaction remains a human smoke after merge because Preview buyer authentication stays disabled.
