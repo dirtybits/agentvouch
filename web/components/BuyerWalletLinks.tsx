@@ -2,7 +2,7 @@
 
 import { useAuth, useReverification } from "@clerk/nextjs";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useAgentVouchWallet,
   useChainWallet,
@@ -47,13 +47,14 @@ type ConnectTarget = "phantom" | "base-passkey" | "base-injected";
 type WalletLinkNotice = { kind: "success" | "error"; text: string };
 
 export function BuyerWalletLinks() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const chain = useChainWallet();
   const solana = useAgentVouchWallet();
   const wallet = useWritableChainWallet();
   const [links, setLinks] = useState<WalletLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [linksLoaded, setLinksLoaded] = useState(false);
+  const [linksAccountId, setLinksAccountId] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [connectingTarget, setConnectingTarget] =
     useState<ConnectTarget | null>(null);
@@ -61,24 +62,37 @@ export function BuyerWalletLinks() {
     null
   );
   const [notice, setNotice] = useState<WalletLinkNotice | null>(null);
+  const walletLinksRequestRef = useRef(0);
 
   const loadLinks = useCallback(async () => {
-    if (!isSignedIn) {
+    const requestId = ++walletLinksRequestRef.current;
+    if (!isSignedIn || !userId) {
+      setLinks([]);
       setLinksLoaded(false);
+      setLinksAccountId(null);
       setLoading(false);
-      return;
+      return false;
     }
     setLinksLoaded(false);
     setLoading(true);
-    const response = await fetch("/api/account/wallet-links", {
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(await walletLinkResponseError(response));
-    const body = (await response.json()) as { links?: WalletLink[] };
-    setLinks(Array.isArray(body.links) ? body.links : []);
-    setLinksLoaded(true);
-    setLoading(false);
-  }, [isSignedIn]);
+    try {
+      const response = await fetch("/api/account/wallet-links", {
+        cache: "no-store",
+      });
+      if (!response.ok)
+        throw new Error(await walletLinkResponseError(response));
+      const body = (await response.json()) as { links?: WalletLink[] };
+      if (walletLinksRequestRef.current !== requestId) return false;
+      setLinks(Array.isArray(body.links) ? body.links : []);
+      setLinksLoaded(true);
+      setLinksAccountId(userId);
+      setLoading(false);
+      return true;
+    } catch (error) {
+      if (walletLinksRequestRef.current !== requestId) return false;
+      throw error;
+    }
+  }, [isSignedIn, userId]);
 
   useEffect(() => {
     void loadLinks().catch((error: unknown) => {
@@ -153,7 +167,8 @@ export function BuyerWalletLinks() {
       if (!verifyResponse.ok) {
         throw new Error(await walletLinkResponseError(verifyResponse));
       }
-      await loadLinks();
+      const linksRefreshed = await loadLinks();
+      if (!linksRefreshed) return;
       setNotice({ kind: "success", text: "Wallet linked." });
     } catch (error: unknown) {
       setNotice({
@@ -176,8 +191,10 @@ export function BuyerWalletLinks() {
     [chain.source]
   );
 
+  const linksAreForCurrentBuyer = linksLoaded && linksAccountId === userId;
   const currentWalletLinked = Boolean(
-    wallet &&
+    linksAreForCurrentBuyer &&
+      wallet &&
       links.some(
         (link) =>
           link.chainContext === wallet.chainContext &&
@@ -233,7 +250,7 @@ export function BuyerWalletLinks() {
       hasPendingTarget: Boolean(pendingTarget),
       connecting: Boolean(connectingTarget),
       linking,
-      linksLoaded,
+      linksLoaded: linksAreForCurrentBuyer,
       canSign: Boolean(wallet?.signMessage),
       targetConnected: Boolean(
         pendingTarget && targetIsConnected(pendingTarget)
@@ -263,7 +280,7 @@ export function BuyerWalletLinks() {
     currentWalletLinked,
     linkConnectedWallet,
     linking,
-    linksLoaded,
+    linksAreForCurrentBuyer,
     pendingTarget,
     targetIsConnected,
     wallet,
@@ -301,7 +318,7 @@ export function BuyerWalletLinks() {
         </p>
       </div>
 
-      {loading ? (
+      {loading || (!linksAreForCurrentBuyer && links.length > 0) ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Loading wallets…
         </p>
@@ -349,7 +366,7 @@ export function BuyerWalletLinks() {
           type="button"
           onClick={() => void linkConnectedWallet()}
           disabled={
-            !linksLoaded ||
+            !linksAreForCurrentBuyer ||
             currentWalletLinked ||
             linking ||
             !!connectingTarget ||
@@ -376,7 +393,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("phantom")}
             disabled={
-              !linksLoaded ||
+              !linksAreForCurrentBuyer ||
               (targetIsConnected("phantom") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
@@ -397,7 +414,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("base-passkey")}
             disabled={
-              !linksLoaded ||
+              !linksAreForCurrentBuyer ||
               (targetIsConnected("base-passkey") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
@@ -418,7 +435,7 @@ export function BuyerWalletLinks() {
             type="button"
             onClick={() => void connectAndLink("base-injected")}
             disabled={
-              !linksLoaded ||
+              !linksAreForCurrentBuyer ||
               (targetIsConnected("base-injected") && currentWalletLinked) ||
               linking ||
               !!connectingTarget ||
