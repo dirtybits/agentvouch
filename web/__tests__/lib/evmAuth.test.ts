@@ -45,6 +45,24 @@ describe("verifyEvmWalletSignature", () => {
     expect(client.verifyMessage).not.toHaveBeenCalled();
   });
 
+  it.each(["not-a-timestamp", Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an invalid timestamp without calling the RPC: %o",
+    async (timestamp) => {
+      const client = { verifyMessage: vi.fn().mockResolvedValue(true) };
+      const result = await verifyEvmWalletSignature(
+        payload({ timestamp: timestamp as unknown as number }),
+        { client }
+      );
+
+      expect(result).toEqual({
+        valid: false,
+        pubkey: null,
+        error: "Invalid timestamp",
+      });
+      expect(client.verifyMessage).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects non-EVM addresses and non-hex signatures", async () => {
     const client = { verifyMessage: vi.fn() };
     const badAddress = await verifyEvmWalletSignature(
