@@ -35,15 +35,40 @@ describe("buyer wallet link client wiring", () => {
 
   it("waits for the authoritative wallet inventory before enabling link actions", () => {
     expect(source).toContain("const [linksLoaded, setLinksLoaded]");
+    expect(source).toContain("const [linksAccountId, setLinksAccountId]");
+    expect(source).toContain(
+      "const linksAreForCurrentBuyer = linksLoaded && linksAccountId === userId"
+    );
     expect(source).toContain("setLinksLoaded(true)");
-    expect(source).toContain("linksLoaded,");
-    expect(source.match(/!linksLoaded \|\|/g)).toHaveLength(4);
+    expect(source).toContain("linksLoaded: linksAreForCurrentBuyer");
+    expect(source.match(/!linksAreForCurrentBuyer \|\|/g)).toHaveLength(4);
+  });
+
+  it("discards stale wallet inventories after buyer authentication changes", () => {
+    expect(source).toContain("const walletLinksRequestRef = useRef(0)");
+    expect(source).toContain(
+      "const requestId = ++walletLinksRequestRef.current"
+    );
+    expect(source).toContain("}, [isSignedIn, userId]);");
+    expect(source).toContain("setLinks([])");
+    expect(
+      source.match(/walletLinksRequestRef.current !== requestId/g)
+    ).toHaveLength(2);
   });
 
   it("renders wallet-link failures as an accessible terminal state", () => {
     expect(source).toContain("walletLinkResponseError");
     expect(source).toContain('role={notice.kind === "error" ? "alert"');
     expect(source).toContain("setLinking(false)");
+    expect(source).toContain(
+      "const visibleLinks = linksAreForCurrentBuyer ? links : []"
+    );
+    expect(source).toContain("{loading ? (");
+    expect(source).toContain(") : visibleLinks.length ? (");
+    expect(source).toContain("{visibleLinks.map((link) => (");
+    expect(source).not.toContain(
+      "loading || (!linksAreForCurrentBuyer && links.length > 0)"
+    );
   });
 
   it("shows the connected wallet as linked instead of repeating verification", () => {
