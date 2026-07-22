@@ -192,6 +192,7 @@ export function BuyerWalletLinks() {
   );
 
   const linksAreForCurrentBuyer = linksLoaded && linksAccountId === userId;
+  const visibleLinks = linksAreForCurrentBuyer ? links : [];
   const currentWalletLinked = Boolean(
     linksAreForCurrentBuyer &&
       wallet &&
@@ -318,13 +319,13 @@ export function BuyerWalletLinks() {
         </p>
       </div>
 
-      {loading || (!linksAreForCurrentBuyer && links.length > 0) ? (
+      {loading ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Loading wallets…
         </p>
-      ) : links.length ? (
+      ) : visibleLinks.length ? (
         <ul className="space-y-2">
-          {links.map((link) => (
+          {visibleLinks.map((link) => (
             <li
               key={`${link.chainContext}:${link.normalizedAddress}`}
               className="rounded-lg border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900"

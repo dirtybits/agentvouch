@@ -60,6 +60,15 @@ describe("buyer wallet link client wiring", () => {
     expect(source).toContain("walletLinkResponseError");
     expect(source).toContain('role={notice.kind === "error" ? "alert"');
     expect(source).toContain("setLinking(false)");
+    expect(source).toContain(
+      "const visibleLinks = linksAreForCurrentBuyer ? links : []"
+    );
+    expect(source).toContain("{loading ? (");
+    expect(source).toContain(") : visibleLinks.length ? (");
+    expect(source).toContain("{visibleLinks.map((link) => (");
+    expect(source).not.toContain(
+      "loading || (!linksAreForCurrentBuyer && links.length > 0)"
+    );
   });
 
   it("shows the connected wallet as linked instead of repeating verification", () => {
