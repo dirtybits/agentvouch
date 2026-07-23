@@ -56,6 +56,19 @@ describe("buyer wallet link client wiring", () => {
     ).toHaveLength(2);
   });
 
+  it("cancels in-flight connection and signature actions after a buyer switch", () => {
+    expect(source).toContain("const walletLinkActionRef = useRef(0)");
+    expect(source).toContain("walletLinkActionRef.current += 1");
+    expect(source).toContain("setPendingTarget(null)");
+    expect(source).toContain("const actionId = ++walletLinkActionRef.current");
+    expect(source).toContain(
+      "const isCurrentAction = () => walletLinkActionRef.current === actionId"
+    );
+    expect(source.match(/if \(!isCurrentAction\(\)\) return;/g)).toHaveLength(
+      8
+    );
+  });
+
   it("renders wallet-link failures as an accessible terminal state", () => {
     expect(source).toContain("walletLinkResponseError");
     expect(source).toContain('role={notice.kind === "error" ? "alert"');
