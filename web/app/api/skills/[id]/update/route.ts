@@ -33,7 +33,11 @@ function parseInstalledVersion(value: string | null): number | null {
     return null;
   }
 
-  const parsed = Number.parseInt(value, 10);
+  if (!/^\d+$/.test(value)) {
+    throw new Error("installed_version must be a positive integer");
+  }
+
+  const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error("installed_version must be a positive integer");
   }

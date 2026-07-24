@@ -37,14 +37,21 @@ describe("GET /api/skills/[id]/update", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 
-  it("returns 400 for invalid installed_version", async () => {
-    const { req, params } = makeRequest("uuid-1", "?installed_version=0");
-    const res = await GET(req, { params });
+  it.each(["0", "1.5", "1e2", "1junk"])(
+    "returns 400 for invalid installed_version=%s",
+    async (installedVersion) => {
+      const { req, params } = makeRequest(
+        "uuid-1",
+        `?installed_version=${installedVersion}`
+      );
+      const res = await GET(req, { params });
 
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain("installed_version");
-  });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("installed_version");
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
 
   it("returns 404 when the repo skill does not exist", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([]);
