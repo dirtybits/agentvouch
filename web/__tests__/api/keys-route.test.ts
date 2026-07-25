@@ -218,6 +218,29 @@ describe("POST /api/keys", () => {
     });
   });
 
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "rejects a %s JSON body as a missing auth payload",
+    async (_kind, body) => {
+      const response = await POST(
+        new NextRequest("http://localhost/api/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        })
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Missing auth payload",
+      });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
+
   it("binds the normalized key name and creates one credential", async () => {
     const query = vi
       .fn()
@@ -390,6 +413,29 @@ describe("DELETE /api/keys", () => {
       pubkey: "Wallet111",
     });
   });
+
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "rejects a %s JSON body as missing required fields",
+    async (_kind, body) => {
+      const response = await DELETE(
+        new NextRequest("http://localhost/api/keys", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body,
+        })
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Missing required fields: auth, key_id",
+      });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
 
   it("binds the exact key id before revocation", async () => {
     const query = vi

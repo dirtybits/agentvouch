@@ -88,7 +88,7 @@ function replayResponse() {
 export async function POST(request: NextRequest) {
   try {
     await initializeDatabase();
-    const body = await request.json();
+    const body = (await request.json().catch(() => null)) ?? {};
     const { auth, name } = body as {
       auth: ApiKeyAuthPayload;
       name?: unknown;
@@ -258,7 +258,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await initializeDatabase();
-    const body = await request.json();
+    const body = (await request.json().catch(() => null)) ?? {};
     const { auth, key_id } = body as {
       auth: ApiKeyAuthPayload;
       key_id: unknown;
