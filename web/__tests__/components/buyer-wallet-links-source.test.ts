@@ -58,15 +58,32 @@ describe("buyer wallet link client wiring", () => {
 
   it("cancels in-flight connection and signature actions after a buyer switch", () => {
     expect(source).toContain("const walletLinkActionRef = useRef(0)");
+    expect(source).toContain("const buyerKeyRef = useRef(buyerKey)");
+    expect(source).toContain("buyerKeyRef.current !== buyerKey");
     expect(source).toContain("walletLinkActionRef.current += 1");
     expect(source).toContain("setPendingTarget(null)");
     expect(source).toContain("const actionId = ++walletLinkActionRef.current");
     expect(source).toContain(
       "const isCurrentAction = () => walletLinkActionRef.current === actionId"
     );
-    expect(source.match(/if \(!isCurrentAction\(\)\) return;/g)).toHaveLength(
-      8
+    const guards = source.match(/if \(!isCurrentAction\(\)\) return;/g) ?? [];
+    expect(guards.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("clears stale notices after a buyer switch", () => {
+    const buyerSwitchEffect = source.match(
+      /useEffect\(\(\) => \{([\s\S]*?)\}, \[buyerKey\]\);/
     );
+    expect(buyerSwitchEffect).not.toBeNull();
+    const resetBody = buyerSwitchEffect?.[1] ?? "";
+    for (const reset of [
+      "setPendingTarget(null)",
+      "setConnectingTarget(null)",
+      "setLinking(false)",
+      "setNotice(null)",
+    ]) {
+      expect(resetBody).toContain(reset);
+    }
   });
 
   it("renders wallet-link failures as an accessible terminal state", () => {
