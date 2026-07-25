@@ -51,7 +51,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await initializeDatabase();
     if (id.startsWith(CHAIN_PREFIX)) {
       return NextResponse.json(
         { error: "Chain-only skills do not support version-aware updates" },
@@ -79,6 +78,8 @@ export async function GET(
       );
     }
     const providedListing = request.nextUrl.searchParams.get("listing");
+
+    await initializeDatabase();
 
     const rows = await sql()<SkillRow>`
       SELECT

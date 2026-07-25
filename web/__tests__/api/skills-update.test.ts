@@ -11,10 +11,13 @@ vi.mock("@/lib/onchain", () => ({
 }));
 
 import { GET } from "@/app/api/skills/[id]/update/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string, query = "") {
@@ -34,6 +37,7 @@ describe("GET /api/skills/[id]/update", () => {
     const res = await GET(req, { params });
 
     expect(res.status).toBe(400);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
   });
 
@@ -49,6 +53,7 @@ describe("GET /api/skills/[id]/update", () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toContain("installed_version");
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
       expect(mockSql).not.toHaveBeenCalled();
     }
   );
