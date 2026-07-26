@@ -58,24 +58,35 @@ describe("buyer wallet link client wiring", () => {
 
   it("cancels in-flight connection and signature actions after a buyer switch", () => {
     expect(source).toContain("const walletLinkActionRef = useRef(0)");
-    expect(source).toContain("const buyerKeyRef = useRef(buyerKey)");
-    expect(source).toContain("buyerKeyRef.current !== buyerKey");
-    expect(source).toContain("walletLinkActionRef.current += 1");
-    expect(source).toContain("setPendingTarget(null)");
+    expect(source).toContain("useLayoutEffect");
+    expect(source).not.toContain("buyerKeyRef");
     expect(source).toContain("const actionId = ++walletLinkActionRef.current");
     expect(source).toContain(
       "const isCurrentAction = () => walletLinkActionRef.current === actionId"
     );
-    const guards = source.match(/if \(!isCurrentAction\(\)\) return;/g) ?? [];
-    expect(guards.length).toBeGreaterThanOrEqual(8);
+    expect(source).toMatch(
+      /await wallet\.signMessage\(challenge\.message\);\s*if \(!isCurrentAction\(\)\) return;/
+    );
+    expect(source).toMatch(
+      /const verifyResponse = await fetch\([\s\S]*?\);\s*if \(!isCurrentAction\(\)\) return;/
+    );
+    expect(source).toMatch(
+      /const linksRefreshed = await loadLinks\(\);\s*if \(!isCurrentAction\(\) \|\| !linksRefreshed\) return;/
+    );
+    expect(source).toMatch(
+      /await solana\.connectPhantomExtension\(\);[\s\S]*?if \(!isCurrentAction\(\)\) return;\s*setPendingTarget\(target\)/
+    );
   });
 
-  it("clears stale notices after a buyer switch", () => {
+  it("resets buyer state at commit and invalidates actions on unmount", () => {
     const buyerSwitchEffect = source.match(
-      /useEffect\(\(\) => \{([\s\S]*?)\}, \[buyerKey\]\);/
+      /useLayoutEffect\(\(\) => \{([\s\S]*?)\n\s*\}, \[buyerKey\]\);/
     );
     expect(buyerSwitchEffect).not.toBeNull();
     const resetBody = buyerSwitchEffect?.[1] ?? "";
+    expect(resetBody.match(/walletLinkActionRef\.current \+= 1/g)).toHaveLength(
+      2
+    );
     for (const reset of [
       "setPendingTarget(null)",
       "setConnectingTarget(null)",
@@ -84,6 +95,9 @@ describe("buyer wallet link client wiring", () => {
     ]) {
       expect(resetBody).toContain(reset);
     }
+    expect(resetBody).toMatch(
+      /return \(\) => \{\s*walletLinkActionRef\.current \+= 1;\s*\};/
+    );
   });
 
   it("renders wallet-link failures as an accessible terminal state", () => {

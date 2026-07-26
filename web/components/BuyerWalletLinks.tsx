@@ -2,7 +2,13 @@
 
 import { useAuth, useReverification } from "@clerk/nextjs";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   useAgentVouchWallet,
   useChainWallet,
@@ -65,22 +71,21 @@ export function BuyerWalletLinks() {
   const walletLinksRequestRef = useRef(0);
   const walletLinkActionRef = useRef(0);
 
-  // A wallet connection or signature may outlive a Clerk account switch.
-  // Invalidate that action synchronously during render — before any queued
-  // async continuation can pass an isCurrentAction() check — so it cannot
-  // link a wallet or update UI state under the new buyer.
   const buyerKey = `${isSignedIn ? "signed-in" : "signed-out"}:${userId ?? ""}`;
-  const buyerKeyRef = useRef(buyerKey);
-  if (buyerKeyRef.current !== buyerKey) {
-    buyerKeyRef.current = buyerKey;
-    walletLinkActionRef.current += 1;
-  }
 
-  useEffect(() => {
+  // A wallet connection or signature may outlive a Clerk account switch or
+  // this component. Invalidate it during the client commit and again during
+  // cleanup so deferred continuations cannot act for a stale buyer.
+  useLayoutEffect(() => {
+    walletLinkActionRef.current += 1;
     setPendingTarget(null);
     setConnectingTarget(null);
     setLinking(false);
     setNotice(null);
+
+    return () => {
+      walletLinkActionRef.current += 1;
+    };
   }, [buyerKey]);
 
   const loadLinks = useCallback(async () => {
