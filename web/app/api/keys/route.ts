@@ -10,6 +10,35 @@ import {
 } from "@/lib/apiKeyAuth";
 import { randomBytes, createHash } from "crypto";
 import { getErrorMessage } from "@/lib/errors";
+import { checkRateLimit } from "@/lib/rateLimit";
+
+// Malformed JSON is client-controlled, so the warning is rate limited to keep a
+// bad or hostile client from flooding the logs. Per-instance is fine here: this
+// is an observability signal, not an enforcement control.
+const MALFORMED_JSON_LOG_LIMIT = { limit: 10, windowMs: 60_000 };
+
+/**
+ * Parse a request body, normalizing invalid JSON to an empty object so the
+ * route's existing "missing fields" 400 still applies instead of a 500.
+ * A literal `null` body is valid JSON and is intentionally not warned about;
+ * only an actual parse failure is.
+ */
+async function parseApiKeyRequestBody(
+  request: NextRequest,
+  route: string
+): Promise<Record<string, unknown>> {
+  try {
+    const parsed = (await request.json()) as Record<string, unknown> | null;
+    return parsed ?? {};
+  } catch {
+    if (
+      checkRateLimit(`malformed-json:${route}`, MALFORMED_JSON_LOG_LIMIT).ok
+    ) {
+      console.warn(`${route}: malformed JSON body, treating as empty`);
+    }
+    return {};
+  }
+}
 
 type ApiKeyIdRow = { id: string };
 type ApiKeyOwnerRow = { owner_pubkey: string };
@@ -87,7 +116,7 @@ function replayResponse() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => null)) ?? {};
+    const body = await parseApiKeyRequestBody(request, "POST /api/keys");
     const { auth, name } = body as {
       auth: ApiKeyAuthPayload;
       name?: unknown;
@@ -258,7 +287,7 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => null)) ?? {};
+    const body = await parseApiKeyRequestBody(request, "DELETE /api/keys");
     const { auth, key_id } = body as {
       auth: ApiKeyAuthPayload;
       key_id: unknown;
