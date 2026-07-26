@@ -11,10 +11,13 @@ vi.mock("@/lib/onchain", () => ({
 }));
 
 import { GET } from "@/app/api/skills/[id]/update/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string, query = "") {
@@ -34,17 +37,26 @@ describe("GET /api/skills/[id]/update", () => {
     const res = await GET(req, { params });
 
     expect(res.status).toBe(400);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
   });
 
-  it("returns 400 for invalid installed_version", async () => {
-    const { req, params } = makeRequest("uuid-1", "?installed_version=0");
-    const res = await GET(req, { params });
+  it.each(["0", "1.5", "1e2", "1junk"])(
+    "returns 400 for invalid installed_version=%s",
+    async (installedVersion) => {
+      const { req, params } = makeRequest(
+        "uuid-1",
+        `?installed_version=${installedVersion}`
+      );
+      const res = await GET(req, { params });
 
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain("installed_version");
-  });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("installed_version");
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
 
   it("returns 404 when the repo skill does not exist", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([]);

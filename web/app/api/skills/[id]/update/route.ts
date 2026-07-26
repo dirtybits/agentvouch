@@ -33,7 +33,11 @@ function parseInstalledVersion(value: string | null): number | null {
     return null;
   }
 
-  const parsed = Number.parseInt(value, 10);
+  if (!/^\d+$/.test(value)) {
+    throw new Error("installed_version must be a positive integer");
+  }
+
+  const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error("installed_version must be a positive integer");
   }
@@ -47,7 +51,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await initializeDatabase();
     if (id.startsWith(CHAIN_PREFIX)) {
       return NextResponse.json(
         { error: "Chain-only skills do not support version-aware updates" },
@@ -75,6 +78,8 @@ export async function GET(
       );
     }
     const providedListing = request.nextUrl.searchParams.get("listing");
+
+    await initializeDatabase();
 
     const rows = await sql()<SkillRow>`
       SELECT
