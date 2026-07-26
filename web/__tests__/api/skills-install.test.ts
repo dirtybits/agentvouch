@@ -136,6 +136,8 @@ describe("POST /api/skills/[id]/install", () => {
     });
     const res = await POST(req, { params });
     expect(res.status).toBe(401);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("returns 200 for free chain-prefixed skill", async () => {
