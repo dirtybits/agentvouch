@@ -21,11 +21,14 @@ import {
   type ApiKeyAuthAction,
   type ApiKeyAuthPayload,
 } from "@/lib/apiKeyAuth";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 const NONCE_A = "11111111-1111-4111-8111-111111111111";
 const NONCE_B = "22222222-2222-4222-8222-222222222222";
@@ -237,6 +240,7 @@ describe("POST /api/keys", () => {
         error: "Missing auth payload",
       });
       expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
       expect(mockSql).not.toHaveBeenCalled();
     }
   );
@@ -433,6 +437,7 @@ describe("DELETE /api/keys", () => {
         error: "Missing required fields: auth, key_id",
       });
       expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
       expect(mockSql).not.toHaveBeenCalled();
     }
   );
