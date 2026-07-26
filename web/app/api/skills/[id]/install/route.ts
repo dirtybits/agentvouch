@@ -23,8 +23,12 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    await initializeDatabase();
-    const body = (await request.json().catch(() => null)) ?? {};
+    let body: unknown;
+    try {
+      body = (await request.json()) ?? {};
+    } catch {
+      body = {};
+    }
     const { auth } = body as { auth: AuthPayload };
 
     if (!auth) {
@@ -81,6 +85,7 @@ export async function POST(
       });
     }
 
+    await initializeDatabase();
     const rows = await sql()<InstallSkillRow>`
       SELECT id, on_chain_address, price_usdc_micros FROM skills
       WHERE id = ${id}::uuid
