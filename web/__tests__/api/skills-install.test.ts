@@ -75,6 +75,27 @@ describe("POST /api/skills/[id]/install", () => {
     expect(body.error).toContain("auth");
   });
 
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])("returns 400 for a %s JSON body", async (_kind, body) => {
+    const req = new NextRequest("http://localhost/api/skills/some-id/install", {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "some-id" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing auth payload",
+    });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when signature is invalid", async () => {
     mockVerify.mockReturnValue({
       valid: false,
