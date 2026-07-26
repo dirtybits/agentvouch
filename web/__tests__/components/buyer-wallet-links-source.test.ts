@@ -56,6 +56,50 @@ describe("buyer wallet link client wiring", () => {
     ).toHaveLength(2);
   });
 
+  it("cancels in-flight connection and signature actions after a buyer switch", () => {
+    expect(source).toContain("const walletLinkActionRef = useRef(0)");
+    expect(source).toContain("useLayoutEffect");
+    expect(source).not.toContain("buyerKeyRef");
+    expect(source).toContain("const actionId = ++walletLinkActionRef.current");
+    expect(source).toContain(
+      "const isCurrentAction = () => walletLinkActionRef.current === actionId"
+    );
+    expect(source).toMatch(
+      /await wallet\.signMessage\(challenge\.message\);\s*if \(!isCurrentAction\(\)\) return;/
+    );
+    expect(source).toMatch(
+      /const verifyResponse = await fetch\([\s\S]*?\);\s*if \(!isCurrentAction\(\)\) return;/
+    );
+    expect(source).toMatch(
+      /const linksRefreshed = await loadLinks\(\);\s*if \(!isCurrentAction\(\) \|\| !linksRefreshed\) return;/
+    );
+    expect(source).toMatch(
+      /await solana\.connectPhantomExtension\(\);[\s\S]*?if \(!isCurrentAction\(\)\) return;\s*setPendingTarget\(target\)/
+    );
+  });
+
+  it("resets buyer state at commit and invalidates actions on unmount", () => {
+    const buyerSwitchEffect = source.match(
+      /useLayoutEffect\(\(\) => \{([\s\S]*?)\n\s*\}, \[buyerKey\]\);/
+    );
+    expect(buyerSwitchEffect).not.toBeNull();
+    const resetBody = buyerSwitchEffect?.[1] ?? "";
+    expect(resetBody.match(/walletLinkActionRef\.current \+= 1/g)).toHaveLength(
+      2
+    );
+    for (const reset of [
+      "setPendingTarget(null)",
+      "setConnectingTarget(null)",
+      "setLinking(false)",
+      "setNotice(null)",
+    ]) {
+      expect(resetBody).toContain(reset);
+    }
+    expect(resetBody).toMatch(
+      /return \(\) => \{\s*walletLinkActionRef\.current \+= 1;\s*\};/
+    );
+  });
+
   it("renders wallet-link failures as an accessible terminal state", () => {
     expect(source).toContain("walletLinkResponseError");
     expect(source).toContain('role={notice.kind === "error" ? "alert"');

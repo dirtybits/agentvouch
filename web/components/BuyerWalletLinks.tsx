@@ -2,7 +2,13 @@
 
 import { useAuth, useReverification } from "@clerk/nextjs";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   useAgentVouchWallet,
   useChainWallet,
@@ -63,6 +69,24 @@ export function BuyerWalletLinks() {
   );
   const [notice, setNotice] = useState<WalletLinkNotice | null>(null);
   const walletLinksRequestRef = useRef(0);
+  const walletLinkActionRef = useRef(0);
+
+  const buyerKey = `${isSignedIn ? "signed-in" : "signed-out"}:${userId ?? ""}`;
+
+  // A wallet connection or signature may outlive a Clerk account switch or
+  // this component. Invalidate it during the client commit and again during
+  // cleanup so deferred continuations cannot act for a stale buyer.
+  useLayoutEffect(() => {
+    walletLinkActionRef.current += 1;
+    setPendingTarget(null);
+    setConnectingTarget(null);
+    setLinking(false);
+    setNotice(null);
+
+    return () => {
+      walletLinkActionRef.current += 1;
+    };
+  }, [buyerKey]);
 
   const loadLinks = useCallback(async () => {
     const requestId = ++walletLinksRequestRef.current;
@@ -122,64 +146,78 @@ export function BuyerWalletLinks() {
     }
   );
 
-  const linkConnectedWallet = useCallback(async () => {
-    if (!wallet?.signMessage) {
-      setNotice({
-        kind: "error",
-        text: "Connect a wallet that supports message signing first.",
-      });
-      return;
-    }
-    setLinking(true);
-    setNotice(null);
-    try {
-      const challengeResponse = await requestChallenge(
-        wallet.chainContext,
-        wallet.address
-      );
-      if (
-        !challengeResponse ||
-        typeof challengeResponse !== "object" ||
-        !("challengeId" in challengeResponse) ||
-        typeof challengeResponse.challengeId !== "string" ||
-        !("message" in challengeResponse) ||
-        typeof challengeResponse.message !== "string"
-      ) {
-        const error =
-          challengeResponse &&
-          typeof challengeResponse === "object" &&
-          "error" in challengeResponse &&
-          typeof challengeResponse.error === "string"
-            ? challengeResponse.error
-            : "Wallet challenge response was invalid.";
-        throw new Error(error);
+  const linkConnectedWallet = useCallback(
+    async (existingActionId?: number) => {
+      const actionId = existingActionId ?? ++walletLinkActionRef.current;
+      const isCurrentAction = () => walletLinkActionRef.current === actionId;
+      if (!wallet?.signMessage) {
+        if (isCurrentAction()) {
+          setNotice({
+            kind: "error",
+            text: "Connect a wallet that supports message signing first.",
+          });
+        }
+        return;
       }
-      const challenge = challengeResponse as ChallengeResponse;
-      const signature = await wallet.signMessage(challenge.message);
-      const verifyResponse = await fetch("/api/account/wallet-links/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          challengeId: challenge.challengeId,
-          signature,
-        }),
-      });
-      if (!verifyResponse.ok) {
-        throw new Error(await walletLinkResponseError(verifyResponse));
+      if (!isCurrentAction()) return;
+      setLinking(true);
+      setNotice(null);
+      try {
+        const challengeResponse = await requestChallenge(
+          wallet.chainContext,
+          wallet.address
+        );
+        if (!isCurrentAction()) return;
+        if (
+          !challengeResponse ||
+          typeof challengeResponse !== "object" ||
+          !("challengeId" in challengeResponse) ||
+          typeof challengeResponse.challengeId !== "string" ||
+          !("message" in challengeResponse) ||
+          typeof challengeResponse.message !== "string"
+        ) {
+          const error =
+            challengeResponse &&
+            typeof challengeResponse === "object" &&
+            "error" in challengeResponse &&
+            typeof challengeResponse.error === "string"
+              ? challengeResponse.error
+              : "Wallet challenge response was invalid.";
+          throw new Error(error);
+        }
+        const challenge = challengeResponse as ChallengeResponse;
+        const signature = await wallet.signMessage(challenge.message);
+        if (!isCurrentAction()) return;
+        const verifyResponse = await fetch("/api/account/wallet-links/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challengeId: challenge.challengeId,
+            signature,
+          }),
+        });
+        if (!isCurrentAction()) return;
+        if (!verifyResponse.ok) {
+          throw new Error(await walletLinkResponseError(verifyResponse));
+        }
+        const linksRefreshed = await loadLinks();
+        if (!isCurrentAction() || !linksRefreshed) return;
+        setNotice({ kind: "success", text: "Wallet linked." });
+      } catch (error: unknown) {
+        if (!isCurrentAction()) return;
+        setNotice({
+          kind: "error",
+          text:
+            error instanceof Error ? error.message : "Wallet linking failed.",
+        });
+      } finally {
+        if (!isCurrentAction()) return;
+        setPendingTarget(null);
+        setLinking(false);
       }
-      const linksRefreshed = await loadLinks();
-      if (!linksRefreshed) return;
-      setNotice({ kind: "success", text: "Wallet linked." });
-    } catch (error: unknown) {
-      setNotice({
-        kind: "error",
-        text: error instanceof Error ? error.message : "Wallet linking failed.",
-      });
-    } finally {
-      setPendingTarget(null);
-      setLinking(false);
-    }
-  }, [loadLinks, requestChallenge, wallet]);
+    },
+    [loadLinks, requestChallenge, wallet]
+  );
 
   const targetIsConnected = useCallback(
     (target: ConnectTarget) => {
@@ -209,9 +247,11 @@ export function BuyerWalletLinks() {
 
   const connectAndLink = useCallback(
     async (target: ConnectTarget) => {
+      const actionId = ++walletLinkActionRef.current;
+      const isCurrentAction = () => walletLinkActionRef.current === actionId;
       setNotice(null);
       if (targetIsConnected(target) && wallet?.signMessage) {
-        await linkConnectedWallet();
+        await linkConnectedWallet(actionId);
         return;
       }
 
@@ -230,8 +270,10 @@ export function BuyerWalletLinks() {
             await chain.base.connectInjected();
           }
         }
+        if (!isCurrentAction()) return;
         setPendingTarget(target);
       } catch (error: unknown) {
+        if (!isCurrentAction()) return;
         setNotice({
           kind: "error",
           text:
@@ -240,7 +282,7 @@ export function BuyerWalletLinks() {
               : "Wallet connection failed.",
         });
       } finally {
-        setConnectingTarget(null);
+        if (isCurrentAction()) setConnectingTarget(null);
       }
     },
     [chain.base, linkConnectedWallet, solana, targetIsConnected, wallet]
