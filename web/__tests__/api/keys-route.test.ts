@@ -212,6 +212,20 @@ describe("GET /api/keys", () => {
   });
 });
 
+// The malformed-JSON warning is throttled by a module-level, per-instance
+// limiter, so its window survives between tests. Jump the clock past any open
+// window to keep these assertions independent of test order.
+let rateLimitClockJumps = 0;
+function advanceToFreshRateLimitWindow(): () => void {
+  rateLimitClockJumps += 1;
+  const offsetMs = rateLimitClockJumps * 10 * 60_000;
+  const realNow = Date.now;
+  vi.spyOn(Date, "now").mockImplementation(() => realNow() + offsetMs);
+  return () => {
+    (Date.now as unknown as { mockRestore: () => void }).mockRestore();
+  };
+}
+
 describe("POST /api/keys", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -244,6 +258,56 @@ describe("POST /api/keys", () => {
       expect(mockSql).not.toHaveBeenCalled();
     }
   );
+
+  it("warns only for malformed JSON, not for a literal null body", async () => {
+    const restoreClock = advanceToFreshRateLimitWindow();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await POST(
+        new NextRequest("http://localhost/api/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "null",
+        })
+      );
+      expect(warn).not.toHaveBeenCalled();
+
+      await POST(
+        new NextRequest("http://localhost/api/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{",
+        })
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("POST /api/keys")
+      );
+    } finally {
+      warn.mockRestore();
+      restoreClock();
+    }
+  });
+
+  it("rate limits the malformed-JSON warning under a flood", async () => {
+    const restoreClock = advanceToFreshRateLimitWindow();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (let i = 0; i < 40; i += 1) {
+        await POST(
+          new NextRequest("http://localhost/api/keys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{",
+          })
+        );
+      }
+      expect(warn.mock.calls.length).toBeLessThanOrEqual(10);
+      expect(warn.mock.calls.length).toBeGreaterThan(0);
+    } finally {
+      warn.mockRestore();
+      restoreClock();
+    }
+  });
 
   it("binds the normalized key name and creates one credential", async () => {
     const query = vi
