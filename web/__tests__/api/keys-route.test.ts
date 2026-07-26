@@ -21,11 +21,14 @@ import {
   type ApiKeyAuthAction,
   type ApiKeyAuthPayload,
 } from "@/lib/apiKeyAuth";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 const NONCE_A = "11111111-1111-4111-8111-111111111111";
 const NONCE_B = "22222222-2222-4222-8222-222222222222";
@@ -218,6 +221,30 @@ describe("POST /api/keys", () => {
     });
   });
 
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "rejects a %s JSON body as a missing auth payload",
+    async (_kind, body) => {
+      const response = await POST(
+        new NextRequest("http://localhost/api/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        })
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Missing auth payload",
+      });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
+
   it("binds the normalized key name and creates one credential", async () => {
     const query = vi
       .fn()
@@ -390,6 +417,30 @@ describe("DELETE /api/keys", () => {
       pubkey: "Wallet111",
     });
   });
+
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "rejects a %s JSON body as missing required fields",
+    async (_kind, body) => {
+      const response = await DELETE(
+        new NextRequest("http://localhost/api/keys", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body,
+        })
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Missing required fields: auth, key_id",
+      });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
 
   it("binds the exact key id before revocation", async () => {
     const query = vi
