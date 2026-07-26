@@ -35,13 +35,16 @@ vi.mock("@/lib/buyerAccessGrants", () => ({
 }));
 
 import { POST } from "@/app/api/skills/[id]/install/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { verifyWalletSignature } from "@/lib/auth";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockVerify = verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 const mockHasOnChainPurchase = hasOnChainPurchase as unknown as ReturnType<
@@ -73,6 +76,48 @@ describe("POST /api/skills/[id]/install", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain("auth");
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])("returns 400 for a %s JSON body", async (_kind, body) => {
+    const req = new NextRequest("http://localhost/api/skills/some-id/install", {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "some-id" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing auth payload",
+    });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when request.json throws synchronously", async () => {
+    const req = {
+      json() {
+        throw new Error("invalid body");
+      },
+    } as unknown as NextRequest;
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "some-id" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing auth payload",
+    });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("returns 401 when signature is invalid", async () => {
@@ -91,6 +136,8 @@ describe("POST /api/skills/[id]/install", () => {
     });
     const res = await POST(req, { params });
     expect(res.status).toBe(401);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("returns 200 for free chain-prefixed skill", async () => {
@@ -104,6 +151,7 @@ describe("POST /api/skills/[id]/install", () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.installed_by).toBe("Wallet1");
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
   });
 
   it("returns 402 for paid chain-prefixed skill", async () => {
