@@ -1,5 +1,24 @@
 # AgentVouch Beta Launch Checklist
 
+> **SUPERSEDED (2026-07-26) — historical record.** This checklist was written on 2026-07-01,
+> before the Base decision. Its premise ("keep Solana canonical unless the distribution bet is
+> funded") was overtaken on 2026-06-25 when the x402/Coinbase bet was chosen, and again on
+> 2026-07-06 when Base Sepolia became the default writable path. Its Solana-shaped items — the
+> `config_authority` resolver, devnet-vs-capped-mainnet surface choice, PR #48 gas-free buy —
+> no longer describe the launch track.
+>
+> The live equivalents are:
+>
+> - **Launch bar:** the [Launch Trust Bar](./MAINNET_READINESS.md#launch-trust-bar-chain-agnostic-2026-07-06)
+>   and the capped founder-operated Base alpha tier in `MAINNET_READINESS.md`.
+> - **Gate status:** the Base Mainnet Gate Table in `MAINNET_READINESS.md`.
+> - **Card rail:** the [Card / Fiat Rail](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26)
+>   section — note this checklist predates Stripe entirely and gates none of it.
+>
+> The *operating posture* below (manual disputes, low caps, single keys acceptable at beta scale,
+> honest public copy) is still the reasoning behind the capped-alpha tier, which is why this file is
+> kept rather than deleted. Do not use its checkboxes as a live launch gate.
+
 **The deliberately minimal bar to ship something people use.** This is **not** the
 mainnet bar — that lives in [`MAINNET_READINESS.md`](./MAINNET_READINESS.md). They are
 different gates, and conflating them is what stalled shipping. Clear *this* list, launch

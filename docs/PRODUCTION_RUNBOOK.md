@@ -9,10 +9,46 @@ v1 contract, custody, live smokes, and security review are complete.
 - Public app: `https://agentvouch.xyz`
 - Vercel project: `agentvouch`
 - Current Vercel root directory: `web/`
-- Program ID: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
-- Cluster: Solana devnet
-- Chain context: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`
-- Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+
+**Chains.** Base Sepolia is the default new-user writable path (since Phase 8a); Solana devnet
+stays implemented behind the `ChainAdapter` seam as the rollback target via
+`NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`. Base mainnet (`eip155:8453`) is blocked in
+code — `getAdapter()` throws on any non-Sepolia `eip155:*` context.
+
+| Surface | Value |
+| --- | --- |
+| Base Sepolia chain context | `eip155:84532` |
+| Base Sepolia contract (selected) | `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` (`base-v1-candidate`, pre-A1) |
+| Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Solana program ID | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` |
+| Solana cluster / chain context | devnet / `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` |
+| Solana devnet USDC mint | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
+
+The A1 (voucher-slashing) contract is **merged source, not deployed** — the selected deployment
+above does not route the paid-report selectors. Deployment state and gates:
+[`BASE_SEPOLIA_A1_STATE.md`](./BASE_SEPOLIA_A1_STATE.md), [`BASE_DEPLOY.md`](./BASE_DEPLOY.md).
+The selected-contract pointer lives in `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS`; if unset, the code
+falls back to the **legacy `base-poc-v0`** address in `web/lib/adapters/baseConstants.ts`, so treat
+that variable as required in every deployed environment.
+
+**Buyer authentication (live).** Clerk-backed walletless buyer auth is enabled in production
+(closed 2026-07-20, `.agents/plans/walletless-production-auth-rollout.plan.md`). Wallet linking is
+signature-proven and separate from the account identity.
+
+**Card checkout (built, off).** Stripe checkout and buyer-card access are explicitly disabled in
+production. Keeping them off requires `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED`,
+`NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED`, `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED`, and
+`NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` to remain unset or non-`"true"`. A live Stripe
+key additionally requires `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true`; without it, checkout fails
+closed in every environment and the webhook refuses events whose `livemode` contradicts the
+configured key. Do not enable any of these before the
+[Card / Fiat Rail](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26) gates pass.
+
+Operator preflight (read-only, never prints secret values):
+
+```bash
+npm run stripe:ops -- preflight
+```
 
 ## Environment Matrix
 

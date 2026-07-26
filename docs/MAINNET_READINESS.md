@@ -24,7 +24,7 @@ they do not make the Base gate rows green.
 
 | Gate                                         | Requirement                                                                                                                                                                                                                          | Base-alpha blocking?               | Full-mainnet blocking?                           | Status                                                                                                                                                                                                      | Evidence (link)                                                                                                                                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1 — Base voucher slashing                   | Ship the clean-break PaidPurchaseReport mechanism so an eligible buyer receipt can trigger centrally adjudicated, author-bond-first and author-wide voucher slashing with bounded buyer credit.                                 | Yes                                | Yes                                              | **Merged implementation complete; launch blocked.** PR #102 merged the linked `base-v1-a1` source. It is size-feasible (23,487-byte facade; 5,939-byte library), 116 Forge tests pass, and a 31-transaction ephemeral Anvil rehearsal completed the full paid-report settlement flow. An internal executable-diff review covered 50/50 surfaces with no reportable findings. The separately approved paid-report write client, fresh paused Base Sepolia deployment/live smoke, external security pass or explicit human acceptance, and custody/operations inputs remain open. | `.agents/plans/base-a1-voucher-slashing-port.plan.md`; `.agents/plans/base-paid-report-activation-sepolia.plan.md`; `npm run verify:base-size`                                                                                                                      |
+| A1 — Base voucher slashing                   | Ship the clean-break PaidPurchaseReport mechanism so an eligible buyer receipt can trigger centrally adjudicated, author-bond-first and author-wide voucher slashing with bounded buyer credit.                                 | Yes                                | Yes                                              | **Merged implementation complete; launch blocked.** PR #102 merged the linked `base-v1-a1` source. It is size-feasible (23,487-byte facade; 5,939-byte library), 121 Forge tests pass, and a 31-transaction ephemeral Anvil rehearsal completed the full paid-report settlement flow. An internal executable-diff review covered 50/50 surfaces with no reportable findings. PR #106 since shipped the paid-report write client (`basePaidPurchaseReports.ts`, `baseWallet.ts`, `baseInjectedWallet.ts`), flag-gated off behind `NEXT_PUBLIC_BASE_PAID_PURCHASE_REPORTS_ENABLED`; what remains is approval and activation, not implementation. Fresh paused Base Sepolia deployment/live smoke, external security pass or explicit human acceptance, and custody/operations inputs remain open. | `.agents/plans/base-a1-voucher-slashing-port.plan.md`; `.agents/plans/base-paid-report-activation-sepolia.plan.md`; `docs/BASE_SEPOLIA_A1_STATE.md`; `npm run verify:base-size`                                                                                                                      |
 | A2 — governed dispute resolution             | Replace founder-only resolution with two-phase/timelocked/governed dispute resolution and reserve-aware treasury rules.                                                                                                              | No, if the Launch Trust Bar passes | Yes                                              | **Deferred for alpha; required for full trust-minimized mainnet.** A2 design-lock invariants still constrain the alpha mechanism: buyer-first routing, capped rewards, snapshots, and zero-refund branches. | `.agents/plans/a2-dispute-governance-v1.plan.md`; `.agents/plans/a2-s*.plan.md`; [A2 findings](#a2-extra-review-findings-2026-06-17); [Launch Trust Bar](#launch-trust-bar-chain-agnostic-2026-07-06) |
 | A3 — Base pause and custody                  | Keep `setPaused` live on the Base v1 contract, put `PAUSE_ROLE` under approved custody, and prove pause blocks new exposure while refund/claim exits remain open.                                                                    | Yes                                | Yes                                              | **Partial.** Pause semantics exist in the EVM contract family; production custody policy and release-candidate smoke are still open.                                                                        | `.agents/plans/a3-emergency-pause.plan.md`; `.agents/plans/base-port-chain-adapter-phase-9.plan.md`; [Authority Policy](#authority-policy); [Incident Response](#incident-response)                   |
 | A4 — restitution reserve policy              | Keep buyer credit collateral-limited with no protocol backstop; route slash excess, rejected/dismissed bonds, and expired buyer credit to a distinct immutable pull-only restitution recipient.                                  | Yes                                | Yes                                              | **Policy locked; custody pending.** Economics are fixed in the A1 plan, but the recipient, custody approval, monitoring, and live pull evidence remain deployment gates.                                                                                                   | `.agents/plans/base-a1-voucher-slashing-port.plan.md`                                                                                                                                                 |
@@ -33,8 +33,10 @@ they do not make the Base gate rows green.
 | Contract authority and reserve custody       | Put `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` behind multisig or a documented accepted alternative; approve custody for the immutable A1 restitution-reserve recipient.              | Yes                                | Yes                                              | **Pending.** The deployed pre-A1 candidate still has `TREASURY_ROLE`; the merged A1 source removes it in favor of pull-only payment to the configured recipient. Mainnet custody sign-off is not recorded. | [Authority Policy](#authority-policy); `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                       |
 | Mainnet deployment, RPC, USDC, and paymaster | Deploy a mainnet v1 contract, record deployment state, configure archive-capable RPC, verify Base mainnet native USDC, provision CDP mainnet paymaster/bundler with funded gas policy, and draft the mainnet deploy/cutover runbook. | Yes                                | Yes                                              | **Not started.** Current live evidence is Base Sepolia only.                                                                                                                                                | `docs/BASE_DEPLOY.md`; `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                                       |
 | Relayer/facilitator custody and monitoring   | Provision a dedicated low-privilege x402 relayer EOA, never the deployer key; document funding, top-up, spend limits, alerting, idempotency, and rollback.                                                                           | Yes                                | Yes                                              | **Partial on testnet; mainnet pending.** A dedicated relayer proved the Sepolia x402 smoke, but production custody/spend monitoring is open.                                                                | `.agents/plans/base-port-chain-adapter-phase-9.plan.md`; [Monitoring](#monitoring); [Incident Response](#incident-response)                                                                           |
-| Base chain parameterization sweep            | Move Sepolia-pinned modules behind a configured-Base-chain seam before `getAdapter()` accepts `eip155:8453`; keep Sepolia selectable after cutover.                                                                                  | Yes                                | Yes                                              | **Pending.** About 13 modules are still Sepolia-pinned by constant.                                                                                                                                         | `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                                                              |
+| Base chain parameterization sweep            | Move Sepolia-pinned modules behind a configured-Base-chain seam before `getAdapter()` accepts `eip155:8453`; keep Sepolia selectable after cutover.                                                                                  | Yes                                | Yes                                              | **Pending, and regressing.** 31 non-test modules are Sepolia-pinned by constant, 14 of which hard-import viem's `baseSepolia` chain object rather than resolving through a seam. PR #106 added roughly five more (paid-report verification, adapter, panel, and two API routes), so this gate moved backwards after it was written. Re-count before scoping.                                                                                                                                         | `.agents/plans/base-port-chain-adapter-phase-10.plan.md`                                                                                                                                              |
 | Sepolia-row policy                           | Decide whether existing `eip155:84532` listings/entitlements are hidden, badged as testnet, or kept purchasable once mainnet is default; no schema migration is expected.                                                            | Yes                                | Yes                                              | **DECISION NEEDED (founder).** Phase 6 chain-qualified rows let Sepolia and mainnet coexist; the open item is display/purchase policy.                                                                      | `.agents/plans/base-port-chain-adapter-phase-10.plan.md`; `.agents/plans/base-port-chain-adapter-phase-6.plan.md`                                                                                     |
+| Card rail activation (Stripe)                | Before any real card sale: choose the graduation model, record the merchant-of-record position, define the author payout process (Connect vs. manual vs. fiat→USDC) including tax/KYC, and verify the external Vercel WAF rule. Live Stripe keys must stay behind an explicit acknowledgement. | Yes                                | Yes                                              | **DECISION NEEDED (founder); rail built and fail-closed.** Checkout, webhook reconciliation, and full-refund/dispute revocation are implemented and tested; production flags are off and only a test-mode preview smoke has run. `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED` now gates live keys in code. Graduation model, payout process, and WAF verification remain unresolved. | [Card / Fiat Rail](#card--fiat-rail-stripe-2026-07-26); `docs/STRIPE_FEASIBILITY.md`; `docs/STRIPE_MPP_POLICY.md`; `docs/STRIPE_TEST_MODE_ROLLOUT.md`                                                 |
+| Card buyer recourse disclosure               | Card buyers receive an off-chain access grant with no protocol recourse. Trust surfaces, checkout copy, and public docs must state this plainly before any card sale settles.                                                        | Yes                                | Yes                                              | **Not started.** The asymmetry is documented internally but appears on no user-facing surface. This is the card-rail analogue of Launch Trust Bar condition 5.                                              | [Card / Fiat Rail](#card--fiat-rail-stripe-2026-07-26); [Launch Trust Bar](#launch-trust-bar-chain-agnostic-2026-07-06)                                                                               |
 
 ## Base Shipped Evidence
 
@@ -72,10 +74,17 @@ they do not make the Base gate rows green.
 - **2026-07-06:** Launch Trust Bar recorded founder-operated alpha as acceptable only under five
   conditions; Base A1 voucher slashing was promoted to a Phase 9b-2 launch gate.
 - **2026-07-13:** PR #102 merged the clean-break Base A1 implementation after contract and consumer
-  synchronization, EIP-170 and soft-size gates, 116 Forge tests, the complete local Anvil lifecycle,
+  synchronization, EIP-170 and soft-size gates, 121 Forge tests, the complete local Anvil lifecycle,
   and an internal executable-diff review with no reportable issues. Launch remains blocked on the
   separately approved paid-report client, fresh paused Base Sepolia deployment/evidence, external
   review or human acceptance, custody, monitoring, and exposure-policy gates.
+- **2026-07-26:** Readiness re-read against `main` at `f2d808e`. Three Base rows were stale (Forge
+  test count 116 → 121 after PR #106; Sepolia-pinned modules ~13 → 31, which PR #106 increased; the
+  paid-report write client shipped in #106 and is flag-gated, so only approval and activation
+  remain). The Stripe card rail — merged 2026-07-14 through 2026-07-18 — had no representation in
+  this document at all; it is now gated by two table rows and the
+  [Card / Fiat Rail](#card--fiat-rail-stripe-2026-07-26) section. A live-key guard was added in
+  code because the test-mode constraint had existed only as prose.
 
 ## Launch Trust Bar (chain-agnostic, 2026-07-06)
 
@@ -137,6 +146,61 @@ of the distribution bet; mitigations must stay warm rather than theoretical:
   Smart Wallet connect failure rates to [Monitoring](#monitoring); add a "paymaster/bundler
   outage or policy change" playbook to [Incident Response](#incident-response) alongside the
   existing Kora/paymaster entry.
+
+### Card / Fiat Rail (Stripe, 2026-07-26)
+
+Stripe card checkout shipped between 2026-07-14 and 2026-07-18 (PRs #103, #109 and follow-ups) and
+was not represented in this document until now. It is a **launch-gate surface**, because nothing
+about the Base gate table prevents a launch with card checkout live.
+
+**Current posture — fail-closed, and that is load-bearing.** Checkout requires
+`STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`, `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true`,
+`NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=true`, and — in production only —
+`AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true`. The account-scoped path additionally requires buyer
+auth plus `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED`. Production runs Clerk buyer auth with every card
+and checkout flag explicitly false (see `.agents/plans/walletless-production-auth-rollout.plan.md`).
+Only a test-mode preview smoke has run.
+
+**Live-key guard (added 2026-07-26).** The test-mode constraint previously existed only as prose in
+`docs/STRIPE_TEST_MODE_ROLLOUT.md`, and no code inspected the key prefix. Because the
+edge-rate-limit acknowledgement applies only when `VERCEL_ENV === "production"`, a live key on a
+preview deployment would have started real commerce with no further gate. `detectStripeKeyMode`
+now classifies the configured key, an unrecognized prefix fails closed, a `live` key requires
+`AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` in every environment, and the webhook refuses to mint or
+revoke on an event whose `livemode` contradicts the configured key (recorded as needs-review, not a
+retryable error).
+
+**The buyer-recourse asymmetry is structural, not incidental.** A card purchase writes a
+`marketplace_access_grants` row (or a legacy wallet-bound receipt) that authorizes off-chain
+download only. It creates no Solana purchase PDA, no Base purchase id, no x402 settlement, no
+protocol receipt, no author proceeds, and no voucher rewards. Stripe receipts are written with
+`evm_purchase_id = NULL` and `legacy_refund_eligible = FALSE`, which makes a card buyer
+**ineligible by construction** to file a bonded paid report, trigger voucher slashing, or claim
+buyer credit. An on-chain buyer gets all of it. A card buyer's only recourse is a chargeback
+against the operator. This must be disclosed on user-facing surfaces before any card sale settles.
+
+**Open before any real card sale:**
+
+1. **Graduation model** — card on-ramp to protocol settlement, parallel MPP marketplace, or limited
+   early-sales rail (`docs/STRIPE_FEASIBILITY.md`). Unchosen. Everything below depends on it.
+2. **Merchant of record and author payouts** — the operator currently holds author revenue in
+   Stripe custody with no Connect, KYC, or tax process; `docs/STRIPE_MPP_POLICY.md` says authors
+   must not see card sales as withdrawable on-chain proceeds. A payout process must exist before
+   authors are owed money.
+3. **Chargeback exposure** — full refunds and disputes revoke access, but partial refunds only log
+   for manual review and dispute-won reinstatement is manual. There is no reserve; the operator
+   absorbs reversal risk.
+4. **`1 USDC ≡ 1 USD`** is hardcoded in `usdcMicrosToUsdCents`. A treasury decision, not a constant.
+5. **Edge rate limiting** is an in-memory per-instance limiter plus an honor-system boolean; the
+   Vercel Firewall/WAF rule itself is unbuilt.
+6. **`marketplace_access_grants` is not self-bootstrapping** (unlike `stripe_webhook_outcomes`); it
+   is created by `web/scripts/walletless-buyer-migration.ts`. An account-path webhook against an
+   unmigrated database will 500.
+
+**Monitoring and incident additions required when the rail activates:** webhook signature failures,
+`needs-review` reconciliation depth and age (escalates to critical after 15 minutes), refund and
+dispute rates, livemode-mismatch events, and Clerk auth/webhook failures. Playbooks needed for
+chargeback surges, a Stripe or Clerk outage, and card entitlement granted without protocol access.
 
 ### Code Audit Findings (2026-05-30)
 
