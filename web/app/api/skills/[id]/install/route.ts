@@ -23,7 +23,6 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    await initializeDatabase();
     const body = (await request.json().catch(() => null)) ?? {};
     const { auth } = body as { auth: AuthPayload };
 
@@ -47,6 +46,8 @@ export async function POST(
         { status: 401 }
       );
     }
+
+    await initializeDatabase();
 
     if (id.startsWith(CHAIN_PREFIX)) {
       const pubkey = id.slice(CHAIN_PREFIX.length);

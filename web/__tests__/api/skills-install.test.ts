@@ -35,13 +35,16 @@ vi.mock("@/lib/buyerAccessGrants", () => ({
 }));
 
 import { POST } from "@/app/api/skills/[id]/install/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { verifyWalletSignature } from "@/lib/auth";
 import { getOnChainUsdcPrice } from "@/lib/onchain";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockVerify = verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 const mockHasOnChainPurchase = hasOnChainPurchase as unknown as ReturnType<
@@ -93,6 +96,32 @@ describe("POST /api/skills/[id]/install", () => {
       error: "Missing auth payload",
     });
     expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("does not bootstrap the database when the auth payload is missing", async () => {
+    const { req, params } = makeRequest("some-id", {});
+    const res = await POST(req, { params });
+
+    expect(res.status).toBe(400);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("does not bootstrap the database when the signature is invalid", async () => {
+    mockVerify.mockReturnValue({
+      valid: false,
+      pubkey: null,
+      error: "Invalid signature",
+    });
+    const { req, params } = makeRequest("some-id", {
+      auth: { pubkey: "x", signature: "y", message: "z" },
+    });
+    const res = await POST(req, { params });
+
+    expect(res.status).toBe(401);
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
   });
 
