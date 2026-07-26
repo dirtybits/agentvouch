@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { getStripeCheckoutActivation } from "../lib/stripe";
+import { getStripeCheckoutActivation, type StripeKeyMode } from "../lib/stripe";
 import {
   buildStripeReconciliationAlerts,
   listOpenStripeReconciliationItemsReadOnly,
@@ -33,6 +33,9 @@ export type StripePreviewPreflight = {
   uiFlagEnabled: boolean;
   production: boolean;
   productionEdgeRateLimitReady: boolean;
+  keyMode: StripeKeyMode;
+  liveModeAcknowledged: boolean;
+  keyModePermitted: boolean;
   databaseConfigured: boolean;
   blockers: string[];
 };
@@ -60,6 +63,13 @@ export function buildStripePreviewPreflight(
       "production edge rate limit is not acknowledged by AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY"
     );
   }
+  if (!activation.keyModePermitted) {
+    blockers.push(
+      activation.keyMode === "live"
+        ? "STRIPE_SECRET_KEY is a live key and AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED is not true"
+        : "STRIPE_SECRET_KEY is not a recognized Stripe test or live key"
+    );
+  }
 
   return {
     readOnly: true,
@@ -69,6 +79,10 @@ export function buildStripePreviewPreflight(
     uiFlagEnabled,
     production: activation.production,
     productionEdgeRateLimitReady: activation.productionEdgeRateLimitReady,
+    // Mode name only — never the key or any resolved secret value.
+    keyMode: activation.keyMode,
+    liveModeAcknowledged: activation.liveModeAcknowledged,
+    keyModePermitted: activation.keyModePermitted,
     databaseConfigured,
     blockers,
   };

@@ -15,9 +15,15 @@ purchase state.
 
 ## Preconditions
 
-- `STRIPE_SECRET_KEY` uses a test-mode key.
+- `STRIPE_SECRET_KEY` uses a test-mode key. **Enforced in code since 2026-07-26**, not just
+  stated here: `detectStripeKeyMode` classifies the key by prefix, an unrecognized prefix fails
+  closed, and a `live` key disables checkout in every environment unless
+  `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` is set explicitly. This matters because the
+  production edge-rate-limit acknowledgement only applies when `VERCEL_ENV === "production"`, so
+  before this guard a live key on a preview deployment would have taken real payments.
 - `STRIPE_WEBHOOK_SECRET` is configured from the matching test-mode webhook
-  endpoint.
+  endpoint. The webhook cross-checks each event's `livemode` against the configured key's mode and
+  refuses to mint or revoke on a mismatch, recording it as `needs-review` rather than retrying.
 - `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true` enables session creation on the
   test deployment. Leave the webhook configured when this flag is later turned
   off so outstanding refunds/disputes still process.

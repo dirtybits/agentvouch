@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createCheckoutSession: vi.fn(),
   getStripeCheckoutActivation: vi.fn(),
   isStripeEnabled: vi.fn(),
+  stripeEventModeMismatch: vi.fn(),
   verifyAndParseWebhook: vi.fn(),
   verifyWalletSignature: vi.fn(),
   hasUsdcPurchaseEntitlement: vi.fn(),
@@ -39,6 +40,8 @@ vi.mock("@/lib/stripe", () => ({
     mocks.createCheckoutSession(...args),
   getStripeCheckoutActivation: () => mocks.getStripeCheckoutActivation(),
   isStripeEnabled: () => mocks.isStripeEnabled(),
+  stripeEventModeMismatch: (...args: unknown[]) =>
+    mocks.stripeEventModeMismatch(...args),
   usdcMicrosToUsdCents: (micros: bigint) => Number((micros + 5000n) / 10000n),
   verifyAndParseWebhook: (...args: unknown[]) =>
     mocks.verifyAndParseWebhook(...args),
@@ -215,8 +218,12 @@ describe("Stripe checkout and webhook routes", () => {
       serverFlagEnabled: true,
       productionEdgeRateLimitReady: true,
       production: false,
+      keyMode: "test",
+      liveModeAcknowledged: false,
+      keyModePermitted: true,
     });
     mocks.isStripeEnabled.mockReturnValue(true);
+    mocks.stripeEventModeMismatch.mockReturnValue(null);
     mocks.checkRateLimit.mockReturnValue({
       ok: true,
       remaining: 4,
@@ -274,6 +281,9 @@ describe("Stripe checkout and webhook routes", () => {
       serverFlagEnabled: false,
       productionEdgeRateLimitReady: true,
       production: false,
+      keyMode: "test",
+      liveModeAcknowledged: false,
+      keyModePermitted: true,
     });
 
     const res = await checkoutPOST(
@@ -283,6 +293,28 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(501);
     expect(body.error).toContain("AGENTVOUCH_STRIPE_CHECKOUT_ENABLED");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("explains an unacknowledged live key rather than a generic flag error", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: false,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: false,
+      keyMode: "live",
+      liveModeAcknowledged: false,
+      keyModePermitted: false,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId, auth: signedCheckoutAuth() })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(501);
+    expect(body.error).toContain("AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED");
     expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 
@@ -535,6 +567,47 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(200);
     expect(body.ignored).toContain("account grant stays revoked");
     expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+  });
+
+  it("does not mint or revoke when the event livemode contradicts the key", async () => {
+    // A live event reaching a test-configured endpoint (or the reverse) means
+    // the wiring has crossed. Terminal needs-review, never a mint, and a 200 so
+    // Stripe stops retrying while reconciliation escalates it.
+    mocks.stripeEventModeMismatch.mockReturnValue({
+      keyMode: "test",
+      eventMode: "live",
+    });
+    mocks.verifyAndParseWebhook.mockReturnValue(paidSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toContain("livemode mismatch");
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "needs-review", needsReview: true })
+    );
+  });
+
+  it("stops a livemode-mismatched refund from revoking an entitlement", async () => {
+    mocks.stripeEventModeMismatch.mockReturnValue({
+      keyMode: "live",
+      eventMode: "test",
+    });
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_mode_mismatch_refund",
+      type: "charge.refunded",
+      livemode: false,
+      data: { object: { payment_intent: "pi_123", refunded: true } },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.recordAndApplyUsdcPaymentRevocation).not.toHaveBeenCalled();
+    expect(mocks.revokeStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
   });
 
   it("does not fulfill a paid session without a payment intent", async () => {

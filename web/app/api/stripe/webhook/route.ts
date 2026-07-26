@@ -22,6 +22,7 @@ import {
   STRIPE_PAYMENT_FLOW,
   STRIPE_RECIPIENT_SENTINEL,
   isStripeEnabled,
+  stripeEventModeMismatch,
   usdcMicrosToUsdCents,
   verifyAndParseWebhook,
 } from "@/lib/stripe";
@@ -155,6 +156,19 @@ export async function POST(req: NextRequest) {
       { error: `Webhook verification failed: ${getErrorMessage(error)}` },
       { status: 400 }
     );
+  }
+
+  // The endpoint's configured key mode must match the event's. A mismatch means
+  // live and test wiring have crossed — never mint or revoke on it. Persisted
+  // as needs-review (not 500) so Stripe stops retrying while the reconciliation
+  // queue escalates it to an operator.
+  const modeMismatch = stripeEventModeMismatch(event);
+  if (modeMismatch) {
+    return ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      reason: `livemode mismatch: ${modeMismatch.eventMode} event received while STRIPE_SECRET_KEY is a ${modeMismatch.keyMode} key`,
+    });
   }
 
   // Refunds and chargebacks revoke both legacy wallet entitlements and the
