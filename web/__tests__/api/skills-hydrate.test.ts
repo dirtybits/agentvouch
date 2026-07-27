@@ -35,7 +35,7 @@ vi.mock("@/lib/x402", () => ({
 
 import { POST } from "@/app/api/skills/hydrate/route";
 import { resolveManyAgentIdentitiesByWallet } from "@/lib/agentIdentity";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import {
   assessPurchasePreflight,
   createPurchasePreflightContext,
@@ -45,6 +45,9 @@ import { resolveMultipleAuthorTrust } from "@/lib/trust";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { hasOnChainPurchase } from "@/lib/x402";
 
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockResolveMultipleAuthorTrust =
   resolveMultipleAuthorTrust as unknown as ReturnType<typeof vi.fn>;
@@ -97,6 +100,28 @@ describe("POST /api/skills/hydrate", () => {
     mockHasUsdcPurchaseEntitlement.mockResolvedValue(false);
     mockHasOnChainPurchase.mockResolvedValue(false);
   });
+
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "returns an empty hydration map for a %s JSON body without initializing the database",
+    async (_kind, body) => {
+      const res = await POST(
+        new NextRequest("http://localhost/api/skills/hydrate", {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({ skills: {} });
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+      expect(mockResolveMultipleAuthorTrust).not.toHaveBeenCalled();
+    }
+  );
 
   it("returns an empty hydration map when no valid skill ids are provided", async () => {
     const res = await POST(makeRequest({ skillIds: ["chain-not-a-uuid"] }));
