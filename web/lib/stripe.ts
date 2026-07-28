@@ -232,8 +232,13 @@ export type StripeWebhookEvent = {
  * A mismatch means the deployment is wired to one Stripe mode and receiving
  * events from the other — a live event reaching a test-configured endpoint, or
  * a webhook pointed at the wrong environment. Either way the event must not
- * mint or revoke entitlements here. Returns null when no check is possible
- * (unknown key prefix, or an event without the field).
+ * mint or revoke entitlements here.
+ *
+ * Returns null when no *comparison* is possible: an unknown key prefix, or an
+ * event without the field. Null is therefore "no mismatch detected", not "safe
+ * to grant" — the caller is responsible for handling an unknown key mode. The
+ * webhook does that separately, refusing to grant while still allowing
+ * revocations through (refusing those would be fail-open).
  */
 export function stripeEventModeMismatch(
   event: Pick<StripeWebhookEvent, "livemode">,

@@ -21,6 +21,7 @@ import {
   STRIPE_CURRENCY_SENTINEL,
   STRIPE_PAYMENT_FLOW,
   STRIPE_RECIPIENT_SENTINEL,
+  detectStripeKeyMode,
   isStripeEnabled,
   stripeEventModeMismatch,
   usdcMicrosToUsdCents,
@@ -279,6 +280,21 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+  }
+
+  // An unclassifiable key means we cannot tell which Stripe mode or account
+  // this deployment is wired to, so we must not GRANT access under it. This
+  // guard sits after the refund/dispute branch on purpose: refusing a
+  // revocation would be fail-open (a chargeback would leave access intact),
+  // and a terminal ack means Stripe never redelivers it. Fail-closed here
+  // means "do not grant", not "do not revoke".
+  if (detectStripeKeyMode(process.env.STRIPE_SECRET_KEY) === "unknown") {
+    return ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      reason:
+        "STRIPE_SECRET_KEY has an unrecognized prefix; refusing to grant access under an unclassified key mode",
+    });
   }
 
   // Only successful payment-mode checkouts grant entitlement; ack everything else.

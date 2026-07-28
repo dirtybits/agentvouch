@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   createCheckoutSession: vi.fn(),
   getStripeCheckoutActivation: vi.fn(),
+  detectStripeKeyMode: vi.fn(),
   isStripeEnabled: vi.fn(),
   stripeEventModeMismatch: vi.fn(),
   verifyAndParseWebhook: vi.fn(),
@@ -38,6 +39,8 @@ vi.mock("@/lib/stripe", () => ({
   STRIPE_MIN_CHARGE_USD_CENTS: 50,
   createCheckoutSession: (...args: unknown[]) =>
     mocks.createCheckoutSession(...args),
+  detectStripeKeyMode: (...args: unknown[]) =>
+    mocks.detectStripeKeyMode(...args),
   getStripeCheckoutActivation: () => mocks.getStripeCheckoutActivation(),
   isStripeEnabled: () => mocks.isStripeEnabled(),
   stripeEventModeMismatch: (...args: unknown[]) =>
@@ -224,6 +227,7 @@ describe("Stripe checkout and webhook routes", () => {
     });
     mocks.isStripeEnabled.mockReturnValue(true);
     mocks.stripeEventModeMismatch.mockReturnValue(null);
+    mocks.detectStripeKeyMode.mockReturnValue("test");
     mocks.checkRateLimit.mockReturnValue({
       ok: true,
       remaining: 4,
@@ -608,6 +612,55 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(200);
     expect(mocks.recordAndApplyUsdcPaymentRevocation).not.toHaveBeenCalled();
     expect(mocks.revokeStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+  });
+
+  it("refuses to grant access when the key mode cannot be classified", async () => {
+    mocks.detectStripeKeyMode.mockReturnValue("unknown");
+    mocks.verifyAndParseWebhook.mockReturnValue(paidSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toContain("unrecognized prefix");
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "needs-review", needsReview: true })
+    );
+  });
+
+  it("still revokes on an unclassified key, because refusing would be fail-open", async () => {
+    // Fail-closed means "do not grant", not "do not revoke". A terminal ack on
+    // a refund would let a charged-back buyer keep access, since Stripe never
+    // redelivers it.
+    mocks.detectStripeKeyMode.mockReturnValue("unknown");
+    mocks.recordAndApplyUsdcPaymentRevocation.mockResolvedValue([
+      { skill_db_id: skillId, buyer_pubkey: buyerPubkey },
+    ]);
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_unknown_key_refund",
+      type: "charge.refunded",
+      livemode: false,
+      data: {
+        object: {
+          id: "ch_unknown_key",
+          payment_intent: "pi_test_123",
+          refunded: true,
+          amount_refunded: 100,
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.revoked).toBe(1);
+    expect(mocks.recordAndApplyUsdcPaymentRevocation).toHaveBeenCalledWith(
+      "stripe:pi_test_123",
+      "stripe-refund"
+    );
   });
 
   it("does not fulfill a paid session without a payment intent", async () => {
