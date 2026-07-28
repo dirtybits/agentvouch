@@ -120,9 +120,8 @@ export function isStripeCheckoutServerEnabled(): boolean {
   return getStripeCheckoutActivation().enabled;
 }
 
-export function isStripeCheckoutUiEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED === "true";
-}
+// The render-affecting UI flag lives in `@/lib/stripeUi` so rendering code does
+// not import this module's `node:crypto` dependency or server-only env reads.
 
 // Stripe charges integer minor units (cents). We treat one USDC micro-unit as
 // 1e-6 USD (1 USDC ~= 1 USD), so cents = round(micros / 10_000).

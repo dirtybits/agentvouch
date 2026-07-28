@@ -1,16 +1,18 @@
 import { createHmac } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   detectStripeKeyMode,
   getStripeCheckoutActivation,
   createCheckoutSession,
-  isStripeCheckoutUiEnabled,
   isStripeEnabled,
   stripeEventModeMismatch,
   verifyAndParseWebhook,
   usdcMicrosToUsdCents,
 } from "@/lib/stripe";
+import { isStripeCheckoutUiEnabled } from "@/lib/stripeUi";
 
 describe("stripe helpers", () => {
   beforeEach(() => {
@@ -31,6 +33,21 @@ describe("stripe helpers", () => {
 
     process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED = "true";
     expect(isStripeCheckoutUiEnabled()).toBe(true);
+  });
+
+  it("keeps the render-affecting flag free of server-only imports", async () => {
+    // Rendering code imports @/lib/stripeUi. If it ever pulls in node:crypto or
+    // a server-only env read, a client component importing it would break the
+    // browser bundle, so keep this module free of both.
+    const source = await readFile(
+      resolve(process.cwd(), "lib/stripeUi.ts"),
+      "utf8"
+    );
+    const code = source.replace(/\/\/.*$/gm, "");
+    expect(code).not.toContain("node:");
+    expect(code).not.toContain("STRIPE_SECRET_KEY");
+    expect(code).not.toContain("AGENTVOUCH_STRIPE");
+    expect(code).toContain("NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED");
   });
 
   it("requires both API and webhook secrets before checkout is enabled", () => {

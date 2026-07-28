@@ -9,7 +9,7 @@ import {
 import { buildSkillPageMetadata } from "@/lib/skillPageMetadata";
 import { CHAIN_SKILL_PREFIX } from "@/lib/skillUrls";
 import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
-import { isStripeCheckoutUiEnabled } from "@/lib/stripe";
+import { isStripeCheckoutUiEnabled } from "@/lib/stripeUi";
 import { isBuyerCardAccessUiEnabled } from "@/lib/buyerAuthConfig";
 
 // Cache the rendered HTML at the edge (ISR). Skill data changes only via the
