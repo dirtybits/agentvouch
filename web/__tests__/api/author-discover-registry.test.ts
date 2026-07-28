@@ -45,6 +45,31 @@ describe("POST /api/author/[pubkey]/discover-registry", () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])("returns 400 for a %s JSON body", async (_kind, body) => {
+    const res = await POST(
+      new NextRequest(
+        "http://localhost/api/author/Author111/discover-registry",
+        {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "application/json" },
+        }
+      ),
+      { params: Promise.resolve({ pubkey: "Author111" }) }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing auth payload",
+    });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+    expect(mockDiscover).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when signature is invalid", async () => {
     mockVerify.mockReturnValue({
       valid: false,
