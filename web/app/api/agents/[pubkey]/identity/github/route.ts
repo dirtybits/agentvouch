@@ -18,7 +18,9 @@ export async function POST(
 ) {
   try {
     const { pubkey } = await params;
-    const body = (await request.json()) as { auth?: AuthPayload };
+    const body = ((await request.json().catch(() => null)) ?? {}) as {
+      auth?: AuthPayload;
+    };
 
     if (!body.auth) {
       return NextResponse.json(

@@ -50,7 +50,7 @@ export async function PATCH(
 ) {
   try {
     const { pubkey } = await params;
-    const body = (await request.json()) as {
+    const body = ((await request.json().catch(() => null)) ?? {}) as {
       auth?: AuthPayload;
       username?: string;
     };
