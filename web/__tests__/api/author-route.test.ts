@@ -67,6 +67,32 @@ describe("POST /api/author/[pubkey]", () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "returns 400 for a %s JSON body before any downstream work",
+    async (_kind, body) => {
+      const res = await POST(
+        new NextRequest("http://localhost/api/author/Author111", {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "application/json" },
+        }),
+        { params: Promise.resolve({ pubkey: "Author111" }) }
+      );
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: "Missing required fields: auth",
+      });
+      expect(mockVerify).not.toHaveBeenCalled();
+      expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+      expect(mockDiscover).not.toHaveBeenCalled();
+      expect(mockLink).not.toHaveBeenCalled();
+    }
+  );
+
   it("returns trust, identity, and author disputes on GET", async () => {
     mockResolveAuthorTrust.mockResolvedValue({
       reputationScore: 10,
