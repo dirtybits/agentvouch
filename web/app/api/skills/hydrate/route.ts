@@ -359,8 +359,12 @@ async function addPurchasePreflightAndBuyerStatus(input: {
 
 export async function POST(request: NextRequest) {
   try {
-    await initializeDatabase();
-    const body = (await request.json()) as HydrateRequestBody;
+    let body: HydrateRequestBody;
+    try {
+      body = ((await request.json()) ?? {}) as HydrateRequestBody;
+    } catch {
+      body = {};
+    }
     const skillIds = Array.isArray(body.skillIds)
       ? [
           ...new Set(
@@ -374,6 +378,8 @@ export async function POST(request: NextRequest) {
     if (skillIds.length === 0) {
       return NextResponse.json({ skills: {} });
     }
+
+    await initializeDatabase();
 
     const buyerChainContext = normalizeInputChainContext(
       typeof body.buyerChainContext === "string" ? body.buyerChainContext : null
