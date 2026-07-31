@@ -93,6 +93,27 @@ describe("POST /api/author/[pubkey]", () => {
     }
   );
 
+  it("returns 400 when request.json throws synchronously", async () => {
+    const request = {
+      json() {
+        throw new Error("invalid body");
+      },
+    } as unknown as NextRequest;
+
+    const res = await POST(request, {
+      params: Promise.resolve({ pubkey: "Author111" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing required fields: auth",
+    });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(mockLink).not.toHaveBeenCalled();
+  });
+
   it("returns trust, identity, and author disputes on GET", async () => {
     mockResolveAuthorTrust.mockResolvedValue({
       reputationScore: 10,
