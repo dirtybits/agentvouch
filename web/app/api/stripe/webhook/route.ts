@@ -159,19 +159,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The endpoint's configured key mode must match the event's. A mismatch means
-  // live and test wiring have crossed — never mint or revoke on it. Persisted
-  // as needs-review (not 500) so Stripe stops retrying while the reconciliation
-  // queue escalates it to an operator.
-  const modeMismatch = stripeEventModeMismatch(event);
-  if (modeMismatch) {
-    return ackUnprocessable({
-      eventId: event.id,
-      eventType: event.type,
-      reason: `livemode mismatch: ${modeMismatch.eventMode} event received while STRIPE_SECRET_KEY is a ${modeMismatch.keyMode} key`,
-    });
-  }
-
   // Refunds and chargebacks revoke both legacy wallet entitlements and the
   // newer account-scoped grant. Partial refunds are reviewed but do not revoke.
   if (
@@ -280,6 +267,19 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+  }
+
+  // A known mode mismatch means the deployment's API key and webhook endpoint
+  // have crossed. Never grant access under that wiring. This guard deliberately
+  // follows refunds/disputes: terminally acknowledging a revocation first would
+  // be fail-open because Stripe would not redeliver it and access would remain.
+  const modeMismatch = stripeEventModeMismatch(event);
+  if (modeMismatch) {
+    return ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      reason: `livemode mismatch: ${modeMismatch.eventMode} event received while STRIPE_SECRET_KEY is a ${modeMismatch.keyMode} key`,
+    });
   }
 
   // An unclassifiable key means we cannot tell which Stripe mode or account

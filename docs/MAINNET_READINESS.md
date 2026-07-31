@@ -166,9 +166,10 @@ Only a test-mode preview smoke has run.
 edge-rate-limit acknowledgement applies only when `VERCEL_ENV === "production"`, a live key on a
 preview deployment would have started real commerce with no further gate. `detectStripeKeyMode`
 now classifies the configured key, an unrecognized prefix fails closed, a `live` key requires
-`AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` in every environment, and the webhook refuses to mint or
-revoke on an event whose `livemode` contradicts the configured key (recorded as needs-review, not a
-retryable error).
+`AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` in every environment, and the webhook refuses to grant
+access on an event whose `livemode` contradicts the configured key (recorded as needs-review, not a
+retryable error). Refund and dispute events still revoke access before that guard; terminally
+acknowledging them without revocation would leave access active and prevent Stripe redelivery.
 
 **The buyer-recourse asymmetry is structural, not incidental.** A card purchase writes a
 `marketplace_access_grants` row (or a legacy wallet-bound receipt) that authorizes off-chain

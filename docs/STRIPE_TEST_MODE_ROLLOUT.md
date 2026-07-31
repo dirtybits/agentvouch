@@ -23,7 +23,9 @@ purchase state.
   before this guard a live key on a preview deployment would have taken real payments.
 - `STRIPE_WEBHOOK_SECRET` is configured from the matching test-mode webhook
   endpoint. The webhook cross-checks each event's `livemode` against the configured key's mode and
-  refuses to mint or revoke on a mismatch, recording it as `needs-review` rather than retrying.
+  refuses to grant access on a mismatch, recording it as `needs-review` rather than retrying.
+  Refund and dispute events still revoke access first; acknowledging those without revocation would
+  fail open because Stripe would not redeliver them.
 - `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true` enables session creation on the
   test deployment. Leave the webhook configured when this flag is later turned
   off so outstanding refunds/disputes still process.

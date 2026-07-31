@@ -573,9 +573,9 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
   });
 
-  it("does not mint or revoke when the event livemode contradicts the key", async () => {
+  it("does not grant access when the event livemode contradicts the key", async () => {
     // A live event reaching a test-configured endpoint (or the reverse) means
-    // the wiring has crossed. Terminal needs-review, never a mint, and a 200 so
+    // the wiring has crossed. Terminal needs-review for a grant, and a 200 so
     // Stripe stops retrying while reconciliation escalates it.
     mocks.stripeEventModeMismatch.mockReturnValue({
       keyMode: "test",
@@ -595,11 +595,14 @@ describe("Stripe checkout and webhook routes", () => {
     );
   });
 
-  it("stops a livemode-mismatched refund from revoking an entitlement", async () => {
+  it("still revokes a livemode-mismatched full refund", async () => {
     mocks.stripeEventModeMismatch.mockReturnValue({
       keyMode: "live",
       eventMode: "test",
     });
+    mocks.recordAndApplyUsdcPaymentRevocation.mockResolvedValue([
+      { skill_db_id: skillId, buyer_pubkey: buyerPubkey },
+    ]);
     mocks.verifyAndParseWebhook.mockReturnValue({
       id: "evt_mode_mismatch_refund",
       type: "charge.refunded",
@@ -608,10 +611,14 @@ describe("Stripe checkout and webhook routes", () => {
     });
 
     const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(mocks.recordAndApplyUsdcPaymentRevocation).not.toHaveBeenCalled();
-    expect(mocks.revokeStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+    expect(body.revoked).toBe(1);
+    expect(mocks.recordAndApplyUsdcPaymentRevocation).toHaveBeenCalledWith(
+      "stripe:pi_123",
+      "stripe-refund"
+    );
   });
 
   it("refuses to grant access when the key mode cannot be classified", async () => {

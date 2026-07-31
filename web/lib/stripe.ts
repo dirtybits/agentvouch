@@ -230,8 +230,9 @@ export type StripeWebhookEvent = {
  *
  * A mismatch means the deployment is wired to one Stripe mode and receiving
  * events from the other — a live event reaching a test-configured endpoint, or
- * a webhook pointed at the wrong environment. Either way the event must not
- * mint or revoke entitlements here.
+ * a webhook pointed at the wrong environment. The webhook must not grant
+ * entitlements under that wiring, but processes refunds/disputes before this
+ * comparison because terminally acknowledging a revocation would fail open.
  *
  * Returns null when no *comparison* is possible: an unknown key prefix, or an
  * event without the field. Null is therefore "no mismatch detected", not "safe

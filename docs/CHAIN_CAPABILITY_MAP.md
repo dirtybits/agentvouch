@@ -65,9 +65,9 @@ mainnet remains blocked.
 
 ## Merged A1 deployment gap
 
-PR #102 merged the seven-function `base-v1-a1` paid-report surface and removed `openReport` / `resolveReport` from Base `main`. The facade runtime is 23,487 bytes and the linked-library runtime is 5,939 bytes; 116 Forge tests, the full local Anvil lifecycle, linked-library verification, and an internal executable-diff review passed.
+PR #102 merged the seven-function `base-v1-a1` paid-report surface and removed `openReport` / `resolveReport` from Base `main`. The facade runtime is 23,487 bytes and the linked-library runtime is 5,939 bytes; 116 Forge tests passed at that merge, and PR #106 later raised the current suite to 121. The full local Anvil lifecycle, linked-library verification, and an internal executable-diff review also passed.
 
-This is a source claim only. The live Base Sepolia address remains the pre-A1 `base-v1-candidate` and does not route the paid-report selectors. Paid-report wallet/UI writes, fresh linked deployment, live smoke, custody/operations inputs, and external review or explicit human acceptance remain gated by `.agents/plans/base-paid-report-activation-sepolia.plan.md`.
+This is a source claim only. The live Base Sepolia address remains the pre-A1 `base-v1-candidate` and does not route the paid-report selectors. PR #106 shipped the paid-report wallet/UI writes behind `NEXT_PUBLIC_BASE_PAID_PURCHASE_REPORTS_ENABLED`; approval and activation, a fresh linked deployment, live smoke, custody/operations inputs, and external review or explicit human acceptance remain gated by `.agents/plans/base-paid-report-activation-sepolia.plan.md`.
 
 ## Verification
 

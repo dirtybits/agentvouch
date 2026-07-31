@@ -1,6 +1,6 @@
 # AgentVouch Beta Launch Checklist
 
-> **SUPERSEDED (2026-07-26) — historical record.** This checklist was written on 2026-07-01,
+> **SUPERSEDED (2026-07-26) — historical record.** This checklist was written on 2026-06-23,
 > before the Base decision. Its premise ("keep Solana canonical unless the distribution bet is
 > funded") was overtaken on 2026-06-25 when the x402/Coinbase bet was chosen, and again on
 > 2026-07-06 when Base Sepolia became the default writable path. Its Solana-shaped items — the

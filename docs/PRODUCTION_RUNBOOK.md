@@ -40,14 +40,14 @@ production. Keeping them off requires `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED`,
 `NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED`, `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED`, and
 `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` to remain unset or non-`"true"`. A live Stripe
 key additionally requires `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true`; without it, checkout fails
-closed in every environment and the webhook refuses events whose `livemode` contradicts the
-configured key. Do not enable any of these before the
+closed in every environment and the webhook refuses grants whose `livemode` contradicts the
+configured key while still processing refunds and disputes. Do not enable any of these before the
 [Card / Fiat Rail](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26) gates pass.
 
 Operator preflight (read-only, never prints secret values):
 
 ```bash
-npm run stripe:ops -- preflight
+npm run stripe:ops --workspace @agentvouch/web -- preflight
 ```
 
 ## Environment Matrix
