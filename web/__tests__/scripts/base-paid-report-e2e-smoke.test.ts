@@ -37,13 +37,15 @@ describe("Base paid-report operations driver", () => {
   });
 
   it("redacts RPC URLs from diagnostics", () => {
-    expect(
-      sanitizeOpsDiagnostic(
-        new Error(
-          "HTTP request failed: https://rpc.example/v2/SECRET?api_key=TOKEN"
-        )
-      )
-    ).toBe("HTTP request failed: <redacted-rpc-url>");
+    const error = new Error(
+      "HTTP request failed: https://rpc.example/v2/SECRET?api_key=TOKEN"
+    );
+    error.stack = `${error.name}: ${error.message}\n    at runReadOnlyOperations (base-paid-report-e2e-smoke.ts:1:1)`;
+
+    expect(sanitizeOpsDiagnostic(error)).toBe(
+      "Error: HTTP request failed: <redacted-rpc-url>\n" +
+        "    at runReadOnlyOperations (base-paid-report-e2e-smoke.ts:1:1)"
+    );
   });
 
   it("splits inclusive log scans into at most 1,999-block chunks", () => {
@@ -327,6 +329,7 @@ describe("Base paid-report operations driver", () => {
         "Planned gross fixture funding exceeds the approved exposure cap",
       ])
     );
+    expect(result.transactionPlan).toEqual([]);
   });
 
   it.each([

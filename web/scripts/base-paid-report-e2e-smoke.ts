@@ -23,6 +23,7 @@ import {
 } from "viem";
 import { baseSepolia } from "viem/chains";
 import { AGENTVOUCH_EVM_A1_READ_ABI } from "../lib/adapters/agentVouchEvmAbi";
+import { normalizeChainAddressForStorage } from "../lib/chainAddress";
 
 export const MAX_BASE_LOG_BLOCK_SPAN = 1_999n;
 export const BASE_A1_CHAIN_ID = 84_532;
@@ -389,14 +390,13 @@ export function parseOpsMode(argv: string[]): OpsMode {
 }
 
 function normalizedAddress(value: string): string | null {
-  try {
-    const address = getAddress(value);
-    return address === "0x0000000000000000000000000000000000000000"
-      ? null
-      : address.toLowerCase();
-  } catch {
-    return null;
-  }
+  const address = normalizeChainAddressForStorage({
+    chainContext: `eip155:${BASE_A1_CHAIN_ID}`,
+    value,
+  });
+  return address === "0x0000000000000000000000000000000000000000"
+    ? null
+    : address;
 }
 
 function nonPending(value: string): boolean {
@@ -405,8 +405,9 @@ function nonPending(value: string): boolean {
 }
 
 export function sanitizeOpsDiagnostic(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/https?:\/\/[^\s)\]}]+/gi, "<redacted-rpc-url>");
+  const diagnostic =
+    error instanceof Error ? error.stack || error.message : String(error);
+  return diagnostic.replace(/https?:\/\/[^\s)\]}]+/gi, "<redacted-rpc-url>");
 }
 
 function currentGitCommit(): string {
@@ -814,10 +815,15 @@ export function evaluateGateCDecision(
     blockers.push("Fallback cranker is missing or pending");
   }
   const purchaseLane = String(decision.exposure.purchaseLane);
-  const purchaseLaneValid = ["Direct", "Authorization", "Settlement"].includes(
+  const purchaseLaneRecognized = [
+    "Direct",
+    "Authorization",
+    "Settlement",
+  ].includes(purchaseLane);
+  const purchaseLaneEligible = ["Direct", "Authorization"].includes(
     purchaseLane
   );
-  if (!purchaseLaneValid) {
+  if (!purchaseLaneRecognized) {
     blockers.push("Purchase lane must be Direct, Authorization, or Settlement");
   } else if (purchaseLane === "Settlement") {
     blockers.push("Settlement-lane receipts are ineligible for Gate-C reports");
@@ -983,16 +989,20 @@ export function evaluateGateCDecision(
     );
   }
 
+  const assessment =
+    blockers.length === 0 ? "READY_FOR_HUMAN_REVIEW" : "BLOCKED";
+
   return {
-    assessment: blockers.length === 0 ? "READY_FOR_HUMAN_REVIEW" : "BLOCKED",
+    assessment,
     executionAuthorized: false,
     readOnly: true,
     writeModesEnabled: false,
     blockers,
     plannedGrossFundingUsdcMicros: plannedGrossFunding.toString(),
-    transactionPlan: purchaseLaneValid
-      ? buildGateCTransactionPlan(decision)
-      : [],
+    transactionPlan:
+      assessment === "READY_FOR_HUMAN_REVIEW" && purchaseLaneEligible
+        ? buildGateCTransactionPlan(decision)
+        : [],
   };
 }
 
