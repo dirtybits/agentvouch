@@ -50,10 +50,15 @@ export async function PATCH(
 ) {
   try {
     const { pubkey } = await params;
-    const body = (await request.json()) as {
+    let body: {
       auth?: AuthPayload;
       username?: string;
     };
+    try {
+      body = ((await request.json()) ?? {}) as typeof body;
+    } catch {
+      body = {};
+    }
 
     if (!body.auth || typeof body.username !== "string") {
       return NextResponse.json(

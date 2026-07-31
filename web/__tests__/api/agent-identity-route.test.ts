@@ -132,6 +132,49 @@ describe("/api/agents/[pubkey]/identity", () => {
       })
     );
   });
+
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])(
+    "returns the missing-fields 400 for a %s JSON body",
+    async (_kind, body) => {
+      const res = await PATCH(
+        new NextRequest("http://localhost/api/agents/Wallet111/identity", {
+          method: "PATCH",
+          body,
+          headers: { "Content-Type": "application/json" },
+        }),
+        { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      );
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: "Missing required fields: auth, username",
+      });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockUpdateUsername).not.toHaveBeenCalled();
+    }
+  );
+
+  it("returns the missing-fields 400 when request.json throws synchronously", async () => {
+    const request = {
+      json() {
+        throw new Error("invalid body");
+      },
+    } as unknown as NextRequest;
+
+    const res = await PATCH(request, {
+      params: Promise.resolve({ pubkey: "Wallet111" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing required fields: auth, username",
+    });
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockUpdateUsername).not.toHaveBeenCalled();
+  });
 });
 
 describe("/api/agents/[pubkey]/identity/github", () => {
@@ -193,6 +236,48 @@ describe("/api/agents/[pubkey]/identity/github", () => {
         githubSession,
       })
     );
+  });
+
+  it.each([
+    ["literal null", "null"],
+    ["malformed", "{"],
+  ])("returns the missing-auth 400 for a %s JSON body", async (_kind, body) => {
+    const res = await POST_GITHUB(
+      new NextRequest("http://localhost/api/agents/Wallet111/identity/github", {
+        method: "POST",
+        body,
+        headers: { "Content-Type": "application/json" },
+      }),
+      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing required field: auth",
+    });
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockGithubSession).not.toHaveBeenCalled();
+    expect(mockLinkGithub).not.toHaveBeenCalled();
+  });
+
+  it("returns the missing-auth 400 when request.json throws synchronously", async () => {
+    const request = {
+      json() {
+        throw new Error("invalid body");
+      },
+    } as unknown as NextRequest;
+
+    const res = await POST_GITHUB(request, {
+      params: Promise.resolve({ pubkey: "Wallet111" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Missing required field: auth",
+    });
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockGithubSession).not.toHaveBeenCalled();
+    expect(mockLinkGithub).not.toHaveBeenCalled();
   });
 });
 
