@@ -359,8 +359,12 @@ async function addPurchasePreflightAndBuyerStatus(input: {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = ((await request.json().catch(() => null)) ??
-      {}) as HydrateRequestBody;
+    let body: HydrateRequestBody;
+    try {
+      body = ((await request.json()) ?? {}) as HydrateRequestBody;
+    } catch {
+      body = {};
+    }
     const skillIds = Array.isArray(body.skillIds)
       ? [
           ...new Set(

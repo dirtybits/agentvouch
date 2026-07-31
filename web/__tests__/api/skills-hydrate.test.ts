@@ -123,6 +123,22 @@ describe("POST /api/skills/hydrate", () => {
     }
   );
 
+  it("returns an empty hydration map when request.json throws synchronously", async () => {
+    const request = {
+      json() {
+        throw new Error("invalid body");
+      },
+    } as unknown as NextRequest;
+
+    const res = await POST(request);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ skills: {} });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockResolveMultipleAuthorTrust).not.toHaveBeenCalled();
+  });
+
   it("returns an empty hydration map when no valid skill ids are provided", async () => {
     const res = await POST(makeRequest({ skillIds: ["chain-not-a-uuid"] }));
     const body = await res.json();
