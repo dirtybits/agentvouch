@@ -162,7 +162,7 @@ cancel/retry behavior. A local code gate does not close the live-smoke todo.
   behavioral regression test.
 - Verification under bundled Node `v24.14.0`:
   - targeted injected-wallet suite: 1 file / 18 tests passed after the live-smoke fix;
-  - full web Vitest: 121 files / 837 tests passed;
+  - full web Vitest after merging current `main`: 123 files / 874 tests passed;
   - format, web lint, web typecheck, and `verify:chain-map` passed;
   - webpack production build passed. It emitted the existing viem Tempo dynamic-import warning and
     expected offline Neon/Helius fallback warnings during static generation.

@@ -15,14 +15,14 @@ stays implemented behind the `ChainAdapter` seam as the rollback target via
 `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`. Base mainnet (`eip155:8453`) is blocked in
 code — `getAdapter()` throws on any non-Sepolia `eip155:*` context.
 
-| Surface | Value |
-| --- | --- |
-| Base Sepolia chain context | `eip155:84532` |
+| Surface                          | Value                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| Base Sepolia chain context       | `eip155:84532`                                                             |
 | Base Sepolia contract (selected) | `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` (`base-v1-candidate`, pre-A1) |
-| Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Solana program ID | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` |
-| Solana cluster / chain context | devnet / `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` |
-| Solana devnet USDC mint | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
+| Base Sepolia USDC                | `0x036CbD53842c5426634e7929541eC2318f3dCF7e`                               |
+| Solana program ID                | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`                             |
+| Solana cluster / chain context   | devnet / `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`                         |
+| Solana devnet USDC mint          | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`                             |
 
 The A1 (voucher-slashing) contract is **merged source, not deployed** — the selected deployment
 above does not route the paid-report selectors. Deployment state and gates:
@@ -35,14 +35,22 @@ that variable as required in every deployed environment.
 (closed 2026-07-20, `.agents/plans/walletless-production-auth-rollout.plan.md`). Wallet linking is
 signature-proven and separate from the account identity.
 
-**Card checkout (built, off).** Stripe checkout and buyer-card access are explicitly disabled in
-production. Keeping them off requires `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED`,
-`NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED`, `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED`, and
-`NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` to remain unset or non-`"true"`. A live Stripe
+**Card checkout (built, off).** New Stripe Checkout Sessions are explicitly disabled in production.
+Keeping them off requires `AGENTVOUCH_STRIPE_CHECKOUT_ENABLED` and
+`NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED` to remain unset or non-`"true"`. Buyer authentication and
+buyer-card-access redemption may remain enabled for existing valid grants. A live Stripe
 key additionally requires `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true`; without it, checkout fails
 closed in every environment and the webhook refuses grants whose `livemode` contradicts the
 configured key while still processing refunds and disputes. Do not enable any of these before the
 [Card / Fiat Rail](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26) gates pass.
+Live mode also fails closed unless `AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS` is a non-empty valid
+skill UUID allowlist and `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS` is a positive per-charge
+ceiling. These controls do not provide aggregate GMV enforcement or amount/fee/net accounting;
+those remain stop gates in
+[`stripe-live-limited-pilot.plan.md`](../.agents/plans/stripe-live-limited-pilot.plan.md).
+The current source therefore hard-disables both live session creation and live fulfillment; no
+combination of environment variables can enable real card charges until the durable controls are
+implemented in a reviewed change. Every live key requires WAF acknowledgement, including previews.
 
 Operator preflight (read-only, never prints secret values):
 

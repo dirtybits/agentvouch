@@ -16,6 +16,9 @@ describe("buyer access grant SQL invariants", () => {
     );
     expect(source).toContain("status = 'revoked'");
     expect(source).toContain("revoked_reason");
+    expect(source).toContain("stripe_payment_terminal_states");
+    expect(source).toContain("WHERE NOT EXISTS");
+    expect(source).toContain("payment_ref = ${input.paymentRef}");
   });
 
   it("requires both an active grant and active buyer account", () => {
