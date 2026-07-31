@@ -91,10 +91,12 @@ describe("author page source", () => {
     );
     expect(source).toContain('min="1"');
     expect(source).toContain("MIN_VOUCH_USDC_MICROS");
-    expect(source).toContain("BASE_PASSKEY_WALLET_SOURCE");
     expect(source).toContain("Vouches require at least 1.00 USDC.");
+    expect(source).not.toContain("BASE_PASSKEY_WALLET_SOURCE");
+    expect(source).not.toContain("Base vouching currently requires Coinbase");
+    expect(source).toContain("isEvmAuthor && !isBaseTrustWrite");
     expect(source).toContain(
-      "Base vouching currently requires Coinbase Smart Wallet."
+      "Base vouching requires Coinbase Smart Wallet or MetaMask connected to Base Sepolia."
     );
   });
 

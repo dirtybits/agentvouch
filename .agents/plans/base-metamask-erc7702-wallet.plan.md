@@ -24,8 +24,8 @@ todos:
     content: "COMPLETED 2026-07-07: Follow-up branch reran `npm run format:check`, `npm run lint --workspace @agentvouch/web`, `npm run typecheck --workspace @agentvouch/web`, `npm test --workspace @agentvouch/web` (91 files / 585 tests), targeted `baseInjectedWallet.test.ts` (11 tests), and `npm exec --workspace @agentvouch/web -- next build --webpack`. Build passed with existing network-fallback warnings for Neon/Helius during static generation."
     status: completed
   - id: author-writes-parity
-    content: "FOLLOW-UP (added 2026-07-07, outside the buyer-only scope above): implement MetaMask registerAgent/createSkillListing as EOA transactions reusing this plan's sendInjectedTransaction/receipt/event helpers, replacing the explicit unsupported errors in createBaseInjectedChainWallet. Optional — pick up only when a smoke or user flow needs a second Base author identity. Trust writes (vouch/self-stake/report) are NOT tracked here; they belong to the Phase 9 ChainWallet trust-write seam extension (see base-port-chain-adapter-phase-9.plan.md Web Scope)."
-    status: pending
+    content: "COMPLETED 2026-07-31 as superseded by `base-metamask-chainwallet-parity.plan.md`: registration and paid-report support had already landed; the new plan owns listing plus trust/economic write parity against the current Coinbase ChainWallet surface."
+    status: completed
 isProject: false
 ---
 

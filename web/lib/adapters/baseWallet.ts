@@ -83,7 +83,7 @@ export { computeListingId, skillIdHashFrom } from "./baseListing";
 
 const PASSKEY_STORAGE_KEY = "agentvouch:base-sepolia:passkey";
 const PASSKEY_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:passkey:active";
-const BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE =
+export const BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE =
   "General Base author reports were removed in base-v1-a1. Use the receipt-bound paid-purchase report capability instead.";
 
 export const AGENTVOUCH_EVM_WRITE_ABI = parseAbi([
