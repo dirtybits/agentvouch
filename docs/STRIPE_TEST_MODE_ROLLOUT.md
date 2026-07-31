@@ -18,9 +18,9 @@ purchase state.
 - `STRIPE_SECRET_KEY` uses a test-mode key. **Enforced in code since 2026-07-26**, not just
   stated here: `detectStripeKeyMode` classifies the key by prefix, an unrecognized prefix fails
   closed, and a `live` key disables checkout in every environment unless
-  `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` is set explicitly. This matters because the
-  production edge-rate-limit acknowledgement only applies when `VERCEL_ENV === "production"`, so
-  before this guard a live key on a preview deployment would have taken real payments.
+  `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` is set explicitly. Live checkout is additionally
+  source-disabled until the limited-pilot reservation/ledger/cap controls land, and every live key
+  requires the external-WAF acknowledgement even on a preview deployment.
 - `STRIPE_WEBHOOK_SECRET` is configured from the matching test-mode webhook
   endpoint. The webhook cross-checks each event's `livemode` against the configured key's mode and
   refuses to grant access on a mismatch, recording it as `needs-review` rather than retrying.
@@ -50,7 +50,7 @@ purchase state.
 1. Pick a paid skill with `price_usdc_micros > 0`.
 2. Sign in with Google or a passwordless email code. A wallet is optional for
    the account-scoped path.
-3. Click `Pay by Card`.
+3. Read and acknowledge the card-recourse disclosure, then click `Pay by Card`.
 4. Confirm the checkout session uses the listed price converted to USD cents.
 5. Pay with a Stripe test card.
 6. Verify webhook delivery for `checkout.session.completed`.
@@ -74,6 +74,8 @@ checkout code: connect a signing wallet, complete checkout, confirm the
   creation without disabling webhook processing.
 - Account checkout without an authenticated buyer session returns 401. Legacy
   wallet checkout without valid wallet auth also returns 401.
+- Missing or stale card-recourse disclosure version returns 400 before Stripe
+  session creation.
 - Legacy checkout auth signed for a different skill is rejected.
 - Webhook with an invalid Stripe signature is rejected.
 - Webhook with non-USD currency is acked with an `ignored` reason and does not
@@ -134,7 +136,9 @@ purchase. Base mainnet remains blocked by the independent mainnet gate.
 ## Production Blockers
 
 - Partial-refund and dispute-won reconciliation (full-refund/dispute revocation is handled).
-- Entitlement suspension/revocation status fields.
+- Revocation state is shipped for account grants and legacy wallet
+  entitlements. Buyer support, partial-refund decisions, and dispute-won
+  reinstatement remain manual production blockers.
 - Richer operator dashboard and resolution workflow. The limited-preview
   baseline now persists review items and exposes the read-only monitor.
 - Author payout policy: Stripe Connect, manual operator payout, or fiat -> USDC
@@ -153,7 +157,9 @@ Test-mode Stripe can move from prototype to limited preview only when:
 - Happy-path and negative tests above are complete.
 - At least one successful account-scoped paid download and one legacy
   wallet-bound regression have been verified from the returned skill page.
-- Product copy labels the path as card checkout / off-chain entitlement.
+- Product copy labels the path as off-chain access with no protocol receipt,
+  author proceeds, voucher rewards, paid Report/slashing path, or buyer credit,
+  and the buyer acknowledges versioned recourse copy before checkout.
 - Metrics exclude Stripe MPP receipts from protocol purchase, voucher yield,
   author proceeds, and dispute recovery totals.
 - Production is still blocked until the Vercel Firewall/WAF rule is verified

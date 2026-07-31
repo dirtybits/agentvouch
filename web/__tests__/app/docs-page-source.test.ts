@@ -10,6 +10,8 @@ describe("docs page source", () => {
     );
 
     expect(source).toContain('id="paid-skill-download"');
+    expect(source).toContain('id="card-checkout-recourse"');
+    expect(source).toContain("CARD_CHECKOUT_RECOURSE_DISCLOSURE");
     expect(source).toContain("Canonical signed message");
     expect(source).toContain("X-AgentVouch-Auth");
     expect(source).toContain("listing-required");

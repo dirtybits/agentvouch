@@ -1,4 +1,4 @@
-// Tier 1 Stripe MPP-style payments — PROTOTYPE. See docs/STRIPE_FEASIBILITY.md.
+// Tier 1 Stripe MPP-style payments — test-mode implementation; live disabled.
 //
 // Deliberately implemented against the Stripe REST API with `fetch` plus
 // `node:crypto` for webhook signature verification, so this adds NO new npm
@@ -13,6 +13,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const STRIPE_PAYMENT_FLOW = "stripe-mpp-offchain";
 export const STRIPE_ACCOUNT_PAYMENT_FLOW = "stripe-account-access";
+
+// Source-controlled stop gate. Live checkout stays impossible until the
+// founder-approved buyer allowlist, immutable reservation ledger, and atomic
+// per-payment/aggregate caps are implemented and reviewed. This is
+// intentionally not an environment variable: deployment configuration cannot
+// substitute for missing durable controls.
+export const STRIPE_LIVE_PILOT_IMPLEMENTATION_READY = false;
 
 // Sentinels stored in chain-shaped receipt columns (see Obstacle 2 in the
 // feasibility note). These are placeholders, not real on-chain references.
@@ -44,6 +51,14 @@ export function isStripeEnabled(): boolean {
 
 export type StripeKeyMode = "test" | "live" | "unknown";
 
+const STRIPE_LIVE_PILOT_SKILL_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type StripeLivePilotScope = {
+  skillIds: string[];
+  maxUnitUsdCents: number;
+};
+
 /**
  * Stripe secret (`sk_`) and restricted (`rk_`) keys carry their mode in the
  * prefix. Anything we cannot positively identify is `unknown` and is treated as
@@ -63,6 +78,43 @@ export function detectStripeKeyMode(
   return "unknown";
 }
 
+/**
+ * A live key is limited to an explicit set of skill UUIDs and a maximum
+ * per-session charge. Missing, malformed, or empty values return null so live
+ * checkout fails closed. Test-mode checkout deliberately ignores this scope.
+ *
+ * This is not an aggregate exposure control. A durable live-pilot ledger and
+ * GMV cap remain activation blockers in the limited-live rollout plan.
+ */
+export function getStripeLivePilotScope(
+  env: Readonly<Record<string, string | undefined>> = process.env
+): StripeLivePilotScope | null {
+  const rawSkillIds = env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS ?? "";
+  const skillIds = rawSkillIds
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    skillIds.length === 0 ||
+    skillIds.some((value) => !STRIPE_LIVE_PILOT_SKILL_ID_PATTERN.test(value))
+  ) {
+    return null;
+  }
+
+  const rawMaxUnitUsdCents =
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS?.trim() ?? "";
+  if (!/^\d+$/.test(rawMaxUnitUsdCents)) return null;
+  const maxUnitUsdCents = Number(rawMaxUnitUsdCents);
+  if (!Number.isSafeInteger(maxUnitUsdCents) || maxUnitUsdCents <= 0) {
+    return null;
+  }
+
+  return {
+    skillIds: [...new Set(skillIds)],
+    maxUnitUsdCents,
+  };
+}
+
 export type StripeCheckoutActivation = {
   enabled: boolean;
   stripeConfigured: boolean;
@@ -72,6 +124,8 @@ export type StripeCheckoutActivation = {
   keyMode: StripeKeyMode;
   liveModeAcknowledged: boolean;
   keyModePermitted: boolean;
+  livePilotScopeReady: boolean;
+  livePilotImplementationReady: boolean;
 };
 
 /**
@@ -86,26 +140,34 @@ export function getStripeCheckoutActivation(
     env.STRIPE_SECRET_KEY?.trim() && env.STRIPE_WEBHOOK_SECRET?.trim()
   );
   const serverFlagEnabled = env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED === "true";
-  const production = env.VERCEL_ENV === "production";
-  const productionEdgeRateLimitReady =
-    !production || env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY === "true";
-
-  // A live key must be acknowledged explicitly, in every environment. The
-  // edge-rate-limit acknowledgement above only applies when VERCEL_ENV is
-  // "production", so without this a live key on a preview deployment would
-  // start real commerce with no further gate.
   const keyMode = detectStripeKeyMode(env.STRIPE_SECRET_KEY);
+  const production = env.VERCEL_ENV === "production";
+  // Preserve the production deployment gate for test-mode rehearsals and also
+  // require the external WAF acknowledgement for any live key, including on a
+  // public preview where VERCEL_ENV is not "production".
+  const edgeRateLimitRequired = production || keyMode === "live";
+  const productionEdgeRateLimitReady =
+    !edgeRateLimitRequired ||
+    env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY === "true";
+
+  // A live key must be acknowledged explicitly in every environment.
   const liveModeAcknowledged =
     env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED === "true";
   const keyModePermitted =
     keyMode === "test" || (keyMode === "live" && liveModeAcknowledged);
+  const livePilotScopeReady =
+    keyMode !== "live" || getStripeLivePilotScope(env) !== null;
+  const livePilotImplementationReady =
+    keyMode !== "live" || STRIPE_LIVE_PILOT_IMPLEMENTATION_READY;
 
   return {
     enabled:
       stripeConfigured &&
       serverFlagEnabled &&
       productionEdgeRateLimitReady &&
-      keyModePermitted,
+      keyModePermitted &&
+      livePilotScopeReady &&
+      livePilotImplementationReady,
     stripeConfigured,
     serverFlagEnabled,
     productionEdgeRateLimitReady,
@@ -113,6 +175,8 @@ export function getStripeCheckoutActivation(
     keyMode,
     liveModeAcknowledged,
     keyModePermitted,
+    livePilotScopeReady,
+    livePilotImplementationReady,
   };
 }
 
@@ -142,6 +206,7 @@ export type CreateCheckoutSessionInput = {
   skillName: string;
   amountUsdcMicros: string;
   amountUsdCents: number;
+  recourseDisclosureVersion: string;
   successUrl: string;
   cancelUrl: string;
   buyer:
@@ -172,6 +237,7 @@ export async function createCheckoutSession(
     skill_db_id: input.skillDbId,
     price_usdc_micros: input.amountUsdcMicros,
     payment_flow: paymentFlow,
+    recourse_disclosure_version: input.recourseDisclosureVersion,
     ...(input.buyer.kind === "account"
       ? { buyer_account_id: input.buyer.accountId }
       : { buyer_pubkey: input.buyer.pubkey }),

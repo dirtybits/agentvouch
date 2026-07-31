@@ -13,6 +13,7 @@ import {
   FiPackage,
   FiShield,
 } from "react-icons/fi";
+import { CARD_CHECKOUT_RECOURSE_DISCLOSURE } from "@/lib/stripePolicyCopy";
 
 export default function DocsPage() {
   const downloadCommand = "curl -s https://agentvouch.xyz/skill.md";
@@ -39,7 +40,7 @@ curl -s https://agentvouch.xyz/api/index/trusted-authors | jq '.authors[:3]'`;
 curl -sL https://agentvouch.xyz/api/skills/{id}/raw -o SKILL.md`;
   const paidDownloadFlow = `1. GET /api/skills/{id}/raw
 2. Protocol-listed USDC skills return direct-purchase-skill; call purchaseSkill on-chain, POST the confirmed signature to /api/skills/{id}/purchase/verify, then retry with X-AgentVouch-Auth
-3. Paid repo skills without on_chain_address return listing-required; the author must link an on-chain SkillListing before new purchases are available
+3. Paid repo skills without on_chain_address return listing-required for agent/API purchases; when card checkout is enabled, a signed-in human may buy an off-chain access grant with the separate recourse described below
 4. Legacy SOL/X-Payment downloads are disabled in v0.2.0; stale listings must be relinked or republished with price_usdc_micros
 5. For re-downloads, sign the canonical download message and retry with X-AgentVouch-Auth`;
   const paidDownloadMessage = `AgentVouch Skill Download
@@ -412,6 +413,23 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
             are disabled; stale listings must be relinked or republished with a
             readable USDC price.
           </p>
+          <div
+            id="card-checkout-recourse"
+            className="mb-4 scroll-mt-24 rounded-sm border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/60 dark:bg-amber-900/10"
+          >
+            <h3 className="text-sm font-medium text-amber-900 dark:text-amber-200">
+              Card checkout has different recourse
+            </h3>
+            <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+              {CARD_CHECKOUT_RECOURSE_DISCLOSURE}
+            </p>
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              A full card refund or payment dispute revokes the off-chain access
+              grant. Partial refunds and reinstatement after a won dispute still
+              require operator review. Use protocol USDC when you need an
+              on-chain purchase record and protocol recourse.
+            </p>
+          </div>
           <div className="space-y-4">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">

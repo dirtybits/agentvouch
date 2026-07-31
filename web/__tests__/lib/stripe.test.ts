@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   detectStripeKeyMode,
   getStripeCheckoutActivation,
+  getStripeLivePilotScope,
+  STRIPE_LIVE_PILOT_IMPLEMENTATION_READY,
   createCheckoutSession,
   isStripeEnabled,
   stripeEventModeMismatch,
@@ -23,6 +25,8 @@ describe("stripe helpers", () => {
     delete process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED;
     delete process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY;
     delete process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS;
     delete process.env.VERCEL_ENV;
   });
 
@@ -75,17 +79,25 @@ describe("stripe helpers", () => {
     });
   });
 
-  it("requires an edge-rate-limit acknowledgement in production", () => {
+  it("requires an edge-rate-limit acknowledgement and source readiness for live keys", () => {
     process.env.STRIPE_SECRET_KEY = "sk_live_123";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
     process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
     process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
+      "00000000-0000-4000-8000-000000000001";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS = "500";
     process.env.VERCEL_ENV = "production";
 
     expect(getStripeCheckoutActivation().enabled).toBe(false);
 
     process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY = "true";
-    expect(getStripeCheckoutActivation().enabled).toBe(true);
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      productionEdgeRateLimitReady: true,
+      livePilotImplementationReady: false,
+    });
+    expect(STRIPE_LIVE_PILOT_IMPLEMENTATION_READY).toBe(false);
   });
 
   it("detects the mode of Stripe secret and restricted keys", () => {
@@ -101,13 +113,13 @@ describe("stripe helpers", () => {
     expect(detectStripeKeyMode(undefined)).toBe("unknown");
   });
 
-  it("refuses a live key until live mode is explicitly acknowledged", () => {
-    // Preview deployments never hit the production edge-rate-limit gate, so
-    // this acknowledgement is the only thing standing between a live key and
-    // real card payments.
+  it("requires live acknowledgement and WAF proof even on preview", () => {
     process.env.STRIPE_SECRET_KEY = "sk_live_123";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
     process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
+      "00000000-0000-4000-8000-000000000001";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS = "500";
     process.env.VERCEL_ENV = "preview";
 
     expect(getStripeCheckoutActivation()).toMatchObject({
@@ -115,14 +127,21 @@ describe("stripe helpers", () => {
       keyMode: "live",
       liveModeAcknowledged: false,
       keyModePermitted: false,
-      productionEdgeRateLimitReady: true,
+      productionEdgeRateLimitReady: false,
     });
 
     process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
     expect(getStripeCheckoutActivation()).toMatchObject({
-      enabled: true,
+      enabled: false,
       keyMode: "live",
       keyModePermitted: true,
+      productionEdgeRateLimitReady: false,
+    });
+    process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY = "true";
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      productionEdgeRateLimitReady: true,
+      livePilotImplementationReady: false,
     });
   });
 
@@ -140,7 +159,7 @@ describe("stripe helpers", () => {
     });
   });
 
-  it("does not require an acknowledgement for a test key", () => {
+  it("does not require an acknowledgement for a test key outside production", () => {
     process.env.STRIPE_SECRET_KEY = "sk_test_123";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
     process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
@@ -149,6 +168,56 @@ describe("stripe helpers", () => {
       enabled: true,
       keyMode: "test",
       keyModePermitted: true,
+    });
+  });
+
+  it("preserves the edge-rate-limit gate for test keys in production", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.VERCEL_ENV = "production";
+
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      keyMode: "test",
+      production: true,
+      productionEdgeRateLimitReady: false,
+    });
+
+    process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY = "true";
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: true,
+      productionEdgeRateLimitReady: true,
+    });
+  });
+
+  it("fails live checkout closed until an explicit pilot scope is valid", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
+
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      livePilotScopeReady: false,
+    });
+    expect(getStripeLivePilotScope()).toBeNull();
+
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
+      "not-a-uuid,00000000-0000-4000-8000-000000000001";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS = "500";
+    expect(getStripeLivePilotScope()).toBeNull();
+
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
+      "00000000-0000-4000-8000-000000000001,00000000-0000-4000-8000-000000000001";
+    expect(getStripeLivePilotScope()).toEqual({
+      skillIds: ["00000000-0000-4000-8000-000000000001"],
+      maxUnitUsdCents: 500,
+    });
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: false,
     });
   });
 
@@ -201,6 +270,7 @@ describe("stripe helpers", () => {
       },
       amountUsdcMicros: "1000000",
       amountUsdCents: 100,
+      recourseDisclosureVersion: "2026-07-31",
       successUrl: "https://example.test/success",
       cancelUrl: "https://example.test/cancel",
     });
@@ -213,6 +283,9 @@ describe("stripe helpers", () => {
     );
     expect(params.get("payment_intent_data[metadata][buyer_account_id]")).toBe(
       "00000000-0000-4000-8000-000000000002"
+    );
+    expect(params.get("metadata[recourse_disclosure_version]")).toBe(
+      "2026-07-31"
     );
     expect(params.has("metadata[buyer_pubkey]")).toBe(false);
     fetchSpy.mockRestore();

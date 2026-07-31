@@ -7,8 +7,10 @@ import {
   STRIPE_MIN_CHARGE_USD_CENTS,
   createCheckoutSession,
   getStripeCheckoutActivation,
+  getStripeLivePilotScope,
   usdcMicrosToUsdCents,
 } from "@/lib/stripe";
+import { CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION } from "@/lib/stripePolicyCopy";
 import {
   buildStripeCheckoutMessage,
   normalizeProtocolNewlines,
@@ -54,6 +56,10 @@ export async function POST(req: NextRequest) {
         : "STRIPE_SECRET_KEY is not a recognized Stripe test or live key."
       : !activation.serverFlagEnabled
       ? "Set AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true."
+      : !activation.livePilotScopeReady
+      ? "Configure a valid AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS allowlist and AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS ceiling."
+      : !activation.livePilotImplementationReady
+      ? "The live pilot remains source-disabled until buyer allowlisting, immutable reservations, and atomic exposure caps are implemented."
       : "Install the production edge rate limit, then set AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true.";
     return NextResponse.json(
       {
@@ -63,7 +69,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { skillId?: string; customerEmail?: string; auth?: AuthPayload };
+  let body: {
+    skillId?: string;
+    customerEmail?: string;
+    cardDisclosureVersion?: string;
+    auth?: AuthPayload;
+  };
   try {
     body = await req.json();
   } catch {
@@ -73,6 +84,17 @@ export async function POST(req: NextRequest) {
   const skillId = body.skillId?.trim();
   if (!skillId) {
     return NextResponse.json({ error: "skillId is required" }, { status: 400 });
+  }
+  if (
+    body.cardDisclosureVersion !== CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Acknowledge the current card-checkout recourse disclosure before continuing.",
+      },
+      { status: 400 }
+    );
   }
 
   // Defense in depth only: this limiter is per runtime instance. Production
@@ -100,6 +122,15 @@ export async function POST(req: NextRequest) {
   if (accountCheckout && !isSameOriginMutation(req)) {
     return NextResponse.json(
       { error: "Same-origin request required for account checkout." },
+      { status: 403 }
+    );
+  }
+  if (activation.keyMode === "live" && !accountCheckout) {
+    return NextResponse.json(
+      {
+        error:
+          "The limited live card pilot requires a signed-in AgentVouch buyer account.",
+      },
       { status: 403 }
     );
   }
@@ -159,6 +190,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
+    const livePilotScope =
+      activation.keyMode === "live" ? getStripeLivePilotScope() : null;
+    if (
+      activation.keyMode === "live" &&
+      !livePilotScope?.skillIds.includes(skill.id.toLowerCase())
+    ) {
+      return NextResponse.json(
+        { error: "This skill is not included in the limited live card pilot." },
+        { status: 403 }
+      );
+    }
+
     const micros = skill.price_usdc_micros
       ? BigInt(skill.price_usdc_micros)
       : 0n;
@@ -190,6 +233,15 @@ export async function POST(req: NextRequest) {
             "This listing is priced below the card checkout minimum ($0.50). Use a USDC purchase path instead.",
         },
         { status: 400 }
+      );
+    }
+    if (livePilotScope && amountUsdCents > livePilotScope.maxUnitUsdCents) {
+      return NextResponse.json(
+        {
+          error:
+            "This skill exceeds the limited live card pilot's maximum charge.",
+        },
+        { status: 403 }
       );
     }
 
@@ -242,6 +294,7 @@ export async function POST(req: NextRequest) {
         : { kind: "wallet", pubkey: verification.pubkey! },
       amountUsdcMicros: micros.toString(),
       amountUsdCents,
+      recourseDisclosureVersion: body.cardDisclosureVersion,
       successUrl: `${base}/skills/${skill.id}?stripe=success`,
       cancelUrl: `${base}/skills/${skill.id}?stripe=cancelled`,
       customerEmail: body.customerEmail?.trim() || undefined,

@@ -73,6 +73,14 @@ import PaidPurchaseReportPanel, {
 import { sanitizeSyncedRepoUrl } from "@/lib/repoUrls";
 import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
 import {
+  CARD_CHECKOUT_RECOURSE_DISCLOSURE,
+  CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
+} from "@/lib/stripePolicyCopy";
+import {
+  buildCardRecourseConsentKey,
+  hasCurrentCardRecourseConsent,
+} from "@/lib/stripeConsent";
+import {
   FiAlertTriangle,
   FiInfo,
   FiArrowLeft,
@@ -111,15 +119,18 @@ interface ContentVerification {
 }
 
 function BuyerAccountSessionObserver({
-  onSignedInChange,
+  onSessionChange,
 }: {
-  onSignedInChange: (isSignedIn: boolean) => void;
+  onSessionChange: (identityKey: string | null) => void;
 }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId, sessionId } = useAuth();
 
   useEffect(() => {
-    if (isLoaded) onSignedInChange(Boolean(isSignedIn));
-  }, [isLoaded, isSignedIn, onSignedInChange]);
+    if (!isLoaded) return;
+    onSessionChange(
+      isSignedIn && userId && sessionId ? `${userId}:${sessionId}` : null
+    );
+  }, [isLoaded, isSignedIn, onSessionChange, sessionId, userId]);
 
   return null;
 }
@@ -401,6 +412,8 @@ export default function SkillDetailPage({
   const [installing, setInstalling] = useState(false);
   const [purchasingUsdc, setPurchasingUsdc] = useState(false);
   const [startingStripeCheckout, setStartingStripeCheckout] = useState(false);
+  const [acceptedCardRecourseConsentKey, setAcceptedCardRecourseConsentKey] =
+    useState<string | null>(null);
   const [usdcPurchaseTx, setUsdcPurchaseTx] = useState<string | null>(null);
   const [usdcPurchaseExplorerUrl, setUsdcPurchaseExplorerUrl] = useState<
     string | null
@@ -480,7 +493,20 @@ export default function SkillDetailPage({
   const [buyerAccountAuthenticated, setBuyerAccountAuthenticated] =
     useState(false);
   const [buyerAccountHasAccess, setBuyerAccountHasAccess] = useState(false);
-  const [buyerAuthSignedIn, setBuyerAuthSignedIn] = useState(false);
+  const [buyerAuthSessionKey, setBuyerAuthSessionKey] = useState<string | null>(
+    null
+  );
+  const buyerAuthSignedIn = buyerAuthSessionKey !== null;
+  const currentCardRecourseConsentKey = buildCardRecourseConsentKey({
+    skillDbId: skill?.id ?? id,
+    buyerAccountId: buyerAccountAuthenticated ? buyerAuthSessionKey : null,
+    walletChainContext: buyerAccountAuthenticated ? null : activeChainContext,
+    walletAddress: buyerAccountAuthenticated ? null : activeWalletAddress,
+  });
+  const cardRecourseAccepted = hasCurrentCardRecourseConsent(
+    acceptedCardRecourseConsentKey,
+    currentCardRecourseConsentKey
+  );
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setRequestedAuthorAction(params.get("authorAction"));
@@ -1386,7 +1412,7 @@ export default function SkillDetailPage({
   };
 
   const handleStripeCheckout = async () => {
-    if (!skill) return;
+    if (!skill || !cardRecourseAccepted) return;
     const useAccountCheckout =
       buyerCardAccessEnabled && buyerAccountAuthenticated;
     if (!useAccountCheckout && (!connected || !walletAddress || !signMessage)) {
@@ -1425,7 +1451,11 @@ export default function SkillDetailPage({
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skillId: skill.id, ...(auth ? { auth } : {}) }),
+        body: JSON.stringify({
+          skillId: skill.id,
+          cardDisclosureVersion: CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
+          ...(auth ? { auth } : {}),
+        }),
       });
       const body = (await response.json().catch(() => null)) as {
         error?: string;
@@ -2122,29 +2152,57 @@ export default function SkillDetailPage({
   })();
 
   const renderPayByCardButton = (buttonClass: string) => (
-    <button
-      onClick={handleStripeCheckout}
-      disabled={startingStripeCheckout || !canAuthorizeStripeCheckout}
-      className={`${buttonClass} w-full justify-center`}
-    >
-      {startingStripeCheckout ? (
-        <>
-          <FiLoader className="w-4 h-4 animate-spin" />
-          Opening…
-        </>
-      ) : (
-        <>
-          <FiCreditCard className="w-4 h-4" />
-          Pay by Card
-        </>
-      )}
-    </button>
+    <div className="w-full space-y-1.5">
+      <label className="flex items-start gap-2 text-left text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+        <input
+          type="checkbox"
+          checked={cardRecourseAccepted}
+          onChange={(event) =>
+            setAcceptedCardRecourseConsentKey(
+              event.target.checked ? currentCardRecourseConsentKey : null
+            )
+          }
+          disabled={startingStripeCheckout || !currentCardRecourseConsentKey}
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--sea-accent)]"
+        />
+        <span>
+          {CARD_CHECKOUT_RECOURSE_DISCLOSURE}{" "}
+          <Link
+            href="/docs#card-checkout-recourse"
+            className="underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-200"
+          >
+            Details
+          </Link>
+        </span>
+      </label>
+      <button
+        onClick={handleStripeCheckout}
+        disabled={
+          startingStripeCheckout ||
+          !canAuthorizeStripeCheckout ||
+          !cardRecourseAccepted
+        }
+        className={`${buttonClass} w-full justify-center`}
+      >
+        {startingStripeCheckout ? (
+          <>
+            <FiLoader className="w-4 h-4 animate-spin" />
+            Opening…
+          </>
+        ) : (
+          <>
+            <FiCreditCard className="w-4 h-4" />
+            Pay by Card
+          </>
+        )}
+      </button>
+    </div>
   );
 
   return (
     <main className="font-heading min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
       {buyerCardAccessEnabled && (
-        <BuyerAccountSessionObserver onSignedInChange={setBuyerAuthSignedIn} />
+        <BuyerAccountSessionObserver onSessionChange={setBuyerAuthSessionKey} />
       )}
       <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
         {/* ===== HERO ===== */}
