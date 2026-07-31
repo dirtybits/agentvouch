@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   createCheckoutSession: vi.fn(),
   getStripeCheckoutActivation: vi.fn(),
+  getStripeLivePilotScope: vi.fn(),
   detectStripeKeyMode: vi.fn(),
   isStripeEnabled: vi.fn(),
   stripeEventModeMismatch: vi.fn(),
@@ -22,8 +23,7 @@ const mocks = vi.hoisted(() => ({
   isSameOriginMutation: vi.fn(),
   hasActiveMarketplaceAccessGrant: vi.fn(),
   recordStripeMarketplaceAccessGrant: vi.fn(),
-  revokeStripeMarketplaceAccessGrant: vi.fn(),
-  revokeStripeMarketplaceAccessGrantsByPaymentReference: vi.fn(),
+  recordStripeMarketplacePaymentTerminalState: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -37,11 +37,13 @@ vi.mock("@/lib/stripe", () => ({
   STRIPE_PAYMENT_FLOW: "stripe-mpp-offchain",
   STRIPE_RECIPIENT_SENTINEL: "stripe-offchain",
   STRIPE_MIN_CHARGE_USD_CENTS: 50,
+  STRIPE_LIVE_PILOT_IMPLEMENTATION_READY: false,
   createCheckoutSession: (...args: unknown[]) =>
     mocks.createCheckoutSession(...args),
   detectStripeKeyMode: (...args: unknown[]) =>
     mocks.detectStripeKeyMode(...args),
   getStripeCheckoutActivation: () => mocks.getStripeCheckoutActivation(),
+  getStripeLivePilotScope: () => mocks.getStripeLivePilotScope(),
   isStripeEnabled: () => mocks.isStripeEnabled(),
   stripeEventModeMismatch: (...args: unknown[]) =>
     mocks.stripeEventModeMismatch(...args),
@@ -65,10 +67,8 @@ vi.mock("@/lib/buyerAccessGrants", () => ({
     mocks.hasActiveMarketplaceAccessGrant(...args),
   recordStripeMarketplaceAccessGrant: (...args: unknown[]) =>
     mocks.recordStripeMarketplaceAccessGrant(...args),
-  revokeStripeMarketplaceAccessGrant: (...args: unknown[]) =>
-    mocks.revokeStripeMarketplaceAccessGrant(...args),
-  revokeStripeMarketplaceAccessGrantsByPaymentReference: (...args: unknown[]) =>
-    mocks.revokeStripeMarketplaceAccessGrantsByPaymentReference(...args),
+  recordStripeMarketplacePaymentTerminalState: (...args: unknown[]) =>
+    mocks.recordStripeMarketplacePaymentTerminalState(...args),
 }));
 
 vi.mock("@/lib/rateLimit", () => ({
@@ -111,6 +111,7 @@ import { POST as checkoutPOST } from "@/app/api/stripe/checkout/route";
 import { POST as webhookPOST } from "@/app/api/stripe/webhook/route";
 import { sql } from "@/lib/db";
 import { buildStripeCheckoutMessage } from "@/lib/auth";
+import { CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION } from "@/lib/stripePolicyCopy";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
@@ -126,8 +127,15 @@ function jsonRequest(url: string, body: unknown, headers?: HeadersInit) {
   });
 }
 
-function checkoutRequest(body: unknown, headers?: HeadersInit) {
-  return jsonRequest("http://localhost/api/stripe/checkout", body, headers);
+function checkoutRequest(body: Record<string, unknown>, headers?: HeadersInit) {
+  return jsonRequest(
+    "http://localhost/api/stripe/checkout",
+    {
+      cardDisclosureVersion: CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
+      ...body,
+    },
+    headers
+  );
 }
 
 function webhookRequest(body: unknown) {
@@ -177,6 +185,7 @@ function paidSessionEvent(
   return {
     id: "evt_1",
     type: "checkout.session.completed",
+    livemode: false,
     data: {
       object: {
         id: "cs_test_123",
@@ -194,6 +203,8 @@ function paidSessionEvent(
           buyer_pubkey: buyerPubkey,
           price_usdc_micros: "1000000",
           payment_flow: "stripe-mpp-offchain",
+          recourse_disclosure_version:
+            CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
           ...(overrides.metadata ?? {}),
         },
       },
@@ -224,6 +235,12 @@ describe("Stripe checkout and webhook routes", () => {
       keyMode: "test",
       liveModeAcknowledged: false,
       keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.getStripeLivePilotScope.mockReturnValue({
+      skillIds: [skillId],
+      maxUnitUsdCents: 500,
     });
     mocks.isStripeEnabled.mockReturnValue(true);
     mocks.stripeEventModeMismatch.mockReturnValue(null);
@@ -239,10 +256,7 @@ describe("Stripe checkout and webhook routes", () => {
     mocks.isSameOriginMutation.mockReturnValue(true);
     mocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(false);
     mocks.recordStripeMarketplaceAccessGrant.mockResolvedValue("active");
-    mocks.revokeStripeMarketplaceAccessGrant.mockResolvedValue("revoked");
-    mocks.revokeStripeMarketplaceAccessGrantsByPaymentReference.mockResolvedValue(
-      []
-    );
+    mocks.recordStripeMarketplacePaymentTerminalState.mockResolvedValue([]);
     mocks.createCheckoutSession.mockResolvedValue({
       id: "cs_test_123",
       url: "https://checkout.stripe.test/cs_test_123",
@@ -278,6 +292,22 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 
+  it("requires the current card-recourse disclosure acknowledgement", async () => {
+    const res = await checkoutPOST(
+      checkoutRequest({
+        skillId,
+        cardDisclosureVersion: undefined,
+        auth: signedCheckoutAuth(),
+      })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain("recourse disclosure");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("requires the server-side checkout activation gate", async () => {
     mocks.getStripeCheckoutActivation.mockReturnValue({
       enabled: false,
@@ -288,6 +318,8 @@ describe("Stripe checkout and webhook routes", () => {
       keyMode: "test",
       liveModeAcknowledged: false,
       keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
     });
 
     const res = await checkoutPOST(
@@ -310,6 +342,8 @@ describe("Stripe checkout and webhook routes", () => {
       keyMode: "live",
       liveModeAcknowledged: false,
       keyModePermitted: false,
+      livePilotScopeReady: false,
+      livePilotImplementationReady: false,
     });
 
     const res = await checkoutPOST(
@@ -359,6 +393,7 @@ describe("Stripe checkout and webhook routes", () => {
       buyer: { kind: "wallet", pubkey: buyerPubkey },
       amountUsdcMicros: "1000000",
       amountUsdCents: 100,
+      recourseDisclosureVersion: CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
       successUrl: `http://localhost/skills/${skillId}?stripe=success`,
       cancelUrl: `http://localhost/skills/${skillId}?stripe=cancelled`,
       customerEmail: "buyer@example.com",
@@ -392,10 +427,108 @@ describe("Stripe checkout and webhook routes", () => {
       buyer: { kind: "account", accountId: buyerAccountId },
       amountUsdcMicros: "1000000",
       amountUsdCents: 100,
+      recourseDisclosureVersion: CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
       successUrl: `http://localhost/skills/${skillId}?stripe=success`,
       cancelUrl: `http://localhost/skills/${skillId}?stripe=cancelled`,
       customerEmail: undefined,
     });
+  });
+
+  it("requires a signed-in account for the limited live pilot", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId, auth: signedCheckoutAuth() })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toContain("signed-in AgentVouch buyer account");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unlisted skill before creating a live Checkout Session", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.getStripeLivePilotScope.mockReturnValue({
+      skillIds: ["00000000-0000-4000-8000-000000000099"],
+      maxUnitUsdCents: 500,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toContain("not included in the limited live card pilot");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects an over-ceiling amount before creating a live Checkout Session", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.getStripeLivePilotScope.mockReturnValue({
+      skillIds: [skillId],
+      maxUnitUsdCents: 99,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toContain("maximum charge");
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("rejects cross-origin account checkout", async () => {
@@ -555,6 +688,38 @@ describe("Stripe checkout and webhook routes", () => {
         reason: "account-scoped marketplace access grant recorded",
         details: { protocolReceiptRecorded: false },
       })
+    );
+  });
+
+  it("keeps all live fulfillment source-disabled until durable pilot controls land", async () => {
+    const event = { ...paidAccountSessionEvent(), livemode: true };
+    mocks.verifyAndParseWebhook.mockReturnValue(event);
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toContain("source-disabled");
+    expect(mocks.recordStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+    expect(mocks.recordRevocableUsdcPurchaseReceipt).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "needs-review", needsReview: true })
+    );
+  });
+
+  it("does not grant when a checkout event omits livemode", async () => {
+    const event = paidAccountSessionEvent();
+    delete (event as { livemode?: boolean }).livemode;
+    mocks.verifyAndParseWebhook.mockReturnValue(event);
+
+    const res = await webhookPOST(webhookRequest({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ignored).toContain("missing an explicit livemode");
+    expect(mocks.recordStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+    expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "needs-review", needsReview: true })
     );
   });
 
@@ -788,6 +953,9 @@ describe("Stripe checkout and webhook routes", () => {
   });
 
   it("revokes or tombstones the exact account grant on a full refund", async () => {
+    mocks.recordStripeMarketplacePaymentTerminalState.mockResolvedValue([
+      { accountId: buyerAccountId, skillDbId: skillId },
+    ]);
     mocks.verifyAndParseWebhook.mockReturnValue({
       id: "evt_account_refund",
       type: "charge.refunded",
@@ -811,7 +979,10 @@ describe("Stripe checkout and webhook routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.revoked).toBe(1);
-    expect(mocks.revokeStripeMarketplaceAccessGrant).toHaveBeenCalledWith({
+    expect(
+      mocks.recordStripeMarketplacePaymentTerminalState
+    ).toHaveBeenCalledWith({
+      eventId: "evt_account_refund",
       accountId: buyerAccountId,
       skillDbId: skillId,
       paymentRef: "stripe:pi_test_123",
@@ -827,6 +998,32 @@ describe("Stripe checkout and webhook routes", () => {
         },
       })
     );
+  });
+
+  it("records a payment terminal marker when refund metadata is absent", async () => {
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_account_refund_without_metadata",
+      type: "charge.refunded",
+      data: {
+        object: {
+          id: "ch_test_account_without_metadata",
+          payment_intent: "pi_test_123",
+          refunded: true,
+          amount_refunded: 100,
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(
+      mocks.recordStripeMarketplacePaymentTerminalState
+    ).toHaveBeenCalledWith({
+      eventId: "evt_account_refund_without_metadata",
+      paymentRef: "stripe:pi_test_123",
+      reason: "stripe-refund",
+    });
   });
 
   it("revokes the entitlement when a dispute is opened", async () => {

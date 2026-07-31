@@ -1,4 +1,4 @@
-// Tier 1 Stripe webhook — PROTOTYPE. See docs/STRIPE_FEASIBILITY.md.
+// Tier 1 Stripe webhook — test-mode implementation; live disabled.
 // On a verified `checkout.session.completed` event, mints an OFF-CHAIN
 // entitlement. Does NOT settle on-chain or fund author/voucher economics.
 //
@@ -19,6 +19,7 @@ import {
 import {
   STRIPE_ACCOUNT_PAYMENT_FLOW,
   STRIPE_CURRENCY_SENTINEL,
+  STRIPE_LIVE_PILOT_IMPLEMENTATION_READY,
   STRIPE_PAYMENT_FLOW,
   STRIPE_RECIPIENT_SENTINEL,
   detectStripeKeyMode,
@@ -29,14 +30,14 @@ import {
 } from "@/lib/stripe";
 import {
   recordStripeMarketplaceAccessGrant,
-  revokeStripeMarketplaceAccessGrant,
-  revokeStripeMarketplaceAccessGrantsByPaymentReference,
+  recordStripeMarketplacePaymentTerminalState,
 } from "@/lib/buyerAccessGrants";
 import { getErrorMessage } from "@/lib/errors";
 import {
   recordStripeWebhookOutcome,
   type RecordStripeWebhookOutcomeInput,
 } from "@/lib/stripeReconciliation";
+import { CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION } from "@/lib/stripePolicyCopy";
 
 type SessionObject = {
   id: string;
@@ -207,27 +208,18 @@ export async function POST(req: NextRequest) {
       const accountId = metadataString(object.metadata, "buyer_account_id");
       const skillDbId = metadataString(object.metadata, "skill_db_id");
       const paymentFlow = metadataString(object.metadata, "payment_flow");
-      let accountRevoked = 0;
-      if (
-        paymentFlow === STRIPE_ACCOUNT_PAYMENT_FLOW &&
-        isUuid(accountId) &&
-        isUuid(skillDbId)
-      ) {
-        await revokeStripeMarketplaceAccessGrant({
-          accountId,
-          skillDbId,
+      const accountRevoked = (
+        await recordStripeMarketplacePaymentTerminalState({
+          eventId: event.id,
           paymentRef,
           reason,
-        });
-        accountRevoked = 1;
-      } else {
-        accountRevoked = (
-          await revokeStripeMarketplaceAccessGrantsByPaymentReference(
-            paymentRef,
-            reason
-          )
-        ).length;
-      }
+          ...(paymentFlow === STRIPE_ACCOUNT_PAYMENT_FLOW &&
+          isUuid(accountId) &&
+          isUuid(skillDbId)
+            ? { accountId, skillDbId }
+            : {}),
+        })
+      ).length;
 
       for (const row of walletRevoked) {
         console.warn(
@@ -288,7 +280,8 @@ export async function POST(req: NextRequest) {
   // revocation would be fail-open (a chargeback would leave access intact),
   // and a terminal ack means Stripe never redelivers it. Fail-closed here
   // means "do not grant", not "do not revoke".
-  if (detectStripeKeyMode(process.env.STRIPE_SECRET_KEY) === "unknown") {
+  const configuredKeyMode = detectStripeKeyMode(process.env.STRIPE_SECRET_KEY);
+  if (configuredKeyMode === "unknown") {
     return ackUnprocessable({
       eventId: event.id,
       eventType: event.type,
@@ -305,6 +298,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true, ignored: event.type });
   }
 
+  if (typeof event.livemode !== "boolean") {
+    return ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      reason: "Stripe checkout event is missing an explicit livemode value",
+    });
+  }
+
+  // This source-controlled stop gate is intentionally checked at fulfillment
+  // as well as session creation. Outstanding or out-of-band live Sessions must
+  // not mint access while the immutable reservation ledger and atomic pilot
+  // caps are absent. Refunds/disputes remain above this guard.
+  if (
+    (configuredKeyMode === "live" || event.livemode) &&
+    !STRIPE_LIVE_PILOT_IMPLEMENTATION_READY
+  ) {
+    return ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      reason:
+        "live Stripe fulfillment is source-disabled until durable pilot controls are implemented",
+    });
+  }
+
   const session = event.data.object as SessionObject;
   const skillDbId =
     metadataString(session.metadata, "skill_db_id") ||
@@ -316,6 +333,10 @@ export async function POST(req: NextRequest) {
     "price_usdc_micros"
   );
   const paymentFlow = metadataString(session.metadata, "payment_flow");
+  const recourseDisclosureVersion = metadataString(
+    session.metadata,
+    "recourse_disclosure_version"
+  );
 
   const accountPayment = paymentFlow === STRIPE_ACCOUNT_PAYMENT_FLOW;
   const walletPayment = paymentFlow === STRIPE_PAYMENT_FLOW;
@@ -329,6 +350,20 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       objectId: session.id,
       reason: "payment_flow is not an AgentVouch Stripe payment",
+    });
+  }
+  if (
+    event.livemode &&
+    recourseDisclosureVersion !== CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION
+  ) {
+    return await ackUnprocessable({
+      eventId: event.id,
+      eventType: event.type,
+      objectId: session.id,
+      skillDbId,
+      buyerKey,
+      reason:
+        "live checkout is missing the current card-recourse disclosure acknowledgement",
     });
   }
   if (

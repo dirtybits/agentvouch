@@ -36,6 +36,11 @@ export type StripePreviewPreflight = {
   keyMode: StripeKeyMode;
   liveModeAcknowledged: boolean;
   keyModePermitted: boolean;
+  livePilotScopeReady: boolean;
+  livePilotImplementationReady: boolean;
+  buyerCardAccessServerEnabled: boolean;
+  buyerCardAccessUiEnabled: boolean;
+  buyerAuthenticationReady: boolean;
   databaseConfigured: boolean;
   blockers: string[];
 };
@@ -46,6 +51,16 @@ export function buildStripePreviewPreflight(
   const activation = getStripeCheckoutActivation(env);
   const uiFlagEnabled = env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED === "true";
   const databaseConfigured = Boolean(env.DATABASE_URL?.trim());
+  const buyerCardAccessServerEnabled =
+    env.AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED === "true";
+  const buyerCardAccessUiEnabled =
+    env.NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED === "true";
+  const buyerAuthenticationReady = Boolean(
+    env.AGENTVOUCH_BUYER_AUTH_ENABLED === "true" &&
+      env.NEXT_PUBLIC_AGENTVOUCH_BUYER_AUTH_ENABLED === "true" &&
+      env.CLERK_SECRET_KEY?.trim() &&
+      env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim()
+  );
   const blockers: string[] = [];
 
   if (!databaseConfigured) blockers.push("DATABASE_URL is not configured");
@@ -70,6 +85,29 @@ export function buildStripePreviewPreflight(
         : "STRIPE_SECRET_KEY is not a recognized Stripe test or live key"
     );
   }
+  if (!activation.livePilotScopeReady) {
+    blockers.push(
+      "live Stripe checkout requires a valid AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS allowlist and AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS ceiling"
+    );
+  }
+  if (activation.keyMode === "live" && !buyerCardAccessServerEnabled) {
+    blockers.push("AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED is not true");
+  }
+  if (activation.keyMode === "live" && !buyerCardAccessUiEnabled) {
+    blockers.push(
+      "NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED is not true"
+    );
+  }
+  if (activation.keyMode === "live" && !buyerAuthenticationReady) {
+    blockers.push(
+      "buyer authentication flags and Clerk credentials are not fully configured"
+    );
+  }
+  if (!activation.livePilotImplementationReady) {
+    blockers.push(
+      "live Stripe pilot is source-disabled until buyer allowlisting, immutable reservations, and atomic exposure caps are implemented"
+    );
+  }
 
   return {
     readOnly: true,
@@ -83,6 +121,11 @@ export function buildStripePreviewPreflight(
     keyMode: activation.keyMode,
     liveModeAcknowledged: activation.liveModeAcknowledged,
     keyModePermitted: activation.keyModePermitted,
+    livePilotScopeReady: activation.livePilotScopeReady,
+    livePilotImplementationReady: activation.livePilotImplementationReady,
+    buyerCardAccessServerEnabled,
+    buyerCardAccessUiEnabled,
+    buyerAuthenticationReady,
     databaseConfigured,
     blockers,
   };
