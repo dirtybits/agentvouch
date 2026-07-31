@@ -43,12 +43,15 @@ Move the merged `base-v1-a1` source from implementation-complete to a fresh, ver
 
 This plan separates implementation, deployment, configuration, activation, live smoke, and public launch claims. Completing one stage does not imply the next.
 
-## Current State — verified 2026-07-13
+## Current State — verified 2026-07-31
 
 - PR #102 merged the clean-break `base-v1-a1` contract, linked `PaidPurchaseSettlement` library, tests, synchronized ABI consumers, deployment rehearsal, and runtime-size gate into `main` at `ce219b86`.
 - The facade runtime is 23,487 bytes and the linked library runtime is 5,939 bytes under the pinned production profile. The 23,500-byte project soft limit leaves 13 bytes of facade headroom; this plan adds no contract selector, storage field, proxy, module router, or paid-report-only on-chain flag.
 - The live Base Sepolia contract remains the pre-A1 candidate at `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` with `PROTOCOL_VERSION=base-v1-candidate`. It does not implement the merged paid-report surface.
-- The merged web client deliberately throws for removed general Base reports and does not expose paid-report writes.
+- The merged web client deliberately throws for removed general Base reports and exposes the
+  purchase-bound A1 paid-report writes only behind
+  `NEXT_PUBLIC_BASE_PAID_PURCHASE_REPORTS_ENABLED=true`, which remains off by default. No selected
+  Base Sepolia deployment currently exposes the A1 selectors.
 - `AgentVouchEvm` has a global `setPaused` control, not a paid-report-only feature flag. A configured, unpaused deployment is directly callable even if the UI hides the feature. A client env flag is therefore UX gating only.
 - The old Base Sepolia deployment and all deployment-qualified receipts/entitlements remain valid historical state. A fresh A1 contract is a new deployment identity, not an upgrade.
 - Existing pre-A1 purchases are not reportable on the fresh A1 contract. Client eligibility must require the receipt/entitlement’s contract address and protocol version to match the selected `base-v1-a1` deployment.
@@ -134,7 +137,11 @@ stage never authorizes the next stage. Base mainnet is outside every stage below
 - [ ] Candidate commit is based on the final merged `main`; worktree is clean and the reviewed SHA is recorded.
 - [x] Facade and linked-library artifacts reproduce under the pinned compiler/link profile; both local-rehearsal code hashes and the final link map are verified.
 - [x] Facade runtime is at or below the 23,500-byte project soft limit and 24,576-byte EIP-170 hard limit.
-- [x] Forge, ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates pass locally; the candidate SHA remains pending commit/review.
+- [ ] Forge, ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates
+      pass locally. Historical 2026-07-13 evidence passed; on the 2026-07-31 readiness diff, format,
+      lint, typecheck, chain-map, 855 web tests, isolated UI, and harness passed, but Foundry was
+      unavailable and a clean production build reproduced a Next.js prerender invariant after
+      successful compilation. The candidate SHA remains pending commit/review.
 - [x] Local Anvil rehearsal proves deploy-uninitialized → pause → initialize-while-paused → ordered role handoff, with no configured/unpaused interval.
 - [x] Paid-report client and purchase-bound UX fail closed on wrong chain, deployment, protocol version, receipt, buyer, listing, deadline, bond, pause state, or unsupported wallet.
 - [x] Verified report indexing is deployment-qualified and populated only from the exact confirmed `PaidPurchaseReportOpened` event.
@@ -219,7 +226,8 @@ lowercase/deployment-qualified, idempotent, populated only from an exact canonic
 `PaidPurchaseReportOpened` event, and never used as claim/admission authority. API responses are
 private/no-store.
 
-The operations command currently enables only read-only `preflight` and `monitor` modes. It requires
+The operations command enables only read-only `preflight`, `monitor`, and `gate-c-readiness` modes.
+It requires
 explicit facade/library hashes, deployment block, native USDC, pause expectation, and complete role
 holder sets; reconstructs AccessControl from deployment events; scans in ≤1,999-block ranges;
 validates restart checkpoint hashes; re-reads live reports and voucher candidates; and records
@@ -232,6 +240,38 @@ isolated Base UI build, harness typecheck, and production webpack build passed. 
 runtime bytes (1,089 bytes EIP-170 headroom; 13 bytes project-soft-limit headroom). The final local
 Anvil rehearsal emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`. No Sepolia transaction,
 client pointer, feature flag, paymaster policy, or Base mainnet setting changed.
+
+## Implementation note — 2026-07-31 Gate-C decision preflight
+
+The new read-only `gate-c-readiness` mode validates a complete founder `GO: isolated smoke` record
+against the exact candidate commit, Base Sepolia deployment identity, paused state, every field of
+the deployment-script A1 config, observed resolver/pause role holders, unregistered and role-isolated
+fixture profiles, eligible purchase lane, exact test-USDC funding inputs, and approved gross exposure
+cap. It writes a 31-step transaction/evidence plan covering uphold with multi-page slashing,
+rejection, public-time expiry, replay, wrong-role, paused-entry, premature-close, wrong-recipient,
+buyer-credit, reserve, residual-reclaim, final repause, and reconciliation checks.
+
+The candidate commit is derived from a clean Git `HEAD`; Gate-C mode proves the declared facade
+creation boundary with historical code reads and ignores cached event/checkpoint files while fully
+reconstructing roles from chain logs starting at that boundary.
+
+The mode reports only `READY_FOR_HUMAN_REVIEW` or `BLOCKED`, always with
+`executionAuthorized: false` and `writeModesEnabled: false`; it never turns unsigned local metadata
+into a `GO`. `--apply`, write modes, and secret-bearing arguments still fail closed. The founder
+record in `docs/BASE_SEPOLIA_A1_STATE.md` remains `NO-GO`. A
+write-capable public smoke executor is not safely instantiable until Gate B produces the exact paused
+deployment, the founder approves slash/custody/recipient/fixture/cap inputs and risk acceptance, a
+signing integration is selected, fixtures are funded, and a separate Gate-C write approval is
+recorded. Therefore `add-operator-smoke-and-monitoring` remains `in_progress`. No public transaction,
+client pointer, paymaster rule, feature flag, or Base mainnet setting changed.
+
+Current non-broadcast verification on the dirty worktree based at `6a051ae`: focused operations
+tests 30/30; full web suite 855/855 across 121 files; format, lint, typecheck, chain-map, isolated Base
+UI build, and harness typecheck passed. The production webpack build compiled and then failed during
+static prerender with Next.js `Invariant: Expected workUnitAsyncStorage to have a store`; a clean
+cache retry reproduced it. Foundry was not installed, the size verifier lacked a fresh Forge
+artifact, and the Anvil rehearsal was deliberately skipped under the no-key/no-broadcast boundary.
+These open verification items keep Gate A and the operator todo incomplete.
 
 ## Implementation Sequence
 
@@ -343,7 +383,7 @@ At every stage, run one old-deployment historical read, one new-deployment write
 
 Before any deployment candidate is approved:
 
-    export PATH="$HOME/.nvm/versions/node/v24.1.0/bin:$PATH"
+    . "$HOME/.nvm/nvm.sh" --no-use && { nvm use --silent || nvm install; }
     forge fmt --check --root contracts/base-poc
     forge test --root contracts/base-poc -vv
     forge build --root contracts/base-poc --sizes

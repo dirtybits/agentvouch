@@ -6,7 +6,7 @@ todos:
     content: Confirm every blocking row in the docs/MAINNET_READINESS.md Base Mainnet Gate Table has recorded evidence before any code change.
     status: pending
   - id: parameterize-base-chain-modules
-    content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the ~13 Sepolia-pinned Base modules — chain context/id literals, the viem baseSepolia chain object, contract/USDC/RPC/explorer constants, evmAuth verification RPC, and the x402 routes — so Base Sepolia vs mainnet is env-selected, not hardcoded. This is the bulk of the Phase 10 code work.
+    content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the currently inventoried 31 Sepolia-pinned non-test Base modules (14 hard-import viem's baseSepolia chain object) — chain context/id literals, contract/USDC/RPC/explorer constants, evmAuth verification RPC, x402 routes, and paid-report surfaces — so Base Sepolia vs mainnet is env-selected, not hardcoded. Re-count before implementation; this is the bulk of the Phase 10 code work.
     status: pending
   - id: enable-mainnet-adapter
     content: Extend getAdapter()/chain config to accept eip155:8453 with mainnet contract/RPC/USDC/paymaster values, removing the Phase 8a mainnet rejection with explicit tests.
@@ -59,8 +59,11 @@ evidence there. Phase 10 then implements the cutover mechanics below.
 
 ## Scope (once unblocked)
 
-- **Base chain parameterization (the bulk of the work — verified 2026-07-02):** the Base stack is
-  currently Sepolia-pinned in ~13 modules, not just `getAdapter()`. Hardcoded surfaces include
+- **Base chain parameterization (the bulk of the work — re-counted 2026-07-26):** the Base stack is
+  currently Sepolia-pinned in 31 non-test modules, 14 of which hard-import viem's `baseSepolia`
+  chain object, not just `getAdapter()`. PR #106 added paid-report verification, adapter, panel, and
+  route surfaces after the original ~13-module estimate; re-count immediately before execution.
+  Hardcoded surfaces include
   `BASE_SEPOLIA_CHAIN_CONTEXT`/`BASE_SEPOLIA_CHAIN_ID` literals, the viem `baseSepolia` chain
   object, and contract/USDC/RPC/explorer constants across `lib/adapters/baseConstants.ts`,
   `baseConfig.ts`, `baseWalletConfig.ts`, `baseWallet.ts`, `base.ts`, plus

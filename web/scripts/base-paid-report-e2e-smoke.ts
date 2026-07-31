@@ -8,6 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -22,6 +23,7 @@ import {
 } from "viem";
 import { baseSepolia } from "viem/chains";
 import { AGENTVOUCH_EVM_A1_READ_ABI } from "../lib/adapters/agentVouchEvmAbi";
+import { normalizeChainAddressForStorage } from "../lib/chainAddress";
 
 export const MAX_BASE_LOG_BLOCK_SPAN = 1_999n;
 export const BASE_A1_CHAIN_ID = 84_532;
@@ -45,7 +47,102 @@ const USDC_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
 ]);
 
-export type OpsMode = "preflight" | "monitor";
+export type OpsMode = "preflight" | "monitor" | "gate-c-readiness";
+
+export type GateCDecisionRecord = {
+  schemaVersion: 1;
+  decision: "GO: isolated smoke" | "NO-GO";
+  approvedBy: string;
+  approvedAt: string;
+  candidateCommit: string;
+  chainId: number;
+  protocolVersion: string;
+  contractAddress: string;
+  libraryAddress: string;
+  deploymentBlock: string;
+  usdcAddress: string;
+  slashPercentage: number;
+  restitutionRecipient: string;
+  roleCustodyReference: string;
+  securityAcceptanceReference: string;
+  gateBReadbackReference: string;
+  signingMethod: string;
+  fallbackCranker: string;
+  monitorOwner: string;
+  incidentCommander: string;
+  exposure: {
+    policy: string;
+    capUsdcMicros: string;
+    authorBondUsdcMicros: string;
+    voucherStakeUsdcMicros: string[];
+    listingPriceUsdcMicros: string;
+    purchaseLane: "Direct" | "Authorization" | "Settlement";
+  };
+  fixtures: {
+    author: string;
+    upheldBuyer: string;
+    rejectedBuyer: string;
+    expiryBuyer: string;
+    vouchers: string[];
+    resolver: string;
+    pauseAuthority: string;
+  };
+};
+
+export type GateCObservedDeployment = {
+  candidateCommit: string;
+  chainId: number;
+  protocolVersion: string;
+  contractAddress: string;
+  libraryAddress: string;
+  deploymentBlock: string;
+  usdcAddress: string;
+  paused: boolean;
+  slashPercentage: number;
+  restitutionRecipient: string;
+  chainContext: string;
+  reportBondUsdcMicros: string;
+  minVouchStakeUsdcMicros: string;
+  minAuthorBondForFreeListingUsdcMicros: string;
+  minPaidListingPriceUsdcMicros: string;
+  authorShareBps: number;
+  voucherShareBps: number;
+  protocolFeeBps: number;
+  authorProceedsLockSeconds: string;
+  refundClaimWindowSeconds: string;
+  challengerRewardBps: number;
+  challengerRewardCapUsdcMicros: string;
+  stakeWeightPerUsdc: number;
+  riskComponentCap: string;
+  vouchWeight: number;
+  vouchComponentCap: string;
+  longevityBonusPerDay: number;
+  longevityComponentCap: string;
+  upheldDisputePenalty: string;
+  reputationScoreCap: string;
+  roleHolders: Record<string, string[]>;
+  registeredFixtureAddresses: string[];
+};
+
+export type GateCTransactionPlanStep = {
+  id: string;
+  kind: "read" | "transaction" | "expected-revert" | "wait" | "reconcile";
+  actor: string;
+  call: string;
+  expectedEvidence: string;
+  earliestExecution?: string;
+  publicNetworkTimeWarpAllowed: false;
+};
+
+export type GateCReadiness = {
+  assessment: "READY_FOR_HUMAN_REVIEW" | "BLOCKED";
+  executionAuthorized: false;
+  readOnly: true;
+  writeModesEnabled: false;
+  blockers: string[];
+  plannedGrossFundingUsdcMicros: string;
+  transactionPlan: GateCTransactionPlanStep[];
+};
 
 export type InclusiveBlockRange = { fromBlock: bigint; toBlock: bigint };
 
@@ -108,6 +205,8 @@ type OpsConfig = {
   acceptedAgeAlertSeconds: bigint;
   creditExpiryAlertSeconds: bigint;
   stateDir: string;
+  candidateCommit?: string;
+  gateCDecisionPath?: string;
 };
 
 function createOpsPublicClient(rpcUrl: string) {
@@ -273,13 +372,638 @@ export function parseOpsMode(argv: string[]): OpsMode {
       "Public-network apply and secret-bearing arguments are disabled in the pre-broadcast driver"
     );
   }
-  const mode = argv.find((arg) => !arg.startsWith("-")) ?? "preflight";
-  if (mode !== "preflight" && mode !== "monitor") {
+  const positional = argv.filter((arg) => !arg.startsWith("-"));
+  if (positional.length > 1) {
+    throw new Error("Operations command accepts exactly one read-only mode");
+  }
+  const mode = positional[0] ?? "preflight";
+  if (
+    mode !== "preflight" &&
+    mode !== "monitor" &&
+    mode !== "gate-c-readiness"
+  ) {
     throw new Error(
-      `Unsupported mode ${mode}; only read-only preflight and monitor modes are enabled`
+      `Unsupported mode ${mode}; only read-only preflight, monitor, and gate-c-readiness modes are enabled`
     );
   }
   return mode;
+}
+
+function normalizedAddress(value: string): string | null {
+  const address = normalizeChainAddressForStorage({
+    chainContext: `eip155:${BASE_A1_CHAIN_ID}`,
+    value,
+  });
+  return address === "0x0000000000000000000000000000000000000000"
+    ? null
+    : address;
+}
+
+function nonPending(value: string): boolean {
+  const normalized = value.trim();
+  return normalized.length > 0 && !/pending|tbd|todo/i.test(normalized);
+}
+
+export function sanitizeOpsDiagnostic(error: unknown): string {
+  const diagnostic =
+    error instanceof Error ? error.stack || error.message : String(error);
+  return diagnostic.replace(/https?:\/\/[^\s)\]}]+/gi, "<redacted-rpc-url>");
+}
+
+function currentGitCommit(): string {
+  const dirty = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=normal"],
+    { encoding: "utf8" }
+  ).trim();
+  if (dirty) {
+    throw new Error(
+      "Gate-C readiness requires a clean checkout of the reviewed candidate"
+    );
+  }
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  if (!/^[0-9a-f]{40}$/i.test(commit)) {
+    throw new Error("Unable to derive an exact candidate commit from Git HEAD");
+  }
+  return commit.toLowerCase();
+}
+
+function parseUnsigned(value: string): bigint | null {
+  try {
+    const parsed = BigInt(value);
+    return parsed >= 0n ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function addressMatches(left: string, right: string): boolean {
+  const normalizedLeft = normalizedAddress(left);
+  return normalizedLeft !== null && normalizedLeft === normalizedAddress(right);
+}
+
+function buildGateCTransactionPlan(
+  decision: GateCDecisionRecord
+): GateCTransactionPlanStep[] {
+  const step = (
+    id: string,
+    kind: GateCTransactionPlanStep["kind"],
+    actor: string,
+    call: string,
+    expectedEvidence: string,
+    earliestExecution?: string
+  ): GateCTransactionPlanStep => ({
+    id,
+    kind,
+    actor,
+    call,
+    expectedEvidence,
+    earliestExecution,
+    publicNetworkTimeWarpAllowed: false,
+  });
+  const facade = decision.contractAddress;
+  const reserve = decision.restitutionRecipient;
+  const cranker = decision.fallbackCranker;
+  const purchaseCall =
+    decision.exposure.purchaseLane === "Authorization"
+      ? "purchaseWithAuthorization"
+      : "purchaseSkill";
+  return [
+    step(
+      "preflight-paused-deployment",
+      "read",
+      "operator",
+      `${facade}: verify exact code/config/roles and paused=true`,
+      "Gate-B readback, canonical block hash, and explicit-block USDC snapshot"
+    ),
+    step(
+      "register-fresh-fixtures",
+      "transaction",
+      "each fresh fixture",
+      `${facade}.registerAgent(metadataUri)`,
+      "one successful AgentRegistered receipt per author, buyer, and voucher"
+    ),
+    step(
+      "approve-exact-fixture-funding",
+      "transaction",
+      "each funded fixture",
+      `${decision.usdcAddress}: exact allowances for bonds/vouches/reports`,
+      "successful exact Approval receipts; Authorization purchase amount uses EIP-3009"
+    ),
+    step(
+      "unpause-upheld-branch",
+      "transaction",
+      decision.fixtures.pauseAuthority,
+      `${facade}.setPaused(false)`,
+      "PausedSet(false) receipt and observed paused=false"
+    ),
+    step(
+      "seed-author-bond-listings-vouches",
+      "transaction",
+      "author and voucher fixtures",
+      `${facade}: deposit exact author bond, create three paid listings, and add each approved vouch`,
+      "exact AuthorBondDeposited, SkillListingCreated, and Vouched receipts"
+    ),
+    step(
+      "purchase-upheld-fixture",
+      "transaction",
+      decision.fixtures.upheldBuyer,
+      `${facade}.${purchaseCall}(upheldListingId, exact lane inputs)`,
+      "SkillPurchased receipt with exact buyer, listing, price, revision, and purchaseId"
+    ),
+    step(
+      "open-upheld-report",
+      "transaction",
+      decision.fixtures.upheldBuyer,
+      `${facade}.openPaidPurchaseReport(author, upheldListingId, upheldPurchaseId, evidenceUri)`,
+      "PaidPurchaseReportOpened receipt with exact reportId and reviewDeadline"
+    ),
+    step(
+      "replay-upheld-receipt",
+      "expected-revert",
+      decision.fixtures.upheldBuyer,
+      "repeat open-upheld-report exact calldata",
+      "simulation reverts PaidPurchaseReceiptConsumed; no transaction broadcast"
+    ),
+    step(
+      "wrong-role-review",
+      "expected-revert",
+      decision.fixtures.upheldBuyer,
+      `${facade}.reviewPaidPurchaseReport(event:open-upheld-report.reportId, true)`,
+      "simulation reverts AccessControlUnauthorizedAccount; no transaction broadcast"
+    ),
+    step(
+      "accept-upheld-report",
+      "transaction",
+      decision.fixtures.resolver,
+      `${facade}.reviewPaidPurchaseReport(event:open-upheld-report.reportId, true)`,
+      "PaidPurchaseReportAccepted receipt before the review deadline"
+    ),
+    step(
+      "repause-before-upheld-settlement",
+      "transaction",
+      decision.fixtures.pauseAuthority,
+      `${facade}.setPaused(true)`,
+      "PausedSet(true) receipt and observed paused=true"
+    ),
+    step(
+      "resolve-upheld-report",
+      "transaction",
+      decision.fixtures.resolver,
+      `${facade}.resolvePaidPurchaseReport(event:open-upheld-report.reportId, Upheld)`,
+      "PaidPurchaseReportParked receipt with exact slash snapshot"
+    ),
+    step(
+      "slash-upheld-voucher-page-1",
+      "transaction",
+      cranker,
+      `${facade}.slashPaidPurchaseReportVouches(reportId, [voucher[0]])`,
+      "first PaidPurchaseReportVouchSlashed receipt and partial processed stake"
+    ),
+    step(
+      "slash-upheld-voucher-page-2",
+      "transaction",
+      cranker,
+      `${facade}.slashPaidPurchaseReportVouches(reportId, remaining vouchers)`,
+      "remaining slash receipts plus PaidPurchaseReportFinalized"
+    ),
+    step(
+      "claim-upheld-buyer-credit",
+      "transaction",
+      decision.fixtures.upheldBuyer,
+      `${facade}.claimPaidPurchaseReportCredit(reportId)`,
+      "PaidPurchaseReportCreditClaimed and explicit-block buyer USDC delta"
+    ),
+    step(
+      "unpause-rejected-branch",
+      "transaction",
+      decision.fixtures.pauseAuthority,
+      `${facade}.setPaused(false)`,
+      "PausedSet(false) receipt"
+    ),
+    step(
+      "open-rejected-report",
+      "transaction",
+      decision.fixtures.rejectedBuyer,
+      "purchase rejected fixture then open its exact paid-purchase report",
+      "SkillPurchased and PaidPurchaseReportOpened receipts"
+    ),
+    step(
+      "repause-before-rejection",
+      "transaction",
+      decision.fixtures.pauseAuthority,
+      `${facade}.setPaused(true)`,
+      "PausedSet(true) receipt"
+    ),
+    step(
+      "paused-entry-rejection",
+      "expected-revert",
+      decision.fixtures.rejectedBuyer,
+      `${facade}.purchaseSkill(rejectedListingId) while paused`,
+      "simulation reverts EnforcedPause; no transaction broadcast"
+    ),
+    step(
+      "reject-report",
+      "transaction",
+      decision.fixtures.resolver,
+      `${facade}.reviewPaidPurchaseReport(event:open-rejected-report.reportId, false)`,
+      "PaidPurchaseReportRejected receipt and reserve-credit delta"
+    ),
+    step(
+      "unpause-expiry-branch",
+      "transaction",
+      decision.fixtures.pauseAuthority,
+      `${facade}.setPaused(false)`,
+      "PausedSet(false) receipt"
+    ),
+    step(
+      "open-expiry-report",
+      "transaction",
+      decision.fixtures.expiryBuyer,
+      "purchase expiry fixture then open its exact paid-purchase report",
+      "SkillPurchased and PaidPurchaseReportOpened receipts with reviewDeadline"
+    ),
+    step(
+      "repause-before-expiry-wait",
+      "transaction",
+      decision.fixtures.pauseAuthority,
+      `${facade}.setPaused(true)`,
+      "PausedSet(true) receipt"
+    ),
+    step(
+      "premature-expiry-close",
+      "expected-revert",
+      cranker,
+      `${facade}.closePaidPurchaseReportCredit(event:open-expiry-report.reportId)`,
+      "simulation reverts PaidPurchaseReviewOpen; no transaction broadcast"
+    ),
+    step(
+      "wait-for-expiry-deadline",
+      "wait",
+      "operator",
+      "wait for the public Base Sepolia timestamp to reach the recorded reviewDeadline",
+      "canonical block timestamp at or after reviewDeadline; no time warp",
+      "event:open-expiry-report.reviewDeadline"
+    ),
+    step(
+      "close-expired-report",
+      "transaction",
+      cranker,
+      `${facade}.closePaidPurchaseReportCredit(event:open-expiry-report.reportId)`,
+      "PaidPurchaseReportExpired receipt and exact claimDeadline",
+      "event:open-expiry-report.reviewDeadline"
+    ),
+    step(
+      "claim-expiry-buyer-credit",
+      "transaction",
+      decision.fixtures.expiryBuyer,
+      `${facade}.claimPaidPurchaseReportCredit(event:open-expiry-report.reportId)`,
+      "PaidPurchaseReportCreditClaimed and explicit-block buyer USDC delta"
+    ),
+    step(
+      "wrong-reserve-recipient",
+      "expected-revert",
+      cranker,
+      `${facade}.claimRestitutionReserve()`,
+      "simulation reverts for a non-recipient; no transaction broadcast"
+    ),
+    step(
+      "claim-restitution-reserve",
+      "transaction",
+      reserve,
+      `${facade}.claimRestitutionReserve()`,
+      "RestitutionReserveClaimed and explicit-block recipient USDC delta"
+    ),
+    step(
+      "reclaim-voucher-residuals",
+      "transaction",
+      "each slashed voucher",
+      `${facade}.revokeVouch(author)`,
+      "VouchRevoked receipts and explicit-block residual USDC deltas"
+    ),
+    step(
+      "final-repause-and-reconcile",
+      "reconcile",
+      decision.fixtures.pauseAuthority,
+      `${facade}: prove paused=true and reconcile reports, slash work, credits, reserve, residuals, and contract USDC`,
+      "zero unexplained liability, final canonical checkpoint, and old-deployment/Solana regression references"
+    ),
+  ];
+}
+
+export function evaluateGateCDecision(
+  decision: GateCDecisionRecord,
+  observed: GateCObservedDeployment
+): GateCReadiness {
+  const blockers: string[] = [];
+  if (decision.schemaVersion !== 1) {
+    blockers.push("Gate-C decision schemaVersion must be 1");
+  }
+  if (decision.decision !== "GO: isolated smoke") {
+    blockers.push("Founder decision is not GO: isolated smoke");
+  }
+  if (!/^[0-9a-f]{40}$/i.test(decision.candidateCommit)) {
+    blockers.push("Candidate commit is not an exact 40-character Git SHA");
+  } else if (
+    decision.candidateCommit.toLowerCase() !==
+    observed.candidateCommit.toLowerCase()
+  ) {
+    blockers.push(
+      "Candidate commit differs from the reviewed deployment record"
+    );
+  }
+  if (!nonPending(decision.approvedBy)) blockers.push("Approver is missing");
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(
+      decision.approvedAt
+    ) ||
+    !Number.isFinite(Date.parse(decision.approvedAt))
+  ) {
+    blockers.push("Approval timestamp is not an ISO-8601 timestamp");
+  }
+  if (
+    decision.chainId !== observed.chainId ||
+    observed.chainId !== BASE_A1_CHAIN_ID
+  ) {
+    blockers.push("Gate-C decision chain differs from Base Sepolia");
+  }
+  if (
+    decision.protocolVersion !== observed.protocolVersion ||
+    observed.protocolVersion !== BASE_A1_PROTOCOL_VERSION
+  ) {
+    blockers.push("Protocol version differs from the observed A1 deployment");
+  }
+  if (!addressMatches(decision.contractAddress, observed.contractAddress)) {
+    blockers.push("Facade address differs from the observed deployment");
+  }
+  if (!addressMatches(decision.libraryAddress, observed.libraryAddress)) {
+    blockers.push("Settlement library differs from the observed deployment");
+  }
+  if (decision.deploymentBlock !== observed.deploymentBlock) {
+    blockers.push("Deployment block differs from the observed deployment");
+  }
+  if (!addressMatches(decision.usdcAddress, observed.usdcAddress)) {
+    blockers.push("Native USDC differs from the observed deployment");
+  }
+  if (!observed.paused) blockers.push("Candidate is not paused");
+  const lockedConfigChecks: Array<[string, string | number, string | number]> =
+    [
+      ["chain context", observed.chainContext, "eip155:84532"],
+      ["minimum vouch stake", observed.minVouchStakeUsdcMicros, "1000000"],
+      ["report bond", observed.reportBondUsdcMicros, "5000000"],
+      [
+        "minimum free-listing author bond",
+        observed.minAuthorBondForFreeListingUsdcMicros,
+        "1000000",
+      ],
+      [
+        "minimum paid-listing price",
+        observed.minPaidListingPriceUsdcMicros,
+        "10000",
+      ],
+      ["author share", observed.authorShareBps, 6000],
+      ["voucher share", observed.voucherShareBps, 4000],
+      ["protocol fee", observed.protocolFeeBps, 0],
+      ["author proceeds lock", observed.authorProceedsLockSeconds, "0"],
+      ["refund claim window", observed.refundClaimWindowSeconds, "604800"],
+      ["challenger reward", observed.challengerRewardBps, 0],
+      ["challenger reward cap", observed.challengerRewardCapUsdcMicros, "0"],
+      ["stake weight", observed.stakeWeightPerUsdc, 0],
+      ["risk component cap", observed.riskComponentCap, "0"],
+      ["vouch weight", observed.vouchWeight, 0],
+      ["vouch component cap", observed.vouchComponentCap, "0"],
+      ["longevity bonus", observed.longevityBonusPerDay, 0],
+      ["longevity component cap", observed.longevityComponentCap, "0"],
+      ["upheld-report penalty", observed.upheldDisputePenalty, "0"],
+      ["reputation score cap", observed.reputationScoreCap, "0"],
+    ];
+  for (const [name, actual, expected] of lockedConfigChecks) {
+    if (String(actual) !== String(expected)) {
+      blockers.push(
+        `Locked A1 ${name} differs: expected ${expected}; observed ${actual}`
+      );
+    }
+  }
+  if (decision.slashPercentage !== observed.slashPercentage) {
+    blockers.push("Slash percentage differs from the deployed config");
+  }
+  if (
+    !addressMatches(
+      decision.restitutionRecipient,
+      observed.restitutionRecipient
+    )
+  ) {
+    blockers.push("Restitution recipient differs from the deployed config");
+  }
+  for (const [field, value] of [
+    ["Role custody reference", decision.roleCustodyReference],
+    [
+      "Security review or risk-acceptance reference",
+      decision.securityAcceptanceReference,
+    ],
+    ["Gate-B readback reference", decision.gateBReadbackReference],
+    ["Signing method", decision.signingMethod],
+    ["Monitor owner", decision.monitorOwner],
+    ["Incident commander", decision.incidentCommander],
+    ["Exposure policy", decision.exposure.policy],
+  ] as const) {
+    if (!nonPending(value)) blockers.push(`${field} is missing or pending`);
+  }
+  if (!normalizedAddress(decision.fallbackCranker)) {
+    blockers.push("Fallback cranker is missing or pending");
+  }
+  const purchaseLane = String(decision.exposure.purchaseLane);
+  const purchaseLaneRecognized = [
+    "Direct",
+    "Authorization",
+    "Settlement",
+  ].includes(purchaseLane);
+  const purchaseLaneEligible = ["Direct", "Authorization"].includes(
+    purchaseLane
+  );
+  if (!purchaseLaneRecognized) {
+    blockers.push("Purchase lane must be Direct, Authorization, or Settlement");
+  } else if (purchaseLane === "Settlement") {
+    blockers.push("Settlement-lane receipts are ineligible for Gate-C reports");
+  }
+
+  const fixtureAddresses = [
+    decision.fixtures.author,
+    decision.fixtures.upheldBuyer,
+    decision.fixtures.rejectedBuyer,
+    decision.fixtures.expiryBuyer,
+    ...decision.fixtures.vouchers,
+  ];
+  const normalizedFixtures = fixtureAddresses
+    .map(normalizedAddress)
+    .filter((value): value is string => value !== null);
+  if (normalizedFixtures.length !== fixtureAddresses.length) {
+    blockers.push("Every fresh fixture must be a non-zero EVM address");
+  }
+  if (decision.fixtures.vouchers.length < 2) {
+    blockers.push("At least two fresh voucher fixtures are required");
+  }
+  if (new Set(normalizedFixtures).size !== normalizedFixtures.length) {
+    blockers.push(
+      "Fresh author, buyer, and voucher fixture addresses must be distinct"
+    );
+  }
+  const registeredFixtures = new Set(
+    observed.registeredFixtureAddresses
+      .map(normalizedAddress)
+      .filter((value): value is string => value !== null)
+  );
+  const unexpectedlyRegistered = normalizedFixtures.filter((fixture) =>
+    registeredFixtures.has(fixture)
+  );
+  if (unexpectedlyRegistered.length > 0) {
+    blockers.push(
+      `Fresh fixtures are already registered: ${unexpectedlyRegistered.join(
+        ", "
+      )}`
+    );
+  }
+  const resolverHolders = observed.roleHolders.RESOLVER_ROLE ?? [];
+  if (
+    !resolverHolders.some((holder) =>
+      addressMatches(holder, decision.fixtures.resolver)
+    )
+  ) {
+    blockers.push("Resolver fixture is not an observed RESOLVER_ROLE holder");
+  }
+  const pauseHolders = observed.roleHolders.PAUSE_ROLE ?? [];
+  if (
+    !pauseHolders.some((holder) =>
+      addressMatches(holder, decision.fixtures.pauseAuthority)
+    )
+  ) {
+    blockers.push("Pause fixture is not an observed PAUSE_ROLE holder");
+  }
+  const roleHolders = new Set(
+    Object.values(observed.roleHolders)
+      .flat()
+      .map(normalizedAddress)
+      .filter((value): value is string => value !== null)
+  );
+  const roleBearingFreshFixtures = normalizedFixtures.filter((fixture) =>
+    roleHolders.has(fixture)
+  );
+  if (roleBearingFreshFixtures.length > 0) {
+    blockers.push(
+      `Fresh fixtures unexpectedly hold protocol roles: ${roleBearingFreshFixtures.join(
+        ", "
+      )}`
+    );
+  }
+  const fallbackCranker = normalizedAddress(decision.fallbackCranker);
+  if (fallbackCranker && roleHolders.has(fallbackCranker)) {
+    blockers.push("Fallback cranker must not hold a protocol role");
+  }
+  if (
+    fallbackCranker &&
+    addressMatches(fallbackCranker, decision.restitutionRecipient)
+  ) {
+    blockers.push(
+      "Fallback cranker must differ from the restitution recipient"
+    );
+  }
+  if (
+    addressMatches(decision.fixtures.resolver, decision.fixtures.pauseAuthority)
+  ) {
+    blockers.push("Resolver and pause authority fixtures must be distinct");
+  }
+  const fixtureIsolationAddresses = [
+    decision.restitutionRecipient,
+    decision.fallbackCranker,
+    decision.fixtures.resolver,
+    decision.fixtures.pauseAuthority,
+  ]
+    .map(normalizedAddress)
+    .filter((value): value is string => value !== null);
+  const overlappingFixture = normalizedFixtures.find((fixture) =>
+    fixtureIsolationAddresses.includes(fixture)
+  );
+  if (overlappingFixture) {
+    blockers.push(
+      "Fresh fixtures must differ from role actors, the fallback cranker, and the restitution recipient"
+    );
+  }
+
+  const authorBond = parseUnsigned(decision.exposure.authorBondUsdcMicros);
+  const listingPrice = parseUnsigned(decision.exposure.listingPriceUsdcMicros);
+  const voucherStakes =
+    decision.exposure.voucherStakeUsdcMicros.map(parseUnsigned);
+  const reportBond = parseUnsigned(observed.reportBondUsdcMicros);
+  const minVouch = parseUnsigned(observed.minVouchStakeUsdcMicros);
+  const minPaid = parseUnsigned(observed.minPaidListingPriceUsdcMicros);
+  const cap = parseUnsigned(decision.exposure.capUsdcMicros);
+  if (
+    authorBond === null ||
+    authorBond === 0n ||
+    listingPrice === null ||
+    reportBond === null ||
+    minVouch === null ||
+    minPaid === null ||
+    cap === null ||
+    voucherStakes.some((stake) => stake === null)
+  ) {
+    blockers.push(
+      "Fixture funding and cap values must be unsigned USDC micro-unit integers"
+    );
+  }
+  if (listingPrice !== null && minPaid !== null && listingPrice < minPaid) {
+    blockers.push(
+      "Fixture listing price is below the deployed paid-listing minimum"
+    );
+  }
+  if (
+    minVouch !== null &&
+    voucherStakes.some((stake) => stake !== null && stake < minVouch)
+  ) {
+    blockers.push(
+      "A fixture voucher stake is below the deployed vouch minimum"
+    );
+  }
+  if (
+    decision.exposure.voucherStakeUsdcMicros.length !==
+    decision.fixtures.vouchers.length
+  ) {
+    blockers.push(
+      "Every voucher fixture needs one exact approved stake amount"
+    );
+  }
+  const plannedGrossFunding =
+    authorBond !== null && listingPrice !== null && reportBond !== null
+      ? authorBond +
+        voucherStakes.reduce<bigint>(
+          (total, stake) => total + (stake ?? 0n),
+          0n
+        ) +
+        3n * (listingPrice + reportBond)
+      : 0n;
+  if (cap !== null && plannedGrossFunding > cap) {
+    blockers.push(
+      "Planned gross fixture funding exceeds the approved exposure cap"
+    );
+  }
+
+  const assessment =
+    blockers.length === 0 ? "READY_FOR_HUMAN_REVIEW" : "BLOCKED";
+
+  return {
+    assessment,
+    executionAuthorized: false,
+    readOnly: true,
+    writeModesEnabled: false,
+    blockers,
+    plannedGrossFundingUsdcMicros: plannedGrossFunding.toString(),
+    transactionPlan:
+      assessment === "READY_FOR_HUMAN_REVIEW" && purchaseLaneEligible
+        ? buildGateCTransactionPlan(decision)
+        : [],
+  };
 }
 
 function requireEnv(name: string): string {
@@ -305,6 +1029,7 @@ function parseBoolean(name: string): boolean {
 }
 
 function loadConfig(argv: string[]): OpsConfig {
+  const mode = parseOpsMode(argv);
   const contractAddress = getAddress(
     requireEnv("BASE_A1_OPS_CONTRACT_ADDRESS")
   );
@@ -322,7 +1047,7 @@ function loadConfig(argv: string[]): OpsConfig {
     );
   }
   return {
-    mode: parseOpsMode(argv),
+    mode,
     rpcUrl: requireEnv("BASE_A1_OPS_RPC_URL"),
     contractAddress,
     libraryAddress: getAddress(requireEnv("BASE_A1_OPS_LIBRARY_ADDRESS")),
@@ -351,6 +1076,12 @@ function loadConfig(argv: string[]): OpsConfig {
         "base-paid-report",
         contractAddress.toLowerCase()
       ),
+    candidateCommit:
+      mode === "gate-c-readiness" ? currentGitCommit() : undefined,
+    gateCDecisionPath:
+      mode === "gate-c-readiness"
+        ? requireEnv("BASE_A1_GATE_C_DECISION_PATH")
+        : undefined,
   };
 }
 
@@ -410,11 +1141,16 @@ async function scanDeploymentEvents(input: {
   client: OpsPublicClient;
   config: OpsConfig;
   latestBlock: bigint;
+  forceFullRescan?: boolean;
 }): Promise<{ events: StoredEvent[]; checkpoint: MonitorCheckpoint }> {
   const eventPath = path.join(input.config.stateDir, "events.json");
   const checkpointPath = path.join(input.config.stateDir, "checkpoint.json");
-  const checkpoint = readJson<MonitorCheckpoint>(checkpointPath);
-  const events = readJson<StoredEvent[]>(eventPath) ?? [];
+  const checkpoint = input.forceFullRescan
+    ? null
+    : readJson<MonitorCheckpoint>(checkpointPath);
+  const events = input.forceFullRescan
+    ? []
+    : readJson<StoredEvent[]>(eventPath) ?? [];
   let fromBlock = input.config.deploymentBlock;
   if (checkpoint) {
     if (!existsSync(eventPath)) {
@@ -647,6 +1383,37 @@ async function runReadOnlyOperations(config: OpsConfig): Promise<void> {
     ) {
       throw new Error("Facade or settlement library has no runtime code");
     }
+    if (config.mode === "gate-c-readiness") {
+      if (config.deploymentBlock === 0n) {
+        throw new Error("Gate-C deployment block cannot be zero");
+      }
+      const [facadeCodeAtDeployment, facadeCodeBeforeDeployment] =
+        await Promise.all([
+          client.getCode({
+            address: config.contractAddress,
+            blockNumber: config.deploymentBlock,
+          }),
+          client.getCode({
+            address: config.contractAddress,
+            blockNumber: config.deploymentBlock - 1n,
+          }),
+        ]);
+      if (
+        !facadeCodeAtDeployment ||
+        facadeCodeAtDeployment === "0x" ||
+        keccak256(facadeCodeAtDeployment).toLowerCase() !==
+          config.expectedFacadeRuntimeHash
+      ) {
+        throw new Error(
+          "Facade deployment block does not contain the approved runtime"
+        );
+      }
+      if (facadeCodeBeforeDeployment && facadeCodeBeforeDeployment !== "0x") {
+        throw new Error(
+          "Facade already had code before the declared deployment block"
+        );
+      }
+    }
     if (
       keccak256(facadeCode).toLowerCase() !== config.expectedFacadeRuntimeHash
     ) {
@@ -684,7 +1451,7 @@ async function runReadOnlyOperations(config: OpsConfig): Promise<void> {
       throw new Error(`Unexpected protocol version ${protocolVersion}`);
     }
     if (
-      config.mode === "preflight" &&
+      (config.mode === "preflight" || config.mode === "gate-c-readiness") &&
       Boolean(paused) !== config.expectedPaused
     ) {
       throw new Error(
@@ -699,17 +1466,34 @@ async function runReadOnlyOperations(config: OpsConfig): Promise<void> {
         "Configured USDC does not match the approved native USDC"
       );
     }
-    if (
-      BigInt(String(field(rawConfig, "disputeBondUsdcMicros", 3))) !==
-        5_000_000n ||
-      BigInt(String(field(rawConfig, "refundClaimWindowSeconds", 11))) !==
-        604_800n ||
-      Number(field(rawConfig, "challengerRewardBps", 12)) !== 0 ||
-      BigInt(String(field(rawConfig, "challengerRewardCapUsdcMicros", 13))) !==
-        0n
-    ) {
+    const lockedConfigValues = [
+      [String(field(rawConfig, "chainContext", 1)), "eip155:84532"],
+      [String(field(rawConfig, "minVouchStakeUsdcMicros", 2)), "1000000"],
+      [String(field(rawConfig, "disputeBondUsdcMicros", 3)), "5000000"],
+      [
+        String(field(rawConfig, "minAuthorBondForFreeListingUsdcMicros", 4)),
+        "1000000",
+      ],
+      [String(field(rawConfig, "minPaidListingPriceUsdcMicros", 5)), "10000"],
+      [String(field(rawConfig, "authorShareBps", 6)), "6000"],
+      [String(field(rawConfig, "voucherShareBps", 7)), "4000"],
+      [String(field(rawConfig, "protocolFeeBps", 8)), "0"],
+      [String(field(rawConfig, "authorProceedsLockSeconds", 10)), "0"],
+      [String(field(rawConfig, "refundClaimWindowSeconds", 11)), "604800"],
+      [String(field(rawConfig, "challengerRewardBps", 12)), "0"],
+      [String(field(rawConfig, "challengerRewardCapUsdcMicros", 13)), "0"],
+      [String(field(rawConfig, "stakeWeightPerUsdc", 14)), "0"],
+      [String(field(rawConfig, "riskComponentCap", 15)), "0"],
+      [String(field(rawConfig, "vouchWeight", 16)), "0"],
+      [String(field(rawConfig, "vouchComponentCap", 17)), "0"],
+      [String(field(rawConfig, "longevityBonusPerDay", 18)), "0"],
+      [String(field(rawConfig, "longevityComponentCap", 19)), "0"],
+      [String(field(rawConfig, "upheldDisputePenalty", 20)), "0"],
+      [String(field(rawConfig, "reputationScoreCap", 21)), "0"],
+    ] as const;
+    if (lockedConfigValues.some(([actual, expected]) => actual !== expected)) {
       throw new Error(
-        "Locked paid-report bond, claim window, or zero-reward economics differ"
+        "Observed A1 config differs from the exact deployment-script configuration"
       );
     }
 
@@ -717,6 +1501,7 @@ async function runReadOnlyOperations(config: OpsConfig): Promise<void> {
       client,
       config,
       latestBlock,
+      forceFullRescan: config.mode === "gate-c-readiness",
     });
     const roles = await assertExactRoleMatrix({
       client,
@@ -729,6 +1514,104 @@ async function runReadOnlyOperations(config: OpsConfig): Promise<void> {
       contractAddress: config.contractAddress,
       events,
     });
+    let gateCReadiness: GateCReadiness | undefined;
+    if (config.mode === "gate-c-readiness") {
+      const decision = readJson<GateCDecisionRecord>(
+        config.gateCDecisionPath as string
+      );
+      if (!decision) {
+        throw new Error(
+          `Gate-C decision file does not exist: ${config.gateCDecisionPath}`
+        );
+      }
+      const freshFixtureAddresses = [
+        decision.fixtures.author,
+        decision.fixtures.upheldBuyer,
+        decision.fixtures.rejectedBuyer,
+        decision.fixtures.expiryBuyer,
+        ...decision.fixtures.vouchers,
+      ]
+        .map(normalizedAddress)
+        .filter((value): value is string => value !== null);
+      const registeredFixtureAddresses = (
+        await Promise.all(
+          freshFixtureAddresses.map(async (fixtureAddress) => {
+            const profile = await client.readContract({
+              address: config.contractAddress,
+              abi: OPS_ABI,
+              functionName: "getProfile",
+              args: [getAddress(fixtureAddress)],
+              blockNumber: latestBlock,
+            });
+            return Boolean(field(profile, "registered", 0))
+              ? fixtureAddress
+              : null;
+          })
+        )
+      ).filter((value): value is string => value !== null);
+      gateCReadiness = evaluateGateCDecision(decision, {
+        candidateCommit: config.candidateCommit as string,
+        chainId,
+        protocolVersion: String(protocolVersion),
+        contractAddress: config.contractAddress,
+        libraryAddress: config.libraryAddress,
+        deploymentBlock: config.deploymentBlock.toString(),
+        usdcAddress,
+        paused: Boolean(paused),
+        slashPercentage: Number(field(rawConfig, "slashPercentage", 9)),
+        restitutionRecipient: getAddress(
+          String(field(rawConfig, "treasuryRecipient", 22))
+        ),
+        chainContext: String(field(rawConfig, "chainContext", 1)),
+        reportBondUsdcMicros: String(
+          field(rawConfig, "disputeBondUsdcMicros", 3)
+        ),
+        minVouchStakeUsdcMicros: String(
+          field(rawConfig, "minVouchStakeUsdcMicros", 2)
+        ),
+        minAuthorBondForFreeListingUsdcMicros: String(
+          field(rawConfig, "minAuthorBondForFreeListingUsdcMicros", 4)
+        ),
+        minPaidListingPriceUsdcMicros: String(
+          field(rawConfig, "minPaidListingPriceUsdcMicros", 5)
+        ),
+        authorShareBps: Number(field(rawConfig, "authorShareBps", 6)),
+        voucherShareBps: Number(field(rawConfig, "voucherShareBps", 7)),
+        protocolFeeBps: Number(field(rawConfig, "protocolFeeBps", 8)),
+        authorProceedsLockSeconds: String(
+          field(rawConfig, "authorProceedsLockSeconds", 10)
+        ),
+        refundClaimWindowSeconds: String(
+          field(rawConfig, "refundClaimWindowSeconds", 11)
+        ),
+        challengerRewardBps: Number(
+          field(rawConfig, "challengerRewardBps", 12)
+        ),
+        challengerRewardCapUsdcMicros: String(
+          field(rawConfig, "challengerRewardCapUsdcMicros", 13)
+        ),
+        stakeWeightPerUsdc: Number(field(rawConfig, "stakeWeightPerUsdc", 14)),
+        riskComponentCap: String(field(rawConfig, "riskComponentCap", 15)),
+        vouchWeight: Number(field(rawConfig, "vouchWeight", 16)),
+        vouchComponentCap: String(field(rawConfig, "vouchComponentCap", 17)),
+        longevityBonusPerDay: Number(
+          field(rawConfig, "longevityBonusPerDay", 18)
+        ),
+        longevityComponentCap: String(
+          field(rawConfig, "longevityComponentCap", 19)
+        ),
+        upheldDisputePenalty: String(
+          field(rawConfig, "upheldDisputePenalty", 20)
+        ),
+        reputationScoreCap: String(field(rawConfig, "reputationScoreCap", 21)),
+        roleHolders: roles,
+        registeredFixtureAddresses,
+      });
+      atomicJson(
+        path.join(config.stateDir, "gate-c-readiness.json"),
+        gateCReadiness
+      );
+    }
     const eventDerivedReserveCredit = deriveEventReserveCredit(events);
     const alerts = buildPaidReportAlerts({
       nowSeconds: latest.timestamp,
@@ -775,19 +1658,26 @@ async function runReadOnlyOperations(config: OpsConfig): Promise<void> {
       eventDerivedReserveCreditUsdcMicros: eventDerivedReserveCredit.toString(),
       alerts,
       writeModesEnabled: false,
+      gateCReadiness,
     });
     console.log(
       JSON.stringify({
-        ok: true,
+        ok: gateCReadiness
+          ? gateCReadiness.assessment === "READY_FOR_HUMAN_REVIEW"
+          : true,
         mode: config.mode,
         readOnly: true,
         contractAddress: config.contractAddress,
         observedBlock: latestBlock.toString(),
         reportCount: reports.length,
         alertCount: alerts.length,
+        gateCAssessment: gateCReadiness?.assessment,
+        gateCExecutionAuthorized: gateCReadiness?.executionAuthorized,
+        gateCBlockerCount: gateCReadiness?.blockers.length,
         stateDir: config.stateDir,
       })
     );
+    if (gateCReadiness?.assessment === "BLOCKED") process.exitCode = 1;
   });
 }
 
@@ -801,7 +1691,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(sanitizeOpsDiagnostic(error));
     process.exitCode = 1;
   });
 }
