@@ -137,7 +137,12 @@ export async function POST(
 ) {
   try {
     const { pubkey } = await params;
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = (await request.json()) ?? {};
+    } catch {
+      body = {};
+    }
     const {
       auth,
       selected_registry_asset_pubkey,
