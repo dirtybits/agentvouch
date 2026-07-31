@@ -48,6 +48,10 @@ export async function POST(req: NextRequest) {
   if (!activation.enabled) {
     const reason = !activation.stripeConfigured
       ? "Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET."
+      : !activation.keyModePermitted
+      ? activation.keyMode === "live"
+        ? "STRIPE_SECRET_KEY is a live key. Real card payments require an explicit AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true acknowledgement."
+        : "STRIPE_SECRET_KEY is not a recognized Stripe test or live key."
       : !activation.serverFlagEnabled
       ? "Set AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true."
       : "Install the production edge rate limit, then set AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true.";

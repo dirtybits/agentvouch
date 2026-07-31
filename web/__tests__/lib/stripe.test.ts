@@ -1,14 +1,18 @@
 import { createHmac } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  detectStripeKeyMode,
   getStripeCheckoutActivation,
   createCheckoutSession,
-  isStripeCheckoutUiEnabled,
   isStripeEnabled,
+  stripeEventModeMismatch,
   verifyAndParseWebhook,
   usdcMicrosToUsdCents,
 } from "@/lib/stripe";
+import { isStripeCheckoutUiEnabled } from "@/lib/stripeUi";
 
 describe("stripe helpers", () => {
   beforeEach(() => {
@@ -18,6 +22,7 @@ describe("stripe helpers", () => {
     delete process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED;
     delete process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED;
     delete process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED;
     delete process.env.VERCEL_ENV;
   });
 
@@ -28,6 +33,21 @@ describe("stripe helpers", () => {
 
     process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED = "true";
     expect(isStripeCheckoutUiEnabled()).toBe(true);
+  });
+
+  it("keeps the render-affecting flag free of server-only imports", async () => {
+    // Rendering code imports @/lib/stripeUi. If it ever pulls in node:crypto or
+    // a server-only env read, a client component importing it would break the
+    // browser bundle, so keep this module free of both.
+    const source = await readFile(
+      resolve(process.cwd(), "lib/stripeUi.ts"),
+      "utf8"
+    );
+    const code = source.replace(/\/\/.*$/gm, "");
+    expect(code).not.toContain("node:");
+    expect(code).not.toContain("STRIPE_SECRET_KEY");
+    expect(code).not.toContain("AGENTVOUCH_STRIPE");
+    expect(code).toContain("NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED");
   });
 
   it("requires both API and webhook secrets before checkout is enabled", () => {
@@ -59,12 +79,99 @@ describe("stripe helpers", () => {
     process.env.STRIPE_SECRET_KEY = "sk_live_123";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
     process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
     process.env.VERCEL_ENV = "production";
 
     expect(getStripeCheckoutActivation().enabled).toBe(false);
 
     process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY = "true";
     expect(getStripeCheckoutActivation().enabled).toBe(true);
+  });
+
+  it("detects the mode of Stripe secret and restricted keys", () => {
+    expect(detectStripeKeyMode("sk_test_123")).toBe("test");
+    expect(detectStripeKeyMode("rk_test_123")).toBe("test");
+    expect(detectStripeKeyMode("sk_live_123")).toBe("live");
+    expect(detectStripeKeyMode("rk_live_123")).toBe("live");
+    expect(detectStripeKeyMode("  sk_test_123  ")).toBe("test");
+    // Fail closed on anything unrecognized.
+    expect(detectStripeKeyMode("sk_testing_123")).toBe("unknown");
+    expect(detectStripeKeyMode("pk_test_123")).toBe("unknown");
+    expect(detectStripeKeyMode("")).toBe("unknown");
+    expect(detectStripeKeyMode(undefined)).toBe("unknown");
+  });
+
+  it("refuses a live key until live mode is explicitly acknowledged", () => {
+    // Preview deployments never hit the production edge-rate-limit gate, so
+    // this acknowledgement is the only thing standing between a live key and
+    // real card payments.
+    process.env.STRIPE_SECRET_KEY = "sk_live_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.VERCEL_ENV = "preview";
+
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      keyMode: "live",
+      liveModeAcknowledged: false,
+      keyModePermitted: false,
+      productionEdgeRateLimitReady: true,
+    });
+
+    process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: true,
+      keyMode: "live",
+      keyModePermitted: true,
+    });
+  });
+
+  it("refuses an unrecognized key even with every flag set", () => {
+    process.env.STRIPE_SECRET_KEY = "totally-not-a-stripe-key";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+    process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
+    process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY = "true";
+
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: false,
+      keyMode: "unknown",
+      keyModePermitted: false,
+    });
+  });
+
+  it("does not require an acknowledgement for a test key", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
+    process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
+
+    expect(getStripeCheckoutActivation()).toMatchObject({
+      enabled: true,
+      keyMode: "test",
+      keyModePermitted: true,
+    });
+  });
+
+  it("flags a livemode mismatch between the event and the configured key", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+
+    expect(stripeEventModeMismatch({ livemode: true })).toEqual({
+      keyMode: "test",
+      eventMode: "live",
+    });
+    expect(stripeEventModeMismatch({ livemode: false })).toBeNull();
+
+    process.env.STRIPE_SECRET_KEY = "sk_live_123";
+    expect(stripeEventModeMismatch({ livemode: false })).toEqual({
+      keyMode: "live",
+      eventMode: "test",
+    });
+    expect(stripeEventModeMismatch({ livemode: true })).toBeNull();
+
+    // No check is possible without both a known key mode and the field.
+    expect(stripeEventModeMismatch({})).toBeNull();
+    process.env.STRIPE_SECRET_KEY = "mystery";
+    expect(stripeEventModeMismatch({ livemode: true })).toBeNull();
   });
 
   it("rounds USDC micros into Stripe USD cents", () => {

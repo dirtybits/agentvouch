@@ -42,12 +42,36 @@ export function isStripeEnabled(): boolean {
   return Boolean(config?.secretKey && config.webhookSecret);
 }
 
+export type StripeKeyMode = "test" | "live" | "unknown";
+
+/**
+ * Stripe secret (`sk_`) and restricted (`rk_`) keys carry their mode in the
+ * prefix. Anything we cannot positively identify is `unknown` and is treated as
+ * not-permitted, so a malformed, truncated, or unexpected credential can never
+ * silently activate commerce.
+ *
+ * This is the code-level half of the test-mode constraint that
+ * `docs/STRIPE_TEST_MODE_ROLLOUT.md` previously stated only as a written
+ * precondition.
+ */
+export function detectStripeKeyMode(
+  secretKey: string | undefined | null
+): StripeKeyMode {
+  const key = secretKey?.trim() ?? "";
+  if (/^(?:sk|rk)_test_/.test(key)) return "test";
+  if (/^(?:sk|rk)_live_/.test(key)) return "live";
+  return "unknown";
+}
+
 export type StripeCheckoutActivation = {
   enabled: boolean;
   stripeConfigured: boolean;
   serverFlagEnabled: boolean;
   productionEdgeRateLimitReady: boolean;
   production: boolean;
+  keyMode: StripeKeyMode;
+  liveModeAcknowledged: boolean;
+  keyModePermitted: boolean;
 };
 
 /**
@@ -66,13 +90,29 @@ export function getStripeCheckoutActivation(
   const productionEdgeRateLimitReady =
     !production || env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY === "true";
 
+  // A live key must be acknowledged explicitly, in every environment. The
+  // edge-rate-limit acknowledgement above only applies when VERCEL_ENV is
+  // "production", so without this a live key on a preview deployment would
+  // start real commerce with no further gate.
+  const keyMode = detectStripeKeyMode(env.STRIPE_SECRET_KEY);
+  const liveModeAcknowledged =
+    env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED === "true";
+  const keyModePermitted =
+    keyMode === "test" || (keyMode === "live" && liveModeAcknowledged);
+
   return {
     enabled:
-      stripeConfigured && serverFlagEnabled && productionEdgeRateLimitReady,
+      stripeConfigured &&
+      serverFlagEnabled &&
+      productionEdgeRateLimitReady &&
+      keyModePermitted,
     stripeConfigured,
     serverFlagEnabled,
     productionEdgeRateLimitReady,
     production,
+    keyMode,
+    liveModeAcknowledged,
+    keyModePermitted,
   };
 }
 
@@ -80,9 +120,8 @@ export function isStripeCheckoutServerEnabled(): boolean {
   return getStripeCheckoutActivation().enabled;
 }
 
-export function isStripeCheckoutUiEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED === "true";
-}
+// The render-affecting UI flag lives in `@/lib/stripeUi` so rendering code does
+// not import this module's `node:crypto` dependency or server-only env reads.
 
 // Stripe charges integer minor units (cents). We treat one USDC micro-unit as
 // 1e-6 USD (1 USDC ~= 1 USD), so cents = round(micros / 10_000).
@@ -182,8 +221,35 @@ export async function createCheckoutSession(
 export type StripeWebhookEvent = {
   id: string;
   type: string;
+  livemode?: boolean;
   data: { object: Record<string, unknown> };
 };
+
+/**
+ * Cross-checks an event's `livemode` against the configured key's mode.
+ *
+ * A mismatch means the deployment is wired to one Stripe mode and receiving
+ * events from the other — a live event reaching a test-configured endpoint, or
+ * a webhook pointed at the wrong environment. The webhook must not grant
+ * entitlements under that wiring, but processes refunds/disputes before this
+ * comparison because terminally acknowledging a revocation would fail open.
+ *
+ * Returns null when no *comparison* is possible: an unknown key prefix, or an
+ * event without the field. Null is therefore "no mismatch detected", not "safe
+ * to grant" — the caller is responsible for handling an unknown key mode. The
+ * webhook does that separately, refusing to grant while still allowing
+ * revocations through (refusing those would be fail-open).
+ */
+export function stripeEventModeMismatch(
+  event: Pick<StripeWebhookEvent, "livemode">,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): { keyMode: StripeKeyMode; eventMode: "test" | "live" } | null {
+  if (typeof event.livemode !== "boolean") return null;
+  const keyMode = detectStripeKeyMode(env.STRIPE_SECRET_KEY);
+  if (keyMode === "unknown") return null;
+  const eventMode = event.livemode ? "live" : "test";
+  return keyMode === eventMode ? null : { keyMode, eventMode };
+}
 
 // Verifies a Stripe webhook signature (the `Stripe-Signature` header) using
 // the documented scheme: HMAC-SHA256 over `${t}.${rawBody}` compared against

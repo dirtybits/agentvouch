@@ -8,7 +8,7 @@ import {
 import { CHAIN_SKILL_PREFIX } from "@/lib/skillUrls";
 import { buildSkillPageMetadata } from "@/lib/skillPageMetadata";
 import { loadSkillDetailSnapshot } from "@/lib/skillDetailSnapshot";
-import { isStripeCheckoutUiEnabled } from "@/lib/stripe";
+import { isStripeCheckoutUiEnabled } from "@/lib/stripeUi";
 import { isBuyerCardAccessUiEnabled } from "@/lib/buyerAuthConfig";
 
 export async function generateMetadata({
