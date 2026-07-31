@@ -74,8 +74,9 @@ Out of scope:
 
 - Base mainnet default flip. That is still Phase 10 and remains blocked until this plan's v1/security
   gates pass.
-- Full Solana-equivalent voucher slashing machinery unless explicitly re-approved. MVP bias is
-  founder-resolved disputes/reports first.
+- Solana-specific listing-linked voucher allocation/refund-pool parity. The clean-break Base A1
+  author-bond-first, author-wide voucher-slashing mechanism is merged source; deployment and
+  activation are owned by `.agents/plans/base-paid-report-activation-sepolia.plan.md`.
 - Removing Solana.
 - Multi-EVM support beyond Base Sepolia/mainnet planning.
 
@@ -336,6 +337,11 @@ Out of scope:
   Paid-report client work, fresh linked paused deployment, lifecycle smoke, activation, and rollback
   are owned by `.agents/plans/base-paid-report-activation-sepolia.plan.md`. This merge does not close
   the remaining Phase 9 custody, external-review/human-acceptance, monitoring, or live-smoke gates.
+- 2026-07-31 current-state correction: Base A1 no longer defers voucher slashing or uses the removed
+  `TREASURY_ROLE`. The merged lifecycle is author-bond-first plus author-wide voucher slashing with
+  pull-only excess for the immutable restitution recipient. Slash percentage, recipient, custody,
+  external review/risk acceptance, and live Sepolia activation evidence remain human-gated in the
+  activation plan; this historical Phase 9 ledger does not reopen the mechanism choice.
 
 ## Part A - Base Sepolia E2E Proof
 
@@ -442,7 +448,8 @@ v1 spec should include:
   - minimal author-bond penalty on upheld reports
   - event set sufficient for indexers and web snapshots
 - Defer unless explicitly approved:
-  - full voucher slashing parity
+  - Solana-specific listing-linked voucher allocation/refund-pool parity; Base A1 author-wide
+    voucher slashing is merged and activation-gated
   - refund-pool machinery beyond existing purchase/refund guarantees
   - protocol fee extraction
   - upgradeable proxy complexity
@@ -456,9 +463,9 @@ Before mainnet:
   - DEFAULT_ADMIN_ROLE
   - CONFIG_ROLE
   - RESOLVER_ROLE
-  - TREASURY_ROLE
   - SETTLEMENT_ROLE
   - PAUSE_ROLE
+- Record the immutable restitution-reserve recipient separately; A1 has no `TREASURY_ROLE`.
 - Decide immutable fresh deploy vs upgradeable. Recommendation: fresh non-upgradeable v1 unless a
   proxy is required by a concrete ops need.
 - Run internal security review and one external security pass.
@@ -581,8 +588,9 @@ Security/mainnet gate evidence:
 
 ## Blockers And Open Questions
 
-- Do we want founder-resolved reports to slash only author bond at MVP, or also voucher stake? Current
-  recommendation: author-bond penalty first; full voucher slashing later.
+- The Base A1 mechanism choice is closed: upheld paid-purchase reports slash author bond first and
+  then author-wide voucher stake. The remaining founder decision is the exact testnet slash
+  percentage and activation/custody inputs in the Base paid-report activation plan.
 - Is the Base v1 contract a fresh non-upgradeable deploy or a proxy? Current recommendation: fresh
   non-upgradeable v1 unless ops requirements force upgradeability.
 - What is the mainnet admin custody target: multisig, hardware-wallet EOA plus timelock, or another

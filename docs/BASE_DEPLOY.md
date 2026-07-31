@@ -39,7 +39,7 @@ the broadcaster and every final role holder. `DEFAULT_ADMIN_ROLE` is transferred
 Run from the repository root with Node 24:
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.1.0/bin:$PATH"
+. "$HOME/.nvm/nvm.sh" --no-use && { nvm use --silent || nvm install; }
 forge fmt --root contracts/base-poc --check
 forge test --root contracts/base-poc -vv
 forge build --root contracts/base-poc --sizes
@@ -69,12 +69,12 @@ The rehearsal proves:
 
 Do not proceed until Gate A in the activation plan is explicitly approved.
 
-### Read-only deployment preflight and monitor
+### Read-only deployment preflight, monitor, and Gate-C readiness
 
-The operations driver has only `preflight` (default) and `monitor` modes. It never loads a private
-key or constructs a wallet client; `--apply`, write modes, and secret-bearing command arguments are
-hard failures. Configure the exact candidate explicitly—there is no fallback to the currently
-selected web contract:
+The operations driver has `preflight` (default), `monitor`, and `gate-c-readiness` modes. Every mode
+is read-only. It never loads a private key or constructs a wallet client; `--apply`, write modes, and
+secret-bearing command arguments are hard failures. Configure the exact candidate explicitly—there
+is no fallback to the currently selected web contract:
 
 ```bash
 export BASE_A1_OPS_RPC_URL="https://..."
@@ -97,6 +97,27 @@ fallback voucher candidates through `getVouch`, and records only machine-readabl
 artifacts under `.agent-keys/base-paid-report/<deployment>/`. Reserve credit is explicitly labeled
 event-derived because the frozen contract has no public reserve-credit getter. Reports, pause state,
 and buyer-credit status are re-read from the exact deployment; the DB/index is never authority.
+
+After Gate B and the founder decision sheet are complete, `gate-c-readiness` adds two required public
+inputs:
+
+```bash
+export BASE_A1_GATE_C_DECISION_PATH="/absolute/path/to/gate-c-decision.json"
+npm run base:a1:ops --workspace @agentvouch/web -- gate-c-readiness
+```
+
+The canonical record shape and all currently pending fields are in
+[`BASE_SEPOLIA_A1_STATE.md`](./BASE_SEPOLIA_A1_STATE.md). A matching record produces
+`gate-c-readiness.json` with `assessment: READY_FOR_HUMAN_REVIEW`,
+`executionAuthorized: false`, and an ordered 31-step transaction/evidence plan. The unsigned local
+record is input validation, not proof of approval: the command never emits `GO`, produces calldata,
+invokes a signer, simulates a write, submits a transaction, or authorizes Gate C. A mismatch produces
+`BLOCKED`, records exact blockers, and exits nonzero.
+
+Gate-C mode derives the candidate commit from a clean local Git `HEAD`, proves the declared facade
+creation boundary by reading code at the deployment block and the preceding block, and rescans the
+complete on-chain event history from that boundary. It deliberately ignores cached event/checkpoint
+files for role reconstruction.
 
 ## Gate B1: deploy uninitialized
 
