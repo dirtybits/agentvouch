@@ -67,6 +67,13 @@ describe("skill detail source", () => {
     expect(source).toContain("handleStripeCheckout");
     expect(source).toContain("Pay by Card");
     expect(source).toContain("Card checkout (off-chain)");
+    expect(source).toContain("CARD_CHECKOUT_RECOURSE_DISCLOSURE");
+    expect(source).toContain("CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION");
+    expect(source).toContain("/docs#card-checkout-recourse");
+    expect(source).toContain("cardRecourseAccepted");
+    expect(source).toContain("buildCardRecourseConsentKey");
+    expect(source).toContain("buyerAuthSessionKey");
+    expect(source).toContain("currentCardRecourseConsentKey");
     expect(source).toContain(
       "recorded separately from protocol USDC settlement"
     );
@@ -85,7 +92,9 @@ describe("skill detail source", () => {
     expect(source).toContain("Account download complete.");
     expect(source).toContain("[750, 2_000, 5_000]");
     expect(source).toContain("BuyerAccountSessionObserver");
-    expect(source).toContain("const { isLoaded, isSignedIn } = useAuth()");
+    expect(source).toContain(
+      "const { isLoaded, isSignedIn, userId, sessionId } = useAuth()"
+    );
     expect(source).toContain("[buyerAuthSignedIn, refreshBuyerAccountAccess]");
     expect(source).not.toContain("fetchChainSkillContent");
     expect(source).not.toContain("Buy & Install");

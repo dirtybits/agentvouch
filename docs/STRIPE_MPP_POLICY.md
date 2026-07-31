@@ -43,19 +43,44 @@ Do not enable Stripe checkout unless all of the following are true:
   those server secrets and the webhook endpoint are active.
 - Account-scoped checkout is enabled independently with
   `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED=true` and
-  `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED=true`; disabling these
-  flags must not disable webhook revocation for outstanding payments.
-- Production additionally has a verified Vercel Firewall/WAF rate limit on
-  `POST /api/stripe/checkout` and
+  `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED=true`. Normal checkout
+  rollback keeps these access-redemption flags on for already-paid buyers and
+  disables only the two Stripe checkout flags.
+- Every production deployment and every deployment using a live key has a verified
+  Vercel Firewall/WAF rate limit on `POST /api/stripe/checkout` and
   `AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true`. The route's in-memory limit
   is defense in depth, not the distributed control.
 - Webhook delivery is monitored and failed webhook retries are visible.
 - Operators can reconcile account grants through
   `marketplace_access_grants.source_payment_reference` and legacy wallet sales
   through `usdc_purchase_receipts.payment_tx_signature`.
-- Product copy clearly labels this as card checkout / off-chain entitlement,
-  not protocol settlement.
+- Product copy at the checkout decision point and in public docs states that
+  card checkout grants off-chain access with no protocol receipt, author
+  proceeds, voucher rewards, paid Report/slashing path, or buyer credit. The
+  buyer must acknowledge the current disclosure version before a Checkout
+  Session is created; that version is copied to Stripe metadata.
 - Refund, chargeback, and payout responsibilities below are accepted.
+
+### Additional gates for a live-key limited pilot
+
+- Live activation remains hard-disabled in source until every durable control
+  below exists. Environment acknowledgements cannot override missing code.
+
+- `AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS` contains a non-empty exact skill
+  UUID allowlist. Missing or malformed values fail closed.
+- `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS` contains a positive integer
+  per-session ceiling. Missing, malformed, or over-ceiling values fail closed.
+- A durable amount/fee/net pilot ledger and atomic aggregate GMV or completed-
+  payment cap are implemented and verified. The skill allowlist and per-charge
+  ceiling do not satisfy this gate.
+- The founder has recorded, without placeholders, the pilot's buyer/listing
+  scope, end condition, merchant-of-record position, author payout policy,
+  tax/KYC owner, refund/reinstatement owner, customer support identity, and
+  emergency kill authority in
+  `.agents/plans/stripe-live-limited-pilot.plan.md`.
+- Real-card activation and the first charge receive a separate explicit human
+  approval. Merging code or completing test-mode rehearsal is not that
+  approval.
 
 ## Buyer Access
 
@@ -84,11 +109,13 @@ Until Stripe Connect or an explicit treasury payout process exists, Stripe
 revenue should be treated as marketplace-operator custody. Authors should not
 see Stripe sales as withdrawable on-chain proceeds.
 
-Temporary payout policy:
+No author payment should be promised or initiated until the founder chooses
+and documents the payout model. If an off-chain payout model is later approved,
+its implementation must at minimum:
 
 - Track gross amount, Stripe fees, refunds, disputes, and net amount per sale.
-- Pay authors off-chain only after the payment is no longer in a high-risk
-  window for immediate reversal.
+- Define when funds become payable after fees, refunds, disputes, and the
+  chosen reversal-risk window; no default timing is implied here.
 - Keep voucher rewards at `0` for Stripe MPP sales unless and until a funded
   on-chain or off-chain voucher accounting design is approved.
 - Do not represent Stripe MPP sales as backing the protocol 60/40 split.
@@ -146,6 +173,15 @@ Before broad production rollout, choose exactly one Stripe model:
    wallet-scoped access experiments while protocol USDC/x402 remains the
    preferred commerce path.
 
+For the limited-live pilot, Stripe's marketplace guidance makes the
+merchant-of-record identity, funds control, loss responsibility, customer
+disclosure, payouts, and tax/KYC posture external founder/legal/accounting
+decisions rather than facts this repository can infer. Record those decisions
+before activation; do not treat this WIP policy as legal or tax advice. See
+[Stripe merchant-of-record guidance](https://docs.stripe.com/connect/merchant-of-record),
+[marketplace responsibilities](https://docs.stripe.com/connect/saas-platforms-and-marketplaces),
+and [Stripe Tax for Connect](https://docs.stripe.com/tax/connect).
+
 ## Production Blockers
 
 Before treating Stripe MPP as production-ready, resolve:
@@ -159,6 +195,10 @@ Before treating Stripe MPP as production-ready, resolve:
 - Rate limits and abuse monitoring on checkout/session creation. (Shipped in
   code: per-instance defense-in-depth limit and production activation gate;
   external Vercel Firewall/WAF rule still requires operator setup and proof.)
-- Public documentation that separates card checkout from protocol settlement.
+- Recourse disclosure is implemented in source at the card button,
+  `/docs#card-checkout-recourse`, and `web/public/skill.md`; production deploy
+  and browser verification remain required before a real card sale.
+- Durable live-pilot amount/fee/net accounting and aggregate exposure
+  enforcement.
 
 Use `docs/STRIPE_TEST_MODE_ROLLOUT.md` as the test-mode activation checklist.

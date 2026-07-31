@@ -10,6 +10,10 @@ type MarketplaceAccessGrantRow = {
   status: MarketplaceAccessGrantStatus;
 };
 
+type StripeTerminalReason = "stripe-refund" | "stripe-dispute";
+
+let terminalSchemaReady: Promise<void> | null = null;
+
 function getDb() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -20,6 +24,25 @@ function getDb() {
 
 function paymentLockKey(paymentRef: string) {
   return `marketplace-access:${paymentRef}`;
+}
+
+async function ensureStripePaymentTerminalStateSchema(): Promise<void> {
+  if (terminalSchemaReady) return terminalSchemaReady;
+  terminalSchemaReady = (async () => {
+    await getDb()`
+      CREATE TABLE IF NOT EXISTS stripe_payment_terminal_states (
+        payment_ref VARCHAR(128) PRIMARY KEY,
+        event_id VARCHAR(128) NOT NULL,
+        reason VARCHAR(32) NOT NULL,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+  })().catch((error) => {
+    terminalSchemaReady = null;
+    throw error;
+  });
+  return terminalSchemaReady;
 }
 
 export async function hasActiveMarketplaceAccessGrant(
@@ -50,11 +73,18 @@ export async function recordStripeMarketplaceAccessGrant(input: {
   skillDbId: string;
   paymentRef: string;
 }): Promise<MarketplaceAccessGrantStatus> {
+  await ensureStripePaymentTerminalStateSchema();
   const db = getDb();
   const results = await db.transaction((txn) => [
     txn`SELECT pg_advisory_xact_lock(hashtextextended(${paymentLockKey(
       input.paymentRef
     )}, 0))`,
+    txn`
+      SELECT reason
+      FROM stripe_payment_terminal_states
+      WHERE payment_ref = ${input.paymentRef}
+      LIMIT 1
+    `,
     txn`
       INSERT INTO marketplace_access_grants (
         buyer_account_id,
@@ -67,7 +97,7 @@ export async function recordStripeMarketplaceAccessGrant(input: {
         revoked_reason,
         updated_at
       )
-      VALUES (
+      SELECT
         ${input.accountId}::uuid,
         ${input.skillDbId}::uuid,
         'stripe',
@@ -77,6 +107,10 @@ export async function recordStripeMarketplaceAccessGrant(input: {
         NULL,
         NULL,
         NOW()
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM stripe_payment_terminal_states
+        WHERE payment_ref = ${input.paymentRef}
       )
       ON CONFLICT (source, source_payment_reference, skill_db_id)
       DO UPDATE SET updated_at = NOW()
@@ -93,7 +127,8 @@ export async function recordStripeMarketplaceAccessGrant(input: {
       LIMIT 1
     `,
   ]);
-  const row = (results[2] as MarketplaceAccessGrantRow[])[0];
+  if ((results[1] as Array<{ reason: string }>).length > 0) return "revoked";
+  const row = (results[3] as MarketplaceAccessGrantRow[])[0];
   if (!row) throw new Error("Stripe marketplace access grant was not stored.");
   if (row.buyer_account_id !== input.accountId) {
     throw new Error(
@@ -104,79 +139,111 @@ export async function recordStripeMarketplaceAccessGrant(input: {
 }
 
 /**
- * Creates a revoked tombstone when Stripe supplies account + skill metadata,
- * so refund-before-completion ordering cannot later mint access.
+ * Atomically records a payment-reference terminal marker and revokes every
+ * matching account grant. When Stripe supplies trustworthy account + skill
+ * metadata, this also creates the exact revoked grant tombstone. The marker is
+ * authoritative even without metadata, so refund/dispute-before-completion
+ * ordering can never later mint access.
  */
-export async function revokeStripeMarketplaceAccessGrant(input: {
-  accountId: string;
-  skillDbId: string;
+export async function recordStripeMarketplacePaymentTerminalState(input: {
+  eventId: string;
   paymentRef: string;
-  reason: "stripe-refund" | "stripe-dispute";
-}): Promise<MarketplaceAccessGrantStatus> {
+  reason: StripeTerminalReason;
+  accountId?: string | null;
+  skillDbId?: string | null;
+}): Promise<Array<{ accountId: string; skillDbId: string }>> {
+  await ensureStripePaymentTerminalStateSchema();
   const db = getDb();
-  const results = await db.transaction((txn) => [
-    txn`SELECT pg_advisory_xact_lock(hashtextextended(${paymentLockKey(
-      input.paymentRef
-    )}, 0))`,
-    txn`
-      INSERT INTO marketplace_access_grants (
-        buyer_account_id,
-        skill_db_id,
-        source,
-        source_payment_reference,
-        status,
-        granted_at,
-        revoked_at,
-        revoked_reason,
-        updated_at
-      )
-      VALUES (
-        ${input.accountId}::uuid,
-        ${input.skillDbId}::uuid,
-        'stripe',
-        ${input.paymentRef},
-        'revoked',
-        NOW(),
-        NOW(),
-        ${input.reason},
-        NOW()
-      )
-      ON CONFLICT (source, source_payment_reference, skill_db_id)
-      DO UPDATE SET
-        status = 'revoked',
-        revoked_at = COALESCE(marketplace_access_grants.revoked_at, NOW()),
-        revoked_reason = ${input.reason},
-        updated_at = NOW()
-      WHERE marketplace_access_grants.buyer_account_id = EXCLUDED.buyer_account_id
-      RETURNING buyer_account_id::text, skill_db_id::text, status
-    `,
-  ]);
-  const row = (results[1] as MarketplaceAccessGrantRow[])[0];
-  if (!row) {
-    throw new Error(
-      "Stripe payment reference is already owned by another buyer."
-    );
+  const hasExactIdentity = Boolean(input.accountId && input.skillDbId);
+  const results = await db.transaction((txn) => {
+    const queries = [
+      txn`SELECT pg_advisory_xact_lock(hashtextextended(${paymentLockKey(
+        input.paymentRef
+      )}, 0))`,
+      txn`
+        INSERT INTO stripe_payment_terminal_states (
+          payment_ref,
+          event_id,
+          reason,
+          first_seen_at,
+          last_seen_at
+        )
+        VALUES (
+          ${input.paymentRef},
+          ${input.eventId.slice(0, 128)},
+          ${input.reason},
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (payment_ref)
+        DO UPDATE SET
+          event_id = EXCLUDED.event_id,
+          reason = EXCLUDED.reason,
+          last_seen_at = NOW()
+      `,
+      txn`
+        UPDATE marketplace_access_grants
+        SET status = 'revoked',
+            revoked_at = COALESCE(revoked_at, NOW()),
+            revoked_reason = ${input.reason},
+            updated_at = NOW()
+        WHERE source = 'stripe'
+          AND source_payment_reference = ${input.paymentRef}
+        RETURNING buyer_account_id::text, skill_db_id::text
+      `,
+    ];
+    if (hasExactIdentity) {
+      queries.push(txn`
+        INSERT INTO marketplace_access_grants (
+          buyer_account_id,
+          skill_db_id,
+          source,
+          source_payment_reference,
+          status,
+          granted_at,
+          revoked_at,
+          revoked_reason,
+          updated_at
+        )
+        VALUES (
+          ${input.accountId!}::uuid,
+          ${input.skillDbId!}::uuid,
+          'stripe',
+          ${input.paymentRef},
+          'revoked',
+          NOW(),
+          NOW(),
+          ${input.reason},
+          NOW()
+        )
+        ON CONFLICT (source, source_payment_reference, skill_db_id)
+        DO UPDATE SET
+          status = 'revoked',
+          revoked_at = COALESCE(marketplace_access_grants.revoked_at, NOW()),
+          revoked_reason = ${input.reason},
+          updated_at = NOW()
+        WHERE marketplace_access_grants.buyer_account_id = EXCLUDED.buyer_account_id
+        RETURNING buyer_account_id::text, skill_db_id::text
+      `);
+    }
+    return queries;
+  });
+  const revoked = [
+    ...(results[2] as Array<{
+      buyer_account_id: string;
+      skill_db_id: string;
+    }>),
+    ...((results[3] ?? []) as Array<{
+      buyer_account_id: string;
+      skill_db_id: string;
+    }>),
+  ];
+  const unique = new Map<string, { accountId: string; skillDbId: string }>();
+  for (const row of revoked) {
+    unique.set(`${row.buyer_account_id}:${row.skill_db_id}`, {
+      accountId: row.buyer_account_id,
+      skillDbId: row.skill_db_id,
+    });
   }
-  return row.status;
-}
-
-export async function revokeStripeMarketplaceAccessGrantsByPaymentReference(
-  paymentRef: string,
-  reason: "stripe-refund" | "stripe-dispute"
-): Promise<Array<{ accountId: string; skillDbId: string }>> {
-  const rows = (await getDb()`
-    UPDATE marketplace_access_grants
-    SET status = 'revoked',
-        revoked_at = COALESCE(revoked_at, NOW()),
-        revoked_reason = ${reason},
-        updated_at = NOW()
-    WHERE source = 'stripe'
-      AND source_payment_reference = ${paymentRef}
-      AND status <> 'revoked'
-    RETURNING buyer_account_id::text, skill_db_id::text
-  `) as Array<{ buyer_account_id: string; skill_db_id: string }>;
-  return rows.map((row) => ({
-    accountId: row.buyer_account_id,
-    skillDbId: row.skill_db_id,
-  }));
+  return [...unique.values()];
 }

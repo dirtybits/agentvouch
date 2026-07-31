@@ -104,7 +104,7 @@ A future Stripe card purchase for a Base-listed skill should create a chain-neut
 Use Node 24 for every web command:
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.1.0/bin:$PATH"
+. "$HOME/.nvm/nvm.sh" --no-use && { nvm use --silent || nvm install; }
 npm run format:check
 npm run lint --workspace @agentvouch/web
 npm run typecheck --workspace @agentvouch/web
