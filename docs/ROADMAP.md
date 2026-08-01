@@ -24,29 +24,29 @@ Last reviewed: 2026-07-08.
 Blocks Base mainnet. This section records sequencing only; the canonical gate status is the
 `docs/MAINNET_READINESS.md` Base gate table.
 
-### A1. Voucher slashing (P0.1)
+### AgentVouch Protocol Requirement A1 — Voucher Slashing (P0.1)
 
 Base launch gate: port the Solana A1 downside mechanism to the Base v1 candidate before the Phase 9
 security review. Plans: `.agents/plans/base-a1-voucher-slashing-port.plan.md` and historical
 Solana spec `.agents/plans/a1-voucher-slashing.plan.md`. Status: see the readiness table.
 
-### A2. Dispute governance v1 (P0.2)
+### AgentVouch Protocol Requirement A2 — Governed Dispute Resolution (P0.2)
 
 Full-mainnet gate: governed dispute resolution. Capped founder-operated alpha may defer this only
 if the readiness Launch Trust Bar passes. Plans: `.agents/plans/a2-dispute-governance-v1.plan.md`
 and `.agents/plans/a2-s*.plan.md`. Status: see the readiness table.
 
-### A3. Emergency pause (P0.3)
+### AgentVouch Protocol Requirement A3 — Emergency Pause (P0.3)
 
 Base launch gate: pause must be live, custody-approved, and smoke-tested on the release-candidate
 deployment. Plan: `.agents/plans/a3-emergency-pause.plan.md`; Base status is in readiness.
 
-### A4. Refund reserve policy (P0.4)
+### AgentVouch Protocol Requirement A4 — Refund and Restitution Reserve (P0.4)
 
 Base launch gate: founder decision on bounded refund reserve/backstop policy and dispute-derived
 residual ownership. No standalone plan exists yet; status and open decision live in readiness.
 
-### A5. Tests and review (P1)
+### AgentVouch Protocol Requirement A5 — Test and Security Review (P1)
 
 Base launch gate: full local/forge/live-smoke evidence plus internal and external security review
 after the complete A1 mechanism exists. Status: see the readiness table and the Phase 9 plan. The

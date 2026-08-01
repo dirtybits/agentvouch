@@ -132,7 +132,7 @@ Each stage is an independent **NO-GO** until every item in that stage is checked
 in the deployment record, and the named human approver records an explicit decision. Approval for one
 stage never authorizes the next stage. Base mainnet is outside every stage below and remains blocked.
 
-### Gate A — pre-broadcast candidate
+### Base Sepolia Deployment Gate A — Candidate Verification
 
 - [ ] Candidate commit is based on the final merged `main`; worktree is clean and the reviewed SHA is recorded.
 - [x] Facade and linked-library artifacts reproduce under the pinned compiler/link profile; both local-rehearsal code hashes and the final link map are verified.
@@ -145,22 +145,26 @@ stage never authorizes the next stage. Base mainnet is outside every stage below
 - [x] Local Anvil rehearsal proves deploy-uninitialized → pause → initialize-while-paused → ordered role handoff, with no configured/unpaused interval.
 - [x] Paid-report client and purchase-bound UX fail closed on wrong chain, deployment, protocol version, receipt, buyer, listing, deadline, bond, pause state, or unsupported wallet.
 - [x] Verified report indexing is deployment-qualified and populated only from the exact confirmed `PaidPurchaseReportOpened` event.
-- [x] Restart-safe read-only monitoring covers lifecycle progress, explicit-block balances, pause state, reserve/credit liabilities, and fallback-cranker alerts without constructing a wallet client; the Gate-C write-stage smoke executor remains pending.
+- [x] Restart-safe read-only monitoring covers lifecycle progress, explicit-block balances, pause state, reserve/credit liabilities, and fallback-cranker alerts. It does not construct a wallet client. The isolated lifecycle test transaction executor remains pending.
 - [ ] External security review is complete, or the human approver records explicit Base Sepolia-only risk acceptance and its scope.
 - [ ] Human approver records **GO: deploy/configure paused candidate** for the exact commit and artifacts.
 
-### Gate B — deploy, verify, configure, and remain paused
+### Base Sepolia Deployment Gate B — Paused Deployment
+
+This roll-up gate contains two separately approved transaction phases: deploy without initialization
+(Gate B1) and verify, pause, configure, and transfer roles (Gate B2). Gate B is complete only when
+both phases are complete and the readback evidence passes.
 
 - [ ] Exact Base Sepolia chain ID, RPC, deployer, deployer balance/nonce, USDC address, compiler inputs, library address, predicted facade address, and verification inputs are independently confirmed.
 - [ ] `SLASH_PERCENTAGE`, immutable restitution recipient, final role holders/custody, fallback cranker, monitor owner, incident commander, and exposure policy are approved and recorded.
-- [ ] Facade and library deploy and verify separately; runtime code hashes and caller link references match Gate A artifacts.
+- [ ] Facade and library deploy and verify separately; runtime code hashes and caller link references match the candidate-verification artifacts.
 - [ ] The non-broadcaster admin/role owner pauses before initialization; initialization and ordered role grants/revocations complete while paused; default admin transfers last.
 - [ ] Protocol version, USDC, config, roles, pause state, deployment block, and explorer metadata read back exactly.
 - [ ] Frontend/shared environment pointers and CDP policies remain unchanged; the deployment is described only as deployed, verified, configured, and paused.
 - [ ] Rollback procedure and historical-claim reachability are reviewed against the exact deployed addresses.
 - [ ] Human approver records **GO: isolated smoke** with the allowed fixtures, operators, and exposure cap.
 
-### Gate C — isolated lifecycle smoke
+### Base Sepolia Deployment Gate C — Isolated Lifecycle Test
 
 - [ ] Only approved fresh fixtures are used; pre-A1 receipts remain ineligible and deployment namespaces do not cross-contaminate.
 - [ ] Purchase → open → review → resolve → multi-page slash → buyer claim → reserve claim → voucher residual reclaim completes with exact events and explicit-block USDC conservation.
@@ -170,7 +174,7 @@ stage never authorizes the next stage. Base mainnet is outside every stage below
 - [ ] Old-deployment historical reads and Solana purchase/trust regressions pass.
 - [ ] Human approver records **GO: preview activation** and the exact pointer/paymaster changes permitted.
 
-### Gate D — preview and shared Sepolia activation
+### Base Sepolia Deployment Gate D — Preview and Shared Testnet Activation
 
 - [ ] Preview points only to the verified A1 deployment; Coinbase Smart Wallet and supported injected-wallet filing/claim flows pass through the deployed app.
 - [ ] Frontend, API, DB index, monitoring, explorer metadata, role ownership, and paymaster allowlist all reference the exact deployment identity.
@@ -232,8 +236,8 @@ explicit facade/library hashes, deployment block, native USDC, pause expectation
 holder sets; reconstructs AccessControl from deployment events; scans in ≤1,999-block ranges;
 validates restart checkpoint hashes; re-reads live reports and voucher candidates; and records
 machine-readable balances, events, reserve credit, and separate liveness alerts. `--apply`, write
-modes, and secret-bearing arguments fail closed. The Gate-C transaction executor and public smoke
-remain pending the separately approved deployment identity and human write gate.
+modes, and secret-bearing arguments fail closed. The isolated lifecycle test transaction executor
+and public smoke remain pending the separately approved deployment identity and human write gate.
 
 Local verification: 121 Forge tests and 679 web tests passed; format, lint, typecheck, chain-map,
 isolated Base UI build, harness typecheck, and production webpack build passed. The facade is 23,487
@@ -241,7 +245,7 @@ runtime bytes (1,089 bytes EIP-170 headroom; 13 bytes project-soft-limit headroo
 Anvil rehearsal emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`. No Sepolia transaction,
 client pointer, feature flag, paymaster policy, or Base mainnet setting changed.
 
-## Implementation note — 2026-07-31 Gate-C decision preflight
+## Implementation note — 2026-07-31 Base Sepolia Isolated-Lifecycle-Test Decision Preflight
 
 The new read-only `gate-c-readiness` mode validates a complete founder `GO: isolated smoke` record
 against the exact candidate commit, Base Sepolia deployment identity, paused state, every field of
@@ -251,19 +255,20 @@ cap. It writes a 31-step transaction/evidence plan covering uphold with multi-pa
 rejection, public-time expiry, replay, wrong-role, paused-entry, premature-close, wrong-recipient,
 buyer-credit, reserve, residual-reclaim, final repause, and reconciliation checks.
 
-The candidate commit is derived from a clean Git `HEAD`; Gate-C mode proves the declared facade
-creation boundary with historical code reads and ignores cached event/checkpoint files while fully
-reconstructing roles from chain logs starting at that boundary.
+The candidate commit is derived from a clean Git `HEAD`. The `gate-c-readiness` mode proves the
+declared facade creation boundary with historical code reads. It ignores cached event/checkpoint
+files and reconstructs roles from chain logs that start at that boundary.
 
 The mode reports only `READY_FOR_HUMAN_REVIEW` or `BLOCKED`, always with
 `executionAuthorized: false` and `writeModesEnabled: false`; it never turns unsigned local metadata
 into a `GO`. `--apply`, write modes, and secret-bearing arguments still fail closed. The founder
 record in `docs/BASE_SEPOLIA_A1_STATE.md` remains `NO-GO`. A
-write-capable public smoke executor is not safely instantiable until Gate B produces the exact paused
-deployment, the founder approves slash/custody/recipient/fixture/cap inputs and risk acceptance, a
-signing integration is selected, fixtures are funded, and a separate Gate-C write approval is
-recorded. Therefore `add-operator-smoke-and-monitoring` remains `in_progress`. No public transaction,
-client pointer, paymaster rule, feature flag, or Base mainnet setting changed.
+write-capable public smoke executor is not safely instantiable until the paused deployment produces
+the exact deployment. The founder must approve the slash, custody, recipient, fixture, exposure cap,
+and risk-acceptance inputs. The team must also select a signing integration, fund the fixtures, and
+record a separate isolated lifecycle test write approval. Therefore
+`add-operator-smoke-and-monitoring` remains `in_progress`. No public transaction, client pointer,
+paymaster rule, feature flag, or Base mainnet setting changed.
 
 Current non-broadcast verification on the dirty worktree based at `6a051ae`: focused operations
 tests 30/30; full web suite 855/855 across 121 files; format, lint, typecheck, chain-map, isolated Base
@@ -271,12 +276,12 @@ UI build, and harness typecheck passed. The production webpack build compiled an
 static prerender with Next.js `Invariant: Expected workUnitAsyncStorage to have a store`; a clean
 cache retry reproduced it. Foundry was not installed, the size verifier lacked a fresh Forge
 artifact, and the Anvil rehearsal was deliberately skipped under the no-key/no-broadcast boundary.
-These open verification items keep Gate A and the operator todo incomplete.
+These open verification items keep candidate verification and the operator todo incomplete.
 
-## Implementation note — 2026-07-31 Gate-A evidence refresh
+## Implementation note — 2026-07-31 Base Sepolia Candidate-Verification Evidence Refresh
 
 This later note supersedes the tool-availability and test-count portions of the preceding 2026-07-31
-Gate-C note; its security and public-write boundaries remain unchanged.
+isolated lifecycle test note. Its security and public-write boundaries remain unchanged.
 
 The evidence branch started from merged `main` at `ce3999574b085ba453beef5c36817fe53a1f06c9`.
 Node 24.18.1 format, lint, typecheck, chain-map, isolated Base UI, harness typecheck, 113 focused
@@ -303,9 +308,10 @@ The disposable Anvil rehearsal on local chain ID 84532 emitted `LOCAL_A1_REHEARS
 credit, 5 USDC reserve credit, 2 USDC voucher residual, and terminal liveness while paused. Its
 standard test mnemonic and transactions remained local and gitignored.
 
-`docs/BASE_SEPOLIA_A1_STATE.md` now contains a non-authorizing Gate-A founder decision template. Every
-address-linked Base Sepolia artifact hash, approved input, custody/operator reference, security review
-or Sepolia risk acceptance, rollback review, and human GO remains `PENDING`. Accordingly Gate A and
+`docs/BASE_SEPOLIA_A1_STATE.md` now contains a non-authorizing candidate-verification founder decision
+template. Every address-linked Base Sepolia artifact hash, approved input, custody/operator reference,
+security review or Sepolia risk acceptance, rollback review, and human GO remains `PENDING`.
+Accordingly, candidate verification and
 `add-operator-smoke-and-monitoring` remain incomplete.
 No public-network write, production key/secret access, deployment, config, pointer, paymaster,
 feature-flag, live-funds, or Base-mainnet change occurred.

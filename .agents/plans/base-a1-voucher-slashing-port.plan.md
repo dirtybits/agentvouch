@@ -26,7 +26,7 @@ todos:
 isProject: false
 ---
 
-# Base A1 Paid-Purchase Slashing Port
+# Base Port of AgentVouch Protocol Requirement A1 — Paid-Purchase Voucher Slashing
 
 ## Source of truth
 
@@ -400,7 +400,7 @@ Settlement tuple order: snapshotted slash percentage, snapshotted active-vouch s
 - `PaidPurchaseReportCreditExpired(uint64 indexed reportId,uint256 reserveCredit)`
 - `RestitutionReserveClaimed(address indexed recipient,uint256 amount)`
 
-### A1 custom errors
+### Voucher-Slashing (A1) Custom Errors
 
 `PaidPurchaseReportNotFound`, `PaidPurchaseReportInvalidState`, `PaidPurchaseReceiptIneligible`, `PaidPurchaseReceiptConsumed`, `PaidPurchaseBuyerBusy`, `PaidPurchaseListingBusy`, `PaidPurchaseAuthorBusy`, `PaidPurchaseBuyerCooldown`, `PaidPurchaseAuthorCooldown`, `PaidPurchaseReviewExpired`, `PaidPurchaseReviewOpen`, `PaidPurchaseEvidenceTooLong`, `PaidPurchaseSlashPageTooLarge`, `PaidPurchaseSlashSnapshotIncomplete`, `PaidPurchaseCreditNotFunded`, `PaidPurchaseCreditExpired`, `PaidPurchaseCreditOpen`, `PaidPurchaseCreditAlreadyHandled`, and `PurchaseLaneIneligible`.
 

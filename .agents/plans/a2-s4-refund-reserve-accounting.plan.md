@@ -26,7 +26,7 @@ todos:
 isProject: false
 ---
 
-# A2 S4 - Refund And Reserve Accounting
+# AgentVouch Protocol Requirement A2, Stage S4 — Refund and Reserve Accounting
 
 ## Goal
 

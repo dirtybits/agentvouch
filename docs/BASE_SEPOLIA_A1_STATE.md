@@ -1,4 +1,4 @@
-# Base Sepolia A1 Deployment State
+# Base Sepolia Voucher-Slashing (A1) Deployment State
 
 This is the deployment-qualified evidence record for the proposed `base-v1-a1` paid-purchase report
 release. Unknown or unexecuted fields remain `PENDING`; do not copy evidence from the pre-A1
@@ -38,13 +38,13 @@ deployment.
 | Exposure policy                            | `PENDING HUMAN APPROVAL` |
 | External review or testnet risk acceptance | `PENDING HUMAN APPROVAL` |
 
-### Gate-C isolated-smoke inputs
+### Base Sepolia Deployment Gate C — Isolated Lifecycle Test Inputs
 
 | Field                                                | Value                           |
 | ---------------------------------------------------- | ------------------------------- |
 | Founder decision / approver / timestamp              | `NO-GO` / `PENDING` / `PENDING` |
 | Exact candidate commit                               | `PENDING`                       |
-| Gate-B readback evidence                             | `PENDING`                       |
+| Paused-deployment readback evidence                  | `PENDING`                       |
 | Signing/custody method                               | `PENDING`                       |
 | Fresh author fixture                                 | `PENDING`                       |
 | Fresh upheld/rejected/expiry buyers                  | `PENDING`                       |
@@ -61,24 +61,26 @@ branches, not a Base mainnet or production-risk limit.
 Locked values: 5 USDC report bond, 7-day filing window, 3-day review window, 7-day funded-credit
 claim window, 60/40 purchase split, zero protocol fee, and zero reporter/keeper rewards.
 
-## Gate decisions
+## Base Sepolia Deployment Decisions
 
-| Gate                                 | State       | Approval/evidence                                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A: pre-broadcast candidate           | **NO-GO**   | The 2026-07-31 evidence refresh passes pinned Foundry format/build/121 tests/size/rehearsal, Forge/client paid-report ABI parity, format/lint/typecheck/chain-map, 867 web tests, UI, harness, and the 151-page production webpack build. Exact candidate commit/review, approved inputs, external review/risk acceptance, rollback review, and human GO remain pending |
-| B1: deploy uninitialized             | **NO-GO**   | Explicit public-network approval required                                                                                                                                                                                                                                                                                         |
-| B2: configure and remain paused      | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                               |
-| C: isolated lifecycle smoke          | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                               |
-| D: preview/shared Sepolia activation | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                               |
-| Base mainnet                         | **BLOCKED** | Outside this release and runbook                                                                                                                                                                                                                                                                                                  |
+| Deployment stage                                                               | State       | Approval/evidence                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base Sepolia Deployment Gate A — Candidate Verification                        | **NO-GO**   | The 2026-07-31 evidence refresh passes pinned Foundry format/build/121 tests/size/rehearsal, Forge/client paid-report ABI parity, format/lint/typecheck/chain-map, 867 web tests, UI, harness, and the 151-page production webpack build. Exact candidate commit/review, approved inputs, external review/risk acceptance, rollback review, and human GO remain pending |
+| Base Sepolia Deployment Gate B — Paused Deployment                             | **NO-GO**   | Roll-up stage. Gate B is complete only when Gate B1 and Gate B2 are complete and the readback evidence passes.                                                                                                                                                                                                                                                          |
+| Base Sepolia Deployment Gate B1 — Deploy Without Initialization                | **NO-GO**   | Explicit public-network approval required                                                                                                                                                                                                                                                                                                                               |
+| Base Sepolia Deployment Gate B2 — Verify, Pause, Configure, and Transfer Roles | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                     |
+| Base Sepolia Deployment Gate C — Isolated Lifecycle Test                       | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                     |
+| Base Sepolia Deployment Gate D — Preview and Shared Testnet Activation         | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                     |
+| Base mainnet                                                                   | **BLOCKED** | Outside this release and runbook                                                                                                                                                                                                                                                                                                                                        |
 
-## Founder Gate-A decision record — added 2026-07-31
+## Founder Decision: Base Sepolia Deployment Gate A — Candidate Verification
 
-Gate A remains **NO-GO**. Copy this record into the reviewed release evidence and replace every
+Candidate verification remains **NO-GO**. Copy this record into the reviewed release evidence and replace every
 `PENDING` value only after rerunning the candidate with the pinned toolchain. This template is not an
-authorization artifact; `executionAuthorized` remains `false`. A human-recorded Gate-A decision may
-approve only deployment and paused configuration on Base Sepolia. It cannot authorize an isolated
-smoke, app pointer, feature flag, paymaster change, shared Sepolia promotion, or Base mainnet.
+authorization artifact; `executionAuthorized` remains `false`. A human decision for candidate
+verification can approve only deployment and paused configuration on Base Sepolia. It cannot
+authorize an isolated lifecycle test, app pointer, feature flag, paymaster change, shared Sepolia
+promotion, or Base mainnet.
 
 ```json
 {
@@ -134,13 +136,14 @@ smoke, app pointer, feature flag, paymaster change, shared Sepolia promotion, or
 }
 ```
 
-## Founder Gate-C decision record — added 2026-07-31
+## Founder Decision: Base Sepolia Deployment Gate C — Isolated Lifecycle Test
 
-Gate C remains **NO-GO**. When Gate B has produced a fresh paused A1 deployment, copy the following
-record to a non-secret operator JSON file and replace every `PENDING` value. Do not commit personal
-custody details. `decision` may become `GO: isolated smoke` only after the founder approves the exact
-commit, deployment, roles, risk-acceptance evidence, fixtures, lane, signing method, and exposure
-cap. Approval for Gate C does not approve Gate D or Base mainnet.
+The isolated lifecycle test remains **NO-GO**. When the paused-deployment stage has produced a fresh
+voucher-slashing (A1) deployment, copy the following record to a non-secret operator JSON file.
+Replace every `PENDING` value. Do not commit personal custody details. `decision` may become
+`GO: isolated smoke` only after the founder approves the exact commit, deployment, roles,
+risk-acceptance evidence, fixtures, lane, signing method, and exposure cap. Approval for the isolated
+lifecycle test does not approve preview and shared testnet activation or Base mainnet.
 
 ```json
 {
@@ -202,9 +205,9 @@ facade creation boundary on-chain, and fully rescans events from that block inst
 mutable cached event file.
 
 An actual write-capable executor remains blocked on the completed founder record, deployed A1
-identity, approved signer/custody integration, funded fresh fixtures, and a separate explicit Gate-C
-public-network approval. The resulting transaction/UserOp hashes and explicit-block balance deltas
-remain future live evidence, not pre-broadcast claims.
+identity, approved signer/custody integration, funded fresh fixtures, and a separate explicit
+isolated lifecycle test approval for public-network writes. The resulting transaction/UserOp hashes
+and explicit-block balance deltas remain future live evidence, not pre-broadcast claims.
 
 ## Live evidence
 
@@ -229,9 +232,9 @@ remain future live evidence, not pre-broadcast claims.
   `LOCAL_A1_DRIVER_OK`.
 - Read-only operations tooling and deployment-qualified report recovery are implemented. On
   2026-07-31, the tooling gained strict founder-record validation, exact full-config and fresh-profile
-  readback, and a non-broadcast Gate-C transaction/evidence plan. Its unsigned output is explicitly
-  non-authorizing. The public-network write executor remains human-gated and incomplete for the
-  reasons recorded above.
+  readback, and a non-broadcast isolated lifecycle test transaction/evidence plan. Its unsigned
+  output is explicitly non-authorizing. The public-network write executor remains human-gated and
+  incomplete for the reasons recorded above.
 
 ## Current non-broadcast revalidation — 2026-07-31
 

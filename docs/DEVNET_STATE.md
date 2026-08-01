@@ -95,7 +95,7 @@ Post-state confirms the full A1 path:
 
 The canonical smoke fixture now verifies direct `purchase_skill`, paid-listing vouch linking, authority-keyed `resolve_author_dispute`, permissionless `slash_dispute_vouches`, refund-pool creation, and buyer refund claim. The local bridge-enabled smoke below separately verifies `settle_x402_purchase` through `/api/skills/{id}/raw`.
 
-## A1 deploy verification
+## AgentVouch Protocol Requirement A1 — Voucher-Slashing Deployment Verification
 
 The 2026-06-10 A1 deploy was verified with:
 
@@ -107,7 +107,7 @@ The 2026-06-10 A1 deploy was verified with:
 - x402 bridge POC: `npm run x402:bridge-poc --workspace @agentvouch/web -- --strict` passed with production bridge support still feature-flagged off.
 - Public flow surface: `npm run smoke:flow-surface` passed after the web deployment/promotion.
 
-## A3 deploy and pause smoke
+## AgentVouch Protocol Requirement A3 — Emergency-Pause Deployment and Test
 
 The 2026-06-19 A3 same-ID upgrade was deployed with:
 
