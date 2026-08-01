@@ -11,6 +11,8 @@ const sources = {
   harness: "contracts/base-poc/harness/src/abi.ts",
 };
 
+// Curated paid-report surface only. Tuple-heavy non-report reads are intentionally
+// outside this gate until the client ABI sources expose a structured format.
 const buyerFunctions = [
   "openPaidPurchaseReport",
   "claimPaidPurchaseReportCredit",
