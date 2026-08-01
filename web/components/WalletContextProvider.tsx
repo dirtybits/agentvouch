@@ -58,6 +58,7 @@ import {
   createBaseInjectedChainWallet,
   disconnectBaseInjectedWallet,
   getInjectedMetaMaskProvider,
+  reconcileDetectedMetaMaskProvider,
   restoreBaseInjectedWalletSession,
   subscribeToEip6963MetaMaskProviders,
   type BaseInjectedWalletSession,
@@ -670,14 +671,20 @@ function AgentVouchWalletBridge({
 
     let cancelled = false;
     const restoreGeneration = baseRestoreGenerationRef.current;
-    const setDetectedProvider = (provider: Eip1193Provider | null) => {
-      if (cancelled || !provider) return;
-      setBaseInjectedProvider((current) => current ?? provider);
+    const setDetectedProvider = (
+      provider: Eip1193Provider | null,
+      source: "legacy" | "eip6963" = "legacy"
+    ) => {
+      if (cancelled) return;
+      setBaseInjectedProvider((current) =>
+        reconcileDetectedMetaMaskProvider(current, provider, source)
+      );
     };
 
     setDetectedProvider(getInjectedMetaMaskProvider());
-    const unsubscribeEip6963 =
-      subscribeToEip6963MetaMaskProviders(setDetectedProvider);
+    const unsubscribeEip6963 = subscribeToEip6963MetaMaskProviders((provider) =>
+      setDetectedProvider(provider, "eip6963")
+    );
     const timeouts = [
       window.setTimeout(
         () => setDetectedProvider(getInjectedMetaMaskProvider()),

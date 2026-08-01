@@ -43,7 +43,6 @@ import TrustBadge, { type TrustData } from "@/components/TrustBadge";
 import { formatUsdcMicros } from "@/lib/pricing";
 import { getPublicSkillPath } from "@/lib/skillUrls";
 import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
-import { BASE_PASSKEY_WALLET_SOURCE } from "@/lib/adapters/baseWalletConfig";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -76,8 +75,8 @@ function shortAddr(addr: string): string {
 const REWARD_INDEX_SCALE = 1_000_000_000_000n;
 const AUTHOR_REWARD_POOL_CLAIM_ID = "author-reward-pool";
 const MIN_VOUCH_USDC_MICROS = 1_000_000n;
-const BASE_VOUCH_PASSKEY_MESSAGE =
-  "Base vouching currently requires Coinbase Smart Wallet. Disconnect the current wallet, then reconnect with a passkey.";
+const BASE_VOUCH_WALLET_MESSAGE =
+  "Base vouching requires Coinbase Smart Wallet or MetaMask connected to Base Sepolia.";
 
 function formatUsdc(
   micros: number | bigint | string | null | undefined
@@ -152,8 +151,6 @@ export default function AuthorProfilePage() {
     !!activeChainWallet &&
     !!evmAuthorAddress &&
     activeChainWallet.chainContext === BASE_SEPOLIA_CHAIN_CONTEXT;
-  const isBasePasskeyTrustWrite =
-    isBaseTrustWrite && chainSession.source === BASE_PASSKEY_WALLET_SOURCE;
 
   const [profile, setProfile] = useState<AgentProfileData | null>(null);
   const [vouchesReceived, setVouchesReceived] = useState<VouchRecord[]>([]);
@@ -392,8 +389,8 @@ export default function AuthorProfilePage() {
 
   const submitVouch = useCallback(async () => {
     if (!connected) return;
-    if (isEvmAuthor && !isBasePasskeyTrustWrite) {
-      setVouchStatus(`Error: ${BASE_VOUCH_PASSKEY_MESSAGE}`);
+    if (isEvmAuthor && !isBaseTrustWrite) {
+      setVouchStatus(`Error: ${BASE_VOUCH_WALLET_MESSAGE}`);
       setVouchTx(null);
       setVouchTxExplorerUrl(null);
       setPendingVouchAfterRegister(false);
@@ -420,7 +417,7 @@ export default function AuthorProfilePage() {
     setVouchTx(null);
     setVouchTxExplorerUrl(null);
     try {
-      if (isBasePasskeyTrustWrite && activeChainWallet && evmAuthorAddress) {
+      if (isBaseTrustWrite && activeChainWallet && evmAuthorAddress) {
         const result = await activeChainWallet.vouchForAuthor({
           authorAddress: evmAuthorAddress,
           stakeUsdcMicros: amountUsdcMicros,
@@ -452,7 +449,7 @@ export default function AuthorProfilePage() {
     activeChainWallet,
     connected,
     evmAuthorAddress,
-    isBasePasskeyTrustWrite,
+    isBaseTrustWrite,
     isEvmAuthor,
     loadData,
     oracle,
@@ -1841,10 +1838,6 @@ export default function AuthorProfilePage() {
                   {!connected ? (
                     <div className="sm:self-end">
                       <ClientWalletButton />
-                    </div>
-                  ) : isEvmAuthor && !isBasePasskeyTrustWrite ? (
-                    <div className="sm:self-end rounded-sm border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-                      {BASE_VOUCH_PASSKEY_MESSAGE}
                     </div>
                   ) : !myProfileChecked || myProfileLoading ? (
                     <button

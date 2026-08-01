@@ -191,7 +191,7 @@ describe("Base passkey trust-write seam", () => {
 });
 
 describe("Base listing update seam", () => {
-  it("keeps updateSkillListing in the ChainWallet interface and honest stubs", () => {
+  it("keeps updateSkillListing in the ChainWallet interface and MetaMask adapter", () => {
     const types = readFileSync(
       join(process.cwd(), "lib/adapters/types.ts"),
       "utf8"
@@ -209,15 +209,16 @@ describe("Base listing update seam", () => {
     expect(types).toContain(
       "updateSkillListing(input: UpdateSkillListingInput)"
     );
+    expect(baseInjected).toContain("updateBaseSkillListingWithInjectedWallet");
     expect(baseInjected).toContain(
-      "MetaMask listing updates are not enabled yet"
+      "updateBaseSkillListingWithInjectedWallet(session, input)"
     );
     expect(solana).toContain("Solana listing updates are still routed through");
   });
 });
 
 describe("Base listing remove seam", () => {
-  it("keeps removeSkillListing in the ChainWallet interface and honest stubs", () => {
+  it("keeps removeSkillListing in the ChainWallet interface and MetaMask adapter", () => {
     const types = readFileSync(
       join(process.cwd(), "lib/adapters/types.ts"),
       "utf8"
@@ -232,8 +233,9 @@ describe("Base listing remove seam", () => {
     );
 
     expect(types).toContain("removeSkillListing(input: { listingId: string })");
+    expect(baseInjected).toContain("removeBaseSkillListingWithInjectedWallet");
     expect(baseInjected).toContain(
-      "MetaMask listing removal is not enabled yet"
+      "removeBaseSkillListingWithInjectedWallet(session, input)"
     );
     expect(solana).toContain("Solana listing removal is still routed through");
   });

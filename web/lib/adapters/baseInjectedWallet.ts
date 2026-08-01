@@ -23,7 +23,10 @@ import {
 import { requireBaseBytes32 } from "./baseListing";
 import { requireBaseEvmAddress } from "./baseListing";
 import {
+  AGENTVOUCH_EVM_WRITE_ABI,
+  BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE,
   assertBaseSepoliaChain,
+  computeListingId,
   createBasePublicClient,
   fetchLiveListing,
   findExistingBasePurchase,
@@ -32,16 +35,26 @@ import {
   isBaseDuplicatePurchaseError,
   planBasePurchaseApprovals,
   requireBaseContractWriteConfig,
+  skillIdHashFrom,
   waitForBaseTransactionReceipt,
 } from "./baseWallet";
 import type {
   ClaimPaidPurchaseReportCreditInput,
   ClaimPaidPurchaseReportCreditResult,
+  ClaimVoucherRevenueInput,
+  CreateSkillListingInput,
+  DepositAuthorBondInput,
   OpenPaidPurchaseReportInput,
   OpenPaidPurchaseReportResult,
   PaidPurchaseReportChainWallet,
   PurchaseSkillInput,
   PurchaseSkillResult,
+  RevokeVouchInput,
+  TxResult,
+  UpdateSkillListingInput,
+  VouchForAuthorInput,
+  WithdrawAuthorBondInput,
+  WithdrawAuthorProceedsInput,
 } from "./types";
 import {
   AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
@@ -63,12 +76,6 @@ const INJECTED_ACTIVE_STORAGE_KEY = "agentvouch:base-sepolia:metamask:active";
 const PURCHASE_SKILL_ABI = parseAbi([
   "function purchaseSkill(bytes32 id) returns (bytes32)",
 ]);
-const unsupportedAuthorWrite = (action: string) =>
-  Promise.reject(
-    new Error(
-      `${action} is not enabled for the MetaMask Base buyer wallet yet; use Coinbase Smart Wallet for Base author/trust actions.`
-    )
-  );
 
 type Eip1193RequestArgs = {
   method: string;
@@ -177,6 +184,16 @@ export function selectMetaMaskProvider(
   );
 }
 
+export function reconcileDetectedMetaMaskProvider(
+  current: Eip1193Provider | null,
+  candidate: Eip1193Provider | null,
+  source: "legacy" | "eip6963"
+): Eip1193Provider | null {
+  if (!candidate) return current;
+  if (source === "eip6963" || !current) return candidate;
+  return current;
+}
+
 export function getInjectedMetaMaskProvider(
   win: WindowWithEthereum | null = getWindow()
 ): Eip1193Provider | null {
@@ -196,10 +213,7 @@ export function subscribeToEip6963MetaMaskProviders(
 
   const handler = (event: Event) => {
     const detail = (event as CustomEvent<Eip6963ProviderDetail>).detail;
-    const provider =
-      detail?.info?.rdns === "io.metamask" && detail.provider?.isMetaMask
-        ? detail.provider
-        : null;
+    const provider = selectMetaMaskProvider([detail]);
     if (provider) onProvider(provider);
   };
 
@@ -320,6 +334,196 @@ async function sendInjectedTransaction(
   return hash as Hex;
 }
 
+function sameInjectedAddress(left: unknown, right: Address): boolean {
+  return (
+    typeof left === "string" &&
+    isAddress(left) &&
+    getAddress(left) === getAddress(right)
+  );
+}
+
+function injectedTxResult(txHash: Hex): TxResult {
+  return {
+    ref: txHash,
+    explorerUrl: `${BASE_SEPOLIA_EXPLORER_URL}/tx/${txHash}`,
+    paidGas: true,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function requirePositiveInjectedUsdcAmount(
+  amountUsdcMicros: bigint,
+  purpose: string
+): void {
+  if (amountUsdcMicros <= 0n) {
+    throw new Error(`Base ${purpose} amount must be greater than zero.`);
+  }
+}
+
+async function createInjectedWriteContext(session: BaseInjectedWalletSession) {
+  const config = requireBaseContractWriteConfig();
+  const publicClient = createBasePublicClient();
+  await assertBaseSepoliaChain(publicClient);
+  await ensureBaseSepoliaInjectedChain(session.provider);
+  return { config, publicClient };
+}
+
+async function simulateInjectedWrite(
+  publicClient: ReturnType<typeof createBasePublicClient>,
+  request: unknown
+): Promise<void> {
+  // AGENTVOUCH_EVM_WRITE_ABI is assembled from a shared parsed ABI, so viem
+  // cannot preserve its function-name tuple across this module boundary.
+  await publicClient.simulateContract(request as never);
+}
+
+type InjectedAgentVouchFunctionName =
+  | "createSkillListing"
+  | "updateSkillListing"
+  | "removeSkillListing"
+  | "depositAuthorBond"
+  | "withdrawAuthorBond"
+  | "vouch"
+  | "revokeVouch"
+  | "claimVoucherRevenue"
+  | "withdrawAuthorProceeds";
+
+function encodeInjectedAgentVouchCall(
+  functionName: InjectedAgentVouchFunctionName,
+  args: readonly unknown[]
+): Hex {
+  // See simulateInjectedWrite: viem loses the parsed ABI's literal tuple here.
+  return encodeFunctionData({
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName,
+    args,
+  } as never);
+}
+
+async function sendExactInjectedUsdcApprovals(input: {
+  session: BaseInjectedWalletSession;
+  publicClient: ReturnType<typeof createBasePublicClient>;
+  usdcAddress: Address;
+  spender: Address;
+  amountUsdcMicros: bigint;
+  purpose: string;
+}): Promise<boolean> {
+  requirePositiveInjectedUsdcAmount(input.amountUsdcMicros, input.purpose);
+  const [balance, allowance] = await Promise.all([
+    input.publicClient.readContract({
+      address: input.usdcAddress,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [input.session.address],
+    }),
+    input.publicClient.readContract({
+      address: input.usdcAddress,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [input.session.address, input.spender],
+    }),
+  ]);
+  if (balance < input.amountUsdcMicros) {
+    throw new Error(
+      `Insufficient Base Sepolia USDC for ${
+        input.purpose
+      }. Have ${formatBaseUsdc(balance)} USDC, need ${formatBaseUsdc(
+        input.amountUsdcMicros
+      )} USDC.`
+    );
+  }
+
+  const approvals = planBasePurchaseApprovals({
+    allowance,
+    expectedPriceUsdcMicros: input.amountUsdcMicros,
+  });
+  if (approvals.resetAllowance) {
+    const resetHash = await sendInjectedTransaction(
+      input.session.provider,
+      input.session.address,
+      input.usdcAddress,
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [input.spender, 0n],
+      })
+    );
+    await waitForBaseTransactionReceipt(
+      input.publicClient,
+      resetHash,
+      `Base ${input.purpose} allowance reset`
+    );
+  }
+  if (approvals.approvePrice) {
+    const approvalHash = await sendInjectedTransaction(
+      input.session.provider,
+      input.session.address,
+      input.usdcAddress,
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [input.spender, input.amountUsdcMicros],
+      })
+    );
+    await waitForBaseTransactionReceipt(
+      input.publicClient,
+      approvalHash,
+      `Base ${input.purpose} approval`
+    );
+  }
+  return approvals.resetAllowance || approvals.approvePrice;
+}
+
+async function simulateAfterInjectedApproval(
+  simulate: () => Promise<unknown>,
+  input: { approvalsChanged: boolean; purpose: string }
+): Promise<void> {
+  try {
+    await simulate();
+  } catch (error) {
+    const allowanceNote = input.approvalsChanged
+      ? " The exact USDC allowance may remain; retry this action or revoke that allowance in MetaMask before leaving it unused."
+      : "";
+    throw new Error(
+      `Base ${input.purpose} preflight failed: ${errorMessage(
+        error
+      )}.${allowanceNote}`
+    );
+  }
+}
+
+async function sendInjectedUsdcPullAction(input: {
+  session: BaseInjectedWalletSession;
+  publicClient: ReturnType<typeof createBasePublicClient>;
+  contractAddress: Address;
+  data: Hex;
+  receiptLabel: string;
+}) {
+  try {
+    const txHash = await sendInjectedTransaction(
+      input.session.provider,
+      input.session.address,
+      input.contractAddress,
+      input.data
+    );
+    const receipt = await waitForBaseTransactionReceipt(
+      input.publicClient,
+      txHash,
+      input.receiptLabel
+    );
+    return { txHash, receipt };
+  } catch (error) {
+    throw new Error(
+      `${errorMessage(
+        error
+      )} The exact USDC allowance may remain; retry this action or revoke that allowance in MetaMask before leaving it unused.`
+    );
+  }
+}
+
 function namedOrIndexed(value: unknown, name: string, index: number): unknown {
   const tuple = value as Record<string | number, unknown>;
   return tuple[name] ?? tuple[index];
@@ -384,22 +588,459 @@ async function registerBaseAgentWithInjectedWallet(
   };
 }
 
-async function ensureInjectedBuyerRegistered(
+async function createBaseSkillListingWithInjectedWallet(
   session: BaseInjectedWalletSession,
-  contractAddress: Address
+  input: CreateSkillListingInput
+): Promise<TxResult> {
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  const skillIdHash = skillIdHashFrom(input.skillId);
+  const listingId = computeListingId(session.address, skillIdHash);
+  const args = [
+    skillIdHash,
+    input.uri,
+    input.name,
+    input.description,
+    input.priceUsdcMicros,
+  ] as const;
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "createSkillListing",
+    args,
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("createSkillListing", args)
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base marketplace listing"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "SkillListingCreated"
+  );
+  if (
+    !event ||
+    event.args.listingId !== listingId ||
+    !sameInjectedAddress(event.args.author, session.address) ||
+    event.args.price !== input.priceUsdcMicros
+  ) {
+    throw new Error(
+      "Base createSkillListing receipt did not match the submitted listing."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function updateBaseSkillListingWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: UpdateSkillListingInput
+): Promise<TxResult> {
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  const args = [
+    listingId,
+    input.uri,
+    input.name,
+    input.description,
+    input.priceUsdcMicros,
+  ] as const;
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "updateSkillListing",
+    args,
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("updateSkillListing", args)
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base marketplace listing update"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "SkillListingUpdated"
+  );
+  if (
+    !event ||
+    event.args.listingId !== listingId ||
+    !sameInjectedAddress(event.args.author, session.address) ||
+    event.args.price !== input.priceUsdcMicros
+  ) {
+    throw new Error(
+      "Base updateSkillListing receipt did not match the submitted listing."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function removeBaseSkillListingWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: { listingId: string }
+): Promise<TxResult> {
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "removeSkillListing",
+    args: [listingId],
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("removeSkillListing", [listingId])
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base marketplace listing removal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "SkillListingRemoved"
+  );
+  if (event?.args.listingId !== listingId) {
+    throw new Error(
+      "Base removeSkillListing receipt did not match the submitted listing."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function ensureInjectedAgentRegistered(
+  session: BaseInjectedWalletSession,
+  contractAddress: Address,
+  publicClient: ReturnType<typeof createBasePublicClient>,
+  metadataNamespace: "base-auto-registration" | "base-paid-report"
 ): Promise<void> {
-  const publicClient = createBasePublicClient();
+  const profileAbi =
+    metadataNamespace === "base-paid-report"
+      ? AGENTVOUCH_EVM_A1_PAID_REPORT_ABI
+      : AGENTVOUCH_EVM_WRITE_ABI;
   const profile = await publicClient.readContract({
     address: contractAddress,
-    abi: AGENTVOUCH_EVM_A1_PAID_REPORT_ABI,
+    abi: profileAbi,
     functionName: "getProfile",
     args: [session.address],
-  });
+  } as never);
   if (Boolean(namedOrIndexed(profile, "registered", 0))) return;
   await registerBaseAgentWithInjectedWallet(
     session,
-    `agentvouch://base-paid-report/${session.address.toLowerCase()}`
+    `agentvouch://${metadataNamespace}/${session.address.toLowerCase()}`
   );
+}
+
+async function depositBaseAuthorBondWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: DepositAuthorBondInput
+): Promise<TxResult> {
+  requirePositiveInjectedUsdcAmount(
+    input.amountUsdcMicros,
+    "author bond deposit"
+  );
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  await ensureInjectedAgentRegistered(
+    session,
+    config.agentVouchAddress,
+    publicClient,
+    "base-auto-registration"
+  );
+  const approvalsChanged = await sendExactInjectedUsdcApprovals({
+    session,
+    publicClient,
+    usdcAddress: config.usdcAddress,
+    spender: config.agentVouchAddress,
+    amountUsdcMicros: input.amountUsdcMicros,
+    purpose: "author bond deposit",
+  });
+  await simulateAfterInjectedApproval(
+    () =>
+      simulateInjectedWrite(publicClient, {
+        account: session.address,
+        address: config.agentVouchAddress,
+        abi: AGENTVOUCH_EVM_WRITE_ABI,
+        functionName: "depositAuthorBond",
+        args: [input.amountUsdcMicros],
+      }),
+    { approvalsChanged, purpose: "author bond deposit" }
+  );
+  const { txHash, receipt } = await sendInjectedUsdcPullAction({
+    session,
+    publicClient,
+    contractAddress: config.agentVouchAddress,
+    data: encodeInjectedAgentVouchCall("depositAuthorBond", [
+      input.amountUsdcMicros,
+    ]),
+    receiptLabel: "Base author bond deposit",
+  });
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AuthorBondDeposited"
+  );
+  if (
+    !sameInjectedAddress(event?.args.author, session.address) ||
+    event?.args.amount !== input.amountUsdcMicros
+  ) {
+    throw new Error(
+      "Base author bond deposit receipt did not match the submitted amount."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function withdrawBaseAuthorBondWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: WithdrawAuthorBondInput
+): Promise<TxResult> {
+  requirePositiveInjectedUsdcAmount(
+    input.amountUsdcMicros,
+    "author bond withdrawal"
+  );
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "withdrawAuthorBond",
+    args: [input.amountUsdcMicros],
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("withdrawAuthorBond", [input.amountUsdcMicros])
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base author bond withdrawal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AuthorBondWithdrawn"
+  );
+  if (
+    !sameInjectedAddress(event?.args.author, session.address) ||
+    event?.args.amount !== input.amountUsdcMicros
+  ) {
+    throw new Error(
+      "Base author bond withdrawal receipt did not match the submitted amount."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function vouchForBaseAuthorWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: VouchForAuthorInput
+): Promise<TxResult> {
+  requirePositiveInjectedUsdcAmount(input.stakeUsdcMicros, "author vouch");
+  const vouchee = requireBaseEvmAddress(input.authorAddress, "Base vouchee");
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  await ensureInjectedAgentRegistered(
+    session,
+    config.agentVouchAddress,
+    publicClient,
+    "base-auto-registration"
+  );
+  const approvalsChanged = await sendExactInjectedUsdcApprovals({
+    session,
+    publicClient,
+    usdcAddress: config.usdcAddress,
+    spender: config.agentVouchAddress,
+    amountUsdcMicros: input.stakeUsdcMicros,
+    purpose: "author vouch",
+  });
+  await simulateAfterInjectedApproval(
+    () =>
+      simulateInjectedWrite(publicClient, {
+        account: session.address,
+        address: config.agentVouchAddress,
+        abi: AGENTVOUCH_EVM_WRITE_ABI,
+        functionName: "vouch",
+        args: [vouchee, input.stakeUsdcMicros],
+      }),
+    { approvalsChanged, purpose: "author vouch" }
+  );
+  const { txHash, receipt } = await sendInjectedUsdcPullAction({
+    session,
+    publicClient,
+    contractAddress: config.agentVouchAddress,
+    data: encodeInjectedAgentVouchCall("vouch", [
+      vouchee,
+      input.stakeUsdcMicros,
+    ]),
+    receiptLabel: "Base author vouch",
+  });
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "Vouched"
+  );
+  if (
+    !sameInjectedAddress(event?.args.voucher, session.address) ||
+    !sameInjectedAddress(event?.args.vouchee, vouchee) ||
+    event?.args.stake !== input.stakeUsdcMicros
+  ) {
+    throw new Error("Base vouch receipt did not match the submitted author.");
+  }
+  return injectedTxResult(txHash);
+}
+
+async function revokeBaseVouchWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: RevokeVouchInput
+): Promise<TxResult> {
+  const vouchee = requireBaseEvmAddress(input.authorAddress, "Base vouchee");
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "revokeVouch",
+    args: [vouchee],
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("revokeVouch", [vouchee])
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base vouch revocation"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "VouchRevoked"
+  );
+  if (
+    !sameInjectedAddress(event?.args.voucher, session.address) ||
+    !sameInjectedAddress(event?.args.vouchee, vouchee)
+  ) {
+    throw new Error(
+      "Base vouch revocation receipt did not match the submitted author."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function claimBaseVoucherRevenueWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: ClaimVoucherRevenueInput
+): Promise<TxResult> {
+  const author = requireBaseEvmAddress(input.authorAddress, "Base author");
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "claimVoucherRevenue",
+    args: [author],
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("claimVoucherRevenue", [author])
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base voucher revenue claim"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "VoucherRevenueClaimed"
+  );
+  if (
+    !sameInjectedAddress(event?.args.voucher, session.address) ||
+    !sameInjectedAddress(event?.args.author, author)
+  ) {
+    throw new Error(
+      "Base voucher revenue receipt did not match the submitted author."
+    );
+  }
+  return injectedTxResult(txHash);
+}
+
+async function withdrawBaseAuthorProceedsWithInjectedWallet(
+  session: BaseInjectedWalletSession,
+  input: WithdrawAuthorProceedsInput
+): Promise<TxResult> {
+  requirePositiveInjectedUsdcAmount(
+    input.amountUsdcMicros,
+    "author proceeds withdrawal"
+  );
+  if (
+    !Number.isSafeInteger(input.listingRevision) ||
+    input.listingRevision < 0
+  ) {
+    throw new Error("Base listing revision must be a non-negative integer.");
+  }
+  const listingId = requireBaseBytes32(input.listingId, "Base listing id");
+  const revision = BigInt(input.listingRevision);
+  const { config, publicClient } = await createInjectedWriteContext(session);
+  await simulateInjectedWrite(publicClient, {
+    account: session.address,
+    address: config.agentVouchAddress,
+    abi: AGENTVOUCH_EVM_WRITE_ABI,
+    functionName: "withdrawAuthorProceeds",
+    args: [listingId, revision, input.amountUsdcMicros],
+  });
+  const txHash = await sendInjectedTransaction(
+    session.provider,
+    session.address,
+    config.agentVouchAddress,
+    encodeInjectedAgentVouchCall("withdrawAuthorProceeds", [
+      listingId,
+      revision,
+      input.amountUsdcMicros,
+    ])
+  );
+  const receipt = await waitForBaseTransactionReceipt(
+    publicClient,
+    txHash,
+    "Base author proceeds withdrawal"
+  );
+  const event = findBaseWalletEvent(
+    receipt.logs,
+    config.agentVouchAddress,
+    "AuthorProceedsWithdrawn"
+  );
+  if (
+    event?.args.listingId !== listingId ||
+    event?.args.revision !== revision ||
+    !sameInjectedAddress(event?.args.author, session.address) ||
+    event?.args.amount !== input.amountUsdcMicros
+  ) {
+    throw new Error(
+      "Base author proceeds receipt did not match the submitted listing."
+    );
+  }
+  return injectedTxResult(txHash);
 }
 
 async function openPaidPurchaseReportWithInjectedWallet(
@@ -443,7 +1084,12 @@ async function openPaidPurchaseReportWithInjectedWallet(
       "Paid-purchase reports are paused on the selected deployment."
     );
   }
-  await ensureInjectedBuyerRegistered(session, bound.contractAddress);
+  await ensureInjectedAgentRegistered(
+    session,
+    bound.contractAddress,
+    publicClient,
+    "base-paid-report"
+  );
 
   const [
     buyerProfile,
@@ -989,38 +1635,31 @@ export function createBaseInjectedChainWallet(
     },
     registerAgent: (metadataUri) =>
       registerBaseAgentWithInjectedWallet(session, metadataUri),
-    createSkillListing: () =>
-      Promise.reject(
-        new Error(
-          "MetaMask listing creation is not enabled yet; use Coinbase Smart Wallet for Base author actions."
-        )
-      ),
-    updateSkillListing: () =>
-      Promise.reject(
-        new Error(
-          "MetaMask listing updates are not enabled yet; use Coinbase Smart Wallet for Base author actions."
-        )
-      ),
-    removeSkillListing: () =>
-      Promise.reject(
-        new Error(
-          "MetaMask listing removal is not enabled yet; use Coinbase Smart Wallet for Base author actions."
-        )
-      ),
+    createSkillListing: (input) =>
+      createBaseSkillListingWithInjectedWallet(session, input),
+    updateSkillListing: (input) =>
+      updateBaseSkillListingWithInjectedWallet(session, input),
+    removeSkillListing: (input) =>
+      removeBaseSkillListingWithInjectedWallet(session, input),
     purchaseSkill: (input) =>
       purchaseBaseSkillWithInjectedWallet(session, input),
-    depositAuthorBond: () => unsupportedAuthorWrite("Author bond deposit"),
-    withdrawAuthorBond: () => unsupportedAuthorWrite("Author bond withdrawal"),
-    vouchForAuthor: () => unsupportedAuthorWrite("Base vouching"),
-    revokeVouch: () => unsupportedAuthorWrite("Base vouch revocation"),
-    openAuthorReport: () => unsupportedAuthorWrite("Base author reports"),
+    depositAuthorBond: (input) =>
+      depositBaseAuthorBondWithInjectedWallet(session, input),
+    withdrawAuthorBond: (input) =>
+      withdrawBaseAuthorBondWithInjectedWallet(session, input),
+    vouchForAuthor: (input) =>
+      vouchForBaseAuthorWithInjectedWallet(session, input),
+    revokeVouch: (input) => revokeBaseVouchWithInjectedWallet(session, input),
+    openAuthorReport: () =>
+      Promise.reject(new Error(BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE)),
     openPaidPurchaseReport: (input) =>
       openPaidPurchaseReportWithInjectedWallet(session, input),
     claimPaidPurchaseReportCredit: (input) =>
       claimPaidPurchaseReportWithInjectedWallet(session, input),
-    claimVoucherRevenue: () => unsupportedAuthorWrite("Voucher revenue claim"),
-    withdrawAuthorProceeds: () =>
-      unsupportedAuthorWrite("Author proceeds withdrawal"),
+    claimVoucherRevenue: (input) =>
+      claimBaseVoucherRevenueWithInjectedWallet(session, input),
+    withdrawAuthorProceeds: (input) =>
+      withdrawBaseAuthorProceedsWithInjectedWallet(session, input),
     buildX402Payment: () =>
       Promise.reject(
         new Error(

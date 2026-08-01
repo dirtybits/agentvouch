@@ -137,18 +137,22 @@ unconditional no-go), this section governs: single-key resolution passes only un
 
 ### Platform Concentration Risk (Coinbase, 2026-07-06)
 
-The Base track is not just a chain bet — it is a four-way dependency on one vendor: **chain**
-(Base), **wallet** (Coinbase Smart Wallet passkey is the only shipped write path), **gas** (CDP
-paymaster/bundler sponsors every UserOp), and **distribution** (the x402 ecosystem). A policy
-change in any one — paymaster pricing/allowlists, Smart Wallet API/passkey behavior, x402
-protocol direction — degrades the default UX with no code bug on our side. Accepted as the cost
-of the distribution bet; mitigations must stay warm rather than theoretical:
+The Base track remains a concentrated chain, gas, and distribution bet: **chain** (Base), **gas**
+(CDP paymaster/bundler sponsors Coinbase Smart Wallet UserOps), and **distribution** (the x402
+ecosystem). Wallet execution is no longer source-level Coinbase-only: the web app also has an
+injected MetaMask EOA path on Base Sepolia. A policy change in any one Coinbase-controlled layer
+— paymaster pricing/allowlists, Smart Wallet API/passkey behavior, or x402 protocol direction —
+can still degrade the default UX with no code bug on our side. Accepted as the cost of the
+distribution bet; mitigations must stay warm rather than theoretical:
 
-- **Wallet diversification:** the MetaMask/EIP-7702 injected-wallet spike (staged in the
-  `contracts/base-poc/ui` v3 work; 7702 status: MetaMask supports it, Phantom does not) is the
-  named follow-on wallet variant, with Circle Modular Wallets as the passkey/MSCA alternative.
-  Wagmi/injected support was consciously deferred at Phase 4 — revisit it before or at Phase 10
-  so the wallet layer is not single-vendor at mainnet.
+- **Wallet diversification (source implemented; live author/trust smoke open 2026-07-31):**
+  MetaMask can connect, sign API auth, register, manage listings, purchase/download, self-stake,
+  vouch/revoke, and claim through the existing `ChainWallet` seam. Its correctness path is
+  ordinary user-paid EOA transactions; advertised ERC-7702/EIP-5792 batching is detected but
+  deliberately not used until that execution path is reviewed. Historical live evidence covers
+  MetaMask purchase/download only, so the listing and trust lifecycle still needs a fresh human
+  Base Sepolia smoke before it is a live-readiness claim. Circle Modular Wallets remain a
+  possible passkey/MSCA alternative.
 - **Gas-model fallback:** Circle Paymaster (user pays gas in USDC) is the sustainability/outage
   fallback to CDP-sponsored UserOps. x402 Lane B (EIP-3009) also needs no paymaster at all for
   agent buyers — an outage of CDP degrades human passkey UX, not agent settlement.
