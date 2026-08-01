@@ -14,12 +14,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export const STRIPE_PAYMENT_FLOW = "stripe-mpp-offchain";
 export const STRIPE_ACCOUNT_PAYMENT_FLOW = "stripe-account-access";
 
-// Source-controlled stop gate. Live checkout stays impossible until the
-// founder-approved buyer allowlist, immutable reservation ledger, and atomic
-// per-payment/aggregate caps are implemented and reviewed. This is
+// Source-controlled stop gate. The durable code controls exist, but live
+// checkout stays impossible until founder decisions, schema rehearsal, WAF,
+// monitoring and the other external gates are recorded and reviewed. This is
 // intentionally not an environment variable: deployment configuration cannot
-// substitute for missing durable controls.
+// substitute for activation approval.
 export const STRIPE_LIVE_PILOT_IMPLEMENTATION_READY = false;
+
+export function isStripeLivePilotFulfillmentSourceEnabled(): boolean {
+  return STRIPE_LIVE_PILOT_IMPLEMENTATION_READY;
+}
 
 // Sentinels stored in chain-shaped receipt columns (see Obstacle 2 in the
 // feasibility note). These are placeholders, not real on-chain references.
@@ -56,8 +60,21 @@ const STRIPE_LIVE_PILOT_SKILL_ID_PATTERN =
 
 export type StripeLivePilotScope = {
   skillIds: string[];
+  buyerAccountIds: string[];
   maxUnitUsdCents: number;
+  maxGrossUsdCents: number;
+  maxCompletedPayments: number;
+  maxConcurrentReservations: number;
+  reservationTtlMinutes: number;
+  reconciliationSlaMinutes: number;
 };
+
+function parsePositiveSafeInteger(value: string | undefined): number | null {
+  const raw = value?.trim() ?? "";
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 /**
  * Stripe secret (`sk_`) and restricted (`rk_`) keys carry their mode in the
@@ -83,8 +100,7 @@ export function detectStripeKeyMode(
  * per-session charge. Missing, malformed, or empty values return null so live
  * checkout fails closed. Test-mode checkout deliberately ignores this scope.
  *
- * This is not an aggregate exposure control. A durable live-pilot ledger and
- * GMV cap remain activation blockers in the limited-live rollout plan.
+ * The returned values are enforced again by the durable live-pilot ledger.
  */
 export function getStripeLivePilotScope(
   env: Readonly<Record<string, string | undefined>> = process.env
@@ -101,17 +117,61 @@ export function getStripeLivePilotScope(
     return null;
   }
 
-  const rawMaxUnitUsdCents =
-    env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS?.trim() ?? "";
-  if (!/^\d+$/.test(rawMaxUnitUsdCents)) return null;
-  const maxUnitUsdCents = Number(rawMaxUnitUsdCents);
-  if (!Number.isSafeInteger(maxUnitUsdCents) || maxUnitUsdCents <= 0) {
+  const buyerAccountIds = (
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS ?? ""
+  )
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    buyerAccountIds.length === 0 ||
+    buyerAccountIds.some(
+      (value) => !STRIPE_LIVE_PILOT_SKILL_ID_PATTERN.test(value)
+    )
+  ) {
+    return null;
+  }
+
+  const maxUnitUsdCents = parsePositiveSafeInteger(
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS
+  );
+  const maxGrossUsdCents = parsePositiveSafeInteger(
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS
+  );
+  const maxCompletedPayments = parsePositiveSafeInteger(
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS
+  );
+  const maxConcurrentReservations = parsePositiveSafeInteger(
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS
+  );
+  const reservationTtlMinutes = parsePositiveSafeInteger(
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES
+  );
+  const reconciliationSlaMinutes = parsePositiveSafeInteger(
+    env.AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES
+  );
+  if (
+    maxUnitUsdCents === null ||
+    maxGrossUsdCents === null ||
+    maxCompletedPayments === null ||
+    maxConcurrentReservations === null ||
+    reservationTtlMinutes === null ||
+    reservationTtlMinutes < 31 ||
+    reservationTtlMinutes > 1_440 ||
+    reconciliationSlaMinutes === null
+  ) {
     return null;
   }
 
   return {
     skillIds: [...new Set(skillIds)],
+    buyerAccountIds: [...new Set(buyerAccountIds)],
     maxUnitUsdCents,
+    maxGrossUsdCents,
+    maxCompletedPayments,
+    maxConcurrentReservations,
+    reservationTtlMinutes,
+    reconciliationSlaMinutes,
   };
 }
 
@@ -214,6 +274,8 @@ export type CreateCheckoutSessionInput = {
     | { kind: "account"; accountId: string };
   // Optional: a buyer-supplied email so Stripe can create/attach a customer.
   customerEmail?: string;
+  livePilotReservationId?: string;
+  expiresAtUnixSeconds?: number;
 };
 
 export type CheckoutSession = {
@@ -241,6 +303,9 @@ export async function createCheckoutSession(
     ...(input.buyer.kind === "account"
       ? { buyer_account_id: input.buyer.accountId }
       : { buyer_pubkey: input.buyer.pubkey }),
+    ...(input.livePilotReservationId
+      ? { live_pilot_reservation_id: input.livePilotReservationId }
+      : {}),
   };
 
   const params: Record<string, string> = {
@@ -263,12 +328,18 @@ export async function createCheckoutSession(
   if (input.customerEmail) {
     params["customer_email"] = input.customerEmail;
   }
+  if (input.expiresAtUnixSeconds) {
+    params["expires_at"] = String(input.expiresAtUnixSeconds);
+  }
 
   const res = await fetch(`${config.apiBase}/v1/checkout/sessions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.secretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      ...(input.livePilotReservationId
+        ? { "Idempotency-Key": input.livePilotReservationId }
+        : {}),
     },
     body: new URLSearchParams(params).toString(),
   });
@@ -282,6 +353,82 @@ export async function createCheckoutSession(
 
   const json = (await res.json()) as { id: string; url?: string | null };
   return { id: json.id, url: json.url ?? null };
+}
+
+/** Best-effort fail-safe for a Session created across the Stripe/DB boundary. */
+export async function expireCheckoutSession(sessionId: string): Promise<void> {
+  const config = getStripeConfig();
+  if (!config) throw new Error("Stripe is not configured");
+  const res = await fetch(
+    `${config.apiBase}/v1/checkout/sessions/${encodeURIComponent(
+      sessionId
+    )}/expire`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.secretKey}` },
+    }
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Stripe Checkout Session expiration failed (${res.status}): ${await res
+        .text()
+        .catch(() => "")}`
+    );
+  }
+}
+
+export type StripePaymentFinancials = {
+  grossUsdCents: number;
+  feeUsdCents: number;
+  netUsdCents: number;
+};
+
+/**
+ * Reads Stripe's authoritative balance transaction for reconciliation. Buyer
+ * access never depends on this secondary lookup; a missing value remains an
+ * operator alert until Stripe makes it available or reconciliation succeeds.
+ */
+export async function getStripePaymentFinancials(
+  paymentIntentId: string
+): Promise<StripePaymentFinancials | null> {
+  const config = getStripeConfig();
+  if (!config) throw new Error("Stripe is not configured");
+  const params = new URLSearchParams({
+    "expand[]": "latest_charge.balance_transaction",
+  });
+  const res = await fetch(
+    `${config.apiBase}/v1/payment_intents/${encodeURIComponent(
+      paymentIntentId
+    )}?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${config.secretKey}` } }
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Stripe payment reconciliation failed (${res.status}): ${await res
+        .text()
+        .catch(() => "")}`
+    );
+  }
+  const paymentIntent = (await res.json()) as {
+    amount?: number;
+    latest_charge?: {
+      balance_transaction?: { amount?: number; fee?: number; net?: number };
+    } | null;
+  };
+  const balance = paymentIntent.latest_charge?.balance_transaction;
+  if (
+    !Number.isSafeInteger(paymentIntent.amount) ||
+    !Number.isSafeInteger(balance?.amount) ||
+    !Number.isSafeInteger(balance?.fee) ||
+    !Number.isSafeInteger(balance?.net)
+  ) {
+    return null;
+  }
+  return {
+    grossUsdCents: balance!.amount!,
+    feeUsdCents: balance!.fee!,
+    netUsdCents: balance!.net!,
+  };
 }
 
 export type StripeWebhookEvent = {

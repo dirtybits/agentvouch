@@ -116,13 +116,13 @@ Does:
   Base purchase. The legacy wallet path still rejects Base protocol listings
   because that pubkey-keyed entitlement cannot redeem the Base download.
 - Refuses checkout below Stripe's $0.50 USD minimum. Live-key checkout parses
-  an explicit skill UUID allowlist and maximum unit charge, but remains
-  source-disabled until the buyer allowlist, immutable reservation ledger, and
-  atomic exposure caps exist.
+  explicit opaque buyer-account and skill UUID allowlists plus unit, aggregate
+  gross, completed-payment, concurrent-reservation, reservation-TTL, and
+  reconciliation-SLA limits. The additive ledger enforces them atomically.
 - Requires the buyer to acknowledge versioned card-recourse copy before a
   Checkout Session is created and carries that version in Session and
-  PaymentIntent metadata. Live fulfillment is source-disabled before any grant
-  until reservation-bound disclosure and pilot-scope validation is implemented.
+  PaymentIntent metadata. Live fulfillment remains source-disabled before any
+  grant pending founder/external activation evidence and separate review.
 - Webhook response policy: permanently-unprocessable events (bad metadata,
   amount mismatch, deleted skill) are durably queued before they are ACKed with
   200 so Stripe stops retrying; non-2xx is reserved for signature failures,
@@ -146,8 +146,9 @@ Does **not** (deliberately out of scope — these are the Tier 2/3 hard parts):
   entitlement, partial refunds are durably queued, and a genuinely new payment
   can re-mint. The read-only operator monitor surfaces unresolved items;
   partial-refund decisions and dispute-won reinstatement are still manual.
-- No durable live-pilot amount/fee/net ledger or atomic aggregate GMV cap. The
-  limited-live plan treats both as stop gates before real card activation.
+- The durable live-pilot amount/fee/net ledger and atomic exposure caps are
+  implemented but dormant. Disposable-database rehearsal, fee/net monitoring,
+  and every founder/external gate remain stop conditions before activation.
 
 ## The hard parts (Tier 2 / Tier 3)
 
@@ -238,7 +239,20 @@ and settled on-chain. Worth an explicit product decision before Tier 2.
   skill UUID allowlist for live-key checkout. Malformed or missing values fail
   closed.
 - `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS` — required positive integer
-  maximum per live Checkout Session. This is not an aggregate volume cap.
+  maximum per live Checkout Session.
+- `AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS` — required non-empty
+  server-only comma-separated opaque buyer account UUID allowlist.
+- `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS`,
+  `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS`, and
+  `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS` — required positive
+  immutable-gross, completed-payment-slot, and concurrently payable Session caps.
+- `AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES` and
+  `AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES` — required positive
+  Session reservation and missing-fee/net monitoring windows. Checkout TTL must
+  be 31–1440 minutes: 31 leaves request round-trip headroom above Stripe's
+  30-minute API minimum, while 1440 is Stripe's maximum. The exact expected
+  expiry timestamp is stored and sent to Stripe; only a signed completion or
+  `checkout.session.expired` event releases a created Session's capacity.
 - `AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` and
   `NEXT_PUBLIC_AGENTVOUCH_BUYER_CARD_ACCESS_ENABLED` — separate server/public
   gates for the account-scoped walletless path.

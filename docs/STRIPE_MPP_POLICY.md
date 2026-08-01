@@ -63,16 +63,27 @@ Do not enable Stripe checkout unless all of the following are true:
 
 ### Additional gates for a live-key limited pilot
 
-- Live activation remains hard-disabled in source until every durable control
-  below exists. Environment acknowledgements cannot override missing code.
+- Live activation remains hard-disabled in source after the durable code controls
+  land. Environment acknowledgements cannot override missing founder/external
+  evidence or explicit activation review.
 
 - `AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS` contains a non-empty exact skill
   UUID allowlist. Missing or malformed values fail closed.
 - `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS` contains a positive integer
   per-session ceiling. Missing, malformed, or over-ceiling values fail closed.
-- A durable amount/fee/net pilot ledger and atomic aggregate GMV or completed-
-  payment cap are implemented and verified. The skill allowlist and per-charge
-  ceiling do not satisfy this gate.
+- `AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS` contains only opaque buyer
+  account UUIDs, and positive gross/completed-payment/concurrent-reservation,
+  reservation-TTL, and reconciliation-SLA values are configured. These values
+  remain server-only.
+- The additive amount/fee/net pilot ledger atomically reserves aggregate gross,
+  completed-payment slots, and concurrent Sessions. Gross is never restored by
+  failure, expiry, refund, or dispute; changing that policy requires a new
+  founder decision and code review.
+- Checkout TTL is restricted to 31–1440 minutes. A locally elapsed timestamp
+  never releases an unpaid reservation. Every reserved/session-created/review
+  row holds its slots until an explicit terminal transition; Stripe's signed
+  completion or `checkout.session.expired` event is authoritative for a created
+  Session.
 - The founder has recorded, without placeholders, the pilot's buyer/listing
   scope, end condition, merchant-of-record position, author payout policy,
   tax/KYC owner, refund/reinstatement owner, customer support identity, and

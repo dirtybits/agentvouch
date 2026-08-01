@@ -6,6 +6,7 @@ import { initializeDatabase, sql } from "@/lib/db";
 import {
   STRIPE_MIN_CHARGE_USD_CENTS,
   createCheckoutSession,
+  expireCheckoutSession,
   getStripeCheckoutActivation,
   getStripeLivePilotScope,
   usdcMicrosToUsdCents,
@@ -24,6 +25,13 @@ import { checkRateLimit, clientIpFromRequest } from "@/lib/rateLimit";
 import { getBuyerSession, isSameOriginMutation } from "@/lib/buyerSession";
 import { isBuyerCardAccessServerEnabled } from "@/lib/buyerAuthConfig";
 import { hasActiveMarketplaceAccessGrant } from "@/lib/buyerAccessGrants";
+import {
+  StripeLivePilotCapError,
+  attachStripeLivePilotCheckoutSession,
+  closeStripeLivePilotReservationAfterApiFailure,
+  reserveStripeLivePilotCheckout,
+  markStripeLivePilotReview,
+} from "@/lib/stripeLivePilot";
 
 const STRIPE_CHECKOUT_IP_LIMIT = { limit: 20, windowMs: 15 * 60_000 };
 const STRIPE_CHECKOUT_WALLET_LIMIT = { limit: 5, windowMs: 10 * 60_000 };
@@ -57,9 +65,9 @@ export async function POST(req: NextRequest) {
       : !activation.serverFlagEnabled
       ? "Set AGENTVOUCH_STRIPE_CHECKOUT_ENABLED=true."
       : !activation.livePilotScopeReady
-      ? "Configure a valid AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS allowlist and AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS ceiling."
+      ? "Configure the complete live-pilot buyer/skill scope, reservation policy, and unit/GMV/payment/concurrency caps."
       : !activation.livePilotImplementationReady
-      ? "The live pilot remains source-disabled until buyer allowlisting, immutable reservations, and atomic exposure caps are implemented."
+      ? "The live pilot remains source-disabled pending founder decisions and external activation gates."
       : "Install the production edge rate limit, then set AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY=true.";
     return NextResponse.json(
       {
@@ -135,6 +143,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const livePilotScope =
+    activation.keyMode === "live" ? getStripeLivePilotScope() : null;
+  if (
+    activation.keyMode === "live" &&
+    (!livePilotScope ||
+      !buyerSession ||
+      !livePilotScope.buyerAccountIds.includes(
+        buyerSession.accountId.toLowerCase()
+      ))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "This buyer account is not included in the limited live card pilot.",
+      },
+      { status: 403 }
+    );
+  }
+
   const auth = body.auth;
   const verification = accountCheckout
     ? { valid: false, pubkey: null, error: null }
@@ -190,8 +217,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
-    const livePilotScope =
-      activation.keyMode === "live" ? getStripeLivePilotScope() : null;
     if (
       activation.keyMode === "live" &&
       !livePilotScope?.skillIds.includes(skill.id.toLowerCase())
@@ -286,22 +311,113 @@ export async function POST(req: NextRequest) {
     }
 
     const base = resolveBaseUrl(req);
-    const session = await createCheckoutSession({
-      skillDbId: skill.id,
-      skillName: skill.name,
-      buyer: accountCheckout
-        ? { kind: "account", accountId: buyerSession!.accountId }
-        : { kind: "wallet", pubkey: verification.pubkey! },
-      amountUsdcMicros: micros.toString(),
-      amountUsdCents,
-      recourseDisclosureVersion: body.cardDisclosureVersion,
-      successUrl: `${base}/skills/${skill.id}?stripe=success`,
-      cancelUrl: `${base}/skills/${skill.id}?stripe=cancelled`,
-      customerEmail: body.customerEmail?.trim() || undefined,
-    });
+    // Store and send one exact expected-expiry timestamp. The 31-minute
+    // minimum leaves round-trip headroom above Stripe's 30-minute API floor.
+    // Only a signed Stripe lifecycle event releases a created Session's slot.
+    const livePilotExpiresAtUnixSeconds = livePilotScope
+      ? Math.floor(Date.now() / 1000) +
+        livePilotScope.reservationTtlMinutes * 60
+      : null;
+    const reservation = livePilotScope
+      ? await reserveStripeLivePilotCheckout({
+          buyerAccountId: buyerSession!.accountId,
+          skillDbId: skill.id,
+          recourseDisclosureVersion: body.cardDisclosureVersion,
+          amountUsdCents,
+          expiresAtUnixSeconds: livePilotExpiresAtUnixSeconds!,
+          scope: livePilotScope,
+        })
+      : null;
+    let session;
+    try {
+      session = await createCheckoutSession({
+        skillDbId: skill.id,
+        skillName: skill.name,
+        buyer: accountCheckout
+          ? { kind: "account", accountId: buyerSession!.accountId }
+          : { kind: "wallet", pubkey: verification.pubkey! },
+        amountUsdcMicros: micros.toString(),
+        amountUsdCents,
+        recourseDisclosureVersion: body.cardDisclosureVersion,
+        successUrl: `${base}/skills/${skill.id}?stripe=success`,
+        cancelUrl: `${base}/skills/${skill.id}?stripe=cancelled`,
+        customerEmail: body.customerEmail?.trim() || undefined,
+        ...(reservation && livePilotScope
+          ? {
+              livePilotReservationId: reservation.reservationId,
+              expiresAtUnixSeconds: livePilotExpiresAtUnixSeconds!,
+            }
+          : {}),
+      });
+    } catch (error) {
+      if (reservation) {
+        await closeStripeLivePilotReservationAfterApiFailure(
+          reservation.reservationId,
+          getErrorMessage(error)
+        );
+      }
+      throw error;
+    }
+    if (reservation) {
+      try {
+        await attachStripeLivePilotCheckoutSession({
+          reservationId: reservation.reservationId,
+          checkoutSessionId: session.id,
+        });
+      } catch (attachError) {
+        let sessionExpired = false;
+        try {
+          await expireCheckoutSession(session.id);
+          sessionExpired = true;
+        } catch (expireError) {
+          // The Session may still be payable. Preserve a durable review row;
+          // a later signed webhook may recover by binding this exact Session
+          // to the immutable reservation metadata.
+          await markStripeLivePilotReview({
+            reservationId: reservation.reservationId,
+            reason: `Checkout Session ${
+              session.id
+            } attachment failed (${getErrorMessage(
+              attachError
+            )}); expiration also failed (${getErrorMessage(expireError)})`,
+          });
+        }
+        if (sessionExpired) {
+          try {
+            await closeStripeLivePilotReservationAfterApiFailure(
+              reservation.reservationId,
+              `Checkout Session attachment failed and Session was expired: ${getErrorMessage(
+                attachError
+              )}`
+            );
+          } catch (closeError) {
+            // Payment is impossible after successful expiration. If the DB is
+            // transiently unavailable the immutable row remains reserved and
+            // consumes gross capacity; the stale-reservation monitor exposes it.
+            console.error(
+              `Stripe live-pilot Session ${
+                session.id
+              } was expired but reservation close failed: ${getErrorMessage(
+                closeError
+              )}`
+            );
+          }
+        }
+        throw attachError;
+      }
+    }
 
     return NextResponse.json({ sessionId: session.id, url: session.url });
   } catch (error) {
+    if (error instanceof StripeLivePilotCapError) {
+      return NextResponse.json(
+        {
+          error:
+            "The limited live card pilot has reached its configured exposure limit.",
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { error: getErrorMessage(error) },
       { status: 500 }
