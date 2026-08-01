@@ -319,16 +319,19 @@ export async function markStripeLivePilotFulfilled(
   reservationId: string
 ): Promise<void> {
   await ensureStripeLivePilotSchema();
-  await getDb()`
-    UPDATE stripe_live_pilot_payments
-    SET status = 'fulfilled',
-        fulfilled_at = COALESCE(fulfilled_at, NOW()),
-        review_reason = NULL,
-        updated_at = NOW()
-    WHERE reservation_id = ${reservationId}::uuid
-      AND status IN ('paid', 'fulfilled')
-      AND paid_at IS NOT NULL
-  `;
+  await getDb().transaction((txn) => [
+    txn`SELECT pg_advisory_xact_lock(hashtextextended(${PILOT_LOCK_KEY}, 0))`,
+    txn`
+      UPDATE stripe_live_pilot_payments
+      SET status = 'fulfilled',
+          fulfilled_at = COALESCE(fulfilled_at, NOW()),
+          review_reason = NULL,
+          updated_at = NOW()
+      WHERE reservation_id = ${reservationId}::uuid
+        AND status IN ('paid', 'fulfilled', 'review')
+        AND paid_at IS NOT NULL
+    `,
+  ]);
 }
 
 export async function markStripeLivePilotReview(input: {

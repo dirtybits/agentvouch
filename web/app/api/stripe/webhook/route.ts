@@ -361,7 +361,7 @@ export async function POST(req: NextRequest) {
       !isUuid(reservationId) ||
       !isUuid(buyerAccountId) ||
       !isUuid(skillDbId) ||
-      recourseDisclosureVersion !== CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION ||
+      !recourseDisclosureVersion ||
       paymentFlow !== STRIPE_ACCOUNT_PAYMENT_FLOW ||
       !Number.isSafeInteger(expiredSession.amount_total) ||
       expiredSession.amount_total! <= 0

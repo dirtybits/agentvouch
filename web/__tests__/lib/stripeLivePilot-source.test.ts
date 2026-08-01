@@ -19,6 +19,8 @@ describe("Stripe live-pilot ledger source invariants", () => {
       "status IN ('reserved', 'session-created', 'review')"
     );
     expect(source).toContain("paid_at IS NULL");
+    expect(source).toContain("status IN ('paid', 'fulfilled', 'review')");
+    expect(source).toContain("review_reason = NULL");
     expect(source).not.toContain("reservation_expires_at > NOW()");
     expect(source).toContain("TO_TIMESTAMP(${input.expiresAtUnixSeconds})");
     expect(source).not.toContain("SET amount_usd_cents =");

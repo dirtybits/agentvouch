@@ -1110,6 +1110,41 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mocks.recordStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
   });
 
+  it("expires an in-flight pilot reservation created under an earlier disclosure version", async () => {
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_expired_previous_disclosure",
+      type: "checkout.session.expired",
+      livemode: true,
+      data: {
+        object: {
+          id: "cs_live_expired_previous_disclosure",
+          amount_total: 100,
+          metadata: {
+            live_pilot_reservation_id: "00000000-0000-4000-8000-000000000003",
+            buyer_account_id: buyerAccountId,
+            skill_db_id: skillId,
+            recourse_disclosure_version: "2026-06-01",
+            price_usdc_micros: "1000000",
+            payment_flow: "stripe-account-access",
+          },
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.expireStripeLivePilotReservation).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      checkoutSessionId: "cs_live_expired_previous_disclosure",
+      buyerAccountId,
+      skillDbId: skillId,
+      recourseDisclosureVersion: "2026-06-01",
+      grossUsdCents: 100,
+    });
+  });
+
   it("does not grant when a checkout event omits livemode", async () => {
     const event = paidAccountSessionEvent();
     delete (event as { livemode?: boolean }).livemode;
