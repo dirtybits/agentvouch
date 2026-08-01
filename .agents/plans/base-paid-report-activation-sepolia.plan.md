@@ -151,6 +151,10 @@ stage never authorizes the next stage. Base mainnet is outside every stage below
 
 ### Base Sepolia Deployment Gate B — Paused Deployment
 
+This roll-up gate contains two separately approved transaction phases: deploy without initialization
+(Gate B1) and verify, pause, configure, and transfer roles (Gate B2). Gate B is complete only when
+both phases are complete and the readback evidence passes.
+
 - [ ] Exact Base Sepolia chain ID, RPC, deployer, deployer balance/nonce, USDC address, compiler inputs, library address, predicted facade address, and verification inputs are independently confirmed.
 - [ ] `SLASH_PERCENTAGE`, immutable restitution recipient, final role holders/custody, fallback cranker, monitor owner, incident commander, and exposure policy are approved and recorded.
 - [ ] Facade and library deploy and verify separately; runtime code hashes and caller link references match the candidate-verification artifacts.

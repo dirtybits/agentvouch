@@ -85,6 +85,10 @@ The initial inventory called A1-A5 “Base mainnet requirements.” The reposito
 across Solana and Base. The canonical name is therefore “AgentVouch Protocol Requirement A1-A5.” The
 Base readiness table reports the Base implementation status for each cross-chain requirement.
 
+Base Sepolia Deployment Gate B is a roll-up stage. It is complete only when Gate B1 and Gate B2 are
+both complete. Gate B1 and Gate B2 keep separate approvals because each permits a separate
+public-network transaction phase.
+
 ## Verification Note — 2026-08-01
 
 - Repository format check passed.
@@ -95,3 +99,9 @@ Base readiness table reports the Base implementation status for each cross-chain
 - A repository search found no headings or table rows that start with a bare deployment gate or
   protocol requirement identifier.
 - Runtime tests and the production build were skipped because this change edits documentation only.
+
+## Review Note — 2026-08-01
+
+Automated review found that the state table listed Gate B1 and Gate B2 but omitted the Gate B roll-up.
+The table and activation plan now define Gate B as the paused-deployment roll-up. Gate B completes
+only after both separately approved sub-gates and the readback evidence complete.
