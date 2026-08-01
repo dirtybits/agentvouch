@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   let body: { challengeId?: unknown; signature?: unknown };
   try {
-    body = await request.json();
+    body = (await request.json()) ?? {};
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
