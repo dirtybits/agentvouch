@@ -44,6 +44,7 @@ forge fmt --root contracts/base-poc --check
 forge test --root contracts/base-poc -vv
 forge build --root contracts/base-poc --sizes
 npm run verify:base-size
+npm run verify:base-a1-client-abi
 npm run verify:chain-map
 contracts/base-poc/scripts/local-a1-rehearsal.sh
 ```
@@ -68,6 +69,60 @@ The rehearsal proves:
   while paused.
 
 Do not proceed until Gate A in the activation plan is explicitly approved.
+
+`verify:base-a1-client-abi` requires the fresh
+`contracts/base-poc/out/AgentVouchEvm.sol/AgentVouchEvm.json` artifact. It fails closed when the
+artifact is absent and compares canonical function inputs, outputs, and mutability; event parameter
+types and indexed fields; and error inputs against the web, isolated UI, and harness clients. The web
+client must continue to omit the five operator-only methods.
+
+### Temporary pinned Foundry toolchain when the host has none
+
+The repository pins `solc = "0.8.28"` and the Solidity dependency versions used in CI, but the
+GitHub workflow currently requests Foundry `stable`. Gate A should use Foundry `v1.7.1`, matching
+the version recorded for the original Base implementation and the official stable release verified
+on 2026-07-31. On Apple Silicon, the official archive is
+`foundry_v1.7.1_darwin_arm64.tar.gz` with SHA-256
+`eacdc67718fac857cad9e19c7f6729dd80de731d09df81856391d093cfcab547`.
+
+The following is a reviewable, non-system installation recipe. It keeps the binaries in a new
+temporary directory and does not modify `~/.foundry`, shell profiles, or system package state. The
+archive checksum and extracted `forge`/`cast`/`anvil` versions were verified during the 2026-07-31
+non-broadcast pass:
+
+```bash
+A1_FOUNDRY_DIR="$(mktemp -d /private/tmp/agentvouch-foundry-v1.7.1.XXXXXX)"
+curl -fL \
+  https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_darwin_arm64.tar.gz \
+  -o "$A1_FOUNDRY_DIR/foundry_v1.7.1_darwin_arm64.tar.gz"
+printf '%s  %s\n' \
+  eacdc67718fac857cad9e19c7f6729dd80de731d09df81856391d093cfcab547 \
+  "$A1_FOUNDRY_DIR/foundry_v1.7.1_darwin_arm64.tar.gz" | shasum -a 256 -c -
+mkdir -p "$A1_FOUNDRY_DIR/bin"
+tar -xzf "$A1_FOUNDRY_DIR/foundry_v1.7.1_darwin_arm64.tar.gz" \
+  -C "$A1_FOUNDRY_DIR/bin"
+export PATH="$A1_FOUNDRY_DIR/bin:$PATH"
+forge --version
+cast --version
+anvil --version
+```
+
+Vendor the exact CI dependencies rather than using an unpinned setup clone:
+
+```bash
+git clone --depth 1 --branch v1.16.1 \
+  https://github.com/foundry-rs/forge-std.git contracts/base-poc/lib/forge-std
+git clone --depth 1 --branch v5.1.0 \
+  https://github.com/OpenZeppelin/openzeppelin-contracts.git \
+  contracts/base-poc/lib/openzeppelin-contracts
+git clone --depth 1 --branch v0.7.0 \
+  https://github.com/eth-infinitism/account-abstraction.git \
+  contracts/base-poc/lib/account-abstraction
+```
+
+Downloading this toolchain or the vendored dependencies is a separate network action. It does not
+authorize a script dry run, local rehearsal, signer access, or public-network broadcast. Pinning the
+GitHub workflow itself to `v1.7.1` changes the build toolchain and requires explicit human approval.
 
 ### Read-only deployment preflight, monitor, and Gate-C readiness
 
