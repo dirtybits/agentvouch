@@ -26,7 +26,7 @@ todos:
 isProject: false
 ---
 
-# A2 S3 - Governed Dispute Resolution
+# AgentVouch Protocol Requirement A2, Stage S3 — Governed Dispute Resolution
 
 ## Goal
 

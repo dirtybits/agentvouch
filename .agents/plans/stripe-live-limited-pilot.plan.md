@@ -7,7 +7,7 @@ todos:
     status: pending
   - id: finish-live-pilot-controls
     content: Add the buyer allowlist, durable reservation and amount-fee-net ledger, and atomic GMV/completed-payment caps on top of the shipped live-key skill allowlist and unit ceiling.
-    status: pending
+    status: completed
   - id: prove-external-activation-gates
     content: Record merchant-of-record/customer-facing identity, payout and tax/KYC ownership, publish and verify the Vercel WAF rule, and prove production webhook/schema/monitoring readiness.
     status: pending
@@ -65,20 +65,25 @@ remains the path for protocol-visible settlement and recourse.
   Checkout Session and PaymentIntent metadata. Matching public copy exists at
   `/docs#card-checkout-recourse` and `web/public/skill.md`. It is not production-verified until the
   dormant deploy/browser check completes.
-- This preparation slice also makes live-key checkout fail closed unless
-  `AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS` is a valid non-empty skill UUID allowlist and
-  `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS` is a positive integer ceiling. Unlisted and
-  over-ceiling skills are rejected before Stripe is called.
+- Live-key scope now requires non-empty server-only buyer-account and skill UUID allowlists plus
+  positive unit, gross, completed-payment, concurrent-reservation, reservation-TTL, and
+  fee/net-reconciliation-SLA values. Unlisted buyers/skills and over-cap reservations are rejected
+  before Stripe is called.
 - Live Checkout Session creation and live webhook fulfillment are now source-disabled regardless
-  of environment values until the buyer allowlist, immutable reservation ledger, and atomic caps
-  land. `stripe:ops preflight` reports that blocker and cannot go green for a live key. Every live
-  key also requires the external-WAF acknowledgement, including on Vercel previews.
+  of environment values pending founder decisions, schema rehearsal, WAF proof, monitoring
+  readiness, and explicit activation review. `stripe:ops preflight` reports that blocker and cannot
+  go green for a live key. Every live key also requires the external-WAF acknowledgement, including
+  on Vercel previews.
 - Account refund/dispute handling now writes a payment-reference terminal marker under the same
   advisory lock used by grant creation. A terminal event without account/skill metadata still
   prevents a later completion event from granting access.
-- Missing: a buyer-account allowlist; a durable checkout reservation and gross/fee/net pilot
-  ledger; atomic aggregate GMV and completed-payment caps; verified Vercel WAF rule; founder
-  merchant-of-record, payout, tax/KYC, support, refund, duration, and exposure decisions.
+- The additive `stripe_live_pilot_payments` ledger, global advisory-lock reservation gate,
+  immutable gross accounting, completed-payment slot and concurrency caps, Session expiration,
+  payment/refund/dispute lifecycle, fee/net reconciliation, and read-only monitor are implemented
+  locally but have not been rehearsed on a disposable production-copy database or deployed.
+- Missing: verified Vercel WAF rule; founder merchant-of-record, payout, tax/KYC, support, refund,
+  duration, expiry/SLA, and exposure decisions; production-like rehearsal and explicit activation
+  review.
 - `usdcMicrosToUsdCents` still applies `1 USDC ~= 1 USD`. That cannot silently become a live
   treasury policy.
 
@@ -87,10 +92,17 @@ remains the path for protocol-visible settlement and recourse.
 - Live-pilot checkout is account-scoped only; the legacy wallet-bound Stripe path stays test-only.
 - Live mode fails closed when its explicit scope is absent. A global feature flag is not a pilot
   boundary.
-- Missing durable controls are a source-controlled stop gate, not another environment
-  acknowledgement.
-- The source-level skill allowlist and per-charge ceiling are useful defense in depth, but they do
-  not make the pilot ready without buyer scope, durable accounting, and atomic aggregate caps.
+- Durable controls do not remove the source stop gate. Environment acknowledgements cannot replace
+  founder decisions or external activation evidence.
+- Gross capacity is deliberately conservative and immutable: failed, expired, refunded, and
+  disputed reservations do not restore aggregate gross capacity. Every concurrently payable
+  Session also reserves a completed-payment slot, preventing later completion from exceeding the
+  cap.
+- Checkout TTL is 31–1440 minutes. One exact timestamp is stored in the reservation and sent to
+  Stripe, but local time only makes any unpaid reservation stale for monitoring. Every unpaid
+  `reserved`, `session-created`, or `review` row keeps its payable/completed-payment slot until an
+  explicit DB terminal transition; a created Session normally converges through a signed paid or
+  `checkout.session.expired` event.
 - Recourse acknowledgement is versioned and payment-bound through Stripe metadata. Refund and
   dispute revocation stays earlier than all grant guards so a bad configuration cannot leave access
   active.
@@ -155,35 +167,48 @@ decision; do not treat these sources or this plan as legal/tax advice:
 
 ## Files And Implementation Work
 
-### Already prepared in source
+### Implemented in source (still dormant)
 
 - `web/lib/stripePolicyCopy.ts`: versioned shared buyer-recourse disclosure.
 - `web/app/skills/[id]/SkillDetailClient.tsx`: required checkbox at the Pay-by-Card decision point;
   binds consent to the current buyer session/wallet plus skill and sends the accepted version.
 - `web/app/docs/page.tsx` and `web/public/skill.md`: public recourse boundary.
-- `web/lib/stripe.ts`: parses a live-only skill UUID allowlist and unit ceiling; live activation
-  fails closed when either is missing/malformed and remains source-disabled until the durable
-  controls below are implemented.
+- `web/lib/stripe.ts`: parses the complete live-only buyer/skill/cap/TTL/SLA scope; carries the
+  reservation as Stripe idempotency and Session/PaymentIntent metadata; supports best-effort
+  Session expiration and authoritative balance-transaction fee/net reads.
+- `web/lib/stripeLivePilotPolicy.ts` and `web/lib/stripeLivePilot.ts`: pure cap decisions plus an
+  additive new-table ledger with immutable reservation facts, a global transaction advisory lock,
+  lifecycle convergence, and read-only aggregate monitoring.
 - `web/app/api/stripe/checkout/route.ts`: requires the current disclosure version, account-scoped
   live checkout, allowlisted skill, and under-ceiling amount before calling Stripe.
 - `web/app/api/stripe/webhook/route.ts` and `web/lib/buyerAccessGrants.ts`: all live fulfillment is
   source-disabled; refund/dispute revocation remains earlier and records an atomic payment-reference
   terminal marker even when buyer metadata is absent.
-- `web/scripts/stripe-limited-preview-ops.ts`: reports missing live scope, account-path flags, and
-  source implementation readiness as activation blockers.
+- `web/scripts/stripe-limited-preview-ops.ts`: reports missing scope/activation gates and read-only
+  gross, paid, refunded, fee, net, remaining-cap, stale, missing-financial, and review state.
 
-### Required before activation
+### 2026-07-31 implementation divergence
+
+The implementation uses additive, race-tolerant runtime `CREATE TABLE IF NOT EXISTS` for one new
+table instead of adding a migration that could target the wrong live database. No existing table,
+constraint, or row is changed. The initial empty-table definition has a reservation UUID primary
+key, inline unique Checkout Session and PaymentIntent references, positive/nonnegative amount
+checks, and an allowed-status check; it performs no runtime `ALTER` or index creation over live
+data. Stripe idempotency plus the global advisory lock and immutable-match predicates provide the
+transaction boundary. This must still be rehearsed against a disposable branch copied from the
+intended `agentvouch-postgres` project.
+
+### Completed code controls
 
 1. Add `AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS` to the server-only live scope parser. Require
    a non-empty canonical UUID set for live mode; reject a non-member before Stripe session creation.
    Expose only `eligible: true|false` to the client so raw account UUIDs never become a public env.
-2. Add a guarded, additive `web/scripts/stripe-live-pilot-migration.ts` with read-only `preflight`
-   and `EXPECTED_DATABASE_HOST`-gated `migrate`. Rehearse it on a disposable branch copied from the
-   verified `agentvouch-postgres` project before production.
+2. Bootstrap the new table additively at the first live-pilot reservation; the read-only monitor
+   treats a missing table as an uninitialized state and never runs DDL.
 3. Create `stripe_live_pilot_payments` with an immutable reservation UUID; buyer account, skill,
    disclosure version, Checkout Session and PaymentIntent references; amount USD cents; Stripe fee
    and net USD cents (nullable until reconciled); status; refund/dispute totals; timestamps; and
-   idempotent unique constraints. Do not put email or raw Stripe payloads in this table.
+   lifecycle fields. Do not put email or raw Stripe payloads in this table.
 4. Before calling Stripe, acquire one global pilot advisory lock, count/sum all reserved and
    completed rows according to the founder's recorded cap semantics, reserve the exact amount, and
    reject when the payment-count, concurrent-session, or aggregate gross cap would be exceeded.
@@ -206,6 +231,14 @@ decision; do not treat these sources or this plan as legal/tax advice:
 10. Add behavioral tests for missing/invalid buyer and skill allowlists, unit/payment/GMV caps,
     concurrent reservation attempts, Stripe failure, paid replay, grant failure, expiry, full and
     partial refunds, dispute/reinstatement posture, and operator output.
+
+### Remaining activation work
+
+- Rehearse additive bootstrap, caps, lifecycle, reconciliation, monitor, and rollback against a
+  disposable copy of the intended production database.
+- Complete every founder decision and external gate in this plan, including exact scope values,
+  WAF proof, merchant-of-record/tax/payout/support ownership, and monitoring/on-call evidence.
+- Keep the source stop gate false until that evidence is reviewed in a separate activation change.
 
 ## External Vercel WAF Gate
 
@@ -259,13 +292,26 @@ Behavioral acceptance requires evidence that:
 8. Setting the server and public checkout/card flags false stops new sessions while webhook
    refunds, disputes, delayed payments, and reconciliation continue.
 
+### Local implementation verification (2026-08-01)
+
+- Focused Stripe/ledger/operator suite: 5 files, 76 tests passed.
+- Full web Vitest suite: 125 files, 886 tests passed.
+- Web typecheck, ESLint, repository Prettier check, and `git diff --check`: passed.
+- After replacing the unreconciled copied dependency tree with a canonical clean lockfile install,
+  the Next.js 16.1.6 webpack production build completed successfully; the existing `ox`
+  dynamic-dependency warning remained. No dependency or lockfile change was required.
+- Not run: any live/test Stripe API call, card charge, deployment, Vercel/Stripe environment
+  change, production database DDL, disposable-Neon rehearsal, WAF configuration, browser smoke, or
+  real webhook. The source readiness constant remains `false`, so no environment combination can
+  activate live Checkout Session creation or fulfillment from this change.
+
 ## Rollout
 
 1. Merge and deploy code/docs with all Stripe checkout and buyer-card flags false. Verify the
    production card route returns disabled and no card control renders. Browser-check the new public
    docs independently.
-2. Complete founder decisions and external reviews. Implement/rehearse the buyer allowlist, ledger,
-   atomic caps, and monitor on a disposable Neon branch.
+2. Complete founder decisions and external reviews. Rehearse the buyer allowlist, ledger, atomic
+   caps, and monitor on a disposable Neon branch.
 3. Run the full Stripe test-mode matrix on a production-like preview, including WAF Log evidence,
    cap exhaustion, rollback, and post-rollback refund/dispute delivery.
 4. Publish the founder-approved WAF enforcement rule; verify production Firewall traffic and record

@@ -134,6 +134,29 @@ describe("buyer wallet link routes", () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it("rejects literal JSON null before creating or verifying a wallet-link challenge", async () => {
+    const challengeResponse = await createChallenge(
+      post("/api/account/wallet-links/challenge", null)
+    );
+    expect(challengeResponse.status).toBe(400);
+    await expect(challengeResponse.json()).resolves.toEqual({
+      error:
+        "Use a valid address on the configured Solana network or Base Sepolia.",
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
+
+    const verifyResponse = await verifyChallenge(
+      post("/api/account/wallet-links/verify", null)
+    );
+    expect(verifyResponse.status).toBe(400);
+    await expect(verifyResponse.json()).resolves.toEqual({
+      error: "Invalid wallet link proof.",
+    });
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(mocks.consume).not.toHaveBeenCalled();
+  });
+
   it("rejects Base mainnet and creates a server-authored Base Sepolia challenge", async () => {
     let response = await createChallenge(
       post("/api/account/wallet-links/challenge", {

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   createCheckoutSession: vi.fn(),
+  expireCheckoutSession: vi.fn(),
   getStripeCheckoutActivation: vi.fn(),
   getStripeLivePilotScope: vi.fn(),
   detectStripeKeyMode: vi.fn(),
@@ -24,6 +25,17 @@ const mocks = vi.hoisted(() => ({
   hasActiveMarketplaceAccessGrant: vi.fn(),
   recordStripeMarketplaceAccessGrant: vi.fn(),
   recordStripeMarketplacePaymentTerminalState: vi.fn(),
+  reserveStripeLivePilotCheckout: vi.fn(),
+  attachStripeLivePilotCheckoutSession: vi.fn(),
+  closeStripeLivePilotReservationAfterApiFailure: vi.fn(),
+  recordStripeLivePilotPaymentCompleted: vi.fn(),
+  markStripeLivePilotFulfilled: vi.fn(),
+  markStripeLivePilotReview: vi.fn(),
+  expireStripeLivePilotReservation: vi.fn(),
+  recordStripeLivePilotTerminalState: vi.fn(),
+  reconcileStripeLivePilotFinancials: vi.fn(),
+  getStripePaymentFinancials: vi.fn(),
+  isStripeLivePilotFulfillmentSourceEnabled: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -40,11 +52,17 @@ vi.mock("@/lib/stripe", () => ({
   STRIPE_LIVE_PILOT_IMPLEMENTATION_READY: false,
   createCheckoutSession: (...args: unknown[]) =>
     mocks.createCheckoutSession(...args),
+  expireCheckoutSession: (...args: unknown[]) =>
+    mocks.expireCheckoutSession(...args),
   detectStripeKeyMode: (...args: unknown[]) =>
     mocks.detectStripeKeyMode(...args),
   getStripeCheckoutActivation: () => mocks.getStripeCheckoutActivation(),
   getStripeLivePilotScope: () => mocks.getStripeLivePilotScope(),
+  getStripePaymentFinancials: (...args: unknown[]) =>
+    mocks.getStripePaymentFinancials(...args),
   isStripeEnabled: () => mocks.isStripeEnabled(),
+  isStripeLivePilotFulfillmentSourceEnabled: () =>
+    mocks.isStripeLivePilotFulfillmentSourceEnabled(),
   stripeEventModeMismatch: (...args: unknown[]) =>
     mocks.stripeEventModeMismatch(...args),
   usdcMicrosToUsdCents: (micros: bigint) => Number((micros + 5000n) / 10000n),
@@ -69,6 +87,30 @@ vi.mock("@/lib/buyerAccessGrants", () => ({
     mocks.recordStripeMarketplaceAccessGrant(...args),
   recordStripeMarketplacePaymentTerminalState: (...args: unknown[]) =>
     mocks.recordStripeMarketplacePaymentTerminalState(...args),
+}));
+
+vi.mock("@/lib/stripeLivePilot", () => ({
+  StripeLivePilotCapError: class StripeLivePilotCapError extends Error {
+    reason = "gross-cap";
+  },
+  reserveStripeLivePilotCheckout: (...args: unknown[]) =>
+    mocks.reserveStripeLivePilotCheckout(...args),
+  attachStripeLivePilotCheckoutSession: (...args: unknown[]) =>
+    mocks.attachStripeLivePilotCheckoutSession(...args),
+  closeStripeLivePilotReservationAfterApiFailure: (...args: unknown[]) =>
+    mocks.closeStripeLivePilotReservationAfterApiFailure(...args),
+  recordStripeLivePilotPaymentCompleted: (...args: unknown[]) =>
+    mocks.recordStripeLivePilotPaymentCompleted(...args),
+  markStripeLivePilotFulfilled: (...args: unknown[]) =>
+    mocks.markStripeLivePilotFulfilled(...args),
+  markStripeLivePilotReview: (...args: unknown[]) =>
+    mocks.markStripeLivePilotReview(...args),
+  expireStripeLivePilotReservation: (...args: unknown[]) =>
+    mocks.expireStripeLivePilotReservation(...args),
+  recordStripeLivePilotTerminalState: (...args: unknown[]) =>
+    mocks.recordStripeLivePilotTerminalState(...args),
+  reconcileStripeLivePilotFinancials: (...args: unknown[]) =>
+    mocks.reconcileStripeLivePilotFinancials(...args),
 }));
 
 vi.mock("@/lib/rateLimit", () => ({
@@ -223,6 +265,14 @@ function paidAccountSessionEvent() {
   return event;
 }
 
+function livePaidAccountSessionEvent() {
+  const event = { ...paidAccountSessionEvent(), livemode: true };
+  (event.data.object.metadata as Record<string, string>)[
+    "live_pilot_reservation_id"
+  ] = "00000000-0000-4000-8000-000000000003";
+  return event;
+}
+
 describe("Stripe checkout and webhook routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -240,9 +290,16 @@ describe("Stripe checkout and webhook routes", () => {
     });
     mocks.getStripeLivePilotScope.mockReturnValue({
       skillIds: [skillId],
+      buyerAccountIds: [buyerAccountId],
       maxUnitUsdCents: 500,
+      maxGrossUsdCents: 1_000,
+      maxCompletedPayments: 3,
+      maxConcurrentReservations: 1,
+      reservationTtlMinutes: 31,
+      reconciliationSlaMinutes: 60,
     });
     mocks.isStripeEnabled.mockReturnValue(true);
+    mocks.isStripeLivePilotFulfillmentSourceEnabled.mockReturnValue(false);
     mocks.stripeEventModeMismatch.mockReturnValue(null);
     mocks.detectStripeKeyMode.mockReturnValue("test");
     mocks.checkRateLimit.mockReturnValue({
@@ -257,10 +314,28 @@ describe("Stripe checkout and webhook routes", () => {
     mocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(false);
     mocks.recordStripeMarketplaceAccessGrant.mockResolvedValue("active");
     mocks.recordStripeMarketplacePaymentTerminalState.mockResolvedValue([]);
+    mocks.reserveStripeLivePilotCheckout.mockResolvedValue({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+    });
+    mocks.attachStripeLivePilotCheckoutSession.mockResolvedValue(undefined);
+    mocks.closeStripeLivePilotReservationAfterApiFailure.mockResolvedValue(
+      undefined
+    );
+    mocks.recordStripeLivePilotPaymentCompleted.mockResolvedValue({
+      grantAllowed: true,
+      replay: false,
+    });
+    mocks.markStripeLivePilotFulfilled.mockResolvedValue(undefined);
+    mocks.markStripeLivePilotReview.mockResolvedValue(undefined);
+    mocks.expireStripeLivePilotReservation.mockResolvedValue(true);
+    mocks.recordStripeLivePilotTerminalState.mockResolvedValue(0);
+    mocks.reconcileStripeLivePilotFinancials.mockResolvedValue(true);
+    mocks.getStripePaymentFinancials.mockResolvedValue(null);
     mocks.createCheckoutSession.mockResolvedValue({
       id: "cs_test_123",
       url: "https://checkout.stripe.test/cs_test_123",
     });
+    mocks.expireCheckoutSession.mockResolvedValue(undefined);
     mocks.verifyWalletSignature.mockReturnValue({
       valid: true,
       pubkey: buyerPubkey,
@@ -474,7 +549,13 @@ describe("Stripe checkout and webhook routes", () => {
     });
     mocks.getStripeLivePilotScope.mockReturnValue({
       skillIds: ["00000000-0000-4000-8000-000000000099"],
+      buyerAccountIds: [buyerAccountId],
       maxUnitUsdCents: 500,
+      maxGrossUsdCents: 1_000,
+      maxCompletedPayments: 3,
+      maxConcurrentReservations: 1,
+      reservationTtlMinutes: 31,
+      reconciliationSlaMinutes: 60,
     });
     mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
     mocks.getBuyerSession.mockResolvedValue({
@@ -510,7 +591,13 @@ describe("Stripe checkout and webhook routes", () => {
     });
     mocks.getStripeLivePilotScope.mockReturnValue({
       skillIds: [skillId],
+      buyerAccountIds: [buyerAccountId],
       maxUnitUsdCents: 99,
+      maxGrossUsdCents: 1_000,
+      maxCompletedPayments: 3,
+      maxConcurrentReservations: 1,
+      reservationTtlMinutes: 31,
+      reconciliationSlaMinutes: 60,
     });
     mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
     mocks.getBuyerSession.mockResolvedValue({
@@ -529,6 +616,223 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(403);
     expect(body.error).toContain("maximum charge");
     expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unallowlisted live buyer before database or Stripe work", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    mocks.getStripeLivePilotScope.mockReturnValue({
+      skillIds: [skillId],
+      buyerAccountIds: ["00000000-0000-4000-8000-000000000099"],
+      maxUnitUsdCents: 500,
+      maxGrossUsdCents: 1_000,
+      maxCompletedPayments: 3,
+      maxConcurrentReservations: 1,
+      reservationTtlMinutes: 31,
+      reconciliationSlaMinutes: 60,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("buyer account");
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("atomically reserves live exposure before Stripe and binds the returned session", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.reserveStripeLivePilotCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buyerAccountId,
+        skillDbId: skillId,
+        amountUsdCents: 100,
+      })
+    );
+    expect(
+      mocks.reserveStripeLivePilotCheckout.mock.invocationCallOrder[0]
+    ).toBeLessThan(mocks.createCheckoutSession.mock.invocationCallOrder[0]);
+    const reservationInput = mocks.reserveStripeLivePilotCheckout.mock
+      .calls[0]?.[0] as { expiresAtUnixSeconds: number };
+    const checkoutInput = mocks.createCheckoutSession.mock.calls[0]?.[0] as {
+      expiresAtUnixSeconds: number;
+    };
+    expect(reservationInput.expiresAtUnixSeconds).toBe(
+      checkoutInput.expiresAtUnixSeconds
+    );
+    expect(mocks.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        livePilotReservationId: "00000000-0000-4000-8000-000000000003",
+        expiresAtUnixSeconds: expect.any(Number),
+      })
+    );
+    expect(mocks.attachStripeLivePilotCheckoutSession).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      checkoutSessionId: "cs_test_123",
+    });
+  });
+
+  it("durably closes a live reservation when Stripe session creation fails", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    mocks.createCheckoutSession.mockRejectedValueOnce(
+      new Error("Stripe unavailable")
+    );
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+
+    expect(res.status).toBe(500);
+    expect(
+      mocks.closeStripeLivePilotReservationAfterApiFailure
+    ).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000003",
+      "Stripe unavailable"
+    );
+    expect(mocks.attachStripeLivePilotCheckoutSession).not.toHaveBeenCalled();
+    expect(mocks.expireCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("expires a payable Session and closes its reservation when attachment fails", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    mocks.attachStripeLivePilotCheckoutSession.mockRejectedValueOnce(
+      new Error("database unavailable")
+    );
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+
+    expect(res.status).toBe(500);
+    expect(mocks.expireCheckoutSession).toHaveBeenCalledWith("cs_test_123");
+    expect(
+      mocks.closeStripeLivePilotReservationAfterApiFailure
+    ).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000003",
+      expect.stringContaining("Session was expired")
+    );
+  });
+
+  it("marks durable review when neither Session attachment nor expiration succeeds", async () => {
+    mocks.getStripeCheckoutActivation.mockReturnValue({
+      enabled: true,
+      stripeConfigured: true,
+      serverFlagEnabled: true,
+      productionEdgeRateLimitReady: true,
+      production: true,
+      keyMode: "live",
+      liveModeAcknowledged: true,
+      keyModePermitted: true,
+      livePilotScopeReady: true,
+      livePilotImplementationReady: true,
+    });
+    mocks.isBuyerCardAccessServerEnabled.mockReturnValue(true);
+    mocks.getBuyerSession.mockResolvedValue({
+      accountId: buyerAccountId,
+      provider: "clerk",
+      providerSubject: "user_123",
+      sessionId: "sess_123",
+      issuedAt: null,
+    });
+    mocks.attachStripeLivePilotCheckoutSession.mockRejectedValueOnce(
+      new Error("database unavailable")
+    );
+    mocks.expireCheckoutSession.mockRejectedValueOnce(
+      new Error("Stripe unavailable")
+    );
+
+    const res = await checkoutPOST(
+      checkoutRequest({ skillId }, { Origin: "http://localhost" })
+    );
+
+    expect(res.status).toBe(500);
+    expect(mocks.markStripeLivePilotReview).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      reason: expect.stringContaining("expiration also failed"),
+    });
   });
 
   it("rejects cross-origin account checkout", async () => {
@@ -691,8 +995,8 @@ describe("Stripe checkout and webhook routes", () => {
     );
   });
 
-  it("keeps all live fulfillment source-disabled until durable pilot controls land", async () => {
-    const event = { ...paidAccountSessionEvent(), livemode: true };
+  it("keeps all live fulfillment source-disabled pending founder and external gates", async () => {
+    const event = livePaidAccountSessionEvent();
     mocks.verifyAndParseWebhook.mockReturnValue(event);
 
     const res = await webhookPOST(webhookRequest({}));
@@ -705,6 +1009,140 @@ describe("Stripe checkout and webhook routes", () => {
     expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "needs-review", needsReview: true })
     );
+  });
+
+  it("hypothetically records a live payment before grant and reconciles after fulfillment", async () => {
+    mocks.isStripeLivePilotFulfillmentSourceEnabled.mockReturnValue(true);
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mocks.getStripePaymentFinancials.mockResolvedValue({
+      grossUsdCents: 100,
+      feeUsdCents: 3,
+      netUsdCents: 97,
+    });
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: "0x1234" }])
+    );
+    mocks.verifyAndParseWebhook.mockReturnValue(livePaidAccountSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.recordStripeLivePilotPaymentCompleted).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      checkoutSessionId: "cs_test_123",
+      paymentIntentId: "pi_test_123",
+      buyerAccountId,
+      skillDbId: skillId,
+      recourseDisclosureVersion: CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
+      grossUsdCents: 100,
+    });
+    expect(
+      mocks.recordStripeLivePilotPaymentCompleted.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      mocks.recordStripeMarketplaceAccessGrant.mock.invocationCallOrder[0]
+    );
+    expect(mocks.markStripeLivePilotFulfilled).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000003"
+    );
+    expect(mocks.reconcileStripeLivePilotFinancials).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      paymentIntentId: "pi_test_123",
+      grossUsdCents: 100,
+      feeUsdCents: 3,
+      netUsdCents: 97,
+    });
+  });
+
+  it("marks a paid live reservation for review when access grant persistence fails", async () => {
+    mocks.isStripeLivePilotFulfillmentSourceEnabled.mockReturnValue(true);
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mockSql.mockReturnValue(
+      vi.fn().mockResolvedValue([{ id: skillId, evm_listing_id: "0x1234" }])
+    );
+    mocks.recordStripeMarketplaceAccessGrant.mockRejectedValueOnce(
+      new Error("grant database unavailable")
+    );
+    mocks.verifyAndParseWebhook.mockReturnValue(livePaidAccountSessionEvent());
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(500);
+    expect(mocks.markStripeLivePilotReview).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      reason: expect.stringContaining("access grant failed"),
+    });
+  });
+
+  it("expires a live pilot reservation even while fulfillment remains source-disabled", async () => {
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_expired",
+      type: "checkout.session.expired",
+      livemode: true,
+      data: {
+        object: {
+          id: "cs_live_expired",
+          amount_total: 100,
+          metadata: {
+            live_pilot_reservation_id: "00000000-0000-4000-8000-000000000003",
+            buyer_account_id: buyerAccountId,
+            skill_db_id: skillId,
+            recourse_disclosure_version:
+              CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
+            price_usdc_micros: "1000000",
+            payment_flow: "stripe-account-access",
+          },
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.expireStripeLivePilotReservation).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      checkoutSessionId: "cs_live_expired",
+      buyerAccountId,
+      skillDbId: skillId,
+      recourseDisclosureVersion: CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION,
+      grossUsdCents: 100,
+    });
+    expect(mocks.recordStripeMarketplaceAccessGrant).not.toHaveBeenCalled();
+  });
+
+  it("expires an in-flight pilot reservation created under an earlier disclosure version", async () => {
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_expired_previous_disclosure",
+      type: "checkout.session.expired",
+      livemode: true,
+      data: {
+        object: {
+          id: "cs_live_expired_previous_disclosure",
+          amount_total: 100,
+          metadata: {
+            live_pilot_reservation_id: "00000000-0000-4000-8000-000000000003",
+            buyer_account_id: buyerAccountId,
+            skill_db_id: skillId,
+            recourse_disclosure_version: "2026-06-01",
+            price_usdc_micros: "1000000",
+            payment_flow: "stripe-account-access",
+          },
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.expireStripeLivePilotReservation).toHaveBeenCalledWith({
+      reservationId: "00000000-0000-4000-8000-000000000003",
+      checkoutSessionId: "cs_live_expired_previous_disclosure",
+      buyerAccountId,
+      skillDbId: skillId,
+      recourseDisclosureVersion: "2026-06-01",
+      grossUsdCents: 100,
+    });
   });
 
   it("does not grant when a checkout event omits livemode", async () => {
@@ -995,9 +1433,11 @@ describe("Stripe checkout and webhook routes", () => {
         details: {
           revokedWalletEntitlements: 0,
           revokedAccountGrants: 1,
+          pilotLedgerRowsUpdated: 0,
         },
       })
     );
+    expect(mocks.recordStripeLivePilotTerminalState).not.toHaveBeenCalled();
   });
 
   it("records a payment terminal marker when refund metadata is absent", async () => {
@@ -1024,6 +1464,63 @@ describe("Stripe checkout and webhook routes", () => {
       paymentRef: "stripe:pi_test_123",
       reason: "stripe-refund",
     });
+  });
+
+  it("updates live pilot terminal state only by an already-bound PaymentIntent", async () => {
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mocks.recordStripeLivePilotTerminalState.mockResolvedValueOnce(1);
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_live_refund",
+      type: "charge.refunded",
+      livemode: true,
+      data: {
+        object: {
+          id: "ch_live_refund",
+          payment_intent: "pi_live_bound",
+          refunded: true,
+          amount_refunded: 100,
+          metadata: {
+            // This deliberately does not match any reservation. It must not be
+            // an authorization input for ledger mutation.
+            live_pilot_reservation_id: "00000000-0000-4000-8000-000000000099",
+          },
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.recordStripeLivePilotTerminalState).toHaveBeenCalledWith({
+      paymentIntentId: "pi_live_bound",
+      kind: "full-refund",
+      refundedUsdCents: 100,
+    });
+  });
+
+  it("never mutates the live pilot ledger from a test-mode terminal event", async () => {
+    mocks.detectStripeKeyMode.mockReturnValue("live");
+    mocks.verifyAndParseWebhook.mockReturnValue({
+      id: "evt_test_refund",
+      type: "charge.refunded",
+      livemode: false,
+      data: {
+        object: {
+          id: "ch_test_refund",
+          payment_intent: "pi_live_bound",
+          refunded: true,
+          amount_refunded: 100,
+          metadata: {
+            live_pilot_reservation_id: "00000000-0000-4000-8000-000000000003",
+          },
+        },
+      },
+    });
+
+    const res = await webhookPOST(webhookRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mocks.recordStripeLivePilotTerminalState).not.toHaveBeenCalled();
   });
 
   it("revokes the entitlement when a dispute is opened", async () => {
@@ -1064,6 +1561,7 @@ describe("Stripe checkout and webhook routes", () => {
     expect(res.status).toBe(200);
     expect(body.ignored).toBe("partial refund");
     expect(mocks.recordAndApplyUsdcPaymentRevocation).not.toHaveBeenCalled();
+    expect(mocks.recordStripeLivePilotTerminalState).not.toHaveBeenCalled();
     expect(mocks.recordStripeWebhookOutcome).toHaveBeenCalledWith(
       expect.objectContaining({
         eventId: "evt_4",

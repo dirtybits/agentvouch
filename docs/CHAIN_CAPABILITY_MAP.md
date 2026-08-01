@@ -80,7 +80,7 @@ an identity controlled by that wallet. A MetaMask EOA cannot manage listings, st
 owned by an existing Coinbase smart-account address without a separate on-chain authority-transfer
 design.
 
-## Merged A1 deployment gap
+## Merged Voucher-Slashing (A1) Deployment Gap
 
 PR #102 merged the seven-function `base-v1-a1` paid-report surface and removed `openReport` / `resolveReport` from Base `main`. The facade runtime is 23,487 bytes and the linked-library runtime is 5,939 bytes; 116 Forge tests passed at that merge, and PR #106 later raised the current suite to 121. The full local Anvil lifecycle, linked-library verification, and an internal executable-diff review also passed.
 

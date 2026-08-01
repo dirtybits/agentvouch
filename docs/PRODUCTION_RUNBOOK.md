@@ -43,14 +43,19 @@ key additionally requires `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true`; without it
 closed in every environment and the webhook refuses grants whose `livemode` contradicts the
 configured key while still processing refunds and disputes. Do not enable any of these before the
 [Card / Fiat Rail](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26) gates pass.
-Live mode also fails closed unless `AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS` is a non-empty valid
-skill UUID allowlist and `AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS` is a positive per-charge
-ceiling. These controls do not provide aggregate GMV enforcement or amount/fee/net accounting;
-those remain stop gates in
+Live mode also requires complete server-only buyer/skill UUID allowlists, positive unit/gross/
+completed-payment/concurrent-reservation caps, a reservation TTL, and a fee/net reconciliation SLA.
+Reservation TTL must be 31–1440 minutes. The DB stores the exact timestamp sent to Stripe, but uses
+it only to alert on staleness: every unpaid reserved/session-created/review row continues to consume
+concurrency and a potential completed-payment slot until an explicit terminal transition. A created
+Session normally converges when Stripe signs a completion or `checkout.session.expired` event.
+The additive pilot ledger enforces those limits under one transaction advisory lock and keeps gross
+capacity conservative: failures, expiry, refunds, and disputes do not restore it. The current source
+still hard-disables both live session creation and live fulfillment; no environment combination can
+enable real card charges until founder decisions, disposable-database rehearsal, WAF/monitoring
+proof, and explicit activation review are complete. Every live key requires WAF acknowledgement,
+including previews. See
 [`stripe-live-limited-pilot.plan.md`](../.agents/plans/stripe-live-limited-pilot.plan.md).
-The current source therefore hard-disables both live session creation and live fulfillment; no
-combination of environment variables can enable real card charges until the durable controls are
-implemented in a reviewed change. Every live key requires WAF acknowledgement, including previews.
 
 Operator preflight (read-only, never prints secret values):
 

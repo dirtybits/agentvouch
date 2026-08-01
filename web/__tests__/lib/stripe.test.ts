@@ -26,7 +26,13 @@ describe("stripe helpers", () => {
     delete process.env.AGENTVOUCH_STRIPE_EDGE_RATE_LIMIT_READY;
     delete process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED;
     delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS;
     delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES;
+    delete process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES;
     delete process.env.VERCEL_ENV;
   });
 
@@ -86,7 +92,14 @@ describe("stripe helpers", () => {
     process.env.AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED = "true";
     process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
       "00000000-0000-4000-8000-000000000001";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS =
+      "00000000-0000-4000-8000-000000000002";
     process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS = "500";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS = "1000";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS = "3";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS = "1";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES = "31";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES = "60";
     process.env.VERCEL_ENV = "production";
 
     expect(getStripeCheckoutActivation().enabled).toBe(false);
@@ -119,7 +132,14 @@ describe("stripe helpers", () => {
     process.env.AGENTVOUCH_STRIPE_CHECKOUT_ENABLED = "true";
     process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
       "00000000-0000-4000-8000-000000000001";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS =
+      "00000000-0000-4000-8000-000000000002";
     process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS = "500";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS = "1000";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS = "3";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS = "1";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES = "31";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES = "60";
     process.env.VERCEL_ENV = "preview";
 
     expect(getStripeCheckoutActivation()).toMatchObject({
@@ -210,15 +230,86 @@ describe("stripe helpers", () => {
 
     process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS =
       "00000000-0000-4000-8000-000000000001,00000000-0000-4000-8000-000000000001";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS =
+      "00000000-0000-4000-8000-000000000002,00000000-0000-4000-8000-000000000002";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS = "1000";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS = "3";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS = "1";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES = "31";
+    process.env.AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES = "60";
     expect(getStripeLivePilotScope()).toEqual({
       skillIds: ["00000000-0000-4000-8000-000000000001"],
+      buyerAccountIds: ["00000000-0000-4000-8000-000000000002"],
       maxUnitUsdCents: 500,
+      maxGrossUsdCents: 1000,
+      maxCompletedPayments: 3,
+      maxConcurrentReservations: 1,
+      reservationTtlMinutes: 31,
+      reconciliationSlaMinutes: 60,
     });
     expect(getStripeCheckoutActivation()).toMatchObject({
       enabled: false,
       livePilotScopeReady: true,
       livePilotImplementationReady: false,
     });
+  });
+
+  it("rejects missing or malformed live buyer and aggregate cap scope", () => {
+    const base = {
+      AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS:
+        "00000000-0000-4000-8000-000000000001",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS:
+        "00000000-0000-4000-8000-000000000002",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS: "500",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS: "1000",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS: "3",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS: "1",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES: "31",
+      AGENTVOUCH_STRIPE_LIVE_PILOT_RECONCILIATION_SLA_MINUTES: "60",
+    };
+
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_BUYER_ACCOUNT_IDS: "email@example.com",
+      })
+    ).toBeNull();
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_GROSS_USD_CENTS: "0",
+      })
+    ).toBeNull();
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_COMPLETED_PAYMENTS: "1.5",
+      })
+    ).toBeNull();
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_CONCURRENT_RESERVATIONS: "",
+      })
+    ).toBeNull();
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES: "30",
+      })
+    ).toBeNull();
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES: "1441",
+      })
+    ).toBeNull();
+    expect(
+      getStripeLivePilotScope({
+        ...base,
+        AGENTVOUCH_STRIPE_LIVE_PILOT_RESERVATION_TTL_MINUTES: "1440",
+      })?.reservationTtlMinutes
+    ).toBe(1440);
   });
 
   it("flags a livemode mismatch between the event and the configured key", () => {
@@ -271,6 +362,8 @@ describe("stripe helpers", () => {
       amountUsdcMicros: "1000000",
       amountUsdCents: 100,
       recourseDisclosureVersion: "2026-07-31",
+      livePilotReservationId: "00000000-0000-4000-8000-000000000003",
+      expiresAtUnixSeconds: 1_800_000_000,
       successUrl: "https://example.test/success",
       cancelUrl: "https://example.test/cancel",
     });
@@ -287,6 +380,16 @@ describe("stripe helpers", () => {
     expect(params.get("metadata[recourse_disclosure_version]")).toBe(
       "2026-07-31"
     );
+    expect(params.get("metadata[live_pilot_reservation_id]")).toBe(
+      "00000000-0000-4000-8000-000000000003"
+    );
+    expect(
+      params.get("payment_intent_data[metadata][live_pilot_reservation_id]")
+    ).toBe("00000000-0000-4000-8000-000000000003");
+    expect(params.get("expires_at")).toBe("1800000000");
+    expect(
+      (request?.headers as Record<string, string>)["Idempotency-Key"]
+    ).toBe("00000000-0000-4000-8000-000000000003");
     expect(params.has("metadata[buyer_pubkey]")).toBe(false);
     fetchSpy.mockRestore();
   });

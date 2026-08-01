@@ -63,6 +63,7 @@ import {
   probeBaseInjectedExecutionMode,
   reconcileDetectedMetaMaskProvider,
   selectMetaMaskProvider,
+  subscribeToEip6963MetaMaskProviders,
   type BaseInjectedWalletSession,
   type Eip1193Provider,
 } from "@/lib/adapters/baseInjectedWallet";
@@ -485,6 +486,37 @@ describe("Base injected ChainWallet writes", () => {
       })
     ).rejects.toThrow(/did not match the submitted listing/);
   });
+
+  it("reports controlled receipt mismatches when listing events are absent", async () => {
+    const metamask = provider({ isMetaMask: true });
+    const { address, wallet } = walletWithProvider(metamask);
+    const listingId = computeListingId(address, skillIdHashFrom("demo"));
+
+    await expect(
+      wallet.createSkillListing({
+        skillId: "demo",
+        uri: "https://example.com/skill.md",
+        name: "Demo",
+        description: "Demo listing",
+        priceUsdcMicros: 1_000_000n,
+      })
+    ).rejects.toThrow(
+      "Base createSkillListing receipt did not match the submitted listing."
+    );
+
+    await expect(
+      wallet.updateSkillListing({
+        listingId,
+        skillId: "demo",
+        uri: "https://example.com/skill-v2.md",
+        name: "Demo v2",
+        description: "Updated listing",
+        priceUsdcMicros: 2_000_000n,
+      })
+    ).rejects.toThrow(
+      "Base updateSkillListing receipt did not match the submitted listing."
+    );
+  });
 });
 
 describe("Base injected MetaMask provider detection", () => {
@@ -525,6 +557,32 @@ describe("Base injected MetaMask provider detection", () => {
     expect(
       reconcileDetectedMetaMaskProvider(metamask, legacyCompat, "legacy")
     ).toBe(metamask);
+  });
+
+  it("accepts an io.metamask EIP-6963 announcement without a legacy isMetaMask flag", () => {
+    const metamask = provider({ isMetaMask: false });
+    const onProvider = vi.fn();
+    const mockWindow = new EventTarget();
+    vi.stubGlobal("window", mockWindow);
+
+    try {
+      const unsubscribe = subscribeToEip6963MetaMaskProviders(onProvider);
+      const announcement = Object.assign(
+        new Event("eip6963:announceProvider"),
+        {
+          detail: {
+            info: { rdns: "io.metamask", name: "MetaMask" },
+            provider: metamask,
+          },
+        }
+      );
+      mockWindow.dispatchEvent(announcement);
+
+      expect(onProvider).toHaveBeenCalledWith(metamask);
+      unsubscribe();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("does not select legacy injected providers that only spoof MetaMask compatibility", () => {

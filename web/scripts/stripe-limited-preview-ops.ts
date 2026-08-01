@@ -1,9 +1,14 @@
 import { pathToFileURL } from "node:url";
-import { getStripeCheckoutActivation, type StripeKeyMode } from "../lib/stripe";
+import {
+  getStripeCheckoutActivation,
+  getStripeLivePilotScope,
+  type StripeKeyMode,
+} from "../lib/stripe";
 import {
   buildStripeReconciliationAlerts,
   listOpenStripeReconciliationItemsReadOnly,
 } from "../lib/stripeReconciliation";
+import { getStripeLivePilotMonitorSnapshotReadOnly } from "../lib/stripeLivePilotReadOnly";
 
 export type StripeOpsMode = "preflight" | "monitor";
 
@@ -87,7 +92,7 @@ export function buildStripePreviewPreflight(
   }
   if (!activation.livePilotScopeReady) {
     blockers.push(
-      "live Stripe checkout requires a valid AGENTVOUCH_STRIPE_LIVE_PILOT_SKILL_IDS allowlist and AGENTVOUCH_STRIPE_LIVE_PILOT_MAX_UNIT_USD_CENTS ceiling"
+      "live Stripe checkout requires valid server-only buyer/skill allowlists, reservation TTL and reconciliation SLA, plus unit, GMV, completed-payment, and concurrent-reservation caps"
     );
   }
   if (activation.keyMode === "live" && !buyerCardAccessServerEnabled) {
@@ -105,7 +110,7 @@ export function buildStripePreviewPreflight(
   }
   if (!activation.livePilotImplementationReady) {
     blockers.push(
-      "live Stripe pilot is source-disabled until buyer allowlisting, immutable reservations, and atomic exposure caps are implemented"
+      "live Stripe pilot remains source-disabled pending founder decisions, schema rehearsal, WAF proof, monitoring readiness, and explicit activation review"
     );
   }
 
@@ -152,6 +157,33 @@ export async function runStripeOps(
 
   const items = await listOpenStripeReconciliationItemsReadOnly();
   const alerts = buildStripeReconciliationAlerts(items);
+  const livePilotScope = getStripeLivePilotScope(env);
+  const livePilot = livePilotScope
+    ? await getStripeLivePilotMonitorSnapshotReadOnly({
+        reconciliationSlaMinutes: livePilotScope.reconciliationSlaMinutes,
+      })
+    : null;
+  if (livePilot?.staleReservations) {
+    alerts.push({
+      eventId: "stripe-live-pilot:stale-reservations",
+      severity: "critical",
+      message: `${livePilot.staleReservations} stale live-pilot reservation(s)`,
+    });
+  }
+  if (livePilot?.missingFinancials) {
+    alerts.push({
+      eventId: "stripe-live-pilot:missing-financials",
+      severity: "critical",
+      message: `${livePilot.missingFinancials} paid live-pilot payment(s) missing fee/net reconciliation`,
+    });
+  }
+  if (livePilot?.openReviews) {
+    alerts.push({
+      eventId: "stripe-live-pilot:open-reviews",
+      severity: "critical",
+      message: `${livePilot.openReviews} live-pilot ledger review item(s)`,
+    });
+  }
   return {
     ok: preflight.blockers.length === 0 && alerts.length === 0,
     output: {
@@ -160,6 +192,26 @@ export async function runStripeOps(
       openReviewCount: items.length,
       items,
       alerts,
+      livePilot: livePilot
+        ? {
+            ...livePilot,
+            remainingGrossUsdCents: Math.max(
+              0,
+              livePilotScope!.maxGrossUsdCents - livePilot.grossReservedUsdCents
+            ),
+            remainingCompletedPayments: Math.max(
+              0,
+              livePilotScope!.maxCompletedPayments -
+                livePilot.completedPayments -
+                livePilot.concurrentReservations
+            ),
+            remainingConcurrentReservations: Math.max(
+              0,
+              livePilotScope!.maxConcurrentReservations -
+                livePilot.concurrentReservations
+            ),
+          }
+        : null,
     },
   };
 }

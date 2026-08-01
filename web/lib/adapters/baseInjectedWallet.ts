@@ -213,10 +213,7 @@ export function subscribeToEip6963MetaMaskProviders(
 
   const handler = (event: Event) => {
     const detail = (event as CustomEvent<Eip6963ProviderDetail>).detail;
-    const provider =
-      detail?.info?.rdns === "io.metamask" && detail.provider?.isMetaMask
-        ? detail.provider
-        : null;
+    const provider = selectMetaMaskProvider([detail]);
     if (provider) onProvider(provider);
   };
 
@@ -629,8 +626,9 @@ async function createBaseSkillListingWithInjectedWallet(
     "SkillListingCreated"
   );
   if (
-    event?.args.listingId !== listingId ||
-    !sameInjectedAddress(event?.args.author, session.address) ||
+    !event ||
+    event.args.listingId !== listingId ||
+    !sameInjectedAddress(event.args.author, session.address) ||
     event.args.price !== input.priceUsdcMicros
   ) {
     throw new Error(
@@ -677,8 +675,9 @@ async function updateBaseSkillListingWithInjectedWallet(
     "SkillListingUpdated"
   );
   if (
-    event?.args.listingId !== listingId ||
-    !sameInjectedAddress(event?.args.author, session.address) ||
+    !event ||
+    event.args.listingId !== listingId ||
+    !sameInjectedAddress(event.args.author, session.address) ||
     event.args.price !== input.priceUsdcMicros
   ) {
     throw new Error(
