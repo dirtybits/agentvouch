@@ -65,12 +65,74 @@ claim window, 60/40 purchase split, zero protocol fee, and zero reporter/keeper 
 
 | Gate                                 | State       | Approval/evidence                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A: pre-broadcast candidate           | **NO-GO**   | Historical contract/rehearsal gates passed. The 2026-07-31 readiness diff passes format/lint/typecheck/chain-map/tests/UI/harness, but its production build prerender gate failed and Foundry is unavailable locally; candidate commit/review, approved inputs, external review/risk acceptance, and human GO also remain pending |
+| A: pre-broadcast candidate           | **NO-GO**   | The 2026-07-31 evidence refresh passes pinned Foundry format/build/121 tests/size/rehearsal, Forge/client paid-report ABI parity, format/lint/typecheck/chain-map, 867 web tests, UI, harness, and the 151-page production webpack build. Exact candidate commit/review, approved inputs, external review/risk acceptance, rollback review, and human GO remain pending |
 | B1: deploy uninitialized             | **NO-GO**   | Explicit public-network approval required                                                                                                                                                                                                                                                                                         |
 | B2: configure and remain paused      | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                               |
 | C: isolated lifecycle smoke          | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                               |
 | D: preview/shared Sepolia activation | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                               |
 | Base mainnet                         | **BLOCKED** | Outside this release and runbook                                                                                                                                                                                                                                                                                                  |
+
+## Founder Gate-A decision record — added 2026-07-31
+
+Gate A remains **NO-GO**. Copy this record into the reviewed release evidence and replace every
+`PENDING` value only after rerunning the candidate with the pinned toolchain. This template is not an
+authorization artifact; `executionAuthorized` remains `false`. A human-recorded Gate-A decision may
+approve only deployment and paused configuration on Base Sepolia. It cannot authorize an isolated
+smoke, app pointer, feature flag, paymaster change, shared Sepolia promotion, or Base mainnet.
+
+```json
+{
+  "schemaVersion": 1,
+  "decision": "NO-GO",
+  "executionAuthorized": false,
+  "approvedBy": "PENDING",
+  "approvedAt": "PENDING ISO-8601",
+  "approvalScope": "deploy and configure paused Base Sepolia candidate only",
+  "candidateCommit": "PENDING reviewed 40-character Git SHA",
+  "candidateBaseCommit": "ce3999574b085ba453beef5c36817fe53a1f06c9",
+  "chainId": 84532,
+  "protocolVersion": "base-v1-a1",
+  "toolchain": {
+    "foundry": "v1.7.1",
+    "solc": "0.8.28",
+    "optimizerRuns": 200,
+    "viaIr": true,
+    "evmVersion": "cancun",
+    "bytecodeHash": "none",
+    "cborMetadata": false
+  },
+  "artifacts": {
+    "facadeRuntimeBytes": 23487,
+    "libraryRuntimeBytes": 5939,
+    "facadeRuntimeHash": "PENDING address-linked Base Sepolia candidate",
+    "libraryRuntimeHash": "PENDING self-linked Base Sepolia candidate",
+    "localRehearsalFacadeRuntimeHash": "0x35f6f60c2575e48650e5cc30b8691bb8430e03f68c2ef4900e35fece773e2812",
+    "localRehearsalLibraryRuntimeHash": "0x0c7f706cc0e5a66e5581c7be4c62192c8e5eaf794c84e03b26c71027ec3ef603",
+    "storageLayoutHash": "1d3551ad881bfe94fef5e709f3d4fe4b7827f743e54d76fd9fb1ddec802dbbeb",
+    "libraryLinkReferences": 11,
+    "usdcImmutableReferences": 13
+  },
+  "candidateVerification": {
+    "forgeFormat": "PASS 2026-07-31: Foundry v1.7.1",
+    "forgeTests": "PASS 2026-07-31: 121/121",
+    "forgeBuildAndSizes": "PASS 2026-07-31: facade 23487 / library 5939 bytes",
+    "baseRuntimeSize": "PASS 2026-07-31: EIP-170 headroom 1089 / soft headroom 13 bytes",
+    "localAnvilRehearsal": "PASS 2026-07-31: LOCAL_A1_REHEARSAL_OK / LOCAL_A1_DRIVER_OK",
+    "forgeClientAbiParity": "PASS 2026-07-31: inputs, outputs, mutability, indexed fields and errors",
+    "chainCapabilityMap": "PASS 2026-07-31: 25 Solana / 22 Base / 26 rows",
+    "focusedA1WebTests": "PASS 2026-07-31: 113/113",
+    "fullWebTests": "PASS 2026-07-31: 867/867 across 123 files",
+    "formatLintTypecheck": "PASS 2026-07-31",
+    "isolatedBaseUiBuild": "PASS 2026-07-31",
+    "baseHarnessTypecheck": "PASS 2026-07-31",
+    "productionWebpackBuild": "PASS 2026-07-31: Next.js 16.1.6 webpack, 151/151 pages"
+  },
+  "approvedInputsReference": "PENDING slash, restitution, roles, custody, operators and exposure",
+  "securityAcceptanceReference": "PENDING external review or explicit Base Sepolia risk acceptance",
+  "rollbackReviewReference": "PENDING",
+  "humanGoReference": "PENDING"
+}
+```
 
 ## Founder Gate-C decision record — added 2026-07-31
 
@@ -173,22 +235,35 @@ remain future live evidence, not pre-broadcast claims.
 
 ## Current non-broadcast revalidation — 2026-07-31
 
-- Dirty readiness worktree based on `6a051ae`; an exact candidate commit is still `PENDING`.
+- Evidence branch started from merged `main` at `ce3999574b085ba453beef5c36817fe53a1f06c9`;
+  an exact reviewed candidate commit is still `PENDING` until this evidence diff is committed.
 - `npm run format:check`, web lint, web typecheck, and `npm run verify:chain-map` passed. The chain
   map reported 25 Solana instructions, 22 Base state-changing functions, and 26 mapped rows.
-- Focused operations tests passed 30/30. The full web suite passed 855/855 tests across 121 files.
+- Focused Base/A1 tests passed 113/113. The full web suite passed 867/867 tests across 123 files.
+- `npm run verify:base-a1-paid-report-abi` loaded the fresh Forge artifact and passed canonical parity for
+  five buyer/read function inputs, outputs, and mutability across web/UI/harness; five operator
+  functions across UI/harness with their required web omission; and 11 event indexed-field shapes
+  plus 19 errors across all three clients. A missing-artifact negative check failed closed with the
+  expected diagnostic.
 - The isolated Base UI build and harness typecheck passed. The UI build retained existing Vite
   deprecation and bundle-size warnings.
-- The production webpack build compiled successfully with the existing `ox` dynamic-dependency
-  warning, then failed during static prerender with Next.js
-  `Invariant: Expected workUnitAsyncStorage to have a store` on unchanged app pages. A clean-cache
-  retry reproduced the same framework invariant, so the production build gate is **not passed**.
-- Foundry is unavailable in this worktree environment. `forge fmt`, `forge test`, and `forge build`
-  could not run; `npm run verify:base-size` could not read an absent fresh Forge artifact. No
-  Foundry installation was attempted.
-- The local Anvil rehearsal was not rerun because this task explicitly prohibited private-key use
-  and all transaction broadcasts, including disposable local broadcasts. No public RPC write,
-  deployment, environment change, pointer change, paymaster change, or live-funds action occurred.
+- The initial production-build failure came from unreconciled copied `node_modules`, not repository
+  code. The canonical clean root lockfile install completed without a source or lockfile change; the
+  unchanged Next.js 16.1.6 webpack build then passed all 151 pages. The existing `ox`
+  dynamic-dependency warning remained.
+- The host had no existing Foundry installation. A checksum-verified official Foundry `v1.7.1`
+  Apple Silicon archive was extracted only under `/private/tmp`; exact CI dependency tags were
+  cloned only into the gitignored contract `lib/` directory. `forge fmt --check` passed; 121/121
+  contract tests passed; `forge build --sizes` and `npm run verify:base-size` reproduced the 23,487
+  byte facade, 5,939 byte library, frozen storage-layout hash, 11 library references, and 13 USDC
+  immutable references. The build emitted existing timestamp and safe-cast lint warnings; no new
+  contract diff was introduced.
+- The disposable local Anvil rehearsal on chain ID 84532 passed with
+  `LOCAL_A1_REHEARSAL_OK` / `LOCAL_A1_DRIVER_OK`. It reproduced exact expected/actual local linked
+  code hashes, 15 USDC buyer credit, 5 USDC reserve credit, 2 USDC voucher residual, and terminal
+  liveness while paused. Its standard test mnemonic and transactions remained local and gitignored.
+  No public RPC write, public-network deployment, environment change, pointer change, paymaster
+  change, feature-flag change, or live-funds action occurred.
 
 The currently selected web deployment remains the historical pre-A1 `base-v1-candidate` until an
 approved activation changes that pointer. A repository merge or testnet deployment alone is not an

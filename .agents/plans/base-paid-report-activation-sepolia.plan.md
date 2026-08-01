@@ -137,11 +137,11 @@ stage never authorizes the next stage. Base mainnet is outside every stage below
 - [ ] Candidate commit is based on the final merged `main`; worktree is clean and the reviewed SHA is recorded.
 - [x] Facade and linked-library artifacts reproduce under the pinned compiler/link profile; both local-rehearsal code hashes and the final link map are verified.
 - [x] Facade runtime is at or below the 23,500-byte project soft limit and 24,576-byte EIP-170 hard limit.
-- [ ] Forge, ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates
-      pass locally. Historical 2026-07-13 evidence passed; on the 2026-07-31 readiness diff, format,
-      lint, typecheck, chain-map, 855 web tests, isolated UI, and harness passed, but Foundry was
-      unavailable and a clean production build reproduced a Next.js prerender invariant after
-      successful compilation. The candidate SHA remains pending commit/review.
+- [x] Forge, paid-report ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates
+      pass locally. Historical 2026-07-13 evidence passed; the 2026-07-31 evidence refresh passes
+      Foundry 1.7.1 format/build/121 tests/size/rehearsal, Forge/client paid-report ABI parity, format, lint,
+      typecheck, chain-map, 867 web tests, isolated UI, harness, and the 151-page production webpack
+      build after canonical lockfile dependency reconciliation.
 - [x] Local Anvil rehearsal proves deploy-uninitialized → pause → initialize-while-paused → ordered role handoff, with no configured/unpaused interval.
 - [x] Paid-report client and purchase-bound UX fail closed on wrong chain, deployment, protocol version, receipt, buyer, listing, deadline, bond, pause state, or unsupported wallet.
 - [x] Verified report indexing is deployment-qualified and populated only from the exact confirmed `PaidPurchaseReportOpened` event.
@@ -273,6 +273,43 @@ cache retry reproduced it. Foundry was not installed, the size verifier lacked a
 artifact, and the Anvil rehearsal was deliberately skipped under the no-key/no-broadcast boundary.
 These open verification items keep Gate A and the operator todo incomplete.
 
+## Implementation note — 2026-07-31 Gate-A evidence refresh
+
+This later note supersedes the tool-availability and test-count portions of the preceding 2026-07-31
+Gate-C note; its security and public-write boundaries remain unchanged.
+
+The evidence branch started from merged `main` at `ce3999574b085ba453beef5c36817fe53a1f06c9`.
+Node 24.18.1 format, lint, typecheck, chain-map, isolated Base UI, harness typecheck, 113 focused
+Base/A1 tests, and the full 867-test web suite passed. A new fail-closed paid-report ABI gate loads
+the fresh Forge artifact and compares canonical inputs, outputs, mutability, event indexed fields, and errors:
+five buyer/read functions across web/UI/harness, five operator functions across UI/harness (explicitly
+omitted from web), and all 11 A1 events plus 19 A1 errors across the three client surfaces.
+Tuple-heavy non-report read APIs remain outside this deliberately curated gate.
+
+The initial production-build failure came from unreconciled copied `node_modules`, not repository
+code. After moving the stale generated trees to recoverable `/private/tmp` paths and completing a
+clean lockfile install, the unchanged Next.js 16.1.6 webpack build passed all 151 pages; the existing
+`ox` dynamic-dependency warning remained. The lockfile did not change. The host had no existing
+Foundry toolchain, so a checksum-verified official Foundry `v1.7.1` Apple Silicon archive was extracted
+under `/private/tmp` and the exact CI dependency tags were cloned only into the gitignored contract
+`lib/` directory. `forge fmt --check`, 121/121 contract tests, build/size gates, frozen storage layout,
+11 settlement-library references, and 13 USDC immutable references passed. The facade remains 23,487
+runtime bytes (1,089 bytes EIP-170 headroom and 13 bytes project-soft-limit headroom); the linked
+library remains 5,939 bytes. Existing timestamp/safe-cast lint warnings were reported without a
+contract change.
+
+The disposable Anvil rehearsal on local chain ID 84532 emitted `LOCAL_A1_REHEARSAL_OK` and
+`LOCAL_A1_DRIVER_OK`, matched the expected local linked code hashes, and reproduced 15 USDC buyer
+credit, 5 USDC reserve credit, 2 USDC voucher residual, and terminal liveness while paused. Its
+standard test mnemonic and transactions remained local and gitignored.
+
+`docs/BASE_SEPOLIA_A1_STATE.md` now contains a non-authorizing Gate-A founder decision template. Every
+address-linked Base Sepolia artifact hash, approved input, custody/operator reference, security review
+or Sepolia risk acceptance, rollback review, and human GO remains `PENDING`. Accordingly Gate A and
+`add-operator-smoke-and-monitoring` remain incomplete.
+No public-network write, production key/secret access, deployment, config, pointer, paymaster,
+feature-flag, live-funds, or Base-mainnet change occurred.
+
 ## Implementation Sequence
 
 ### 1. Lock inputs and release evidence
@@ -388,6 +425,7 @@ Before any deployment candidate is approved:
     forge test --root contracts/base-poc -vv
     forge build --root contracts/base-poc --sizes
     npm run verify:base-size
+    npm run verify:base-a1-paid-report-abi
     npm run verify:chain-map
     npm run format:check
     npm run lint --workspace @agentvouch/web
