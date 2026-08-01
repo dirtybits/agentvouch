@@ -19,11 +19,12 @@ import {
 import {
   STRIPE_ACCOUNT_PAYMENT_FLOW,
   STRIPE_CURRENCY_SENTINEL,
-  STRIPE_LIVE_PILOT_IMPLEMENTATION_READY,
   STRIPE_PAYMENT_FLOW,
   STRIPE_RECIPIENT_SENTINEL,
   detectStripeKeyMode,
+  getStripePaymentFinancials,
   isStripeEnabled,
+  isStripeLivePilotFulfillmentSourceEnabled,
   stripeEventModeMismatch,
   usdcMicrosToUsdCents,
   verifyAndParseWebhook,
@@ -38,6 +39,14 @@ import {
   type RecordStripeWebhookOutcomeInput,
 } from "@/lib/stripeReconciliation";
 import { CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION } from "@/lib/stripePolicyCopy";
+import {
+  expireStripeLivePilotReservation,
+  markStripeLivePilotFulfilled,
+  markStripeLivePilotReview,
+  reconcileStripeLivePilotFinancials,
+  recordStripeLivePilotPaymentCompleted,
+  recordStripeLivePilotTerminalState,
+} from "@/lib/stripeLivePilot";
 
 type SessionObject = {
   id: string;
@@ -182,19 +191,36 @@ export async function POST(req: NextRequest) {
           object.amount_refunded ?? "?"
         }); entitlement kept — reconcile manually.`
       );
-      return await recordOutcomeOrRetry(
-        {
-          eventId: event.id,
-          eventType: event.type,
-          objectId: object.id,
-          paymentRef,
-          outcome: "needs-review",
-          reason: "partial refund",
-          needsReview: true,
-          details: { amountRefunded: object.amount_refunded ?? null },
-        },
-        NextResponse.json({ received: true, ignored: "partial refund" })
-      );
+      try {
+        if (
+          event.livemode === true &&
+          detectStripeKeyMode(process.env.STRIPE_SECRET_KEY) === "live"
+        ) {
+          await recordStripeLivePilotTerminalState({
+            paymentIntentId: object.payment_intent!,
+            kind: "partial-refund",
+            refundedUsdCents: object.amount_refunded ?? null,
+          });
+        }
+        return await recordOutcomeOrRetry(
+          {
+            eventId: event.id,
+            eventType: event.type,
+            objectId: object.id,
+            paymentRef,
+            outcome: "needs-review",
+            reason: "partial refund",
+            needsReview: true,
+            details: { amountRefunded: object.amount_refunded ?? null },
+          },
+          NextResponse.json({ received: true, ignored: "partial refund" })
+        );
+      } catch (error) {
+        return NextResponse.json(
+          { error: getErrorMessage(error) },
+          { status: 500 }
+        );
+      }
     }
 
     try {
@@ -208,6 +234,19 @@ export async function POST(req: NextRequest) {
       const accountId = metadataString(object.metadata, "buyer_account_id");
       const skillDbId = metadataString(object.metadata, "skill_db_id");
       const paymentFlow = metadataString(object.metadata, "payment_flow");
+      const pilotLedgerUpdated =
+        event.livemode === true &&
+        detectStripeKeyMode(process.env.STRIPE_SECRET_KEY) === "live"
+          ? await recordStripeLivePilotTerminalState({
+              paymentIntentId: object.payment_intent!,
+              kind:
+                event.type === "charge.refunded" ? "full-refund" : "dispute",
+              refundedUsdCents:
+                event.type === "charge.refunded"
+                  ? object.amount_refunded ?? null
+                  : null,
+            })
+          : 0;
       const accountRevoked = (
         await recordStripeMarketplacePaymentTerminalState({
           eventId: event.id,
@@ -249,6 +288,7 @@ export async function POST(req: NextRequest) {
           details: {
             revokedWalletEntitlements: walletRevoked.length,
             revokedAccountGrants: accountRevoked,
+            pilotLedgerRowsUpdated: pilotLedgerUpdated,
           },
         },
         NextResponse.json({ received: true, revoked: totalRevoked })
@@ -290,6 +330,80 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (event.type === "checkout.session.expired") {
+    if (typeof event.livemode !== "boolean") {
+      return ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        reason:
+          "Stripe checkout expiration is missing an explicit livemode value",
+      });
+    }
+    if (!event.livemode) {
+      return NextResponse.json({ received: true, ignored: event.type });
+    }
+    const expiredSession = event.data.object as SessionObject;
+    const reservationId = metadataString(
+      expiredSession.metadata,
+      "live_pilot_reservation_id"
+    );
+    const buyerAccountId = metadataString(
+      expiredSession.metadata,
+      "buyer_account_id"
+    );
+    const skillDbId = metadataString(expiredSession.metadata, "skill_db_id");
+    const recourseDisclosureVersion = metadataString(
+      expiredSession.metadata,
+      "recourse_disclosure_version"
+    );
+    const paymentFlow = metadataString(expiredSession.metadata, "payment_flow");
+    if (
+      !isUuid(reservationId) ||
+      !isUuid(buyerAccountId) ||
+      !isUuid(skillDbId) ||
+      !recourseDisclosureVersion ||
+      paymentFlow !== STRIPE_ACCOUNT_PAYMENT_FLOW ||
+      !Number.isSafeInteger(expiredSession.amount_total) ||
+      expiredSession.amount_total! <= 0
+    ) {
+      return ackUnprocessable({
+        eventId: event.id,
+        eventType: event.type,
+        objectId: expiredSession.id,
+        reason:
+          "live Checkout Session expiration lacks valid immutable pilot metadata",
+      });
+    }
+    try {
+      const expired = await expireStripeLivePilotReservation({
+        reservationId,
+        checkoutSessionId: expiredSession.id,
+        buyerAccountId,
+        skillDbId,
+        recourseDisclosureVersion,
+        grossUsdCents: expiredSession.amount_total!,
+      });
+      return await recordOutcomeOrRetry(
+        {
+          eventId: event.id,
+          eventType: event.type,
+          objectId: expiredSession.id,
+          outcome: expired ? "ignored" : "needs-review",
+          reason: expired
+            ? "live pilot reservation expired"
+            : "live pilot expiration did not match an open reservation",
+          needsReview: !expired,
+        },
+        NextResponse.json({ received: true, expired })
+      );
+    } catch (error) {
+      return NextResponse.json(
+        { error: getErrorMessage(error) },
+        { status: 500 }
+      );
+    }
+  }
+
   // Only successful payment-mode checkouts grant entitlement; ack everything else.
   if (
     event.type !== "checkout.session.completed" &&
@@ -312,13 +426,13 @@ export async function POST(req: NextRequest) {
   // caps are absent. Refunds/disputes remain above this guard.
   if (
     (configuredKeyMode === "live" || event.livemode) &&
-    !STRIPE_LIVE_PILOT_IMPLEMENTATION_READY
+    !isStripeLivePilotFulfillmentSourceEnabled()
   ) {
     return ackUnprocessable({
       eventId: event.id,
       eventType: event.type,
       reason:
-        "live Stripe fulfillment is source-disabled until durable pilot controls are implemented",
+        "live Stripe fulfillment is source-disabled pending founder decisions and external activation review",
     });
   }
 
@@ -336,6 +450,10 @@ export async function POST(req: NextRequest) {
   const recourseDisclosureVersion = metadataString(
     session.metadata,
     "recourse_disclosure_version"
+  );
+  const livePilotReservationId = metadataString(
+    session.metadata,
+    "live_pilot_reservation_id"
   );
 
   const accountPayment = paymentFlow === STRIPE_ACCOUNT_PAYMENT_FLOW;
@@ -506,13 +624,72 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (accountPayment) {
-      const status = await recordStripeMarketplaceAccessGrant({
-        accountId: buyerAccountId!,
+    if (event.livemode) {
+      if (
+        !accountPayment ||
+        !isUuid(livePilotReservationId) ||
+        !buyerAccountId
+      ) {
+        return await ackUnprocessable({
+          eventId: event.id,
+          eventType: event.type,
+          objectId: session.id,
+          paymentRef,
+          skillDbId,
+          buyerKey,
+          reason:
+            "live payment is missing its account-scoped pilot reservation metadata",
+        });
+      }
+      const pilotPayment = await recordStripeLivePilotPaymentCompleted({
+        reservationId: livePilotReservationId,
+        checkoutSessionId: session.id,
+        paymentIntentId: session.payment_intent!,
+        buyerAccountId,
         skillDbId,
-        paymentRef,
+        recourseDisclosureVersion: recourseDisclosureVersion!,
+        grossUsdCents: session.amount_total!,
       });
+      if (!pilotPayment.grantAllowed) {
+        return await ackUnprocessable({
+          eventId: event.id,
+          eventType: event.type,
+          objectId: session.id,
+          paymentRef,
+          skillDbId,
+          buyerKey,
+          reason:
+            "live payment reservation is terminal; account grant stays revoked",
+          needsReview: false,
+        });
+      }
+    }
+
+    if (accountPayment) {
+      let status;
+      try {
+        status = await recordStripeMarketplaceAccessGrant({
+          accountId: buyerAccountId!,
+          skillDbId,
+          paymentRef,
+        });
+      } catch (error) {
+        if (event.livemode && isUuid(livePilotReservationId)) {
+          await markStripeLivePilotReview({
+            reservationId: livePilotReservationId,
+            reason: `access grant failed: ${getErrorMessage(error)}`,
+          });
+        }
+        throw error;
+      }
       if (status !== "active") {
+        if (event.livemode && isUuid(livePilotReservationId)) {
+          await markStripeLivePilotReview({
+            reservationId: livePilotReservationId,
+            reason:
+              "payment was already terminal before account grant; reconcile refund/dispute state",
+          });
+        }
         return await ackUnprocessable({
           eventId: event.id,
           eventType: event.type,
@@ -524,6 +701,32 @@ export async function POST(req: NextRequest) {
             "payment was refunded or disputed; account grant stays revoked",
           needsReview: false,
         });
+      }
+
+      if (event.livemode && isUuid(livePilotReservationId)) {
+        await markStripeLivePilotFulfilled(livePilotReservationId);
+        try {
+          const financials = await getStripePaymentFinancials(
+            session.payment_intent!
+          );
+          if (financials) {
+            await reconcileStripeLivePilotFinancials({
+              reservationId: livePilotReservationId,
+              paymentIntentId: session.payment_intent!,
+              grossUsdCents: financials.grossUsdCents,
+              feeUsdCents: financials.feeUsdCents,
+              netUsdCents: financials.netUsdCents,
+            });
+          }
+        } catch (error) {
+          // Fulfillment is durable already. Missing fee/net remains visible in
+          // the read-only monitor and must not strand a paid buyer.
+          console.warn(
+            `Stripe live-pilot fee/net reconciliation deferred for ${paymentRef}: ${getErrorMessage(
+              error
+            )}`
+          );
+        }
       }
 
       // This is deliberately not a protocol purchase receipt. It does not

@@ -19,8 +19,9 @@ purchase state.
   stated here: `detectStripeKeyMode` classifies the key by prefix, an unrecognized prefix fails
   closed, and a `live` key disables checkout in every environment unless
   `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true` is set explicitly. Live checkout is additionally
-  source-disabled until the limited-pilot reservation/ledger/cap controls land, and every live key
-  requires the external-WAF acknowledgement even on a preview deployment.
+  source-disabled pending founder decisions, disposable-database rehearsal, WAF/monitoring proof,
+  and explicit activation review, and every live key requires the external-WAF acknowledgement even
+  on a preview deployment.
 - `STRIPE_WEBHOOK_SECRET` is configured from the matching test-mode webhook
   endpoint. The webhook cross-checks each event's `livemode` against the configured key's mode and
   refuses to grant access on a mismatch, recording it as `needs-review` rather than retrying.
@@ -38,8 +39,8 @@ purchase state.
   redirects back to.
 - Checkout is disabled unless both Stripe secrets are present.
 - The Stripe webhook endpoint is subscribed to `checkout.session.completed`,
-  `checkout.session.async_payment_succeeded`, `charge.refunded`, and
-  `charge.dispute.created`.
+  `checkout.session.async_payment_succeeded`, `checkout.session.expired`,
+  `charge.refunded`, and `charge.dispute.created`.
 - Operators can access Stripe Dashboard test events and Vercel/API logs for the
   checkout and webhook routes.
 - `npm run stripe:ops --workspace @agentvouch/web -- preflight` passes in the
@@ -54,13 +55,17 @@ purchase state.
 4. Confirm the checkout session uses the listed price converted to USD cents.
 5. Pay with a Stripe test card.
 6. Verify webhook delivery for `checkout.session.completed`.
-7. Confirm one active `marketplace_access_grants` row exists for the opaque
+7. Create and expire an unpaid Session; verify `checkout.session.expired`
+   terminalizes the reservation and releases its payable-session/completion
+   slot. Passing the locally stored expected-expiry timestamp alone must not
+   release either slot.
+8. Confirm one active `marketplace_access_grants` row exists for the opaque
    buyer account, skill UUID, and Stripe PaymentIntent reference.
-8. Confirm no `usdc_purchase_receipts` or `usdc_purchase_entitlements` row was
+9. Confirm no `usdc_purchase_receipts` or `usdc_purchase_entitlements` row was
    created for the account-scoped payment.
-9. Return to the skill page and verify the signed-in account can download
+10. Return to the skill page and verify the signed-in account can download
    without connecting or signing with a wallet.
-10. Verify an anonymous request and a different signed-in account receive 402.
+11. Verify an anonymous request and a different signed-in account receive 402.
 
 Repeat the legacy wallet path separately when changing compatibility-sensitive
 checkout code: connect a signing wallet, complete checkout, confirm the
