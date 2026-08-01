@@ -44,7 +44,7 @@ forge fmt --root contracts/base-poc --check
 forge test --root contracts/base-poc -vv
 forge build --root contracts/base-poc --sizes
 npm run verify:base-size
-npm run verify:base-a1-client-abi
+npm run verify:base-a1-paid-report-abi
 npm run verify:chain-map
 contracts/base-poc/scripts/local-a1-rehearsal.sh
 ```
@@ -70,11 +70,13 @@ The rehearsal proves:
 
 Do not proceed until Gate A in the activation plan is explicitly approved.
 
-`verify:base-a1-client-abi` requires the fresh
+`verify:base-a1-paid-report-abi` requires the fresh
 `contracts/base-poc/out/AgentVouchEvm.sol/AgentVouchEvm.json` artifact. It fails closed when the
 artifact is absent and compares canonical function inputs, outputs, and mutability; event parameter
 types and indexed fields; and error inputs against the web, isolated UI, and harness clients. The web
 client must continue to omit the five operator-only methods.
+This command covers the curated paid-report surface only; tuple-heavy non-report read APIs are out
+of scope and must not be described as covered by this gate.
 
 ### Temporary pinned Foundry toolchain when the host has none
 

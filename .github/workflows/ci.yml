@@ -41,3 +41,5 @@ jobs:
         run: forge test -vv
       - name: EIP-170 and initcode size gate
         run: forge build --skip test && node ../../scripts/verify-base-runtime-size.mjs
+      - name: Base A1 paid-report client ABI parity
+        run: node ../../scripts/verify-base-a1-client-abi.mjs

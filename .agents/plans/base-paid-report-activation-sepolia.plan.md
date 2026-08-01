@@ -137,9 +137,9 @@ stage never authorizes the next stage. Base mainnet is outside every stage below
 - [ ] Candidate commit is based on the final merged `main`; worktree is clean and the reviewed SHA is recorded.
 - [x] Facade and linked-library artifacts reproduce under the pinned compiler/link profile; both local-rehearsal code hashes and the final link map are verified.
 - [x] Facade runtime is at or below the 23,500-byte project soft limit and 24,576-byte EIP-170 hard limit.
-- [x] Forge, ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates
+- [x] Forge, paid-report ABI/client parity, chain-map, web, isolated UI, harness, and production webpack gates
       pass locally. Historical 2026-07-13 evidence passed; the 2026-07-31 evidence refresh passes
-      Foundry 1.7.1 format/build/121 tests/size/rehearsal, Forge/client ABI parity, format, lint,
+      Foundry 1.7.1 format/build/121 tests/size/rehearsal, Forge/client paid-report ABI parity, format, lint,
       typecheck, chain-map, 867 web tests, isolated UI, harness, and the 151-page production webpack
       build after canonical lockfile dependency reconciliation.
 - [x] Local Anvil rehearsal proves deploy-uninitialized → pause → initialize-while-paused → ordered role handoff, with no configured/unpaused interval.
@@ -280,10 +280,11 @@ Gate-C note; its security and public-write boundaries remain unchanged.
 
 The evidence branch started from merged `main` at `ce3999574b085ba453beef5c36817fe53a1f06c9`.
 Node 24.18.1 format, lint, typecheck, chain-map, isolated Base UI, harness typecheck, 113 focused
-Base/A1 tests, and the full 867-test web suite passed. A new fail-closed ABI gate loads the fresh
-Forge artifact and compares canonical inputs, outputs, mutability, event indexed fields, and errors:
+Base/A1 tests, and the full 867-test web suite passed. A new fail-closed paid-report ABI gate loads
+the fresh Forge artifact and compares canonical inputs, outputs, mutability, event indexed fields, and errors:
 five buyer/read functions across web/UI/harness, five operator functions across UI/harness (explicitly
 omitted from web), and all 11 A1 events plus 19 A1 errors across the three client surfaces.
+Tuple-heavy non-report read APIs remain outside this deliberately curated gate.
 
 The initial production-build failure came from unreconciled copied `node_modules`, not repository
 code. After moving the stale generated trees to recoverable `/private/tmp` paths and completing a
@@ -424,7 +425,7 @@ Before any deployment candidate is approved:
     forge test --root contracts/base-poc -vv
     forge build --root contracts/base-poc --sizes
     npm run verify:base-size
-    npm run verify:base-a1-client-abi
+    npm run verify:base-a1-paid-report-abi
     npm run verify:chain-map
     npm run format:check
     npm run lint --workspace @agentvouch/web
