@@ -26,7 +26,7 @@ todos:
 isProject: false
 ---
 
-# A3 - Emergency Pause
+# AgentVouch Protocol Requirement A3 — Emergency Pause
 
 ## Goal
 

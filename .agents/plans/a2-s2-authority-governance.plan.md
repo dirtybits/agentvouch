@@ -23,7 +23,7 @@ todos:
 isProject: false
 ---
 
-# A2 S2 - Authority Governance
+# AgentVouch Protocol Requirement A2, Stage S2 — Authority Governance
 
 ## Goal
 

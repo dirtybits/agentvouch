@@ -35,7 +35,7 @@ todos:
 isProject: false
 ---
 
-# A2 — Dispute Governance v1
+# AgentVouch Protocol Requirement A2 — Governed Dispute Resolution
 
 ## Goal
 

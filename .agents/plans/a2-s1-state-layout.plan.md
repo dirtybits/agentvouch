@@ -23,7 +23,7 @@ todos:
 isProject: false
 ---
 
-# A2 S1 - State Layout And Events
+# AgentVouch Protocol Requirement A2, Stage S1 — State Layout and Events
 
 ## Goal
 

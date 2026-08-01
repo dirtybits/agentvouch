@@ -23,7 +23,7 @@ todos:
 isProject: false
 ---
 
-# Proposed Decision Memo: Base A1-Lite Economics
+# Proposed Decision Memo: Base Variant of Protocol Requirement A1 — Lite Economics
 
 > **Status: SUPERSEDED — 2026-07-10.** Retained as the historical record of the EIP-170 size
 > crisis; **do not implement from this memo.** Its central premise — that code size forces an
@@ -425,7 +425,7 @@ devnet records to describe this proposed Base-only choice.
 - Non-100% per-position floor rounding and exact processed-snapshot equality.
 - Pre-slash reward accrual, no post-slash accrual, residual reclaim, and re-vouch.
 
-### A1-lite economics
+### Protocol Requirement A1 Lite-Economics Variant
 
 - Reserve less than, equal to, and greater than initiating purchase price.
 - Only initiating buyer receives the fixed entitlement; every other historical buyer/revision

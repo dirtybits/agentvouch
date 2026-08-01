@@ -63,7 +63,7 @@ mainnet remains blocked.
 | Buy (agent) | Atomically consumes a buyer's EIP-3009 authorization and records the purchase. | — | `NOT_APPLICABLE` | `purchaseWithAuthorization` | `MERGED_SOURCE` | `LIVE_SEPOLIA_PRE_A1` | Base-only Lane B; there is no Solana analog. |
 <!-- END SURFACE MAP -->
 
-## Merged A1 deployment gap
+## Merged Voucher-Slashing (A1) Deployment Gap
 
 PR #102 merged the seven-function `base-v1-a1` paid-report surface and removed `openReport` / `resolveReport` from Base `main`. The facade runtime is 23,487 bytes and the linked-library runtime is 5,939 bytes; 116 Forge tests passed at that merge, and PR #106 later raised the current suite to 121. The full local Anvil lifecycle, linked-library verification, and an internal executable-diff review also passed.
 

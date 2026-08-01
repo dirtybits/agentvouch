@@ -34,7 +34,7 @@ todos:
     status: completed
 ---
 
-# A1 — Voucher Slashing
+# AgentVouch Protocol Requirement A1 — Voucher Slashing
 
 ## Goal
 
