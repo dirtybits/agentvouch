@@ -1303,7 +1303,6 @@ async function sendBaseUsdcPullWrite(input: {
   amountUsdcMicros: bigint;
   purpose: string;
   contractCall: unknown;
-  sequentialApproval?: boolean;
 }): Promise<BaseUserOperationResult> {
   const config = requireBasePaymasterWriteConfig();
   const publicClient = createBasePublicClient();
@@ -1326,20 +1325,6 @@ async function sendBaseUsdcPullWrite(input: {
     amountUsdcMicros: input.amountUsdcMicros,
     usdcAddress: config.usdcAddress,
   });
-  if (input.sequentialApproval) {
-    for (const approvalCall of approvalCalls) {
-      const approvalResult = await sendBaseUserOperation(input.account, [
-        approvalCall,
-      ]);
-      await waitForBaseTransactionReceipt(
-        publicClient,
-        approvalResult.txHash,
-        `Base ${input.purpose} approval`
-      );
-    }
-    return sendBaseUserOperation(input.account, [input.contractCall]);
-  }
-
   return sendBaseUserOperation(input.account, [
     ...approvalCalls,
     input.contractCall,

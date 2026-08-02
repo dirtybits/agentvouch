@@ -184,9 +184,6 @@ describe("Base passkey trust-write seam", () => {
     expect(source).toContain(
       "throw new Error(BASE_AUTHOR_REPORTS_UNAVAILABLE_MESSAGE)"
     );
-    expect(source).toContain("sequentialApproval?: boolean");
-    expect(source).toContain("if (input.sequentialApproval)");
-    expect(source).not.toContain("sequentialApproval: true");
   });
 });
 
