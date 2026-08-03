@@ -7,6 +7,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { recordInstallAndDownloadEvent } from "@/lib/skillRawAccess";
+import { isUuidLike } from "@/lib/skillUrls";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -83,6 +84,10 @@ export async function POST(
         skill_id: pubkey,
         installed_by: verification.pubkey,
       });
+    }
+
+    if (!isUuidLike(id)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
     await initializeDatabase();
