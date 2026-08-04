@@ -71,23 +71,42 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.font-sans {
+  font-family: var(--font-inter), "Inter", sans-serif !important;
+}
+
 .font-heading {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
 }
 
 .font-display {
-  font-family: var(--font-crimson-text), "Crimson Text", serif !important;
+  font-family: var(--font-crimson-pro), "Crimson Pro", Georgia, serif !important;
   font-weight: 400 !important;
 }
 
-/* Long-form reading serif for blog articles. !important to override the body's
-   font-mono; code/pre stay monospace for readability. */
+/* Inter is the readable face for descriptions, subtitles, and long-form copy.
+   Keep the class name for existing article/skill surfaces. */
 .font-article {
-  font-family: var(--font-crimson-pro), "Crimson Pro", Georgia, serif !important;
+  font-family: var(--font-inter), "Inter", sans-serif !important;
 }
 
 .font-article :where(code, pre, kbd, samp) {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
+}
+
+@media (max-width: 30rem) {
+  .nav-shell {
+    gap: 0.25rem !important;
+    padding-inline: 0.5rem !important;
+  }
+
+  .nav-theme-toggle {
+    display: none;
+  }
+
+  .home-hero-title {
+    font-size: 2.25rem !important;
+  }
 }
 
 /* @tailwindcss/typography wraps inline <code> in literal backtick characters via

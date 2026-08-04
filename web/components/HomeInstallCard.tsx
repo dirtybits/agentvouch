@@ -79,7 +79,9 @@ export function HomeInstallCard() {
                 </button>
               </div>
               <pre className="overflow-x-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
-                <code>{agentInstallInstructions}</code>
+                <code className="block max-w-full break-words">
+                  {agentInstallInstructions}
+                </code>
               </pre>
             </div>
           )}
@@ -108,7 +110,9 @@ export function HomeInstallCard() {
                 </button>
               </div>
               <pre className="overflow-x-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
-                <code>{cliInstallInstructions}</code>
+                <code className="block max-w-full break-words">
+                  {cliInstallInstructions}
+                </code>
               </pre>
             </div>
           )}

@@ -95,7 +95,7 @@ export function AppNavbar() {
       ref={navRef}
       className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/80 backdrop-blur-sm"
     >
-      <div className="max-w-7xl mx-auto px-4 md:px-6 h-14 flex items-center gap-3">
+      <div className="nav-shell max-w-7xl mx-auto px-4 md:px-6 h-14 flex items-center gap-3">
         <Link
           href="/"
           onClick={() => setMobileMenuOpen(false)}
@@ -134,7 +134,9 @@ export function AppNavbar() {
           </div>
           <BuyerAuthButton />
           <ClientWalletButton />
-          <ThemeToggle />
+          <div className="nav-theme-toggle">
+            <ThemeToggle />
+          </div>
           <button
             type="button"
             className={`${navIconButtonClass} border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)] transition hover:bg-[var(--sea-accent-soft-hover)] md:hidden`}

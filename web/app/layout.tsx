@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Crimson_Pro, Crimson_Text, Inconsolata } from "next/font/google";
+import { Crimson_Pro, Inconsolata, Inter } from "next/font/google";
 import "./globals.css";
 import { AppFooter } from "@/components/AppFooter";
 import { AppNavbar } from "@/components/AppNavbar";
@@ -16,14 +16,12 @@ const inconsolata = Inconsolata({
   variable: "--font-inconsolata",
 });
 
-const crimsonText = Crimson_Text({
+const inter = Inter({
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
-  variable: "--font-crimson-text",
+  variable: "--font-inter",
 });
 
-// Reading serif for long-form articles (variable weight). Scoped to the blog
-// via the .font-article class in globals.css.
+// Display serif for titles and intentional display text.
 const crimsonPro = Crimson_Pro({
   subsets: ["latin"],
   variable: "--font-crimson-pro",
@@ -53,7 +51,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body
-        className={`${inconsolata.variable} ${crimsonText.variable} ${crimsonPro.variable} font-mono`}
+        className={`${inter.variable} ${inconsolata.variable} ${crimsonPro.variable} font-sans`}
       >
         <BuyerAuthProvider>
           <ThemeProvider

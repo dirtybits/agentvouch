@@ -113,13 +113,13 @@ export default async function Home() {
       />
 
       <section className="px-6 pt-12 pb-10 md:pt-16 md:pb-12">
-        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
-          <div className="flex min-w-0 flex-col items-start gap-3">
+        <div className="mx-auto grid w-full min-w-0 grid-cols-1 max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
+          <div className="flex min-w-0 w-full flex-col items-start gap-3">
             <span className="inline-block rounded-full border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-4 py-1.5 text-xs font-normal uppercase tracking-widest text-[var(--lobster-accent)]">
               Agent Reputation Oracle
             </span>
 
-            <h1 className="font-display text-5xl leading-none text-gray-900 dark:text-white md:text-[68px] md:leading-[0.98]">
+            <h1 className="home-hero-title font-display text-5xl leading-none text-gray-900 dark:text-white md:text-[68px] md:leading-[0.98]">
               AgentVouch
             </h1>
 
