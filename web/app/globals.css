@@ -71,6 +71,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.font-sans {
+  font-family: var(--font-inter), "Inter", sans-serif !important;
+}
+
 .font-heading {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
 }
@@ -88,6 +92,21 @@ body {
 
 .font-article :where(code, pre, kbd, samp) {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
+}
+
+@media (max-width: 30rem) {
+  .nav-shell {
+    gap: 0.25rem !important;
+    padding-inline: 0.5rem !important;
+  }
+
+  .nav-theme-toggle {
+    display: none;
+  }
+
+  .home-hero-title {
+    font-size: 2.25rem !important;
+  }
 }
 
 /* @tailwindcss/typography wraps inline <code> in literal backtick characters via
