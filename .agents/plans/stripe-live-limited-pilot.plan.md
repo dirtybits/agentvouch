@@ -15,8 +15,11 @@ todos:
     content: Deploy the versioned checkout recourse acknowledgement and public docs with all card flags off, then browser-verify the exact production copy and disabled route.
     status: pending
   - id: rehearse-limited-pilot
-    content: Rehearse allowlist, caps, ledger, payment, download, isolation, refund, dispute, replay, partial-refund review, monitoring, and rollback in Stripe test mode on a production-like preview.
+    content: Rehearse payment, download, account isolation, refund, dispute, replay, partial-refund review, monitoring, WAF Log visibility, and rollback in Stripe test mode on a production-like preview.
     status: in_progress
+  - id: rehearse-live-pilot-controls
+    content: Separately rehearse the live-only buyer and skill allowlists, atomic caps, reservation ledger, durable expiration, and zero-alert monitor without authorizing a real payment.
+    status: pending
   - id: activate-one-charge-canary
     content: After a separate explicit real-funds approval, activate only the recorded live pilot scope, run one approved walletless card canary, and capture payment, access, ledger, no-protocol-receipt, and monitoring evidence.
     status: pending
@@ -274,23 +277,43 @@ npm run stripe:ops --workspace @agentvouch/web -- preflight
 npm run stripe:ops --workspace @agentvouch/web -- monitor
 ```
 
-Behavioral acceptance requires evidence that:
+### Stripe test-mode preview acceptance
+
+Stripe test mode proves the account-access and payment-event behavior that does not depend on the
+live-pilot reservation ledger:
+
+1. One signed-in Google/email buyer pays and downloads; anonymous and a different signed-in account
+   receive no access.
+2. Exactly one account grant exists for the successful payment; no protocol receipt, wallet
+   entitlement, Base purchase id, Solana purchase PDA, x402 settlement, author proceeds, voucher
+   reward, paid Report eligibility, or buyer credit exists.
+3. Paid webhook replay does not add access or restore a revoked grant.
+4. Full refund and dispute creation revoke access; partial refund enters durable review; fee/net and
+   refund/dispute deltas reconcile to Stripe.
+5. The card checkbox appears before the button, the button stays disabled until acknowledged, and
+   the current disclosure version is present in Stripe metadata.
+6. The expired-session webhook is delivered and acknowledged. Test mode does not claim that a live
+   reservation or capacity slot changed.
+7. A published Log-only WAF rule matches the preview checkout route without blocking it, and the
+   filtered Firewall view records the expected request.
+8. Setting the server and public checkout flags false stops new sessions while webhook refunds,
+   disputes, delayed payments, and reconciliation continue.
+
+### Live-pilot control rehearsal acceptance
+
+The following checks are live-key control checks. They are not part of the Stripe test-mode matrix
+and do not authorize a real payment:
 
 1. Missing any live acknowledgement, skill/buyer allowlist, unit/payment/GMV cap, WAF proof, DB
    schema, or disclosure version prevents Checkout Session creation.
 2. Unallowlisted buyer/skill and over-cap amount are rejected before Stripe is called.
-3. One allowlisted Google/email buyer pays in test mode and downloads; anonymous, different-account,
-   and unallowlisted-account requests receive no access.
-4. Exactly one account grant and one pilot ledger row exist; no protocol receipt, wallet
-   entitlement, Base purchase id, Solana purchase PDA, x402 settlement, author proceeds, voucher
-   reward, paid Report eligibility, or buyer credit exists.
-5. Paid webhook replay does not add volume or restore a revoked grant.
-6. Full refund and dispute creation revoke access; partial refund enters durable review; fee/net and
-   refund/dispute deltas reconcile to Stripe.
-7. The card checkbox appears before the button, the button stays disabled until acknowledged, and
-   the current version is present in Stripe metadata and the ledger.
-8. Setting the server and public checkout/card flags false stops new sessions while webhook
-   refunds, disputes, delayed payments, and reconciliation continue.
+3. An allowed reservation creates exactly one pilot-ledger row; duplicate or concurrent attempts
+   cannot exceed the payment, GMV, or reservation caps.
+4. The accepted disclosure version is present in both Stripe metadata and the pilot ledger.
+5. `checkout.session.expired` terminalizes an unpaid live reservation and releases its payable and
+   concurrent-reservation capacity without releasing consumed gross capacity incorrectly.
+6. The production WAF rule is reviewed separately, and `stripe:ops preflight` and `monitor` both
+   return zero blockers or open review alerts before any canary approval.
 
 ### Local implementation verification (2026-08-01)
 
@@ -375,11 +398,14 @@ Behavioral acceptance requires evidence that:
   501, and the card disclosure and button no longer rendered. The webhook stayed active: remaining
   refund `re_3U0pr6A2jEYsGvGP1O6jLFUG` completed the second PaymentIntent's refund after rollback,
   and event `evt_3U0pr6A2jEYsGvGP1GPtwIwW` revoked the active grant with `stripe-refund`.
-- Still open: signed-in different-account rejection, WAF Log evidence, live-pilot allowlist/cap
-  exhaustion, and durable expiration-slot release. The first requires another test buyer identity;
-  the other live-pilot controls do not execute on test-mode Checkout Sessions. Keep
-  `rehearse-limited-pilot` in progress until these gaps are closed or the acceptance criteria are
-  explicitly separated into test-mode and live-pilot rehearsals.
+- Still open for the test-mode rehearsal: signed-in different-account rejection and WAF Log
+  evidence. Live-pilot allowlist/cap exhaustion and durable expiration-slot release are tracked by
+  the separate `rehearse-live-pilot-controls` todo because those controls do not execute on
+  test-mode Checkout Sessions.
+- Staged Vercel Firewall rule `rule_stripe_checkout_preview_log_8tBZMw` on 2026-08-04. It matches
+  only preview-environment `POST /api/stripe/checkout` requests and uses action `log`. The rule is a
+  valid unpublished draft; it provides no WAF evidence until a human publishes it and the preview
+  generates a matching request.
 
 ## Rollout
 
@@ -388,22 +414,24 @@ Behavioral acceptance requires evidence that:
    docs independently.
 2. Complete founder decisions and external reviews. Rehearse the buyer allowlist, ledger, atomic
    caps, and monitor on a disposable Neon branch.
-3. Run the full Stripe test-mode matrix on a production-like preview, including WAF Log evidence,
-   cap exhaustion, rollback, and post-rollback refund/dispute delivery.
-4. Publish the founder-approved WAF enforcement rule; verify production Firewall traffic and record
+3. Run the Stripe test-mode matrix on a production-like preview, including account isolation, WAF
+   Log evidence, rollback, and post-rollback refund/dispute delivery.
+4. Rehearse the live-only allowlists, atomic caps, reservation ledger, expiration-slot release, and
+   zero-alert monitor separately without creating a real payment.
+5. Publish the founder-approved WAF enforcement rule; verify production Firewall traffic and record
    evidence. Do not set the acknowledgement early.
-5. Configure live Stripe API/webhook credentials and required event subscriptions with checkout
+6. Configure live Stripe API/webhook credentials and required event subscriptions with checkout
    flags still false. Confirm mode names and endpoint status without printing secrets.
-6. Populate exact server-only pilot allowlists/caps and run preflight/monitor. Every blocker and
+7. Populate exact server-only pilot allowlists/caps and run preflight/monitor. Every blocker and
    review item must be zero.
-7. Obtain a dated **GO: one real walletless card canary** naming buyer, skill, amount, operator,
+8. Obtain a dated **GO: one real walletless card canary** naming buyer, skill, amount, operator,
    rollback owner, and whether the test ends with a refund. This approval cannot be inferred from
    approval to merge the plan.
-8. Enable only the live-pilot server/public flags and acknowledgement, redeploy the exact reviewed
+9. Enable only the live-pilot server/public flags and acknowledgement, redeploy the exact reviewed
    commit, and run the one charge. Stop immediately after the recorded canary or cap.
-9. Verify Stripe, DB grant, pilot ledger, raw download, no-protocol-state invariants, WAF traffic,
-   webhook delivery, and monitor output. Observe for the founder-recorded period before any second
-   payment.
+10. Verify Stripe, DB grant, pilot ledger, raw download, no-protocol-state invariants, WAF traffic,
+    webhook delivery, and monitor output. Observe for the founder-recorded period before any second
+    payment.
 
 ## Rollback
 
