@@ -86,11 +86,16 @@ function provider(
     capabilities?: unknown;
     transactionHashes?: string[];
     transactionErrorAt?: number;
+    switchErrorAt?: number;
+    switchErrorCode?: number;
+    switchChangesChain?: boolean;
   } = {}
 ): MockProvider {
   const requests: MockProvider["requests"] = [];
   const transactionHashes = [...(input.transactionHashes ?? [])];
   let transactionCount = 0;
+  let switchCount = 0;
+  let chainId = input.chainId ?? BASE_SEPOLIA_CHAIN_ID_HEX;
   return {
     isMetaMask: input.isMetaMask,
     isPhantom: input.isPhantom,
@@ -100,9 +105,18 @@ function provider(
     requests,
     request: vi.fn(async (args) => {
       requests.push(args);
-      if (args.method === "eth_chainId")
-        return input.chainId ?? BASE_SEPOLIA_CHAIN_ID_HEX;
-      if (args.method === "wallet_switchEthereumChain") return null;
+      if (args.method === "eth_chainId") return chainId;
+      if (args.method === "wallet_switchEthereumChain") {
+        switchCount += 1;
+        if (switchCount === input.switchErrorAt) {
+          throw { code: input.switchErrorCode ?? 4902 };
+        }
+        if (input.switchChangesChain !== false) {
+          chainId = BASE_SEPOLIA_CHAIN_ID_HEX;
+        }
+        return null;
+      }
+      if (args.method === "wallet_addEthereumChain") return null;
       if (args.method === "personal_sign") return input.signature ?? "0xabc123";
       if (args.method === "wallet_getCapabilities")
         return input.capabilities ?? {};
@@ -627,6 +641,39 @@ describe("Base injected chain switching", () => {
       method: "wallet_switchEthereumChain",
       params: [{ chainId: BASE_SEPOLIA_CHAIN_ID_HEX }],
     });
+    expect(metamask.requests.at(-1)).toEqual({ method: "eth_chainId" });
+  });
+
+  it("switches explicitly after adding Base Sepolia and verifies the active chain", async () => {
+    const metamask = provider({
+      isMetaMask: true,
+      chainId: "0xaa36a7",
+      switchErrorAt: 1,
+      switchErrorCode: 4902,
+    });
+
+    await ensureBaseSepoliaInjectedChain(metamask);
+
+    expect(metamask.requests.map((request) => request.method)).toEqual([
+      "eth_chainId",
+      "wallet_switchEthereumChain",
+      "wallet_addEthereumChain",
+      "wallet_switchEthereumChain",
+      "eth_chainId",
+    ]);
+  });
+
+  it("fails closed when the provider does not switch to Base Sepolia", async () => {
+    const metamask = provider({
+      isMetaMask: true,
+      chainId: "0xaa36a7",
+      switchChangesChain: false,
+    });
+
+    await expect(ensureBaseSepoliaInjectedChain(metamask)).rejects.toThrow(
+      "MetaMask did not switch to Base Sepolia."
+    );
+    expect(metamask.requests.at(-1)).toEqual({ method: "eth_chainId" });
   });
 });
 
