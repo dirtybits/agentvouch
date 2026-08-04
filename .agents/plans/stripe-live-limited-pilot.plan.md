@@ -16,7 +16,7 @@ todos:
     status: pending
   - id: rehearse-limited-pilot
     content: Rehearse allowlist, caps, ledger, payment, download, isolation, refund, dispute, replay, partial-refund review, monitoring, and rollback in Stripe test mode on a production-like preview.
-    status: pending
+    status: in_progress
   - id: activate-one-charge-canary
     content: After a separate explicit real-funds approval, activate only the recorded live pilot scope, run one approved walletless card canary, and capture payment, access, ledger, no-protocol-receipt, and monitoring evidence.
     status: pending
