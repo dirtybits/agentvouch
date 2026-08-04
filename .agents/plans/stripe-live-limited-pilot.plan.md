@@ -370,11 +370,16 @@ Behavioral acceptance requires evidence that:
   configuration. The monitor correctly returned non-zero for the new partial-refund review and four
   older unresolved events copied from the production snapshot; this rehearsal did not resolve or
   alter those inherited records.
+- Updated both branch-scoped checkout flags to `false` and deployed commit `a501dc4` as
+  `dpl_6vKhYFUQUMWZ1weiS9nPh6fA2Ztr`. The stable preview returned 200, the checkout route returned
+  501, and the card disclosure and button no longer rendered. The webhook stayed active: remaining
+  refund `re_3U0pr6A2jEYsGvGP1O6jLFUG` completed the second PaymentIntent's refund after rollback,
+  and event `evt_3U0pr6A2jEYsGvGP1GPtwIwW` revoked the active grant with `stripe-refund`.
 - Still open: signed-in different-account rejection, WAF Log evidence, live-pilot allowlist/cap
-  exhaustion, durable expiration-slot release, and checkout-off/post-rollback webhook proof. The
-  first requires another test buyer identity; the other live-pilot controls do not execute on
-  test-mode Checkout Sessions. Keep `rehearse-limited-pilot` in progress until these gaps are closed
-  or the acceptance criteria are explicitly separated into test-mode and live-pilot rehearsals.
+  exhaustion, and durable expiration-slot release. The first requires another test buyer identity;
+  the other live-pilot controls do not execute on test-mode Checkout Sessions. Keep
+  `rehearse-limited-pilot` in progress until these gaps are closed or the acceptance criteria are
+  explicitly separated into test-mode and live-pilot rehearsals.
 
 ## Rollout
 
