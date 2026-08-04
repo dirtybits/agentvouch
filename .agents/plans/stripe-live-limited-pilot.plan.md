@@ -305,6 +305,33 @@ Behavioral acceptance requires evidence that:
   real webhook. The source readiness constant remains `false`, so no environment combination can
   activate live Checkout Session creation or fulfillment from this change.
 
+### Disposable database rehearsal — partial evidence (2026-08-04)
+
+- Verified the target as Neon project `agentvouch-postgres`
+  (`calm-meadow-36819154`) and production parent `main` (`br-quiet-base-afn4qzxf`). The legacy
+  `agent-reputation-oracle` project was not used.
+- Created temporary child `test/stripe-pilot-rehearsal-20260804`
+  (`br-jolly-block-afiektpk`) from that parent. PostgreSQL reported version 17.10. Before the
+  rehearsal, `stripe_live_pilot_payments` was absent while the existing webhook-outcome and
+  account-access tables were present.
+- Applied the exact additive `CREATE TABLE IF NOT EXISTS` definition from `stripeLivePilot.ts` to
+  the child only. Readback found 21 columns, 8 constraints, and zero initial rows.
+- Rehearsed a 250-cent reservation with a 500-cent gross cap, one completed-payment slot, and one
+  concurrent-reservation slot. A second concurrent reservation inserted zero rows. The first row
+  moved through `reserved` → `session-created` → `paid` → `fulfilled` → `refunded`.
+- Reconciled the row at 250 cents gross, 30 cents fee, 220 cents net, and 250 cents refunded. A
+  replay after refund restored zero rows. The monitor-equivalent query reported one completed
+  payment and zero concurrent reservations, stale reservations, missing financials, disputes, or
+  open reviews. Gross capacity remained consumed as designed.
+- Re-read production `main`: `stripe_live_pilot_payments` was still absent. Deleted the temporary
+  branch and confirmed the project again contained only `main`.
+- Ran the read-only live-mode preflight with placeholders and every environment gate satisfied. It
+  still returned `checkoutEnabled: false` and
+  `livePilotImplementationReady: false`; the source-controlled activation stop remained effective.
+- Not run: Stripe test API calls, Checkout or PaymentIntent creation, real webhooks, account-grant
+  and download isolation, partial-refund or dispute transitions, WAF proof, browser verification,
+  or any real card charge. The `rehearse-limited-pilot` todo therefore remains pending.
+
 ## Rollout
 
 1. Merge and deploy code/docs with all Stripe checkout and buyer-card flags false. Verify the
