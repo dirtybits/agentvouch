@@ -20,6 +20,11 @@ const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
 >;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
 
+const MISSING_REPO_SKILL_ID = "11111111-1111-4111-8111-111111111111";
+const PAID_REPO_SKILL_ID = "22222222-2222-4222-8222-222222222222";
+const UNLINKED_PAID_REPO_SKILL_ID = "33333333-3333-4333-8333-333333333333";
+const FREE_REPO_SKILL_ID = "44444444-4444-4444-8444-444444444444";
+
 function makeRequest(id: string, query = "") {
   const url = new URL(`http://localhost/api/skills/${id}/update${query}`);
   const req = new NextRequest(url, { method: "GET" });
@@ -58,11 +63,24 @@ describe("GET /api/skills/[id]/update", () => {
     }
   );
 
+  it("rejects malformed repo skill ids before database initialization", async () => {
+    const { req, params } = makeRequest("not-a-uuid");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the repo skill does not exist", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-missing", "?installed_version=1");
+    const { req, params } = makeRequest(
+      MISSING_REPO_SKILL_ID,
+      "?installed_version=1"
+    );
     const res = await GET(req, { params });
 
     expect(res.status).toBe(404);
@@ -71,7 +89,7 @@ describe("GET /api/skills/[id]/update", () => {
   it("returns update_available with paid listing state", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-paid",
+        id: PAID_REPO_SKILL_ID,
         skill_id: "calendar-agent",
         current_version: 3,
         updated_at: "2026-04-13T12:00:00.000Z",
@@ -85,7 +103,7 @@ describe("GET /api/skills/[id]/update", () => {
     });
 
     const { req, params } = makeRequest(
-      "uuid-paid",
+      PAID_REPO_SKILL_ID,
       "?installed_version=2&source=repo&listing=ListingAddr1"
     );
     const res = await GET(req, { params });
@@ -93,7 +111,7 @@ describe("GET /api/skills/[id]/update", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({
-      id: "uuid-paid",
+      id: PAID_REPO_SKILL_ID,
       skill_slug: "calendar-agent",
       status: "update_available",
       installed_version: 2,
@@ -110,7 +128,7 @@ describe("GET /api/skills/[id]/update", () => {
   it("returns listing-required for paid repo skills without an on-chain listing", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-paid-unlinked",
+        id: UNLINKED_PAID_REPO_SKILL_ID,
         skill_id: "calendar-agent",
         current_version: 3,
         updated_at: "2026-04-13T12:00:00.000Z",
@@ -121,7 +139,7 @@ describe("GET /api/skills/[id]/update", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const { req, params } = makeRequest(
-      "uuid-paid-unlinked",
+      UNLINKED_PAID_REPO_SKILL_ID,
       "?installed_version=2&source=repo"
     );
     const res = await GET(req, { params });
@@ -129,7 +147,7 @@ describe("GET /api/skills/[id]/update", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({
-      id: "uuid-paid-unlinked",
+      id: UNLINKED_PAID_REPO_SKILL_ID,
       price_usdc_micros: "1000000",
       payment_flow: "listing-required",
       requires_purchase: true,
@@ -139,7 +157,7 @@ describe("GET /api/skills/[id]/update", () => {
   it("returns unknown_installed_version when the caller has no local metadata yet", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-free",
+        id: FREE_REPO_SKILL_ID,
         skill_id: "calendar-agent",
         current_version: 4,
         updated_at: "2026-04-13T12:00:00.000Z",
@@ -148,13 +166,13 @@ describe("GET /api/skills/[id]/update", () => {
     ]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-free");
+    const { req, params } = makeRequest(FREE_REPO_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({
-      id: "uuid-free",
+      id: FREE_REPO_SKILL_ID,
       skill_slug: "calendar-agent",
       status: "unknown_installed_version",
       installed_version: null,
