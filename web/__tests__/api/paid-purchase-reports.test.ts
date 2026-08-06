@@ -22,7 +22,7 @@ vi.mock("@/lib/usdcPurchases", () => purchaseMocks);
 import { POST } from "@/app/api/skills/[id]/paid-reports/verify/route";
 import { GET } from "@/app/api/skills/[id]/paid-reports/route";
 
-const SKILL_ID = "11111111-1111-1111-1111-111111111111";
+const SKILL_ID = "11111111-1111-4111-8111-111111111111";
 const PURCHASE_ID =
   "0xcf7cbe3e55c964334cb3f010368423852c6f75733314a9d3eeba5b753b05687f";
 const TX_HASH =
@@ -56,6 +56,43 @@ describe("POST /api/skills/[id]/paid-reports/verify", () => {
       index: { reportId: "1", purchaseId: PURCHASE_ID },
       state: { reportId: "1", status: 1 },
     });
+  });
+
+  it("rejects malformed skill ids before database initialization", async () => {
+    const response = await POST(
+      request({ txHash: TX_HASH, purchaseId: PURCHASE_ID }),
+      {
+        params: Promise.resolve({ id: "not-a-uuid" }),
+      }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Skill not found",
+    });
+    expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
+    expect(dbMocks.sql).not.toHaveBeenCalled();
+  });
+
+  it("rejects a literal null request body without database initialization", async () => {
+    const response = await POST(
+      new NextRequest(
+        `http://localhost/api/skills/${SKILL_ID}/paid-reports/verify`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "null",
+        }
+      ),
+      { params: Promise.resolve({ id: SKILL_ID }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "txHash and purchaseId are required",
+    });
+    expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
+    expect(dbMocks.sql).not.toHaveBeenCalled();
   });
 
   it("passes only the transaction and purchase identity into exact verification", async () => {
@@ -103,6 +140,22 @@ describe("GET /api/skills/[id]/paid-reports", () => {
       requiresExactCallSimulation: true,
     });
     purchaseMocks.getEvmPaidPurchaseReportIndex.mockResolvedValue(null);
+  });
+
+  it("rejects malformed skill ids before database initialization", async () => {
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/skills/not-a-uuid/paid-reports?buyer=0x3fc722ba956f17b521087984F2c5c0BA47Df3c6B&purchaseId=${PURCHASE_ID}`
+      ),
+      { params: Promise.resolve({ id: "not-a-uuid" }) }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Skill not found",
+    });
+    expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
+    expect(dbMocks.sql).not.toHaveBeenCalled();
   });
 
   it("returns purchase preflight even before a report has been indexed", async () => {
