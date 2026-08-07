@@ -13,6 +13,7 @@ import {
   requiresPurchase,
 } from "@/lib/listingContract";
 import { getConfiguredUsdcMint } from "@/lib/x402";
+import { isUuidLike } from "@/lib/skillUrls";
 
 type SkillRow = {
   id: string;
@@ -77,6 +78,11 @@ export async function GET(
         { status: 400 }
       );
     }
+
+    if (!isUuidLike(id)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
+
     const providedListing = request.nextUrl.searchParams.get("listing");
 
     await initializeDatabase();
