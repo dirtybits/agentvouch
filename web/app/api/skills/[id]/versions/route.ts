@@ -16,6 +16,7 @@ import {
   BASE_SEPOLIA_CHAIN_CONTEXT,
   normalizeInputChainContext,
 } from "@/lib/chains";
+import { isUuidLike } from "@/lib/skillUrls";
 import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 
 type VersionedSkillRow = {
@@ -94,6 +95,10 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    if (!isUuidLike(id)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
+
     const upload = await parseSkillUploadRequest(request);
     const body = upload.body;
     const content = upload.skillContent;
