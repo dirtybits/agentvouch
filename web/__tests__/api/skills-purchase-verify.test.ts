@@ -32,16 +32,19 @@ vi.mock("@/lib/protocolMetadata", () => ({
 }));
 
 import { POST } from "@/app/api/skills/[id]/purchase/verify/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
 
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockFetchOnChainSkillListing =
   fetchOnChainSkillListing as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: unknown) {
   const req = new NextRequest(
-    "http://localhost/api/skills/00000000-0000-0000-0000-000000000001/purchase/verify",
+    "http://localhost/api/skills/00000000-0000-4000-8000-000000000001/purchase/verify",
     {
       method: "POST",
       body: JSON.stringify(body),
@@ -50,7 +53,7 @@ function makeRequest(body: unknown) {
   );
   return {
     req,
-    params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }),
+    params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }),
   };
 }
 
@@ -59,9 +62,31 @@ describe("POST /api/skills/[id]/purchase/verify", () => {
     vi.clearAllMocks();
   });
 
+  it("rejects malformed repo skill ids before initializing the database", async () => {
+    const req = new NextRequest(
+      "http://localhost/api/skills/not-a-uuid/purchase/verify",
+      {
+        method: "POST",
+        body: JSON.stringify({ signature: "txsig" }),
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "not-a-uuid" }),
+    });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockVerifyAndRecord).not.toHaveBeenCalled();
+    expect(mockVerifyDirectPurchase).not.toHaveBeenCalled();
+  });
+
   it("records direct purchase entitlements through the shared helper", async () => {
     const skill = {
-      id: "00000000-0000-0000-0000-000000000001",
+      id: "00000000-0000-4000-8000-000000000001",
       on_chain_address: "Listing",
       author_pubkey: "Author",
       price_usdc_micros: "1000000",

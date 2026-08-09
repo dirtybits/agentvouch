@@ -18,6 +18,7 @@ import {
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
 import { normalizeInputChainContext } from "@/lib/chains";
+import { isUuidLike } from "@/lib/skillUrls";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -67,6 +68,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  if (!id.startsWith(CHAIN_PREFIX) && !isUuidLike(id)) {
+    return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+  }
+
   await initializeDatabase();
 
   let body: VerifyPurchaseBody;
