@@ -12,6 +12,7 @@ import {
   requireBaseEvmAddress,
 } from "@/lib/adapters/baseListing";
 import { getEvmPaidPurchaseReportIndex } from "@/lib/usdcPurchases";
+import { isUuidLike } from "@/lib/skillUrls";
 
 const PRIVATE_NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
 
@@ -36,6 +37,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isUuidLike(id)) {
+    return NextResponse.json(
+      { error: "Skill not found" },
+      { status: 404, headers: PRIVATE_NO_STORE_HEADERS }
+    );
+  }
+
   await initializeDatabase();
   const skill = await fetchSkill(id);
   if (!skill) {
