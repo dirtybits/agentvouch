@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: publish-focused-pr
     content: Create a signed focused PR with exact verification results
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
