@@ -158,6 +158,22 @@ describe("GET /api/skills/[id]/paid-reports", () => {
     expect(dbMocks.sql).not.toHaveBeenCalled();
   });
 
+  it("rejects a malformed paid-report query input before database initialization", async () => {
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/skills/${SKILL_ID}/paid-reports?buyer=not-an-address&purchaseId=${PURCHASE_ID}`
+      ),
+      { params: Promise.resolve({ id: SKILL_ID }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Buyer is not a valid EVM address",
+    });
+    expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
+    expect(dbMocks.sql).not.toHaveBeenCalled();
+  });
+
   it("returns purchase preflight even before a report has been indexed", async () => {
     const buyer = "0x3fc722ba956f17b521087984F2c5c0BA47Df3c6B";
     const response = await GET(
