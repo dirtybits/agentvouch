@@ -53,7 +53,7 @@ export async function POST(
 ) {
   try {
     const { pubkey } = await params;
-    const body = (await request.json()) as {
+    const body = ((await request.json().catch(() => null)) ?? {}) as {
       auth?: AuthPayload;
       owner?: string;
       repo?: string;
