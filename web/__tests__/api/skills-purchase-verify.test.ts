@@ -32,10 +32,13 @@ vi.mock("@/lib/protocolMetadata", () => ({
 }));
 
 import { POST } from "@/app/api/skills/[id]/purchase/verify/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockFetchOnChainSkillListing =
   fetchOnChainSkillListing as unknown as ReturnType<typeof vi.fn>;
 
@@ -172,5 +175,42 @@ describe("POST /api/skills/[id]/purchase/verify", () => {
 
     expect(res.status).toBe(400);
     expect(mockVerifyAndRecord).not.toHaveBeenCalled();
+  });
+
+  it("rejects a literal null body before database initialization", async () => {
+    const { req, params } = makeRequest(null);
+
+    const res = await POST(req, { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: "Missing transaction signature" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockVerifyAndRecord).not.toHaveBeenCalled();
+    expect(mockVerifyDirectPurchase).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON before database initialization", async () => {
+    const req = new NextRequest(
+      "http://localhost/api/skills/00000000-0000-0000-0000-000000000001/purchase/verify",
+      {
+        method: "POST",
+        body: "{",
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: "Request body must be valid JSON" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockVerifyAndRecord).not.toHaveBeenCalled();
+    expect(mockVerifyDirectPurchase).not.toHaveBeenCalled();
   });
 });

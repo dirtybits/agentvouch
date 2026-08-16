@@ -67,11 +67,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  await initializeDatabase();
 
   let body: VerifyPurchaseBody;
   try {
-    body = (await request.json()) as VerifyPurchaseBody;
+    body = ((await request.json()) ?? {}) as VerifyPurchaseBody;
   } catch {
     return NextResponse.json(
       { error: "Request body must be valid JSON" },
@@ -88,6 +87,18 @@ export async function POST(
   const chainContext = stringOrNull(body.chainContext);
   const expectedPriceUsdcMicros = stringOrNull(body.expectedPriceUsdcMicros);
   const paymentRef = txHash ?? signature;
+
+  // Base existing-purchase verification can omit a transaction reference, but
+  // still requires buyer and listing data. Reject an empty/null body before
+  // initializing the database or choosing a chain-specific verification path.
+  if (!paymentRef && !buyer && !listing && !listingId) {
+    return NextResponse.json(
+      { error: "Missing transaction signature" },
+      { status: 400 }
+    );
+  }
+
+  await initializeDatabase();
 
   const skill = id.startsWith(CHAIN_PREFIX)
     ? await buildChainOnlySkillRow(id.slice(CHAIN_PREFIX.length))
