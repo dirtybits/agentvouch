@@ -3,6 +3,7 @@ import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import { isBuyerCardAccessServerEnabled } from "@/lib/buyerAuthConfig";
 import { getBuyerSession } from "@/lib/buyerSession";
 import { hasActiveMarketplaceAccessGrant } from "@/lib/buyerAccessGrants";
+import { isUuidLike } from "@/lib/skillUrls";
 
 export async function GET(
   request: Request,
@@ -27,6 +28,13 @@ export async function GET(
   }
 
   const { skillId } = await params;
+  if (!isUuidLike(skillId)) {
+    return NextResponse.json(
+      { enabled: true, authenticated: true, hasAccess: false },
+      { headers: { "Cache-Control": PRIVATE_NO_STORE_CACHE_CONTROL } }
+    );
+  }
+
   const hasAccess = await hasActiveMarketplaceAccessGrant(
     session.accountId,
     skillId
