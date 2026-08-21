@@ -45,6 +45,8 @@ import { sql } from "@/lib/db";
 import { pinSkillContent } from "@/lib/ipfs";
 import { MAX_SKILL_UPLOAD_BYTES } from "@/lib/skillDraft";
 
+const SKILL_ID = "00000000-0000-4000-8000-000000000001";
+
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 const mockVerifyWalletSignature =
   verifyWalletSignature as unknown as ReturnType<typeof vi.fn>;
@@ -56,7 +58,7 @@ const mockPinSkillContent = pinSkillContent as unknown as ReturnType<
 const mockAfter = after as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(body: Record<string, unknown>) {
-  return new NextRequest("http://localhost/api/skills/uuid-skill/versions", {
+  return new NextRequest(`http://localhost/api/skills/${SKILL_ID}/versions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -76,7 +78,7 @@ function publisherAuth(
 }
 
 function makeRawRequest(body: string, headers: Record<string, string>) {
-  return new NextRequest("http://localhost/api/skills/uuid-skill/versions", {
+  return new NextRequest(`http://localhost/api/skills/${SKILL_ID}/versions`, {
     method: "POST",
     headers,
     body,
@@ -90,10 +92,21 @@ describe("POST /api/skills/[id]/versions", () => {
 
   it("rejects missing auth or content", async () => {
     const res = await POST(makeRequest({ content: "" }), {
-      params: Promise.resolve({ id: "uuid-skill" }),
+      params: Promise.resolve({ id: SKILL_ID }),
     });
 
     expect(res.status).toBe(400);
+  });
+
+  it("rejects malformed repo skill IDs before database work", async () => {
+    const res = await POST(makeRequest({}), {
+      params: Promise.resolve({ id: "not-a-uuid" }),
+    });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
   });
 
   it("rejects oversized upload Content-Length before parsing the body", async () => {
@@ -102,7 +115,7 @@ describe("POST /api/skills/[id]/versions", () => {
         "Content-Type": "application/json",
         "Content-Length": String(MAX_SKILL_UPLOAD_BYTES + 1),
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(413);
@@ -113,7 +126,7 @@ describe("POST /api/skills/[id]/versions", () => {
   it("rejects non-author version publishes", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-skill",
+        id: SKILL_ID,
         skill_id: "calendar-agent",
         author_pubkey: "AuthorWallet1111111111111111111111111111111",
         current_version: 2,
@@ -131,11 +144,11 @@ describe("POST /api/skills/[id]/versions", () => {
         auth: publisherAuth(
           "OtherWallet11111111111111111111111111111111",
           "publish-skill",
-          "uuid-skill"
+          SKILL_ID
         ),
         content: "# Updated\n",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(403);
@@ -144,7 +157,7 @@ describe("POST /api/skills/[id]/versions", () => {
   it("rejects wallet-signed version publishes for unverified publishers", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-skill",
+        id: SKILL_ID,
         skill_id: "calendar-agent",
         author_pubkey: null,
         current_version: 2,
@@ -162,11 +175,11 @@ describe("POST /api/skills/[id]/versions", () => {
         auth: publisherAuth(
           "AuthorWallet1111111111111111111111111111111",
           "publish-skill",
-          "uuid-skill"
+          SKILL_ID
         ),
         content: "# Updated\n",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(403);
@@ -179,7 +192,7 @@ describe("POST /api/skills/[id]/versions", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill",
+          id: SKILL_ID,
           skill_id: "calendar-agent",
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
           current_version: 2,
@@ -203,12 +216,12 @@ describe("POST /api/skills/[id]/versions", () => {
         auth: publisherAuth(
           "AuthorWallet1111111111111111111111111111111",
           "publish-skill",
-          "uuid-skill"
+          SKILL_ID
         ),
         content: "# Updated\n",
         changelog: "Improve author actions",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(201);
@@ -237,7 +250,7 @@ describe("POST /api/skills/[id]/versions", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill",
+          id: SKILL_ID,
           skill_id: "base-calendar-agent",
           author_pubkey: authorAddress,
           chain_context: "eip155:84532",
@@ -259,10 +272,10 @@ describe("POST /api/skills/[id]/versions", () => {
 
     const res = await POST(
       makeRequest({
-        auth: publisherAuth(authorAddress, "publish-skill", "uuid-skill"),
+        auth: publisherAuth(authorAddress, "publish-skill", SKILL_ID),
         content: "# Base updated\n",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(201);
@@ -280,7 +293,7 @@ describe("POST /api/skills/[id]/versions", () => {
   it("rejects version publish when signed action does not match", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-skill",
+        id: SKILL_ID,
         skill_id: "calendar-agent",
         author_pubkey: "AuthorWallet1111111111111111111111111111111",
         current_version: 2,
@@ -298,11 +311,11 @@ describe("POST /api/skills/[id]/versions", () => {
         auth: publisherAuth(
           "AuthorWallet1111111111111111111111111111111",
           "link-base-listing",
-          "uuid-skill"
+          SKILL_ID
         ),
         content: "# Updated\n",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -314,7 +327,7 @@ describe("POST /api/skills/[id]/versions", () => {
   it("rejects version publish when signed skill id does not match", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-skill",
+        id: SKILL_ID,
         skill_id: "calendar-agent",
         author_pubkey: "AuthorWallet1111111111111111111111111111111",
         current_version: 2,
@@ -336,7 +349,7 @@ describe("POST /api/skills/[id]/versions", () => {
         ),
         content: "# Updated\n",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -350,7 +363,7 @@ describe("POST /api/skills/[id]/versions", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill",
+          id: SKILL_ID,
           skill_id: "calendar-agent",
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
           current_version: 2,
@@ -377,7 +390,7 @@ describe("POST /api/skills/[id]/versions", () => {
         ),
         content: "# Legacy\n",
       }),
-      { params: Promise.resolve({ id: "uuid-skill" }) }
+      { params: Promise.resolve({ id: SKILL_ID }) }
     );
 
     expect(res.status).toBe(201);
