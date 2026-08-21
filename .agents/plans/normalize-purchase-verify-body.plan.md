@@ -59,6 +59,9 @@ Acceptance criteria: both invalid-body forms return their existing 400-shaped er
 ### Execution Note (2026-08-16)
 The focused route test passed under Node `v24.10.0`: 5 tests passed, including the new literal-null and malformed-JSON no-side-effect regressions. `npm run format:check`, `npm run lint:web`, and `npm run typecheck` passed. The full web suite passed (125 files, 906 tests), and `next build --webpack` completed successfully. The build retained pre-existing/non-blocking warnings: viem Tempo's dynamic-import critical-dependency warning and expected static-generation database fallbacks because local `DATABASE_URL` is absent. No live purchase verification was run.
 
+### Integration Note (2026-08-20)
+PR review found an overlap with #145 and an incomplete no-payment boundary. The combined route now retains #145's malformed repo-UUID guard before body parsing, requires a buyer whenever no payment reference is supplied, and still permits the Base listing identifier to default from the linked skill row. Tests now use valid v4 UUID fixtures and cover malformed IDs, listing-only input, and Base existing-purchase verification without a transaction reference. The focused suite passed under Node `v24.18.1` with 8 tests.
+
 ## Rollout
 Ship as a focused request-boundary hardening PR. No schema, environment, flag, wallet, or chain deployment changes are required.
 
