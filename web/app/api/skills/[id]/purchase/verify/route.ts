@@ -18,6 +18,7 @@ import {
   getAgentVouchProgramId,
 } from "@/lib/protocolMetadata";
 import { normalizeInputChainContext } from "@/lib/chains";
+import { isUuidLike } from "@/lib/skillUrls";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -68,6 +69,10 @@ export async function POST(
 ) {
   const { id } = await params;
 
+  if (!id.startsWith(CHAIN_PREFIX) && !isUuidLike(id)) {
+    return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+  }
+
   let body: VerifyPurchaseBody;
   try {
     body = ((await request.json()) ?? {}) as VerifyPurchaseBody;
@@ -88,10 +93,11 @@ export async function POST(
   const expectedPriceUsdcMicros = stringOrNull(body.expectedPriceUsdcMicros);
   const paymentRef = txHash ?? signature;
 
-  // Base existing-purchase verification can omit a transaction reference, but
-  // still requires buyer and listing data. Reject an empty/null body before
-  // initializing the database or choosing a chain-specific verification path.
-  if (!paymentRef && !buyer && !listing && !listingId) {
+  // Base existing-purchase verification can omit a transaction reference when
+  // the buyer is supplied; the listing can default from the linked skill row.
+  // Reject incomplete input before initializing the database or choosing a
+  // chain-specific verification path.
+  if (!paymentRef && !buyer) {
     return NextResponse.json(
       { error: "Missing transaction signature" },
       { status: 400 }
