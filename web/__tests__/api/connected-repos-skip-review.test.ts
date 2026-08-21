@@ -9,6 +9,7 @@ const {
   mockInitializeDatabase,
   mockVerifyConnectAuth,
   mockGetConnectedRepo,
+  mockDeleteConnectedRepo,
   mockCreateConnectedRepo,
   mockListConnectedRepos,
   mockValidateRepoCoords,
@@ -18,6 +19,7 @@ const {
   mockInitializeDatabase: vi.fn(),
   mockVerifyConnectAuth: vi.fn(),
   mockGetConnectedRepo: vi.fn(),
+  mockDeleteConnectedRepo: vi.fn(),
   mockCreateConnectedRepo: vi.fn(),
   mockListConnectedRepos: vi.fn(),
   mockValidateRepoCoords: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/mirror/connectedRepos", () => ({
   verifyConnectAuth: mockVerifyConnectAuth,
   getConnectedRepo: mockGetConnectedRepo,
+  deleteConnectedRepo: mockDeleteConnectedRepo,
   createConnectedRepo: mockCreateConnectedRepo,
   listConnectedRepos: mockListConnectedRepos,
   validateRepoCoords: mockValidateRepoCoords,
@@ -43,10 +46,11 @@ vi.mock("@/lib/mirror/connectedRepos", () => ({
 }));
 
 import { POST as syncPost } from "@/app/api/agents/[pubkey]/repos/[id]/sync/route";
+import { DELETE as disconnectDelete } from "@/app/api/agents/[pubkey]/repos/[id]/route";
 import { POST as connectPost } from "@/app/api/agents/[pubkey]/repos/route";
 
 const PUBKEY = "WalletPubkey1111111111111111111111111111111";
-const REPO_ID = "00000000-0000-0000-0000-000000000001";
+const REPO_ID = "00000000-0000-4000-8000-000000000001";
 
 const fakeRepo = {
   id: REPO_ID,
@@ -117,6 +121,114 @@ describe("POST /api/agents/[pubkey]/repos/[id]/sync — skip_review bypass", () 
     expect(res.status).toBe(200);
     const [, opts] = mockSyncConnectedRepo.mock.calls[0];
     expect(opts.skipReview).toBe(false);
+  });
+
+  it("rejects malformed repository IDs before auth or database work", async () => {
+    const response = await syncPost(
+      makeSyncRequest({ auth: { sig: "x", pubkey: PUBKEY, timestamp: 1 } }),
+      { params: Promise.resolve({ pubkey: PUBKEY, id: "not-a-uuid" }) }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Connected repo not found for this wallet.",
+    });
+    expect(mockVerifyConnectAuth).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockGetConnectedRepo).not.toHaveBeenCalled();
+    expect(mockSyncConnectedRepo).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a literal null body to the missing-auth contract", async () => {
+    mockVerifyConnectAuth.mockReturnValue({
+      ok: false,
+      status: 400,
+      error: "Missing required field: auth",
+    });
+    const response = await syncPost(
+      new NextRequest(
+        `http://localhost/api/agents/${PUBKEY}/repos/${REPO_ID}/sync`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "null",
+        }
+      ),
+      { params: Promise.resolve({ pubkey: PUBKEY, id: REPO_ID }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing required field: auth",
+    });
+    expect(mockVerifyConnectAuth).toHaveBeenCalledWith(
+      undefined,
+      PUBKEY,
+      "sync-repo"
+    );
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockGetConnectedRepo).not.toHaveBeenCalled();
+    expect(mockSyncConnectedRepo).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/agents/[pubkey]/repos/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("rejects malformed repository IDs before auth or database work", async () => {
+    const response = await disconnectDelete(
+      new NextRequest(
+        `http://localhost/api/agents/${PUBKEY}/repos/not-a-uuid`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }
+      ),
+      { params: Promise.resolve({ pubkey: PUBKEY, id: "not-a-uuid" }) }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Connected repo not found for this wallet.",
+    });
+    expect(mockVerifyConnectAuth).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockDeleteConnectedRepo).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a literal null body to the missing-auth contract", async () => {
+    mockVerifyConnectAuth.mockReturnValue({
+      ok: false,
+      status: 400,
+      error: "Missing required field: auth",
+    });
+
+    const response = await disconnectDelete(
+      new NextRequest(
+        `http://localhost/api/agents/${PUBKEY}/repos/${REPO_ID}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: "null",
+        }
+      ),
+      { params: Promise.resolve({ pubkey: PUBKEY, id: REPO_ID }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing required field: auth",
+    });
+    expect(mockVerifyConnectAuth).toHaveBeenCalledWith(
+      undefined,
+      PUBKEY,
+      "disconnect-repo"
+    );
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockDeleteConnectedRepo).not.toHaveBeenCalled();
   });
 });
 
