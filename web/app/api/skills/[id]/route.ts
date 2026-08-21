@@ -56,7 +56,7 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
-import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
+import { getCanonicalSkillRawUrl, isUuidLike } from "@/lib/skillUrls";
 import {
   loadSkillDetailSnapshot,
   type SkillDetailSnapshot,
@@ -519,6 +519,10 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    if (!isUuidLike(id)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const { auth, on_chain_address, baseListing } = body as {
       auth?: AuthPayload;

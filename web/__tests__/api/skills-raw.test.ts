@@ -140,7 +140,7 @@ vi.mock("@/lib/buyerAccessGrants", () => ({
 }));
 
 import { GET } from "@/app/api/skills/[id]/raw/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import { verifyWalletSignature, buildDownloadRawMessage } from "@/lib/auth";
 import {
@@ -168,6 +168,9 @@ import {
 import { getFileForVersion } from "@/lib/skillStorage";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockInitializeDatabase = initializeDatabase as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockFetchOnChainSkillListing =
   fetchOnChainSkillListing as unknown as ReturnType<typeof vi.fn>;
 const mockOnChain = getOnChainUsdcPrice as unknown as ReturnType<typeof vi.fn>;
@@ -228,8 +231,16 @@ function makeRequest(
 }
 
 const SKILL_CONTENT = "# My Skill\nHello world";
+const MISSING_SKILL_ID = "10000000-0000-4000-8000-000000000001";
+const FREE_SKILL_ID = "10000000-0000-4000-8000-000000000002";
+const ON_CHAIN_FREE_SKILL_ID = "10000000-0000-4000-8000-000000000003";
+const PAID_SKILL_ID = "10000000-0000-4000-8000-000000000004";
+const USDC_SKILL_ID = "10000000-0000-4000-8000-000000000005";
+const DIRECT_USDC_SKILL_ID = "10000000-0000-4000-8000-000000000006";
+const BASE_USDC_SKILL_ID = "10000000-0000-4000-8000-000000000007";
+const BASE_ORPHAN_USDC_SKILL_ID = "10000000-0000-4000-8000-000000000008";
 const PAID_SKILL = {
-  id: "uuid-paid",
+  id: PAID_SKILL_ID,
   on_chain_address: "ListingAddr1",
   author_pubkey: "Author1",
   skill_id: "s-paid",
@@ -237,7 +248,7 @@ const PAID_SKILL = {
 };
 
 const USDC_SKILL = {
-  id: "uuid-usdc",
+  id: USDC_SKILL_ID,
   on_chain_address: null,
   author_pubkey: "11111111111111111111111111111111",
   skill_id: "s-usdc",
@@ -248,7 +259,7 @@ const USDC_SKILL = {
 };
 const PROTOCOL_USDC_SKILL = {
   ...USDC_SKILL,
-  id: "uuid-direct-usdc",
+  id: DIRECT_USDC_SKILL_ID,
   on_chain_address: "ListingAddr1",
   on_chain_protocol_version: "v0.2.0",
   on_chain_program_id: "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg",
@@ -256,7 +267,7 @@ const PROTOCOL_USDC_SKILL = {
 };
 const BASE_USDC_SKILL = {
   ...USDC_SKILL,
-  id: "uuid-base-usdc",
+  id: BASE_USDC_SKILL_ID,
   author_pubkey: "0x1111111111111111111111111111111111111111",
   chain_context: "eip155:84532",
   currency_mint: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -270,7 +281,7 @@ const BASE_USDC_SKILL = {
 };
 const BASE_ORPHAN_USDC_SKILL = {
   ...BASE_USDC_SKILL,
-  id: "uuid-base-orphan-usdc",
+  id: BASE_ORPHAN_USDC_SKILL_ID,
   currency_mint: null,
   evm_listing_id: null,
   evm_contract_address: null,
@@ -375,9 +386,19 @@ describe("GET /api/skills/[id]/raw", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-nope");
+    const { req, params } = makeRequest(MISSING_SKILL_ID);
     const res = await GET(req, { params });
     expect(res.status).toBe(404);
+  });
+
+  it("rejects malformed repo IDs before database initialization", async () => {
+    const { req, params } = makeRequest("not-a-uuid");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Skill not found");
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("returns content directly for free skill (no on_chain_address)", async () => {
@@ -385,7 +406,7 @@ describe("GET /api/skills/[id]/raw", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-1",
+          id: FREE_SKILL_ID,
           on_chain_address: null,
           author_pubkey: "A",
           skill_id: "s1",
@@ -395,7 +416,7 @@ describe("GET /api/skills/[id]/raw", () => {
       .mockResolvedValueOnce([]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-1");
+    const { req, params } = makeRequest(FREE_SKILL_ID);
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
     const text = await res.text();
@@ -408,7 +429,7 @@ describe("GET /api/skills/[id]/raw", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-2",
+          id: ON_CHAIN_FREE_SKILL_ID,
           on_chain_address: "Chain1",
           author_pubkey: "A",
           skill_id: "s2",
@@ -419,7 +440,7 @@ describe("GET /api/skills/[id]/raw", () => {
     mockSql.mockReturnValue(dbQuery);
     mockOnChain.mockResolvedValue({ priceUsdcMicros: "0", author: "A" });
 
-    const { req, params } = makeRequest("uuid-2");
+    const { req, params } = makeRequest(ON_CHAIN_FREE_SKILL_ID);
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
     const text = await res.text();
@@ -430,7 +451,7 @@ describe("GET /api/skills/[id]/raw", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([USDC_SKILL]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-usdc");
+    const { req, params } = makeRequest(USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -446,7 +467,7 @@ describe("GET /api/skills/[id]/raw", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([BASE_ORPHAN_USDC_SKILL]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-base-orphan-usdc");
+    const { req, params } = makeRequest(BASE_ORPHAN_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -464,7 +485,7 @@ describe("GET /api/skills/[id]/raw", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([BASE_USDC_SKILL]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-base-usdc");
+    const { req, params } = makeRequest(BASE_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -474,7 +495,7 @@ describe("GET /api/skills/[id]/raw", () => {
     const body = await res.json();
     expect(body.extensions.payment_flow).toBe("base-x402-purchase-skill");
     expect(mockBuildBaseX402Requirement).toHaveBeenCalledWith({
-      skillDbId: "uuid-base-usdc",
+      skillDbId: BASE_USDC_SKILL_ID,
       skill: expect.objectContaining({
         evm_listing_id: BASE_USDC_SKILL.evm_listing_id,
         chain_context: "eip155:84532",
@@ -491,7 +512,7 @@ describe("GET /api/skills/[id]/raw", () => {
       new Error("Skill is linked to an unsupported Base contract")
     );
 
-    const { req, params } = makeRequest("uuid-base-usdc");
+    const { req, params } = makeRequest(BASE_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -525,7 +546,7 @@ describe("GET /api/skills/[id]/raw", () => {
     });
     buyerAccessMocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(true);
 
-    const { req, params } = makeRequest("uuid-base-usdc");
+    const { req, params } = makeRequest(BASE_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(200);
@@ -534,7 +555,7 @@ describe("GET /api/skills/[id]/raw", () => {
       buyerAccessMocks.hasActiveMarketplaceAccessGrant
     ).toHaveBeenCalledWith(
       "00000000-0000-4000-8000-000000000002",
-      "uuid-base-usdc"
+      BASE_USDC_SKILL_ID
     );
     expect(mockBuildBaseX402Requirement).not.toHaveBeenCalled();
     expect(mockRecordUsdcReceipt).not.toHaveBeenCalled();
@@ -553,7 +574,7 @@ describe("GET /api/skills/[id]/raw", () => {
     });
     buyerAccessMocks.hasActiveMarketplaceAccessGrant.mockResolvedValue(false);
 
-    const { req, params } = makeRequest("uuid-base-usdc");
+    const { req, params } = makeRequest(BASE_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -572,7 +593,7 @@ describe("GET /api/skills/[id]/raw", () => {
     };
     mockDecodePaymentHeader.mockReturnValue(paymentPayload);
 
-    const { req, params } = makeRequest("uuid-base-usdc", {
+    const { req, params } = makeRequest(BASE_USDC_SKILL_ID, {
       "payment-signature": "encoded-base-payment",
     });
     const res = await GET(req, { params });
@@ -580,17 +601,20 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(SKILL_CONTENT);
     expect(mockVerifyBaseX402Payload).toHaveBeenCalledWith({
-      skillDbId: "uuid-base-usdc",
+      skillDbId: BASE_USDC_SKILL_ID,
       skill: expect.objectContaining({
         evm_listing_id: BASE_USDC_SKILL.evm_listing_id,
       }),
       priceUsdcMicros: 1000000n,
       payload: paymentPayload,
     });
-    expect(mockHasChainUsdcEntitlement).toHaveBeenCalledWith("uuid-base-usdc", {
-      buyerChainContext: "eip155:84532",
-      buyerAddress: "0x2222222222222222222222222222222222222222",
-    });
+    expect(mockHasChainUsdcEntitlement).toHaveBeenCalledWith(
+      BASE_USDC_SKILL_ID,
+      {
+        buyerChainContext: "eip155:84532",
+        buyerAddress: "0x2222222222222222222222222222222222222222",
+      }
+    );
     expect(mockRelayBaseX402Purchase).toHaveBeenCalled();
     expect(res.headers.get("PAYMENT-RESPONSE")).toBe(
       "encoded-payment-response"
@@ -605,7 +629,7 @@ describe("GET /api/skills/[id]/raw", () => {
       author: "Author1",
     });
 
-    const { req, params } = makeRequest("uuid-paid");
+    const { req, params } = makeRequest(PAID_SKILL_ID);
     const res = await GET(req, { params });
     expect(res.status).toBe(402);
     const body = await res.json();
@@ -645,7 +669,7 @@ describe("GET /api/skills/[id]/raw", () => {
       author: "Author1",
     });
 
-    const { req, params } = makeRequest("uuid-paid", {}, "scripts/x.mjs");
+    const { req, params } = makeRequest(PAID_SKILL_ID, {}, "scripts/x.mjs");
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -660,7 +684,7 @@ describe("GET /api/skills/[id]/raw", () => {
       author: "Author1",
     });
 
-    const { req, params } = makeRequest("uuid-paid");
+    const { req, params } = makeRequest(PAID_SKILL_ID);
     const res = await GET(req, { params });
     const body = await res.json();
 
@@ -678,7 +702,7 @@ describe("GET /api/skills/[id]/raw", () => {
       author: "Author1",
     });
 
-    const { req, params } = makeRequest("uuid-paid", {
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": "not-json!!!",
     });
     const res = await GET(req, { params });
@@ -700,8 +724,8 @@ describe("GET /api/skills/[id]/raw", () => {
       error: "Invalid signature",
     });
 
-    const auth = validAuthHeader("uuid-paid", "ListingAddr1");
-    const { req, params } = makeRequest("uuid-paid", {
+    const auth = validAuthHeader(PAID_SKILL_ID, "ListingAddr1");
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -720,8 +744,12 @@ describe("GET /api/skills/[id]/raw", () => {
     mockVerifySig.mockReturnValue({ valid: true, pubkey: "BuyerPubkey1" });
     mockBuildMsg.mockReturnValue("expected-message-from-builder");
 
-    const auth = validAuthHeader("uuid-paid", "ListingAddr1", "wrong-message");
-    const { req, params } = makeRequest("uuid-paid", {
+    const auth = validAuthHeader(
+      PAID_SKILL_ID,
+      "ListingAddr1",
+      "wrong-message"
+    );
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -741,8 +769,8 @@ describe("GET /api/skills/[id]/raw", () => {
     mockBuildMsg.mockReturnValue("correct-message");
     mockHasUsdcEntitlement.mockResolvedValue(false);
 
-    const auth = validAuthHeader("uuid-paid", "ListingAddr1");
-    const { req, params } = makeRequest("uuid-paid", {
+    const auth = validAuthHeader(PAID_SKILL_ID, "ListingAddr1");
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -765,8 +793,8 @@ describe("GET /api/skills/[id]/raw", () => {
     mockBuildMsg.mockReturnValue("correct-message");
     mockHasUsdcEntitlement.mockResolvedValue(true);
 
-    const auth = validAuthHeader("uuid-paid", "ListingAddr1");
-    const { req, params } = makeRequest("uuid-paid", {
+    const auth = validAuthHeader(PAID_SKILL_ID, "ListingAddr1");
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -775,7 +803,7 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(text).toBe(SKILL_CONTENT);
     expect(res.headers.get("Content-Type")).toContain("text/markdown");
     expect(mockHasUsdcEntitlement).toHaveBeenCalledWith(
-      "uuid-paid",
+      PAID_SKILL_ID,
       "BuyerPubkey1"
     );
   });
@@ -800,7 +828,7 @@ describe("GET /api/skills/[id]/raw", () => {
       message: "line1\r\nline2\r\nline3",
       timestamp: Date.now(),
     });
-    const { req, params } = makeRequest("uuid-paid", {
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -831,17 +859,17 @@ describe("GET /api/skills/[id]/raw", () => {
       message: "correct-message",
       timestamp: Date.now(),
     });
-    const { req, params } = makeRequest("uuid-paid", {
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     await GET(req, { params });
 
     expect(mockHasUsdcEntitlement).toHaveBeenCalledWith(
-      "uuid-paid",
+      PAID_SKILL_ID,
       "ServerVerifiedPubkey"
     );
     expect(mockHasUsdcEntitlement).not.toHaveBeenCalledWith(
-      "uuid-paid",
+      PAID_SKILL_ID,
       "ClientClaimedPubkey"
     );
   });
@@ -868,11 +896,10 @@ describe("GET /api/skills/[id]/raw", () => {
     const auth = JSON.stringify({
       pubkey: "BuyerPubkey1",
       signature: "sig",
-      message:
-        "AgentVouch Skill Download\nAction: download-raw\nSkill id: uuid-usdc\nListing: x402-usdc-direct\nTimestamp: 1709234567890",
+      message: `AgentVouch Skill Download\nAction: download-raw\nSkill id: ${USDC_SKILL_ID}\nListing: x402-usdc-direct\nTimestamp: 1709234567890`,
       timestamp: 1709234567890,
     });
-    const { req, params } = makeRequest("uuid-usdc", {
+    const { req, params } = makeRequest(USDC_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -880,7 +907,7 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(SKILL_CONTENT);
     expect(mockHasUsdcEntitlement).toHaveBeenCalledWith(
-      "uuid-usdc",
+      USDC_SKILL_ID,
       "BuyerPubkey1"
     );
   });
@@ -889,7 +916,7 @@ describe("GET /api/skills/[id]/raw", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([PROTOCOL_USDC_SKILL]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-direct-usdc");
+    const { req, params } = makeRequest(DIRECT_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);
@@ -904,7 +931,7 @@ describe("GET /api/skills/[id]/raw", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([PROTOCOL_USDC_SKILL]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-direct-usdc");
+    const { req, params } = makeRequest(DIRECT_USDC_SKILL_ID);
     const res = await GET(req, { params });
 
     expect(res.status).toBe(401);
@@ -929,7 +956,7 @@ describe("GET /api/skills/[id]/raw", () => {
       message: "correct-message",
       timestamp: 1709234567890,
     });
-    const { req, params } = makeRequest("uuid-direct-usdc", {
+    const { req, params } = makeRequest(DIRECT_USDC_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -942,7 +969,7 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(body.extensions.payment_flow).toBe("x402-bridge-purchase-skill");
     expect(mockBuildBridgeRequirement).toHaveBeenCalledWith(
       expect.objectContaining({
-        skillDbId: "uuid-direct-usdc",
+        skillDbId: DIRECT_USDC_SKILL_ID,
         skillListingAddress: "ListingAddr1",
         buyerPubkey: "BuyerPubkey1",
         priceUsdcMicros: 1000000n,
@@ -996,7 +1023,7 @@ describe("GET /api/skills/[id]/raw", () => {
       message: "correct-message",
       timestamp: 1709234567890,
     });
-    const { req, params } = makeRequest("uuid-direct-usdc", {
+    const { req, params } = makeRequest(DIRECT_USDC_SKILL_ID, {
       "x-agentvouch-auth": auth,
       "payment-signature": "payment-header",
     });
@@ -1014,7 +1041,7 @@ describe("GET /api/skills/[id]/raw", () => {
     );
     expect(mockSettleProtocolBridge).toHaveBeenCalledWith(
       expect.objectContaining({
-        skillDbId: "uuid-direct-usdc",
+        skillDbId: DIRECT_USDC_SKILL_ID,
         skillListingAddress: "ListingAddr1",
         buyerPubkey: "BuyerPubkey1",
         settlementTxSignature: "x402-settlement-tx",
@@ -1022,7 +1049,7 @@ describe("GET /api/skills/[id]/raw", () => {
     );
     expect(mockRecordUsdcReceipt).toHaveBeenCalledWith(
       expect.objectContaining({
-        skillDbId: "uuid-direct-usdc",
+        skillDbId: DIRECT_USDC_SKILL_ID,
         buyerPubkey: "BuyerPubkey1",
         paymentTxSignature: "x402-settlement-tx",
         recipientAta: "SettlementVault111111111111111111111111111",
@@ -1079,7 +1106,7 @@ describe("GET /api/skills/[id]/raw", () => {
       message: "correct-message",
       timestamp: 1709234567890,
     });
-    const { req, params } = makeRequest("uuid-direct-usdc", {
+    const { req, params } = makeRequest(DIRECT_USDC_SKILL_ID, {
       "x-agentvouch-auth": auth,
       "payment-signature": "payment-header",
     });
@@ -1105,7 +1132,7 @@ describe("GET /api/skills/[id]/raw", () => {
       message: "correct-message",
       timestamp: 1709234567890,
     });
-    const { req, params } = makeRequest("uuid-direct-usdc", {
+    const { req, params } = makeRequest(DIRECT_USDC_SKILL_ID, {
       "x-agentvouch-auth": auth,
     });
     const res = await GET(req, { params });
@@ -1113,7 +1140,7 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(SKILL_CONTENT);
     expect(mockHasUsdcEntitlement).toHaveBeenCalledWith(
-      "uuid-direct-usdc",
+      DIRECT_USDC_SKILL_ID,
       "BuyerPubkey1"
     );
   });
@@ -1126,10 +1153,10 @@ describe("GET /api/skills/[id]/raw", () => {
       author: "Author1",
     });
 
-    const url = new URL("http://localhost/api/skills/uuid-paid/raw");
+    const url = new URL(`http://localhost/api/skills/${PAID_SKILL_ID}/raw`);
     url.searchParams.set("buyer", "SomeValidPubkeyXXXXXXXXXXXXXXXXX");
     const req = new NextRequest(url, { method: "GET" });
-    const params = Promise.resolve({ id: "uuid-paid" });
+    const params = Promise.resolve({ id: PAID_SKILL_ID });
     const res = await GET(req, { params });
 
     expect(res.status).toBe(402);

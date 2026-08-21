@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   let body: SubmitBody;
   try {
-    body = (await request.json()) as SubmitBody;
+    body = ((await request.json()) ?? {}) as SubmitBody;
   } catch {
     return NextResponse.json(
       { error: "Request body must be valid JSON" },
