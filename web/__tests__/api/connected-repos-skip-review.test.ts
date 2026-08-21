@@ -198,6 +198,38 @@ describe("DELETE /api/agents/[pubkey]/repos/[id]", () => {
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockDeleteConnectedRepo).not.toHaveBeenCalled();
   });
+
+  it("normalizes a literal null body to the missing-auth contract", async () => {
+    mockVerifyConnectAuth.mockReturnValue({
+      ok: false,
+      status: 400,
+      error: "Missing required field: auth",
+    });
+
+    const response = await disconnectDelete(
+      new NextRequest(
+        `http://localhost/api/agents/${PUBKEY}/repos/${REPO_ID}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: "null",
+        }
+      ),
+      { params: Promise.resolve({ pubkey: PUBKEY, id: REPO_ID }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing required field: auth",
+    });
+    expect(mockVerifyConnectAuth).toHaveBeenCalledWith(
+      undefined,
+      PUBKEY,
+      "disconnect-repo"
+    );
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockDeleteConnectedRepo).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/agents/[pubkey]/repos — skip_review bypass on connect", () => {
