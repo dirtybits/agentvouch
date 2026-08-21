@@ -141,6 +141,9 @@ const mockGetOnChainUsdcPrice = getOnChainUsdcPrice as unknown as ReturnType<
 const mockGetGithubSessionFromRequest =
   getGithubSessionFromRequest as unknown as ReturnType<typeof vi.fn>;
 const mockAfter = after as unknown as ReturnType<typeof vi.fn>;
+const PATCH_SKILL_ID = "00000000-0000-4000-8000-000000000001";
+const PATCH_SKILL_URL = `http://localhost/api/skills/${PATCH_SKILL_ID}`;
+const PATCH_SKILL_RAW_URL = `https://agentvouch.xyz/api/skills/${PATCH_SKILL_ID}/raw`;
 
 function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost/api/skills", {
@@ -524,18 +527,36 @@ describe("PATCH /api/skills/[id]", () => {
     });
   });
 
+  it("rejects malformed IDs before parsing or side effects", async () => {
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/skills/not-a-uuid", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "not-json",
+      }),
+      { params: Promise.resolve({ id: "not-a-uuid" }) }
+    );
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockVerifyEvmWalletSignature).not.toHaveBeenCalled();
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockGetOnChainUsdcPrice).not.toHaveBeenCalled();
+  });
+
   it("bypasses stale on-chain lookup cache when linking a fresh listing", async () => {
     const dbQuery = vi
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill-1",
+          id: PATCH_SKILL_ID,
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
         },
       ])
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill-1",
+          id: PATCH_SKILL_ID,
           skill_id: "my-skill",
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
           name: "My Skill",
@@ -558,7 +579,7 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -569,7 +590,7 @@ describe("PATCH /api/skills/[id]", () => {
           on_chain_address: "Listing1111111111111111111111111111111111",
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -581,7 +602,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("links a Base listing only after verifying the Base tx and row author", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "My Skill",
@@ -613,14 +634,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "link-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             txHash:
@@ -631,7 +652,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -642,14 +663,14 @@ describe("PATCH /api/skills/[id]", () => {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       authorAddress: "0x1111111111111111111111111111111111111111",
       expectedPriceUsdcMicros: "10000",
-      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      expectedUri: PATCH_SKILL_RAW_URL,
     });
     expect(dbQuery).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a baseListing PATCH without wallet signature auth (Bugbot #78)", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "skill-one",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "Skill One",
@@ -666,7 +687,7 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -677,7 +698,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -686,7 +707,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("relinks an existing Base listing without requiring the original tx hash", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "My Skill",
@@ -731,14 +752,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "link-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             relinkExisting: true,
@@ -747,7 +768,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -757,14 +778,14 @@ describe("PATCH /api/skills/[id]", () => {
       txHash: null,
       authorAddress: "0x1111111111111111111111111111111111111111",
       expectedPriceUsdcMicros: null,
-      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      expectedUri: PATCH_SKILL_RAW_URL,
     });
     expect(dbQuery).toHaveBeenCalledTimes(2);
   });
 
   it("updates a Base listing only after verifying the update tx and expected fields", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "Old Skill",
@@ -811,14 +832,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "update-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "update",
@@ -828,12 +849,12 @@ describe("PATCH /api/skills/[id]", () => {
             chainContext: "eip155:84532",
             expectedName: "New Skill",
             expectedDescription: "New description",
-            expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+            expectedUri: PATCH_SKILL_RAW_URL,
             expectedPriceUsdcMicros: "20000",
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -844,7 +865,7 @@ describe("PATCH /api/skills/[id]", () => {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       authorAddress: "0x1111111111111111111111111111111111111111",
       expectedPriceUsdcMicros: "20000",
-      expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+      expectedUri: PATCH_SKILL_RAW_URL,
       expectedName: "New Skill",
       expectedDescription: "New description",
     });
@@ -853,7 +874,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("rejects Base listing updates whose URI does not match the canonical raw skill path", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "Old Skill",
@@ -871,14 +892,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "update-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "update",
@@ -893,7 +914,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(400);
@@ -907,7 +928,7 @@ describe("PATCH /api/skills/[id]", () => {
   it("rejects Base listing persistence for non-Base skill rows", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-skill-1",
+        id: PATCH_SKILL_ID,
         skill_id: "my-skill",
         author_pubkey: "0x1111111111111111111111111111111111111111",
         name: "My Skill",
@@ -924,14 +945,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "link-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             txHash:
@@ -942,7 +963,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(400);
@@ -952,7 +973,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("removes a Base listing by clearing only EVM fields after verifying the remove tx", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "My Skill",
@@ -993,14 +1014,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "remove-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "remove",
@@ -1011,7 +1032,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -1037,14 +1058,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "remove-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "remove",
@@ -1053,7 +1074,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(400);
@@ -1066,7 +1087,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("does not clear the DB row when Base remove verification fails", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "My Skill",
@@ -1087,14 +1108,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "remove-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "remove",
@@ -1105,7 +1126,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(500);
@@ -1117,7 +1138,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("rejects baseListing PATCH when signed action does not match", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "skill-one",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "Skill One",
@@ -1133,14 +1154,14 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "publish-skill",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             relinkExisting: true,
@@ -1149,7 +1170,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -1160,7 +1181,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("rejects baseListing PATCH when signed skill id does not match", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "skill-one",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "Skill One",
@@ -1176,7 +1197,7 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1192,7 +1213,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -1203,7 +1224,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("rejects a Base update-mode PATCH signed with the wrong action", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "Old Skill",
@@ -1220,7 +1241,7 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1228,7 +1249,7 @@ describe("PATCH /api/skills/[id]", () => {
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "publish-skill",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "update",
@@ -1238,12 +1259,12 @@ describe("PATCH /api/skills/[id]", () => {
             chainContext: "eip155:84532",
             expectedName: "New Skill",
             expectedDescription: "New description",
-            expectedUri: "https://agentvouch.xyz/api/skills/uuid-skill-1/raw",
+            expectedUri: PATCH_SKILL_RAW_URL,
             expectedPriceUsdcMicros: "20000",
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -1254,7 +1275,7 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("rejects a Base remove-mode PATCH signed with the wrong action", async () => {
     const baseSkill = {
-      id: "uuid-skill-1",
+      id: PATCH_SKILL_ID,
       skill_id: "my-skill",
       author_pubkey: "0x1111111111111111111111111111111111111111",
       name: "My Skill",
@@ -1271,7 +1292,7 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(vi.fn().mockResolvedValueOnce([baseSkill]));
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1279,7 +1300,7 @@ describe("PATCH /api/skills/[id]", () => {
           auth: publisherAuth(
             "0x1111111111111111111111111111111111111111",
             "link-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           baseListing: {
             mode: "remove",
@@ -1290,7 +1311,7 @@ describe("PATCH /api/skills/[id]", () => {
           },
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
@@ -1307,13 +1328,13 @@ describe("PATCH /api/skills/[id]", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill-1",
+          id: PATCH_SKILL_ID,
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
         },
       ])
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill-1",
+          id: PATCH_SKILL_ID,
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
           on_chain_address: "Listing111111111111111111111111111111111",
           price_usdc_micros: "5000000",
@@ -1323,19 +1344,19 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "AuthorWallet1111111111111111111111111111111",
             "publish-skill",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           on_chain_address: "Listing111111111111111111111111111111111",
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -1350,13 +1371,13 @@ describe("PATCH /api/skills/[id]", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill-1",
+          id: PATCH_SKILL_ID,
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
         },
       ])
       .mockResolvedValueOnce([
         {
-          id: "uuid-skill-1",
+          id: PATCH_SKILL_ID,
           author_pubkey: "AuthorWallet1111111111111111111111111111111",
           on_chain_address: "Listing111111111111111111111111111111111",
           price_usdc_micros: "5000000",
@@ -1366,7 +1387,7 @@ describe("PATCH /api/skills/[id]", () => {
     mockSql.mockReturnValue(dbQuery);
 
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1378,7 +1399,7 @@ describe("PATCH /api/skills/[id]", () => {
           on_chain_address: "Listing111111111111111111111111111111111",
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(200);
@@ -1386,19 +1407,19 @@ describe("PATCH /api/skills/[id]", () => {
 
   it("rejects Solana listing PATCH when signed action does not match", async () => {
     const res = await PATCH(
-      new NextRequest("http://localhost/api/skills/uuid-skill-1", {
+      new NextRequest(PATCH_SKILL_URL, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           auth: publisherAuth(
             "AuthorWallet1111111111111111111111111111111",
             "link-base-listing",
-            "uuid-skill-1"
+            PATCH_SKILL_ID
           ),
           on_chain_address: "Listing111111111111111111111111111111111",
         }),
       }),
-      { params: Promise.resolve({ id: "uuid-skill-1" }) }
+      { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
     );
 
     expect(res.status).toBe(401);
