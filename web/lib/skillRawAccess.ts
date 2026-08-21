@@ -66,6 +66,7 @@ import { isEvmShapedAddress } from "@/lib/chainAddress";
 import { getBuyerSession } from "@/lib/buyerSession";
 import { isBuyerCardAccessServerEnabled } from "@/lib/buyerAuthConfig";
 import { hasActiveMarketplaceAccessGrant } from "@/lib/buyerAccessGrants";
+import { isUuidLike } from "@/lib/skillUrls";
 
 const CHAIN_PREFIX = "chain-";
 const TOKEN_PROGRAM_ID = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -1202,6 +1203,10 @@ export async function resolveSkillAccess(
         { status: 404 }
       )
     );
+  }
+
+  if (!isUuidLike(id)) {
+    return accessDenied(new NextResponse("Skill not found", { status: 404 }));
   }
 
   await initializeDatabase();
