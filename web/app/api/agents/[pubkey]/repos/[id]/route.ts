@@ -26,7 +26,7 @@ export async function DELETE(
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = ((await request.json().catch(() => ({}))) ?? {}) as {
       auth?: AuthPayload;
     };
 
