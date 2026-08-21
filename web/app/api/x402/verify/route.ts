@@ -21,7 +21,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = ((await request.json().catch(() => null)) ?? {}) as Record<
+      string,
+      unknown
+    >;
     const baseSkillId = getBaseX402SkillIdFromBody(body);
     const basePayload = getBaseX402PayloadFromBody(body);
     if (baseSkillId || basePayload) {
