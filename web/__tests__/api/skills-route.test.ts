@@ -545,6 +545,31 @@ describe("PATCH /api/skills/[id]", () => {
     expect(mockGetOnChainUsdcPrice).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["literal null", "null", "Missing required fields: auth, on_chain_address"],
+    ["malformed JSON", "{", "Request body must be valid JSON"],
+  ])(
+    "rejects %s before database, signature, or chain work",
+    async (_kind, body, error) => {
+      const res = await PATCH(
+        new NextRequest(PATCH_SKILL_URL, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body,
+        }),
+        { params: Promise.resolve({ id: PATCH_SKILL_ID }) }
+      );
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({ error });
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+      expect(mockVerifyEvmWalletSignature).not.toHaveBeenCalled();
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockGetOnChainUsdcPrice).not.toHaveBeenCalled();
+    }
+  );
+
   it("bypasses stale on-chain lookup cache when linking a fresh listing", async () => {
     const dbQuery = vi
       .fn()
