@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     auth?: AuthPayload;
   };
   try {
-    body = await req.json();
+    body = (await req.json()) ?? {};
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
