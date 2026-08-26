@@ -19,6 +19,7 @@ import {
   type AuthPayload,
 } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { isUuidLike } from "@/lib/skillUrls";
 import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { hasOnChainPurchase } from "@/lib/x402";
 import { checkRateLimit, clientIpFromRequest } from "@/lib/rateLimit";
@@ -92,6 +93,9 @@ export async function POST(req: NextRequest) {
   const skillId = body.skillId?.trim();
   if (!skillId) {
     return NextResponse.json({ error: "skillId is required" }, { status: 400 });
+  }
+  if (!isUuidLike(skillId)) {
+    return NextResponse.json({ error: "Invalid skillId" }, { status: 400 });
   }
   if (
     body.cardDisclosureVersion !== CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION
