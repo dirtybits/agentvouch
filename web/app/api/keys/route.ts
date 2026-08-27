@@ -203,7 +203,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    await initializeDatabase();
     const body = await request.json().catch(() => null);
 
     const authHeader = request.headers.get("authorization");
@@ -238,6 +237,7 @@ export async function GET(request: NextRequest) {
       if (!scope.ok) {
         return NextResponse.json({ error: scope.error }, { status: 401 });
       }
+      await initializeDatabase();
       if (
         !(await consumeApiKeyAuthNonce({
           ownerPubkey: verification.pubkey,
@@ -251,6 +251,7 @@ export async function GET(request: NextRequest) {
     } else if (authHeader?.startsWith("Bearer sk_")) {
       const key = authHeader.slice(7);
       const keyHash = hashKey(key);
+      await initializeDatabase();
       const rows = await sql()<ApiKeyOwnerRow>`
         SELECT owner_pubkey FROM api_keys
         WHERE key_hash = ${keyHash} AND revoked_at IS NULL
