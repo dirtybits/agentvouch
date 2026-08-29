@@ -139,4 +139,23 @@ describe("/api/github/skills/discover", () => {
       token: undefined,
     });
   });
+
+  it("rejects a non-string POST query before GitHub discovery", async () => {
+    vi.stubEnv("GITHUB_SKILL_DISCOVERY_SECRET", "discover-secret");
+
+    const res = await POST(
+      request("http://localhost/api/github/skills/discover", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer discover-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ query: 7 }),
+      })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Invalid query" });
+    expect(mockDiscoverGithubSkills).not.toHaveBeenCalled();
+  });
 });
