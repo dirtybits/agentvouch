@@ -53,6 +53,31 @@ describe("sponsored transaction routes", () => {
     expect(transactionMocks.prepareSponsoredPurchase).not.toHaveBeenCalled();
   });
 
+  it("rejects overflowing numeric micro-USDC fields before preparing a transaction", async () => {
+    for (const [field, error] of [
+      ["expectedPriceUsdcMicros", "Invalid expectedPriceUsdcMicros"],
+      ["maxSetupFeeUsdcMicros", "Invalid maxSetupFeeUsdcMicros"],
+    ]) {
+      const response = await preparePurchase(
+        new NextRequest(
+          "http://localhost/api/transactions/sponsored/purchase/prepare",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Forwarded-For": "198.51.100.5",
+            },
+            body: `{"buyerPubkey":"buyer","listingAddress":"listing","${field}":1e309}`,
+          }
+        )
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error });
+      expect(transactionMocks.prepareSponsoredPurchase).not.toHaveBeenCalled();
+    }
+  });
+
   it("rejects a null purchase-submit body before submitting a transaction", async () => {
     const response = await submitPurchase(
       nullJsonRequest(
