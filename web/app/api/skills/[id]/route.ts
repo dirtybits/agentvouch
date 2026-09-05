@@ -523,8 +523,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
-    const body = await request.json();
-    const { auth, on_chain_address, baseListing } = body as {
+    let body: {
       auth?: AuthPayload;
       on_chain_address?: string;
       baseListing?: {
@@ -539,6 +538,15 @@ export async function PATCH(
         expectedDescription?: string;
       };
     };
+    try {
+      body = ((await request.json()) ?? {}) as typeof body;
+    } catch {
+      return NextResponse.json(
+        { error: "Request body must be valid JSON" },
+        { status: 400 }
+      );
+    }
+    const { auth, on_chain_address, baseListing } = body;
 
     if (baseListing) {
       const submittedChainContext = normalizeInputChainContext(
