@@ -43,8 +43,11 @@ function isAuthorized(request: NextRequest): boolean {
   return true;
 }
 
-function parseLimit(value: string | number | null | undefined): number {
+function parseLimit(value: unknown): number {
   if (value === null || value === undefined || value === "") {
+    return 10;
+  }
+  if (typeof value !== "string" && typeof value !== "number") {
     return 10;
   }
   const parsed = typeof value === "number" ? value : Number(value);
@@ -57,6 +60,7 @@ function parseLimit(value: string | number | null | undefined): number {
 async function paramsFromRequest(request: NextRequest): Promise<{
   query: string | undefined;
   maxResults: number;
+  invalidQuery: boolean;
 }> {
   if (request.method === "GET") {
     const searchParams = request.nextUrl.searchParams;
@@ -65,18 +69,19 @@ async function paramsFromRequest(request: NextRequest): Promise<{
       maxResults: parseLimit(
         searchParams.get("limit") ?? searchParams.get("maxResults")
       ),
+      invalidQuery: false,
     };
   }
 
-  const body = (await request.json().catch(() => null)) as {
-    q?: string;
-    query?: string;
-    limit?: number;
-    maxResults?: number;
-  } | null;
+  const body = ((await request.json().catch(() => null)) ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const query = body.query !== undefined ? body.query : body.q;
   return {
-    query: body?.query ?? body?.q,
-    maxResults: parseLimit(body?.maxResults ?? body?.limit),
+    query: typeof query === "string" ? query : undefined,
+    maxResults: parseLimit(body.maxResults ?? body.limit),
+    invalidQuery: query !== undefined && typeof query !== "string",
   };
 }
 
@@ -86,7 +91,12 @@ async function handle(request: NextRequest) {
   }
 
   try {
-    const { query, maxResults } = await paramsFromRequest(request);
+    const { query, maxResults, invalidQuery } = await paramsFromRequest(
+      request
+    );
+    if (invalidQuery) {
+      return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+    }
     const result = await discoverGithubSkills({
       query,
       maxResults,

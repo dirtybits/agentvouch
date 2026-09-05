@@ -123,6 +123,26 @@ describe("POST /api/skills/[id]/versions", () => {
     expect(mockPinSkillContent).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["malformed JSON", "{", "Request body must be valid JSON"],
+    ["a literal null", "null", "Request body must be a JSON object"],
+  ])(
+    "rejects %s upload bodies before side effects",
+    async (_label, rawBody, error) => {
+      const res = await POST(
+        makeRawRequest(rawBody, { "Content-Type": "application/json" }),
+        { params: Promise.resolve({ id: SKILL_ID }) }
+      );
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({ error });
+      expect(mockSql).not.toHaveBeenCalled();
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockVerifyEvmWalletSignature).not.toHaveBeenCalled();
+      expect(mockPinSkillContent).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects non-author version publishes", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {

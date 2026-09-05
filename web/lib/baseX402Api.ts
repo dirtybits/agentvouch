@@ -6,6 +6,7 @@ import {
 } from "@/lib/x402";
 import type { BaseX402Skill } from "@/lib/baseX402";
 import { BASE_SEPOLIA_CHAIN_CONTEXT } from "@/lib/chains";
+import { isUuidLike } from "@/lib/skillUrls";
 
 export type LoadedBaseX402Skill = BaseX402Skill & {
   price_usdc_micros: string;
@@ -26,8 +27,20 @@ export function getBaseX402PayloadFromBody(
 export function getBaseX402SkillIdFromBody(
   body: Record<string, unknown>
 ): string | null {
+  const skillDbId = getBaseX402SkillIdValue(body);
+  return skillDbId && isUuidLike(skillDbId) ? skillDbId : null;
+}
+
+export function hasInvalidBaseX402SkillId(
+  body: Record<string, unknown>
+): boolean {
+  const skillDbId = getBaseX402SkillIdValue(body);
+  return Boolean(skillDbId && !isUuidLike(skillDbId));
+}
+
+function getBaseX402SkillIdValue(body: Record<string, unknown>): string | null {
   const value = body.skillDbId ?? body.skill_id ?? body.skillId;
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return typeof value === "string" ? value.trim() || null : null;
 }
 
 export async function loadBaseX402Skill(

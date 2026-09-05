@@ -97,6 +97,12 @@ const MAX_PAGE_SIZE = 50;
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
 
+function parsePage(value: string | null): number {
+  if (!value) return 1;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : 1;
+}
+
 function parsePageSize(value: string | null): number {
   if (!value) return DEFAULT_PAGE_SIZE;
   const parsed = Number.parseInt(value, 10);
@@ -663,7 +669,7 @@ export async function GET(request: NextRequest) {
       searchParams.get("buyerStatus") === "1" ||
       searchParams.get("includeBuyerStatus") === "true";
     const tags = searchParams.get("tags");
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const page = parsePage(searchParams.get("page"));
     const pageSize = parsePageSize(
       searchParams.get("pageSize") ?? searchParams.get("limit")
     );
