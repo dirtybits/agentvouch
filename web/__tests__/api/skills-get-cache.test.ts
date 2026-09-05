@@ -120,6 +120,14 @@ describe("GET /api/skills cache headers", () => {
     expect(res.headers.get("Cache-Control")).toContain("s-maxage=60");
   });
 
+  it("defaults an invalid page query to the first page", async () => {
+    const res = await GET(makeRequest("?page=not-a-number&mode=fast"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.pagination).toMatchObject({ page: 1, pageSize: 20 });
+  });
+
   it("keeps shared caching when buyer status is not requested", async () => {
     const res = await GET(
       makeRequest("?sort=newest&page=1&buyer=11111111111111111111111111111111")

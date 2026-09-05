@@ -177,10 +177,16 @@ export function AppNavbar() {
                 );
               })}
             </div>
-            <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-800">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3 dark:border-gray-800">
               <div className="flex flex-wrap items-center gap-2">
                 <GithubAuthButton />
                 <BuyerAuthButton />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-normal uppercase tracking-[0.14em] text-gray-400">
+                  Theme
+                </span>
+                <ThemeToggle />
               </div>
             </div>
           </div>

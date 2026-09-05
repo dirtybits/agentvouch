@@ -129,10 +129,13 @@ async function readBoundedJsonBody(
   }
 
   try {
-    return JSON.parse(
-      Buffer.concat(chunks).toString("utf8")
-    ) as CheckRequestBody;
-  } catch {
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (parsed === null) {
+      throw new CheckRequestError("JSON body must be an object", 400);
+    }
+    return parsed as CheckRequestBody;
+  } catch (error) {
+    if (error instanceof CheckRequestError) throw error;
     throw new CheckRequestError("Invalid JSON body", 400);
   }
 }

@@ -186,6 +186,22 @@ describe("POST /api/check", () => {
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
   });
 
+  it("rejects a literal null body before database or scan work", async () => {
+    const res = await POST(
+      makeRawRequest("null", { "Content-Type": "application/json" })
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "JSON body must be an object",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockResolveAuthorTrust).not.toHaveBeenCalled();
+    expect(mockGetCachedSkillScan).not.toHaveBeenCalled();
+    expect(mockRecordHeuristicReviewScan).not.toHaveBeenCalled();
+    expect(mockEnsureSkillScan).not.toHaveBeenCalled();
+  });
   it("lets staked allow stand over an advisory review scan", async () => {
     const authorTrust = {
       reputationScore: 100,

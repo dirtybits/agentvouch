@@ -3,6 +3,7 @@ import { initializeDatabase } from "@/lib/db";
 import { getErrorMessage } from "@/lib/errors";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import type { AuthPayload } from "@/lib/authPayload";
+import { isUuidLike } from "@/lib/skillUrls";
 import {
   deleteConnectedRepo,
   verifyConnectAuth,
@@ -18,7 +19,14 @@ export async function DELETE(
 ) {
   try {
     const { pubkey, id } = await params;
-    const body = (await request.json().catch(() => ({}))) as {
+    if (!isUuidLike(id)) {
+      return NextResponse.json(
+        { error: "Connected repo not found for this wallet." },
+        { status: 404 }
+      );
+    }
+
+    const body = ((await request.json().catch(() => ({}))) ?? {}) as {
       auth?: AuthPayload;
     };
 

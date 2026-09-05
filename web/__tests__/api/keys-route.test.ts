@@ -137,6 +137,8 @@ describe("GET /api/keys", () => {
       error: "Malformed X-AgentVouch-Auth header",
     });
     expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("rejects wrong action, detached timestamp, and missing nonce before SQL", async () => {
@@ -152,6 +154,19 @@ describe("GET /api/keys", () => {
     } as unknown as ApiKeyAuthPayload;
     expect((await signedGet(missingNonce)).status).toBe(401);
 
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+  });
+
+  it("rejects absent credentials before database initialization", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/keys"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authentication required",
+    });
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
   });
 

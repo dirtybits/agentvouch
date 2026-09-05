@@ -18,12 +18,15 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function bigintishOrNull(value: unknown): string | number | bigint | null {
-  return typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "bigint"
-    ? value
-    : null;
+function bigintishOrNull(
+  value: unknown,
+  label: string
+): string | number | bigint | null {
+  if (typeof value === "number") {
+    if (Number.isSafeInteger(value)) return value;
+    throw new Error(`Invalid ${label}`);
+  }
+  return typeof value === "string" || typeof value === "bigint" ? value : null;
 }
 
 export async function POST(request: NextRequest) {
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
 
   let body: PrepareBody;
   try {
-    body = (await request.json()) as PrepareBody;
+    body = ((await request.json()) ?? {}) as PrepareBody;
   } catch {
     return NextResponse.json(
       { error: "Request body must be valid JSON" },
@@ -65,9 +68,15 @@ export async function POST(request: NextRequest) {
       buyerPubkey,
       listingAddress,
       skillDbId: stringOrNull(body.skillDbId),
-      expectedPriceUsdcMicros: bigintishOrNull(body.expectedPriceUsdcMicros),
+      expectedPriceUsdcMicros: bigintishOrNull(
+        body.expectedPriceUsdcMicros,
+        "expectedPriceUsdcMicros"
+      ),
       expectedUsdcMint: stringOrNull(body.expectedUsdcMint),
-      maxSetupFeeUsdcMicros: bigintishOrNull(body.maxSetupFeeUsdcMicros),
+      maxSetupFeeUsdcMicros: bigintishOrNull(
+        body.maxSetupFeeUsdcMicros,
+        "maxSetupFeeUsdcMicros"
+      ),
     });
     return NextResponse.json(result);
   } catch (error: unknown) {

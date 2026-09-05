@@ -16,7 +16,7 @@ todos:
     status: pending
   - id: rehearse-limited-pilot
     content: Rehearse allowlist, caps, ledger, payment, download, isolation, refund, dispute, replay, partial-refund review, monitoring, and rollback in Stripe test mode on a production-like preview.
-    status: pending
+    status: in_progress
   - id: activate-one-charge-canary
     content: After a separate explicit real-funds approval, activate only the recorded live pilot scope, run one approved walletless card canary, and capture payment, access, ledger, no-protocol-receipt, and monitoring evidence.
     status: pending
@@ -331,6 +331,55 @@ Behavioral acceptance requires evidence that:
 - Not run: Stripe test API calls, Checkout or PaymentIntent creation, real webhooks, account-grant
   and download isolation, partial-refund or dispute transitions, WAF proof, browser verification,
   or any real card charge. The `rehearse-limited-pilot` todo therefore remains pending.
+
+### Stripe test-mode preview rehearsal — partial evidence (2026-08-04)
+
+- Used isolated Vercel branch `test/stripe-walletless-preview` and disposable Neon branch
+  `br-noisy-unit-af23j953` in project `calm-meadow-36819154`. The production branch was not
+  modified. Stripe was in test mode; no real card, live Stripe key, chain transaction, or protocol
+  settlement was used.
+- Deployed commit `935fc6c` as Vercel deployment `dpl_Ci3ixi5PZ7BA9n569NUTxwrbFojr`. Created test
+  webhook endpoint `we_1U0ogSA2jEYsGvGPqsTddDmb` for successful/expired Checkout Sessions, refunds,
+  and disputes. The preview home returned 200, and an unsigned checkout request returned 401 instead
+  of the disabled-route 501.
+- Signed in with Google, accepted the versioned card-recourse disclosure, and completed a simulated
+  100-cent purchase of skill `3224046a-d1cb-4831-a552-f5319c92bb10`. PaymentIntent
+  `pi_3U0pfUA2jEYsGvGP1PdUEjOf` created one account grant for the signed-in buyer. The raw-download
+  route returned 200 for that buyer and 402 to an anonymous request.
+- Protocol isolation held: before and after the card purchase there were 28 protocol purchase
+  receipts, 28 wallet entitlements, and one x402 attempt. The selected skill stayed at two protocol
+  receipts, two wallet entitlements, zero x402 attempts, and zero Base report indexes.
+- Full refund `re_3U0pfUA2jEYsGvGP1nL7TGDp` revoked the grant with `stripe-refund`; the card controls
+  returned and the purchased/download state disappeared. Replaying paid event
+  `evt_1U0pfVA2jEYsGvGPtufogqRa` increased its occurrence count to two but did not restore access.
+- A second simulated 100-cent purchase used PaymentIntent `pi_3U0pr6A2jEYsGvGP1X1rXv68`.
+  A 50-cent partial refund created outcome `evt_3U0pr6A2jEYsGvGP1SS0PtTT` with
+  `needs-review=true`; its grant correctly remained active.
+- A simulated dispute-card purchase of skill `e4ecc4b9-b037-46ce-8257-791abe980785` used
+  PaymentIntent `pi_3U0pu5A2jEYsGvGP0GGv4cu2`. Dispute `du_1U0pu6A2jEYsGvGPrE8K644j` revoked its
+  grant with `stripe-dispute` within seconds.
+- Stripe reported 100 cents gross, 33 cents fee, and 67 cents net for each charge. The full and
+  partial refund balance transactions were -100 and -50 cents. The test dispute withdrew 100 cents
+  plus Stripe's simulated 1,500-cent dispute fee, for a -1,600-cent balance delta.
+- Created and expired unpaid Checkout Session
+  `cs_test_a18W2v67GIVYiNbcElXO6iyq2hO1slysNUnSjkeLjSGsfRS90kESuKOekv`. Stripe delivered the
+  expiration webhook with HTTP 200. Test-mode expiration is intentionally acknowledged without a DB
+  transition; durable reservation expiration runs only for live-mode pilot reservations.
+- Read-only `stripe:ops preflight` passed with no blockers when supplied non-secret presence
+  placeholders for the encrypted database/webhook values and the inherited test-mode Stripe/Clerk
+  configuration. The monitor correctly returned non-zero for the new partial-refund review and four
+  older unresolved events copied from the production snapshot; this rehearsal did not resolve or
+  alter those inherited records.
+- Updated both branch-scoped checkout flags to `false` and deployed commit `a501dc4` as
+  `dpl_6vKhYFUQUMWZ1weiS9nPh6fA2Ztr`. The stable preview returned 200, the checkout route returned
+  501, and the card disclosure and button no longer rendered. The webhook stayed active: remaining
+  refund `re_3U0pr6A2jEYsGvGP1O6jLFUG` completed the second PaymentIntent's refund after rollback,
+  and event `evt_3U0pr6A2jEYsGvGP1GPtwIwW` revoked the active grant with `stripe-refund`.
+- Still open: signed-in different-account rejection, WAF Log evidence, live-pilot allowlist/cap
+  exhaustion, and durable expiration-slot release. The first requires another test buyer identity;
+  the other live-pilot controls do not execute on test-mode Checkout Sessions. Keep
+  `rehearse-limited-pilot` in progress until these gaps are closed or the acceptance criteria are
+  explicitly separated into test-mode and live-pilot rehearsals.
 
 ## Rollout
 

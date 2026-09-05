@@ -128,9 +128,10 @@ describe("POST /api/author/[pubkey]", () => {
     mockResolveIdentity.mockResolvedValue({ canonicalAgentId: "agent-1" });
     mockListAuthorDisputes.mockResolvedValue([{ publicKey: "Dispute111" }]);
 
-    const req = new NextRequest("http://localhost/api/author/Author111");
+    const pubkey = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
+    const req = new NextRequest(`http://localhost/api/author/${pubkey}`);
     const res = await GET(req, {
-      params: Promise.resolve({ pubkey: "Author111" }),
+      params: Promise.resolve({ pubkey }),
     });
     const body = await res.json();
 
@@ -140,6 +141,21 @@ describe("POST /api/author/[pubkey]", () => {
     expect(body.author_identity.canonicalAgentId).toBe("agent-1");
     expect(body.author_trust_summary.canonical_agent_id).toBe("agent-1");
     expect(body.author_disputes).toEqual([{ publicKey: "Dispute111" }]);
+  });
+
+  it("rejects malformed Solana author parameters before downstream lookups", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/author/not-a-solana-address"),
+      { params: Promise.resolve({ pubkey: "not-a-solana-address" }) }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Solana author routes require a valid Solana address",
+    });
+    expect(mockResolveAuthorTrust).not.toHaveBeenCalled();
+    expect(mockListAuthorDisputes).not.toHaveBeenCalled();
+    expect(mockResolveIdentity).not.toHaveBeenCalled();
   });
 
   it("returns 400 when the selected discovered candidate does not belong to the wallet", async () => {

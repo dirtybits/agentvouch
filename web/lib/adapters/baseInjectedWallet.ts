@@ -270,6 +270,17 @@ export async function ensureBaseSepoliaInjectedChain(
         },
       ],
     });
+    // EIP-3085 does not require a successful add-chain request to make that
+    // chain active, so explicitly switch after adding it.
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: BASE_SEPOLIA_CHAIN_ID_HEX }],
+    });
+  }
+
+  const activeChainId = await provider.request({ method: "eth_chainId" });
+  if (activeChainId !== BASE_SEPOLIA_CHAIN_ID_HEX) {
+    throw new Error("MetaMask did not switch to Base Sepolia.");
   }
 }
 

@@ -151,13 +151,13 @@ vi.mock("@/lib/x402", () => ({
 
 import { POST as checkoutPOST } from "@/app/api/stripe/checkout/route";
 import { POST as webhookPOST } from "@/app/api/stripe/webhook/route";
-import { sql } from "@/lib/db";
+import { initializeDatabase, sql } from "@/lib/db";
 import { buildStripeCheckoutMessage } from "@/lib/auth";
 import { CARD_CHECKOUT_RECOURSE_DISCLOSURE_VERSION } from "@/lib/stripePolicyCopy";
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
-const skillId = "00000000-0000-0000-0000-000000000001";
+const skillId = "00000000-0000-4000-8000-000000000001";
 const buyerPubkey = "Buyer111111111111111111111111111111111111111";
 const buyerAccountId = "00000000-0000-4000-8000-000000000002";
 
@@ -354,6 +354,24 @@ describe("Stripe checkout and webhook routes", () => {
     });
     mocks.recordAndApplyUsdcPaymentRevocation.mockResolvedValue([]);
     mockSkillRow();
+  });
+
+  it("rejects malformed skill IDs before checkout side effects", async () => {
+    const res = await checkoutPOST(
+      checkoutRequest({
+        skillId: "not-a-uuid",
+        auth: signedCheckoutAuth(),
+      })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Invalid skillId");
+    expect(mocks.checkRateLimit).not.toHaveBeenCalled();
+    expect(mocks.verifyWalletSignature).not.toHaveBeenCalled();
+    expect(initializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("requires wallet auth before creating a checkout session", async () => {

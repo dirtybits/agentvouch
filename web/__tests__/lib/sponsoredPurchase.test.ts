@@ -10,6 +10,7 @@ import {
   assertSponsoredTransactionSignatures,
   getSponsoredTransactionDebug,
   getSponsoredCoreInstructions,
+  parseNonNegativeBigInt,
 } from "@/lib/sponsoredPurchase";
 import { bufferKoraTokenFee, getSponsoredSponsorMode } from "@/lib/koraSponsor";
 import {
@@ -44,6 +45,22 @@ describe("assertBuyerIsNotSponsor", () => {
     const buyer = Keypair.generate().publicKey;
     const sponsor = Keypair.generate().publicKey;
     expect(() => assertBuyerIsNotSponsor(buyer, sponsor)).not.toThrow();
+  });
+});
+
+describe("parseNonNegativeBigInt", () => {
+  it("rejects unsafe JSON numbers before BigInt conversion", () => {
+    for (const value of [Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() =>
+        parseNonNegativeBigInt(value, "expectedPriceUsdcMicros")
+      ).toThrow("expectedPriceUsdcMicros must be a non-negative safe integer");
+    }
+  });
+
+  it("keeps exact string micro-USDC values available", () => {
+    expect(
+      parseNonNegativeBigInt("9007199254740993", "expectedPriceUsdcMicros")
+    ).toBe(9007199254740993n);
   });
 });
 

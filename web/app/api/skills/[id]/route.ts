@@ -56,7 +56,7 @@ import {
 } from "@/lib/protocolMetadata";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { resolveSkillRouteParam } from "@/lib/skillRouteResolver";
-import { getCanonicalSkillRawUrl } from "@/lib/skillUrls";
+import { getCanonicalSkillRawUrl, isUuidLike } from "@/lib/skillUrls";
 import {
   loadSkillDetailSnapshot,
   type SkillDetailSnapshot,
@@ -519,8 +519,11 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { auth, on_chain_address, baseListing } = body as {
+    if (!isUuidLike(id)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
+
+    let body: {
       auth?: AuthPayload;
       on_chain_address?: string;
       baseListing?: {
@@ -535,6 +538,15 @@ export async function PATCH(
         expectedDescription?: string;
       };
     };
+    try {
+      body = ((await request.json()) ?? {}) as typeof body;
+    } catch {
+      return NextResponse.json(
+        { error: "Request body must be valid JSON" },
+        { status: 400 }
+      );
+    }
+    const { auth, on_chain_address, baseListing } = body;
 
     if (baseListing) {
       const submittedChainContext = normalizeInputChainContext(

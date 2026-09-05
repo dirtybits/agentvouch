@@ -12,8 +12,31 @@ import {
   requireBaseEvmAddress,
 } from "@/lib/adapters/baseListing";
 import { getEvmPaidPurchaseReportIndex } from "@/lib/usdcPurchases";
+import { isUuidLike } from "@/lib/skillUrls";
 
 const PRIVATE_NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
+
+function badRequest(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : "Paid report lookup failed";
+  return NextResponse.json(
+    { error: message },
+    { status: 400, headers: PRIVATE_NO_STORE_HEADERS }
+  );
+}
+
+function parsePaidReportQuery(request: NextRequest) {
+  return {
+    buyerAddress: requireBaseEvmAddress(
+      request.nextUrl.searchParams.get("buyer") ?? "",
+      "Buyer"
+    ),
+    purchaseId: requireBaseBytes32(
+      request.nextUrl.searchParams.get("purchaseId") ?? "",
+      "Paid report purchase id"
+    ),
+  };
+}
 
 async function fetchSkill(id: string): Promise<PaidReportSkillRow | null> {
   const rows = await sql()<PaidReportSkillRow>`
@@ -36,6 +59,20 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isUuidLike(id)) {
+    return NextResponse.json(
+      { error: "Skill not found" },
+      { status: 404, headers: PRIVATE_NO_STORE_HEADERS }
+    );
+  }
+
+  let paidReportQuery: ReturnType<typeof parsePaidReportQuery>;
+  try {
+    paidReportQuery = parsePaidReportQuery(request);
+  } catch (error) {
+    return badRequest(error);
+  }
+
   await initializeDatabase();
   const skill = await fetchSkill(id);
   if (!skill) {
@@ -46,14 +83,7 @@ export async function GET(
   }
 
   try {
-    const buyerAddress = requireBaseEvmAddress(
-      request.nextUrl.searchParams.get("buyer") ?? "",
-      "Buyer"
-    );
-    const purchaseId = requireBaseBytes32(
-      request.nextUrl.searchParams.get("purchaseId") ?? "",
-      "Paid report purchase id"
-    );
+    const { buyerAddress, purchaseId } = paidReportQuery;
     const contractAddress = getBasePaidPurchaseReportContract(skill);
     const preflight = await readBasePaidPurchaseReportPreflight({
       skill,
@@ -102,11 +132,6 @@ export async function GET(
       { headers: PRIVATE_NO_STORE_HEADERS }
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Paid report lookup failed";
-    return NextResponse.json(
-      { error: message },
-      { status: 400, headers: PRIVATE_NO_STORE_HEADERS }
-    );
+    return badRequest(error);
   }
 }

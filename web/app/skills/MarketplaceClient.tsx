@@ -645,6 +645,7 @@ export default function MarketplaceClient({
       return;
     }
 
+    setLoadingMore(true);
     setPage((currentPage) => Math.min(totalPages, currentPage + 1));
   }, [fetchSkills, loadMoreError, loadingMore, page, totalPages]);
 
@@ -1049,7 +1050,7 @@ export default function MarketplaceClient({
                           {loadMoreError}
                         </p>
                       )}
-                      {page < totalPages || loadMoreError ? (
+                      {loadingMore || page < totalPages || loadMoreError ? (
                         <button
                           type="button"
                           onClick={handleLoadMore}

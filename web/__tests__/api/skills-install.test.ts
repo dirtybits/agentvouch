@@ -53,6 +53,11 @@ const mockHasOnChainPurchase = hasOnChainPurchase as unknown as ReturnType<
 const mockHasUsdcEntitlement =
   hasUsdcPurchaseEntitlement as unknown as ReturnType<typeof vi.fn>;
 
+const FREE_REPO_SKILL_ID = "11111111-1111-4111-8111-111111111111";
+const PAID_REPO_SKILL_ID = "22222222-2222-4222-8222-222222222222";
+const UNLINKED_PAID_REPO_SKILL_ID = "33333333-3333-4333-8333-333333333333";
+const MISSING_REPO_SKILL_ID = "44444444-4444-4444-8444-444444444444";
+
 function makeRequest(id: string, body: Record<string, unknown> = {}) {
   const req = new NextRequest(`http://localhost/api/skills/${id}/install`, {
     method: "POST",
@@ -140,6 +145,20 @@ describe("POST /api/skills/[id]/install", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed repo skill ids before database initialization", async () => {
+    mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
+
+    const { req, params } = makeRequest("not-a-uuid", {
+      auth: { pubkey: "Wallet1" },
+    });
+    const res = await POST(req, { params });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("returns 200 for free chain-prefixed skill", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
     mockOnChain.mockResolvedValue({ priceUsdcMicros: "0", author: "Author1" });
@@ -199,11 +218,13 @@ describe("POST /api/skills/[id]/install", () => {
 
     const dbQuery = vi.fn();
     dbQuery
-      .mockResolvedValueOnce([{ id: "uuid-1", on_chain_address: null }])
-      .mockResolvedValueOnce([{ id: "uuid-1", total_installs: 5 }]);
+      .mockResolvedValueOnce([
+        { id: FREE_REPO_SKILL_ID, on_chain_address: null },
+      ])
+      .mockResolvedValueOnce([{ id: FREE_REPO_SKILL_ID, total_installs: 5 }]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-1", {
+    const { req, params } = makeRequest(FREE_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -219,12 +240,15 @@ describe("POST /api/skills/[id]/install", () => {
       author: "Author2",
     });
 
-    const dbQuery = vi
-      .fn()
-      .mockResolvedValueOnce([{ id: "uuid-2", on_chain_address: "ChainAddr" }]);
+    const dbQuery = vi.fn().mockResolvedValueOnce([
+      {
+        id: PAID_REPO_SKILL_ID,
+        on_chain_address: "ChainAddr",
+      },
+    ]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-2", {
+    const { req, params } = makeRequest(PAID_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -236,14 +260,14 @@ describe("POST /api/skills/[id]/install", () => {
 
     const dbQuery = vi.fn().mockResolvedValueOnce([
       {
-        id: "uuid-unlinked",
+        id: UNLINKED_PAID_REPO_SKILL_ID,
         on_chain_address: null,
         price_usdc_micros: "1000000",
       },
     ]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-unlinked", {
+    const { req, params } = makeRequest(UNLINKED_PAID_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -262,15 +286,17 @@ describe("POST /api/skills/[id]/install", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-unlinked",
+          id: UNLINKED_PAID_REPO_SKILL_ID,
           on_chain_address: null,
           price_usdc_micros: "1000000",
         },
       ])
-      .mockResolvedValueOnce([{ id: "uuid-unlinked", total_installs: 7 }]);
+      .mockResolvedValueOnce([
+        { id: UNLINKED_PAID_REPO_SKILL_ID, total_installs: 7 },
+      ]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-unlinked", {
+    const { req, params } = makeRequest(UNLINKED_PAID_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -290,11 +316,16 @@ describe("POST /api/skills/[id]/install", () => {
 
     const dbQuery = vi
       .fn()
-      .mockResolvedValueOnce([{ id: "uuid-2", on_chain_address: "ChainAddr" }])
-      .mockResolvedValueOnce([{ id: "uuid-2", total_installs: 9 }]);
+      .mockResolvedValueOnce([
+        {
+          id: PAID_REPO_SKILL_ID,
+          on_chain_address: "ChainAddr",
+        },
+      ])
+      .mockResolvedValueOnce([{ id: PAID_REPO_SKILL_ID, total_installs: 9 }]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-2", {
+    const { req, params } = makeRequest(PAID_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -311,21 +342,24 @@ describe("POST /api/skills/[id]/install", () => {
       .fn()
       .mockResolvedValueOnce([
         {
-          id: "uuid-2",
+          id: PAID_REPO_SKILL_ID,
           on_chain_address: "ChainAddr",
           price_usdc_micros: "50000000",
         },
       ])
-      .mockResolvedValueOnce([{ id: "uuid-2", total_installs: 10 }]);
+      .mockResolvedValueOnce([{ id: PAID_REPO_SKILL_ID, total_installs: 10 }]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-2", {
+    const { req, params } = makeRequest(PAID_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
 
     expect(res.status).toBe(200);
-    expect(mockHasUsdcEntitlement).toHaveBeenCalledWith("uuid-2", "Wallet1");
+    expect(mockHasUsdcEntitlement).toHaveBeenCalledWith(
+      PAID_REPO_SKILL_ID,
+      "Wallet1"
+    );
   });
 
   it("returns 404 when repo skill not found", async () => {
@@ -334,7 +368,7 @@ describe("POST /api/skills/[id]/install", () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([]);
     mockSql.mockReturnValue(dbQuery);
 
-    const { req, params } = makeRequest("uuid-missing", {
+    const { req, params } = makeRequest(MISSING_REPO_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });

@@ -119,6 +119,9 @@ export function parseNonNegativeBigInt(
   label: string
 ) {
   if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
   const parsed = BigInt(value);
   if (parsed < 0n) throw new Error(`${label} must be non-negative`);
   return parsed;
