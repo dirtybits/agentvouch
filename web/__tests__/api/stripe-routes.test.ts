@@ -356,6 +356,21 @@ describe("Stripe checkout and webhook routes", () => {
     mockSkillRow();
   });
 
+  it("rejects a null checkout body before rate-limit or database work", async () => {
+    const res = await checkoutPOST(
+      jsonRequest("http://localhost/api/stripe/checkout", null)
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("skillId is required");
+    expect(mocks.checkRateLimit).not.toHaveBeenCalled();
+    expect(mocks.verifyWalletSignature).not.toHaveBeenCalled();
+    expect(initializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mocks.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed skill IDs before checkout side effects", async () => {
     const res = await checkoutPOST(
       checkoutRequest({
