@@ -27,6 +27,7 @@ import {
   FiAlertTriangle,
   FiBookOpen,
   FiBox,
+  FiChevronDown,
   FiCheckCircle,
   FiDownload,
   FiEdit2,
@@ -290,11 +291,14 @@ export default function MarketplaceClient({
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOption>("trusted");
+  // `page` tracks the highest browse page currently loaded into the list.
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(
     Math.max(1, Math.ceil(initialTotal / pageSize))
   );
   const [total, setTotal] = useState(initialTotal);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   // The query state the server snapshot covers. While the live state still
   // matches it, the browse fetch is redundant; any change (search, sort, page,
   // wallet) breaks the match and fetches as usual. A plain ref flag would
@@ -388,37 +392,77 @@ export default function MarketplaceClient({
     [publicKey]
   );
 
-  const fetchSkills = useCallback(async () => {
-    const requestId = ++browseRequestRef.current;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (debouncedSearch) params.set("q", debouncedSearch);
-      if (selectedTag) params.set("tags", selectedTag);
-      params.set("mode", "fast");
-      params.set("sort", sort);
-      params.set("page", String(page));
-      params.set("pageSize", String(MARKETPLACE_PAGE_SIZE));
+  const fetchSkills = useCallback(
+    async (options?: { append?: boolean; pageToFetch?: number }) => {
+      const append = options?.append ?? page > 1;
+      const pageToFetch = options?.pageToFetch ?? page;
+      const requestId = ++browseRequestRef.current;
 
-      const res = await fetch(`/api/skills?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch skills");
-      const data: ApiResponse = await res.json();
-      if (browseRequestRef.current !== requestId) return;
-
-      setSkills(data.skills);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-      void hydrateVisibleSkills(data.skills);
-    } catch (err) {
-      if (browseRequestRef.current !== requestId) return;
-      console.error("Error fetching skills:", err);
-      setSkills([]);
-    } finally {
-      if (browseRequestRef.current === requestId) {
-        setLoading(false);
+      if (append) {
+        setLoadingMore(true);
+        setLoadMoreError(null);
+      } else {
+        setLoading(true);
+        setLoadingMore(false);
+        setLoadMoreError(null);
       }
-    }
-  }, [debouncedSearch, hydrateVisibleSkills, page, selectedTag, sort]);
+
+      try {
+        const params = new URLSearchParams();
+        if (debouncedSearch) params.set("q", debouncedSearch);
+        if (selectedTag) params.set("tags", selectedTag);
+        params.set("mode", "fast");
+        params.set("sort", sort);
+        params.set("page", String(pageToFetch));
+        params.set("pageSize", String(MARKETPLACE_PAGE_SIZE));
+
+        const res = await fetch(`/api/skills?${params}`);
+        if (!res.ok) throw new Error("Failed to fetch skills");
+        const data: ApiResponse = await res.json();
+        if (browseRequestRef.current !== requestId) return;
+
+        if (append) {
+          setSkills((previousSkills) => {
+            const existingIds = new Set(
+              previousSkills.map((skill) => skill.id)
+            );
+            const refreshedSkills = new Map(
+              data.skills.map((skill) => [skill.id, skill])
+            );
+
+            return [
+              ...previousSkills.map(
+                (skill) => refreshedSkills.get(skill.id) ?? skill
+              ),
+              ...data.skills.filter((skill) => !existingIds.has(skill.id)),
+            ];
+          });
+        } else {
+          setSkills(data.skills);
+        }
+        setTotalPages(data.pagination.totalPages);
+        setTotal(data.pagination.total);
+        void hydrateVisibleSkills(data.skills);
+      } catch (err) {
+        if (browseRequestRef.current !== requestId) return;
+        console.error("Error fetching skills:", err);
+        if (append) {
+          setLoadMoreError("Couldn't load more skills. Try again.");
+        } else {
+          setSkills([]);
+        }
+      } finally {
+        if (browseRequestRef.current === requestId) {
+          if (append) {
+            setLoadingMore(false);
+          } else {
+            setLoading(false);
+          }
+        }
+      }
+    },
+    [debouncedSearch, hydrateVisibleSkills, page, selectedTag, sort]
+  );
 
   const loadFeed = useCallback(async () => {
     try {
@@ -593,6 +637,17 @@ export default function MarketplaceClient({
     setPage(1);
   }, []);
 
+  const handleLoadMore = useCallback(() => {
+    if (loadingMore || (!loadMoreError && page >= totalPages)) return;
+
+    if (loadMoreError) {
+      void fetchSkills({ append: true, pageToFetch: page });
+      return;
+    }
+
+    setPage((currentPage) => Math.min(totalPages, currentPage + 1));
+  }, [fetchSkills, loadMoreError, loadingMore, page, totalPages]);
+
   const handlePurchase = async (
     listingPubkey: Address,
     authorKey: Address,
@@ -725,12 +780,12 @@ export default function MarketplaceClient({
                             public_slug: item.publicSlug,
                             public_author_slug: item.publicAuthorSlug,
                           })}
-                          className="font-display text-sm text-gray-900 hover:text-[var(--sea-accent)] dark:text-white"
+                          className="font-title text-sm text-gray-900 hover:text-[var(--sea-accent)] dark:text-white"
                         >
                           {item.skillName}
                         </Link>
                       ) : (
-                        <span className="font-display text-sm text-gray-900 dark:text-white">
+                        <span className="font-title text-sm text-gray-900 dark:text-white">
                           {item.skillName}
                         </span>
                       )}
@@ -820,7 +875,7 @@ export default function MarketplaceClient({
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 font-display text-[17px] whitespace-nowrap transition border-b-2 -mb-[2px] ${
+                className={`px-4 py-2 font-sans text-[17px] whitespace-nowrap transition border-b-2 -mb-[2px] ${
                   activeTab === tab.key
                     ? "border-[var(--sea-accent)] text-gray-900 dark:text-white"
                     : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -983,26 +1038,50 @@ export default function MarketplaceClient({
                     })}
                   </div>
 
-                  {/* Pagination */}
+                  {/* Append-only pagination */}
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-center gap-2 mt-8">
-                      <button
-                        onClick={() => setPage(Math.max(1, page - 1))}
-                        disabled={page === 1}
-                        className="px-3 py-1.5 rounded-sm text-sm border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                    <div className="mt-10 flex flex-col items-center gap-3">
+                      {loadMoreError && (
+                        <p
+                          role="alert"
+                          className="text-center text-sm text-red-600 dark:text-red-400"
+                        >
+                          {loadMoreError}
+                        </p>
+                      )}
+                      {page < totalPages || loadMoreError ? (
+                        <button
+                          type="button"
+                          onClick={handleLoadMore}
+                          disabled={loadingMore}
+                          aria-busy={loadingMore}
+                          className={`${navButtonPrimaryInlineClass} min-w-[9rem] font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lobster-focus-ring)]`}
+                        >
+                          {loadingMore ? (
+                            <>
+                              <FiLoader className="h-4 w-4 animate-spin" />
+                              Loading more
+                            </>
+                          ) : loadMoreError ? (
+                            "Try again"
+                          ) : (
+                            <>
+                              View more
+                              <FiChevronDown className="h-4 w-4" />
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-xs uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                          You&apos;ve reached the end
+                        </span>
+                      )}
+                      <span
+                        className="font-mono text-xs text-gray-400 dark:text-gray-500"
+                        aria-live="polite"
                       >
-                        Previous
-                      </button>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        Page {page} of {totalPages}
+                        Showing {skills.length} of {total} skills
                       </span>
-                      <button
-                        onClick={() => setPage(Math.min(totalPages, page + 1))}
-                        disabled={page === totalPages}
-                        className="px-3 py-1.5 rounded-sm text-sm border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                      >
-                        Next
-                      </button>
                     </div>
                   )}
                 </>

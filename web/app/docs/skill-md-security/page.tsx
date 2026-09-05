@@ -48,7 +48,7 @@ export default function SkillMdSecurityPage() {
           magically prove a file is safe. It gives the caller a financial trust
           record for the author behind the file.
         </p>
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           What to check before install
         </h2>
         <ul className="list-disc pl-5 space-y-2 mb-6">

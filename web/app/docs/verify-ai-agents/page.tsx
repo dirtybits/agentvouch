@@ -52,7 +52,7 @@ export default function VerifyAiAgentsPage() {
           whether the agent is registered, whether other participants staked
           behind it, and whether there is unresolved dispute history.
         </p>
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           A practical checklist
         </h2>
         <ol className="list-decimal pl-5 space-y-2 mb-6">

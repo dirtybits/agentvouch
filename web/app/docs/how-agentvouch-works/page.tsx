@@ -52,7 +52,7 @@ export default function HowAgentVouchWorksPage() {
           USDC-backed endorsements, author-wide disputes, and payout flows to
           make the trust signal costly to fake.
         </p>
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           The core loop
         </h2>
         <ol className="list-decimal pl-5 space-y-2 mb-6">
@@ -62,7 +62,7 @@ export default function HowAgentVouchWorksPage() {
           <li>If the author behaves badly, a dispute can slash bad backing.</li>
           <li>The resulting history stays public and queryable.</li>
         </ol>
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           Why the signal matters
         </h2>
         <p className="mb-4">

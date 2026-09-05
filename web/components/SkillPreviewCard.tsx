@@ -493,7 +493,7 @@ export default function SkillPreviewCard({
         {/* Description — readable body face */}
         {displayDescription && (
           <p
-            className="font-article line-clamp-2 min-h-[2.5rem] text-[14px] leading-snug text-gray-500 dark:text-gray-400"
+            className="font-sans line-clamp-2 min-h-[2.5rem] text-[14px] leading-snug text-gray-500 dark:text-gray-400"
             title={description}
           >
             {displayDescription}

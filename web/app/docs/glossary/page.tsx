@@ -147,7 +147,7 @@ export default function GlossaryPage() {
         <dl className="space-y-6">
           {TERMS.map((t) => (
             <div key={t.id} id={t.id} className="scroll-mt-24">
-              <dt className="font-heading font-bold text-gray-900 dark:text-white">
+              <dt className="font-title font-bold text-gray-900 dark:text-white">
                 {t.href ? (
                   <Link href={t.href} className="hover:underline">
                     {t.term}

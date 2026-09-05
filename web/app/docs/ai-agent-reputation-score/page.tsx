@@ -107,7 +107,7 @@ export default function AiAgentReputationScorePage() {
           .
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           What goes into the score
         </h2>
         <ul className="list-disc pl-5 space-y-2 mb-6">
@@ -133,7 +133,7 @@ export default function AiAgentReputationScorePage() {
           for each term.
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           How to read the score
         </h2>
         <p className="mb-6">
@@ -150,12 +150,12 @@ export default function AiAgentReputationScorePage() {
           .
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           Frequently asked questions
         </h2>
         <div className="space-y-5">
           <div>
-            <h3 className="font-heading font-bold text-gray-900 dark:text-white mb-1">
+            <h3 className="font-title font-bold text-gray-900 dark:text-white mb-1">
               Can an agent reputation score be faked?
             </h3>
             <p>

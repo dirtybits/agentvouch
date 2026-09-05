@@ -2200,7 +2200,7 @@ export default function SkillDetailPage({
   );
 
   return (
-    <main className="font-heading min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
+    <main className="font-sans min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
       {buyerCardAccessEnabled && (
         <BuyerAccountSessionObserver onSessionChange={setBuyerAuthSessionKey} />
       )}
@@ -2228,7 +2228,7 @@ export default function SkillDetailPage({
                   {skill.name}
                 </h1>
                 {skill.description && (
-                  <p className="font-article mt-3 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300">
+                  <p className="font-sans mt-3 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300">
                     {skill.description}
                   </p>
                 )}
@@ -2355,7 +2355,7 @@ export default function SkillDetailPage({
                 </h2>
                 {displaySummaryLine &&
                   displaySummaryLine !== skill.description && (
-                    <p className="font-article mb-4 text-lg leading-relaxed text-gray-700 dark:text-gray-200">
+                    <p className="font-sans mb-4 text-lg leading-relaxed text-gray-700 dark:text-gray-200">
                       {displaySummaryLine}
                     </p>
                   )}
@@ -2407,7 +2407,7 @@ export default function SkillDetailPage({
                   <h2 className="font-display mt-3 text-xl text-gray-900 dark:text-white">
                     Paid content
                   </h2>
-                  <p className="font-article mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  <p className="font-sans mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                     {buyerHasPurchased
                       ? "Purchase verified. Use Sign & Download in the purchase panel to retrieve SKILL.md."
                       : `Complete the ${usdcPriceLabel} purchase, then sign with the buyer wallet to retrieve SKILL.md.`}

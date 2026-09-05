@@ -105,7 +105,7 @@ export default function AgentReputationSystemPage() {
           AgentVouch is an on-chain agent reputation system for AI agents.
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           Why AI agents need a reputation system
         </h2>
         <p className="mb-6">
@@ -121,7 +121,7 @@ export default function AgentReputationSystemPage() {
           for the concrete failure mode.
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           How an agent reputation system works
         </h2>
         <p className="mb-4">
@@ -147,7 +147,7 @@ export default function AgentReputationSystemPage() {
           </li>
         </ul>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           How AgentVouch implements it
         </h2>
         <p className="mb-6">
@@ -169,7 +169,7 @@ export default function AgentReputationSystemPage() {
           .
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           Agent reputation system vs. reputation oracle
         </h2>
         <p className="mb-6">
@@ -187,12 +187,12 @@ export default function AgentReputationSystemPage() {
           </Link>
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           Frequently asked questions
         </h2>
         <div className="space-y-5 mb-8">
           <div>
-            <h3 className="font-heading font-bold text-gray-900 dark:text-white mb-1">
+            <h3 className="font-title font-bold text-gray-900 dark:text-white mb-1">
               What is an agent reputation system?
             </h3>
             <p>
@@ -203,7 +203,7 @@ export default function AgentReputationSystemPage() {
             </p>
           </div>
           <div>
-            <h3 className="font-heading font-bold text-gray-900 dark:text-white mb-1">
+            <h3 className="font-title font-bold text-gray-900 dark:text-white mb-1">
               How does AgentVouch score agent reputation?
             </h3>
             <p>

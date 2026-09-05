@@ -787,7 +787,7 @@ export default function DashboardPage() {
   const renderRegisteredAgentsCard = () => (
     <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-heading font-bold text-gray-900 dark:text-white">
+        <h3 className="text-lg font-title font-bold text-gray-900 dark:text-white">
           Registered Agents
         </h3>
         <button
@@ -938,7 +938,7 @@ export default function DashboardPage() {
             <>
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white">
+                  <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white">
                     Your Agent Profile
                   </h2>
                   {publicKey && (
@@ -1142,7 +1142,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                   <FiDollarSign className="text-[var(--sea-accent)]" />{" "}
                   Purchased Skills
                 </h2>
@@ -1222,7 +1222,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                   <FiDollarSign className="text-[var(--lobster-accent)]" /> Your
                   Marketplace Listings
                 </h2>
@@ -1324,7 +1324,7 @@ export default function DashboardPage() {
 
               {agentProfile && (
                 <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                  <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                  <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                     <FiDollarSign className="text-[var(--sea-accent)]" />{" "}
                     Voucher Revenue
                   </h2>
@@ -1509,7 +1509,7 @@ export default function DashboardPage() {
 
               {agentProfile && vouchesReceived.length > 0 && (
                 <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                  <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                  <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                     <FiUsers className="text-[var(--lobster-accent)]" /> Agents
                     Vouching For You
                   </h2>
@@ -1572,7 +1572,7 @@ export default function DashboardPage() {
 
               {agentProfile && vouches.length > 0 && (
                 <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                  <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                  <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                     <FiZap className="text-[var(--lobster-accent)]" /> Agents
                     You&apos;re Vouching For
                   </h2>
@@ -1656,7 +1656,7 @@ export default function DashboardPage() {
           {activeTab === "vouch" && connected && agentProfile && (
             <div className="space-y-6">
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-2">
                   Vouch for an Agent
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -1708,7 +1708,7 @@ export default function DashboardPage() {
           {activeTab === "vouch" && connected && !agentProfile && (
             <div className="space-y-6">
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-2">
                   Vouch for an Agent
                 </h2>
                 <p className="text-sm text-amber-600 dark:text-amber-400">
@@ -1723,7 +1723,7 @@ export default function DashboardPage() {
           {activeTab === "explorer" && (
             <div className="space-y-6">
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                   <FiSearch className="text-[var(--sea-accent)]" /> Search
                   Agents
                 </h2>
@@ -1751,7 +1751,7 @@ export default function DashboardPage() {
 
                   {searchedAgent && (
                     <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-6 space-y-0 divide-y divide-gray-100 dark:divide-gray-700">
-                      <h3 className="text-base font-heading font-bold text-green-600 dark:text-green-400 mb-3 pb-0">
+                      <h3 className="text-base font-title font-bold text-green-600 dark:text-green-400 mb-3 pb-0">
                         Agent Found
                       </h3>
                       <div className="flex justify-between py-3">
@@ -1860,7 +1860,7 @@ export default function DashboardPage() {
 
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-heading font-bold text-gray-900 dark:text-white">
+                  <h3 className="text-lg font-title font-bold text-gray-900 dark:text-white">
                     All Registered Agents
                   </h3>
                   <button
@@ -1963,7 +1963,7 @@ export default function DashboardPage() {
           {activeTab === "disputes" && connected && (
             <div className="space-y-6">
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                   <FiShield className="text-[var(--lobster-accent)]" /> Author
                   Disputes
                 </h2>
@@ -2073,7 +2073,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                   <FiShield className="text-[var(--lobster-accent)]" /> Your
                   Vouches
                 </h2>

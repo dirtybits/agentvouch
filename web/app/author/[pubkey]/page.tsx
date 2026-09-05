@@ -1163,7 +1163,7 @@ export default function AuthorProfilePage() {
                 <div className="mb-5 pr-8">
                   <h2
                     id="report-author-title"
-                    className="text-xl font-heading font-bold text-gray-900 dark:text-white"
+                    className="text-xl font-title font-bold text-gray-900 dark:text-white"
                   >
                     Report this author
                   </h2>
@@ -1386,7 +1386,7 @@ export default function AuthorProfilePage() {
 
         {authorDisputes.length > 0 && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <FiAlertTriangle className="text-[var(--lobster-accent)]" />{" "}
               Author Disputes
             </h2>
@@ -1448,7 +1448,7 @@ export default function AuthorProfilePage() {
 
         {isOwnProfile && profile && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-2">
+            <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-2">
               Link Solana Agent Registry
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -1656,7 +1656,7 @@ export default function AuthorProfilePage() {
               <div className="flex items-center justify-center text-[var(--lobster-accent)] mb-1">
                 {stat.icon}
               </div>
-              <div className="text-xl font-heading font-bold text-gray-900 dark:text-white">
+              <div className="text-xl font-title font-bold text-gray-900 dark:text-white">
                 {stat.value}
               </div>
               <div className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide">
@@ -1670,7 +1670,7 @@ export default function AuthorProfilePage() {
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <FiShield className="text-[var(--sea-accent)]" /> Manage Base
                   Self Stake
                 </h2>
@@ -1758,7 +1758,7 @@ export default function AuthorProfilePage() {
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <FiShield className="text-[var(--sea-accent)]" /> Your Backing
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1802,7 +1802,7 @@ export default function AuthorProfilePage() {
         {/* Vouch for this author */}
         {!isOwnProfile && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
               <FiZap className="text-[var(--lobster-accent)]" /> Vouch for this
               Author
             </h2>
@@ -1916,7 +1916,7 @@ export default function AuthorProfilePage() {
 
         {!isOwnProfile && connected && viewerVouch && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
               <FiTrendingUp className="text-[var(--lobster-accent)]" /> Voucher
               Revenue
             </h2>
@@ -2024,7 +2024,7 @@ export default function AuthorProfilePage() {
 
         {/* Skills */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             <FiPackage className="text-[var(--lobster-accent)]" /> Published
             Skills
           </h2>
@@ -2045,7 +2045,7 @@ export default function AuthorProfilePage() {
                     className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition block"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="font-heading font-bold text-gray-900 dark:text-white text-sm truncate">
+                      <h3 className="font-title font-bold text-gray-900 dark:text-white text-sm truncate">
                         {skill.name}
                       </h3>
                       {skill.price_usdc_micros ? (
@@ -2097,7 +2097,7 @@ export default function AuthorProfilePage() {
                       className="rounded-sm border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4 hover:border-gray-300 dark:hover:border-gray-600 transition block"
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <h3 className="font-heading font-bold text-gray-900 dark:text-white text-sm truncate">
+                        <h3 className="font-title font-bold text-gray-900 dark:text-white text-sm truncate">
                           {skill.name || "Untitled"}
                         </h3>
                         {priceUsdcMicros ? (
@@ -2134,7 +2134,7 @@ export default function AuthorProfilePage() {
         {/* Vouchers (who vouches for this author) */}
         {vouchesReceived.length > 0 && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <FiUsers className="text-[var(--lobster-accent)]" /> Vouchers
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -2209,7 +2209,7 @@ export default function AuthorProfilePage() {
         {/* Vouching for (who this author vouches for) */}
         {vouchesGiven.length > 0 && (
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
-            <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <FiZap className="text-[var(--lobster-accent)]" /> Vouching For
             </h2>
             <div className="space-y-2">
@@ -2268,7 +2268,7 @@ export default function AuthorProfilePage() {
           <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
-                <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <FiShield className="text-[var(--lobster-accent)]" /> Report
                   this author
                 </h2>
