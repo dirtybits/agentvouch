@@ -10,8 +10,10 @@ import { discoverSolanaRegistryCandidatesByWallet } from "@/lib/solanaAgentRegis
 import { listAuthorDisputesByAuthor } from "@/lib/authorDisputes";
 import {
   BASE_SEPOLIA_CHAIN_CONTEXT,
+  getConfiguredSolanaChainContext,
   normalizeInputChainContext,
 } from "@/lib/chains";
+import { isValidChainAddress } from "@/lib/chainAddress";
 import {
   buildPublicCacheControl,
   PUBLIC_ROUTE_CACHE_SECONDS,
@@ -82,6 +84,18 @@ export async function GET(
             ),
           },
         }
+      );
+    }
+
+    if (
+      !isValidChainAddress({
+        chainContext: getConfiguredSolanaChainContext(),
+        value: pubkey,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Solana author routes require a valid Solana address" },
+        { status: 400 }
       );
     }
 
