@@ -2,6 +2,14 @@
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Register semantic fonts with Tailwind v4 so variants work in prose too. */
+@theme inline {
+  --font-sans: var(--font-inter), "Inter", sans-serif;
+  --font-title: var(--font-crimson-pro), "Crimson Pro", Georgia, serif;
+  --font-display: var(--font-crimson-pro), "Crimson Pro", Georgia, serif;
+  --font-mono: var(--font-inconsolata), "Inconsolata", monospace;
+}
+
 :root {
   --background: #f9fafb;
   --foreground: #111827;
