@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { initializeDatabase } from "@/lib/db";
 import { getErrorMessage } from "@/lib/errors";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
+import { isValidChainAddress } from "@/lib/chainAddress";
+import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import type { AuthPayload } from "@/lib/authPayload";
 import {
   createConnectedRepo,
@@ -30,6 +32,17 @@ export async function GET(
 ) {
   try {
     const { pubkey } = await params;
+    if (
+      !isValidChainAddress({
+        chainContext: getConfiguredSolanaChainContext(),
+        value: pubkey,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Agent routes require a valid Solana address" },
+        { status: 400 }
+      );
+    }
     await initializeDatabase();
     const repos = await listConnectedRepos(pubkey);
     return NextResponse.json(
