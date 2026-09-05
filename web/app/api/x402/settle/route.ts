@@ -10,6 +10,7 @@ import {
 import {
   getBaseX402PayloadFromBody,
   getBaseX402SkillIdFromBody,
+  hasInvalidBaseX402SkillId,
   loadBaseX402Skill,
 } from "@/lib/baseX402Api";
 import {
@@ -34,6 +35,9 @@ export async function POST(request: NextRequest) {
       string,
       unknown
     >;
+    if (hasInvalidBaseX402SkillId(body)) {
+      return NextResponse.json({ error: "Invalid skillDbId" }, { status: 400 });
+    }
     const baseSkillId = getBaseX402SkillIdFromBody(body);
     const basePayload = getBaseX402PayloadFromBody(body);
     if (baseSkillId || basePayload) {

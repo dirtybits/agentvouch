@@ -24,13 +24,8 @@ vi.mock("@/lib/baseX402", () => ({
   verifyBaseX402PaymentPayload: mocks.verifyBaseX402PaymentPayload,
   relayAndRecordBaseX402Purchase: mocks.relayAndRecordBaseX402Purchase,
 }));
-vi.mock("@/lib/baseX402Api", () => ({
-  getBaseX402SkillIdFromBody: (body: Record<string, unknown>) =>
-    typeof body.skillDbId === "string" ? body.skillDbId : null,
-  getBaseX402PayloadFromBody: (body: Record<string, unknown>) =>
-    body.paymentPayload && typeof body.paymentPayload === "object"
-      ? body.paymentPayload
-      : null,
+vi.mock("@/lib/baseX402Api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/baseX402Api")>()),
   loadBaseX402Skill: mocks.loadBaseX402Skill,
 }));
 vi.mock("@/lib/usdcPurchases", () => ({
@@ -87,4 +82,30 @@ describe.each([
       expect(mocks.failX402SettlementAttempt).not.toHaveBeenCalled();
     }
   );
+
+  it("rejects an invalid Base skillDbId before listing or payment work", async () => {
+    const response = await handler(
+      request(
+        JSON.stringify({
+          skillDbId: "not-a-uuid",
+          paymentPayload: {},
+        })
+      )
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid skillDbId",
+    });
+    expect(mocks.authenticateRequest).toHaveBeenCalledOnce();
+    expect(mocks.verifyPaymentProof).not.toHaveBeenCalled();
+    expect(mocks.verifyBaseX402PaymentPayload).not.toHaveBeenCalled();
+    expect(mocks.loadBaseX402Skill).not.toHaveBeenCalled();
+    expect(mocks.relayAndRecordBaseX402Purchase).not.toHaveBeenCalled();
+    expect(mocks.hasChainUsdcPurchaseEntitlement).not.toHaveBeenCalled();
+    expect(mocks.getX402SettlementEntitlement).not.toHaveBeenCalled();
+    expect(mocks.claimX402SettlementAttempt).not.toHaveBeenCalled();
+    expect(mocks.completeX402SettlementAttempt).not.toHaveBeenCalled();
+    expect(mocks.failX402SettlementAttempt).not.toHaveBeenCalled();
+  });
 });
