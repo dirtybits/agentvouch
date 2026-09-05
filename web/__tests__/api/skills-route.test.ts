@@ -344,6 +344,25 @@ describe("POST /api/skills", () => {
     expect(mockPinSkillContent).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["malformed JSON", "{", "Request body must be valid JSON"],
+    ["a literal null", "null", "Request body must be a JSON object"],
+  ])(
+    "rejects %s upload bodies before side effects",
+    async (_label, rawBody, error) => {
+      const res = await POST(
+        makeRawRequest(rawBody, { "Content-Type": "application/json" })
+      );
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({ error });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+      expect(mockPinSkillContent).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects oversized tar_base64 payloads before base64 decoding", async () => {
     const res = await POST(
       makeRequest({

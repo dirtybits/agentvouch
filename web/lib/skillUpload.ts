@@ -134,7 +134,16 @@ async function parseMultipart(request: Request): Promise<ParsedSkillUpload> {
 }
 
 async function parseJson(request: Request): Promise<ParsedSkillUpload> {
-  const body = (await request.json()) as JsonRecord;
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    throw new SkillUploadError("Request body must be valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new SkillUploadError("Request body must be a JSON object");
+  }
+  const body = parsed as JsonRecord;
   let files =
     decodeJsonFiles(body.files) ??
     (typeof body.content === "string"
