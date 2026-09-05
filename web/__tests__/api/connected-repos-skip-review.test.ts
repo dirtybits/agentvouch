@@ -47,7 +47,10 @@ vi.mock("@/lib/mirror/connectedRepos", () => ({
 
 import { POST as syncPost } from "@/app/api/agents/[pubkey]/repos/[id]/sync/route";
 import { DELETE as disconnectDelete } from "@/app/api/agents/[pubkey]/repos/[id]/route";
-import { POST as connectPost } from "@/app/api/agents/[pubkey]/repos/route";
+import {
+  GET as listGet,
+  POST as connectPost,
+} from "@/app/api/agents/[pubkey]/repos/route";
 
 const PUBKEY = "WalletPubkey1111111111111111111111111111111";
 const REPO_ID = "00000000-0000-4000-8000-000000000001";
@@ -87,6 +90,26 @@ function makeConnectRequest(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
 }
+
+describe("GET /api/agents/[pubkey]/repos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("rejects malformed public keys before database or repository work", async () => {
+    const response = await listGet(
+      new NextRequest("http://localhost/api/agents/not-a-solana-address/repos"),
+      { params: Promise.resolve({ pubkey: "not-a-solana-address" }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Agent routes require a valid Solana address",
+    });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockListConnectedRepos).not.toHaveBeenCalled();
+  });
+});
 
 describe("POST /api/agents/[pubkey]/repos/[id]/sync — skip_review bypass", () => {
   beforeEach(() => {
