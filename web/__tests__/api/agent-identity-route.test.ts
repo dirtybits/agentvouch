@@ -51,6 +51,7 @@ const mockGithubSession = getGithubSessionFromRequest as unknown as ReturnType<
 const mockVerifyAuthorTrust = verifyAuthorTrust as unknown as ReturnType<
   typeof vi.fn
 >;
+const SOLANA_PUBKEY = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
 
 function makeRequest(
   path: string,
@@ -74,16 +75,30 @@ describe("/api/agents/[pubkey]/identity", () => {
     mockResolveIdentity.mockResolvedValue({ username: "wallet-dmt4cd" });
 
     const res = await GET(
-      makeRequest("/api/agents/Wallet111/identity", "GET"),
-      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      makeRequest(`/api/agents/${SOLANA_PUBKEY}/identity`, "GET"),
+      { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
     );
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.author_identity.username).toBe("wallet-dmt4cd");
-    expect(mockResolveIdentity).toHaveBeenCalledWith("Wallet111", {
+    expect(mockResolveIdentity).toHaveBeenCalledWith(SOLANA_PUBKEY, {
       hasAgentProfile: true,
     });
+  });
+
+  it("rejects malformed public keys before trust or identity lookups", async () => {
+    const res = await GET(
+      makeRequest("/api/agents/not-a-solana-address/identity", "GET"),
+      { params: Promise.resolve({ pubkey: "not-a-solana-address" }) }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Agent routes require a valid Solana address",
+    });
+    expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+    expect(mockResolveIdentity).not.toHaveBeenCalled();
   });
 
   it("rejects username updates signed by another wallet", async () => {

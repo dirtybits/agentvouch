@@ -9,6 +9,8 @@ import {
   PUBLIC_ROUTE_CACHE_SECONDS,
   PUBLIC_ROUTE_STALE_SECONDS,
 } from "@/lib/cachePolicy";
+import { isValidChainAddress } from "@/lib/chainAddress";
+import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { getErrorMessage } from "@/lib/errors";
 
 export async function GET(
@@ -17,6 +19,17 @@ export async function GET(
 ) {
   try {
     const { pubkey } = await params;
+    if (
+      !isValidChainAddress({
+        chainContext: getConfiguredSolanaChainContext(),
+        value: pubkey,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Agent routes require a valid Solana address" },
+        { status: 400 }
+      );
+    }
     const trust = await resolveAuthorTrust(pubkey);
     const identity = await resolveAgentIdentityByWallet(pubkey, {
       hasAgentProfile: trust.isRegistered,

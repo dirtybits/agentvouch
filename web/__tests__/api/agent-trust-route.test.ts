@@ -33,6 +33,7 @@ const mockResolveIdentity =
 const mockListDisputes = listAuthorDisputesByAuthor as unknown as ReturnType<
   typeof vi.fn
 >;
+const SOLANA_PUBKEY = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
 
 describe("GET /api/agents/[pubkey]/trust", () => {
   beforeEach(() => {
@@ -59,15 +60,15 @@ describe("GET /api/agents/[pubkey]/trust", () => {
     mockListDisputes.mockResolvedValue([{ publicKey: "Dispute111" }]);
 
     const request = new NextRequest(
-      "http://localhost/api/agents/Author111/trust"
+      `http://localhost/api/agents/${SOLANA_PUBKEY}/trust`
     );
     const response = await GET(request, {
-      params: Promise.resolve({ pubkey: "Author111" }),
+      params: Promise.resolve({ pubkey: SOLANA_PUBKEY }),
     });
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.pubkey).toBe("Author111");
+    expect(body.pubkey).toBe(SOLANA_PUBKEY);
     expect(body.trust.canonical_agent_id).toBe("agent-1");
     expect(body.trust.recommended_action).toBe("allow");
     expect(body.trust.isRegistered).toBe(true);
@@ -95,15 +96,30 @@ describe("GET /api/agents/[pubkey]/trust", () => {
     mockListDisputes.mockResolvedValue([]);
 
     const request = new NextRequest(
-      "http://localhost/api/agents/Author111/trust"
+      `http://localhost/api/agents/${SOLANA_PUBKEY}/trust`
     );
     const response = await GET(request, {
-      params: Promise.resolve({ pubkey: "Author111" }),
+      params: Promise.resolve({ pubkey: SOLANA_PUBKEY }),
     });
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.trust.recommended_action).toBe("avoid");
     expect(body.trust.isRegistered).toBe(false);
+  });
+
+  it("rejects malformed public keys before trust, identity, or dispute lookups", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost/api/agents/not-a-solana-address/trust"),
+      { params: Promise.resolve({ pubkey: "not-a-solana-address" }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Agent routes require a valid Solana address",
+    });
+    expect(mockResolveAuthorTrust).not.toHaveBeenCalled();
+    expect(mockResolveIdentity).not.toHaveBeenCalled();
+    expect(mockListDisputes).not.toHaveBeenCalled();
   });
 });
