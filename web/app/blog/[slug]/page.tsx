@@ -73,7 +73,7 @@ export default async function BlogPostPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingJsonLd) }}
       />
-      <article className="font-article max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
+      <article className="font-sans max-w-3xl mx-auto px-6 py-10 text-gray-700 dark:text-gray-300">
         <Link
           href="/blog"
           className="text-sm text-[var(--lobster-accent)] hover:underline"

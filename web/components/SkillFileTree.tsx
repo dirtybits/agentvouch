@@ -304,7 +304,7 @@ export default function SkillFileTree({
           {walled ? (
             <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
               <FiLock className="h-6 w-6 text-gray-400" />
-              <p className="font-article text-lg text-gray-700 dark:text-gray-200">
+              <p className="font-sans text-lg text-gray-700 dark:text-gray-200">
                 Full content unlocks after purchase
               </p>
               <p className="max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">

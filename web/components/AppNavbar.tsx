@@ -47,7 +47,7 @@ export const navItems: NavItem[] = [
 
 function navLinkClass(isActive: boolean) {
   return [
-    "font-display text-[15px] px-2 py-1 transition whitespace-nowrap",
+    "font-sans text-[15px] px-2 py-1 transition whitespace-nowrap",
     isActive
       ? "text-gray-900 dark:text-white"
       : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white",
@@ -56,7 +56,7 @@ function navLinkClass(isActive: boolean) {
 
 function mobileNavLinkClass(isActive: boolean) {
   return [
-    "flex items-center justify-between rounded-sm border px-3 py-2 font-display text-[15px] transition",
+    "flex items-center justify-between rounded-sm border px-3 py-2 font-sans text-[15px] transition",
     isActive
       ? "border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] text-[var(--sea-accent-strong)]"
       : "border-transparent text-gray-600 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:border-gray-800 dark:hover:bg-gray-900 dark:hover:text-white",

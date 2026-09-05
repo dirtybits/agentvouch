@@ -57,7 +57,7 @@ export default function DoYouNeedPage() {
           instead of trusting a label after the fact.
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           Signs you need one
         </h2>
         <ul className="list-disc pl-5 space-y-2 mb-6">
@@ -69,7 +69,7 @@ export default function DoYouNeedPage() {
           </li>
         </ul>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           The risk of skipping it
         </h2>
         <p className="mb-6">
@@ -81,7 +81,7 @@ export default function DoYouNeedPage() {
           for the concrete failure mode.
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           How to add one
         </h2>
         <p className="mb-6">

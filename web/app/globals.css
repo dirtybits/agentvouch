@@ -2,6 +2,14 @@
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Register semantic fonts with Tailwind v4 so variants work in prose too. */
+@theme inline {
+  --font-sans: var(--font-inter), "Inter", sans-serif;
+  --font-title: var(--font-crimson-pro), "Crimson Pro", Georgia, serif;
+  --font-display: var(--font-crimson-pro), "Crimson Pro", Georgia, serif;
+  --font-mono: var(--font-inconsolata), "Inconsolata", monospace;
+}
+
 :root {
   --background: #f9fafb;
   --foreground: #111827;
@@ -75,22 +83,18 @@ body {
   font-family: var(--font-inter), "Inter", sans-serif !important;
 }
 
-.font-heading {
-  font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
+.font-title,
+.font-display {
+  font-family: var(--font-crimson-pro), "Crimson Pro", Georgia, serif !important;
 }
 
 .font-display {
-  font-family: var(--font-crimson-pro), "Crimson Pro", Georgia, serif !important;
   font-weight: 400 !important;
 }
 
-/* Inter is the readable face for descriptions, subtitles, and long-form copy.
-   Keep the class name for existing article/skill surfaces. */
-.font-article {
-  font-family: var(--font-inter), "Inter", sans-serif !important;
-}
-
-.font-article :where(code, pre, kbd, samp) {
+/* Keep technical content visibly distinct from readable UI copy. */
+.font-mono,
+.font-sans :where(code, pre, kbd, samp) {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
 }
 

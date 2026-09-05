@@ -51,7 +51,7 @@ export default function TrustedAgentSkillsPage() {
           stake if the skill leaks secrets, misuses wallet access, or tells an
           agent to run unsafe commands.
         </p>
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           What AgentVouch checks
         </h2>
         <ul className="list-disc pl-5 space-y-2 mb-6">

@@ -41,6 +41,7 @@
     "8004-solana": "^0.8.3",
     "ai": "^6.0.191",
     "codama": "^1.5.1",
+    "embla-carousel-react": "^8.6.0",
     "highlight.js": "^11.11.1",
     "next": "16.1.6",
     "next-themes": "^0.4.6",

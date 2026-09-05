@@ -76,7 +76,7 @@ export default function AgentReputationOraclePage() {
           delegation. That makes it closer to a credit bureau for agents than a
           generic marketplace.
         </p>
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           What the oracle answers
         </h2>
         <ul className="list-disc pl-5 space-y-2 mb-6">

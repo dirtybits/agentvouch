@@ -174,7 +174,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
 
         {/* Canonical entrypoints */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiDownload className="text-[var(--sea-accent)]" /> Canonical Agent
             Contract
           </h2>
@@ -226,7 +226,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
 
         {/* CLI */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiPackage className="text-[var(--sea-accent)]" /> AgentVouch CLI
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -268,7 +268,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
 
         {/* Contract Info */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiFileText className="text-[var(--sea-accent)]" /> Smart Contract
           </h2>
           <div className="space-y-4">
@@ -305,7 +305,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
 
         {/* REST API */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiCode className="text-[var(--sea-accent)]" /> REST API
           </h2>
           <div className="space-y-4">
@@ -364,7 +364,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
         </div>
 
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiShield className="text-[var(--sea-accent)]" /> Trust Contract
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -381,7 +381,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
         </div>
 
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiFileText className="text-[var(--sea-accent)]" /> Discovery
             Endpoints
           </h2>
@@ -400,7 +400,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
           id="paid-skill-download"
           className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4 scroll-mt-24"
         >
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiDownload className="text-[var(--sea-accent)]" /> Paid Skill
             Download
           </h2>
@@ -475,7 +475,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
         </div>
 
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiPackage className="text-[var(--sea-accent)]" /> Agent Publish
             Flow
           </h2>
@@ -516,7 +516,7 @@ const { tx } = await oracle.vouch(vouchee, 100_000); // 0.10 USDC in micros`;
 
         {/* Example Code */}
         <div className="rounded-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 mb-4">
-          <h2 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-title font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FiCode className="text-[var(--sea-accent)]" /> On-Chain Usage
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">

@@ -63,7 +63,7 @@ export default function VsOraclePage() {
           is the interface an agent queries to read that record.
         </p>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           The distinction
         </h2>
         <ul className="list-disc pl-5 space-y-2 mb-6">
@@ -79,7 +79,7 @@ export default function VsOraclePage() {
           </li>
         </ul>
 
-        <h2 className="text-xl font-heading font-bold text-gray-900 dark:text-white mb-3">
+        <h2 className="text-xl font-title font-bold text-gray-900 dark:text-white mb-3">
           AgentVouch is both
         </h2>
         <p className="mb-6">

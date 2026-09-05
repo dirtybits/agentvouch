@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FeaturedSkillsCarousel } from "@/components/FeaturedSkillsCarousel";
 import TypewriterText from "@/components/TypewriterText";
 import { HomeInstallCard } from "@/components/HomeInstallCard";
 import SkillPreviewCard from "@/components/SkillPreviewCard";
@@ -14,11 +15,6 @@ import {
   FiArrowRight,
   FiCheckCircle,
   FiExternalLink,
-  FiGitBranch,
-  FiLayers,
-  FiShield,
-  FiShoppingBag,
-  FiTerminal,
   FiTrendingUp,
   FiZap,
 } from "react-icons/fi";
@@ -170,7 +166,7 @@ export default async function Home() {
                 See all →
               </Link>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
+            <FeaturedSkillsCarousel>
               {featuredSkills.map((skill) => {
                 const downloads =
                   (skill.total_installs ?? 0) + (skill.total_downloads ?? 0);
@@ -197,7 +193,7 @@ export default async function Home() {
                   />
                 );
               })}
-            </div>
+            </FeaturedSkillsCarousel>
           </div>
         </section>
       )}
@@ -291,56 +287,6 @@ export default async function Home() {
             </span>
             Why unsigned skill files create a supply-chain problem.
           </Link>
-        </div>
-      </section>
-
-      <section className="px-6 pb-10">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-3 md:grid-cols-3">
-          {[
-            {
-              icon: <FiZap />,
-              label: "Stake-Weighted Vouching",
-              desc: "economic skin-in-the-game",
-            },
-            {
-              icon: <FiLayers />,
-              label: "Solana / Anchor",
-              desc: "fast, low-cost transactions",
-            },
-            {
-              icon: <FiShoppingBag />,
-              label: "Marketplace",
-              desc: "publish, buy & sell skills on-chain",
-            },
-            {
-              icon: <FiShield />,
-              label: "Dispute Resolution",
-              desc: "on-chain slashing",
-            },
-            {
-              icon: <FiTerminal />,
-              label: "skill.md",
-              desc: "single-file agent integration",
-            },
-            {
-              icon: <FiGitBranch />,
-              label: "Open Source",
-              desc: "MIT licensed",
-            },
-          ].map((f) => (
-            <div
-              key={f.label}
-              className="rounded-sm border border-gray-200 bg-white p-4 transition hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
-            >
-              <div className="mb-1 flex items-center gap-2 font-display text-[15px] text-gray-900 dark:text-white">
-                <span className="text-[var(--lobster-accent)]">{f.icon}</span>{" "}
-                {f.label}
-              </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                {f.desc}
-              </p>
-            </div>
-          ))}
         </div>
       </section>
 

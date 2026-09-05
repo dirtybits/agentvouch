@@ -43,7 +43,7 @@ function FrontmatterBlock({ value }: { value: string }) {
   if (!value) return null;
 
   return (
-    <div className="not-prose mb-5 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-3 py-2 font-heading text-[12px] leading-5 text-gray-700 dark:text-gray-200">
+    <div className="not-prose mb-5 rounded-sm border border-[var(--sea-accent-border)] bg-[var(--sea-accent-soft)] px-3 py-2 font-mono text-[12px] leading-5 text-gray-700 dark:text-gray-200">
       <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[var(--sea-accent-strong)]">
         skill metadata
       </div>
@@ -84,8 +84,8 @@ export default function MarkdownRenderer({
   const variantClass =
     variant === "skill"
       ? [
-          "font-heading text-[13px] leading-6 text-gray-700 dark:text-gray-300",
-          "prose-headings:font-heading prose-headings:font-normal prose-headings:tracking-normal",
+          "font-sans text-[13px] leading-6 text-gray-700 dark:text-gray-300",
+          "prose-headings:font-display prose-headings:font-normal prose-headings:tracking-normal",
           "prose-h1:mt-6 prose-h1:mb-3 prose-h1:text-[22px] prose-h1:leading-tight",
           "prose-h2:mt-6 prose-h2:mb-2 prose-h2:text-[16px] prose-h2:leading-snug",
           "prose-h3:mt-5 prose-h3:mb-2 prose-h3:text-[14px] prose-h3:leading-snug",
@@ -96,8 +96,8 @@ export default function MarkdownRenderer({
       : "";
   const inlineCodeClass =
     variant === "skill"
-      ? "rounded-sm border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-1.5 py-0.5 font-heading text-[0.92em] text-[var(--lobster-accent)]"
-      : "bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-sm text-pink-600 dark:text-pink-400";
+      ? "rounded-sm border border-[var(--lobster-accent-border)] bg-[var(--lobster-accent-soft)] px-1.5 py-0.5 font-mono text-[0.92em] text-[var(--lobster-accent)]"
+      : "bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 font-mono text-sm text-pink-600 dark:text-pink-400";
   return (
     <div
       className={`prose ${sizeClass} dark:prose-invert max-w-none ${variantClass} ${className}`}

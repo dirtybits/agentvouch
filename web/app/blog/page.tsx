@@ -26,7 +26,7 @@ export default async function BlogIndexPage() {
         {posts.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">No posts yet.</p>
         ) : (
-          <ul className="space-y-6 font-article">
+          <ul className="space-y-6 font-sans">
             {posts.map((post) => (
               <li key={post.slug}>
                 <Link href={`/blog/${post.slug}`} className="group block">
