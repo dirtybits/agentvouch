@@ -20,6 +20,14 @@ export function getCanonicalSkillPath(skill: SkillRouteRecord): string {
   return getPublicSkillPath(skill);
 }
 
+function decodeRouteParam(rawParam: string): string | null {
+  try {
+    return decodeURIComponent(rawParam);
+  } catch {
+    return null;
+  }
+}
+
 export async function buildUniquePublicSkillRoute(
   db: SqlQuery,
   input: {
@@ -73,9 +81,11 @@ export const resolveSkillRoutePath = cache(
     rawAuthorSlug: string,
     rawSkillSlug: string
   ): Promise<SkillRouteRecord | null> => {
+    const authorSlug = decodeRouteParam(rawAuthorSlug);
+    const skillSlug = decodeRouteParam(rawSkillSlug);
+    if (authorSlug === null || skillSlug === null) return null;
+
     await initializeDatabase();
-    const authorSlug = decodeURIComponent(rawAuthorSlug);
-    const skillSlug = decodeURIComponent(rawSkillSlug);
     const rows = await sql()<SkillRouteRecord>`
       SELECT id, skill_id, public_slug, public_author_slug
       FROM skills
@@ -120,7 +130,8 @@ export async function listStaticSkillRouteParams(
 export async function resolveSkillRouteParam(
   rawParam: string
 ): Promise<SkillRouteRecord | null> {
-  const param = decodeURIComponent(rawParam);
+  const param = decodeRouteParam(rawParam);
+  if (param === null) return null;
   if (param.startsWith(CHAIN_SKILL_PREFIX)) {
     return {
       id: param,
