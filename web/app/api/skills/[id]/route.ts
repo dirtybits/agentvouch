@@ -200,6 +200,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    try {
+      decodeURIComponent(id);
+    } catch {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
     const includeTrust = searchParams.get("include") !== "none";
