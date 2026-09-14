@@ -9,8 +9,8 @@ todos:
     content: Add the shared Solana address guard and route regression while preserving valid identity-link behavior — focused test passed 2026-09-14
     status: completed
   - id: verify-author-link-guard
-    content: Run the focused route test, required web checks, git whitespace check, and PR CI verification
-    status: in_progress
+    content: Run the focused route test, required web checks, git whitespace check, and PR CI verification — local build environment blocker recorded; GitHub CI and Vercel passed 2026-09-14
+    status: completed
 isProject: false
 ---
 
@@ -59,6 +59,10 @@ git diff --check
 - `git diff --check` passed after formatting the focused test.
 
 Acceptance criteria: malformed parent author route params return the established `400` before body/auth/trust/registry work; valid identity-link behavior still reaches its existing mocked helpers; required checks are recorded with their actual outcomes.
+
+### PR Closeout (2026-09-14)
+- GitHub PR #190 passed the `test` and `contracts` CI checks; Vercel also reported a successful deployment build. `mergeStateStatus` was `CLEAN` at verification time.
+- The local webpack build remains explicitly unverified because local `DATABASE_URL` configuration is absent; the deployed Vercel build is the successful build evidence for this PR.
 
 ## Rollout
 Ship as a focused request-boundary PR. It changes neither stored data nor chain/money behavior.
