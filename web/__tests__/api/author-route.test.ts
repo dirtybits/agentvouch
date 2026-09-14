@@ -52,6 +52,8 @@ const mockLink = linkSolanaRegistryIdentity as unknown as ReturnType<
 const mockResolveIdentity =
   resolveAgentIdentityByWallet as unknown as ReturnType<typeof vi.fn>;
 
+const VALID_AUTHOR_PUBKEY = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
+
 function makeRequest(pubkey: string, body: Record<string, unknown> = {}) {
   const req = new NextRequest(`http://localhost/api/author/${pubkey}`, {
     method: "POST",
@@ -74,12 +76,12 @@ describe("POST /api/author/[pubkey]", () => {
     "returns 400 for a %s JSON body before any downstream work",
     async (_kind, body) => {
       const res = await POST(
-        new NextRequest("http://localhost/api/author/Author111", {
+        new NextRequest(`http://localhost/api/author/${VALID_AUTHOR_PUBKEY}`, {
           method: "POST",
           body,
           headers: { "Content-Type": "application/json" },
         }),
-        { params: Promise.resolve({ pubkey: "Author111" }) }
+        { params: Promise.resolve({ pubkey: VALID_AUTHOR_PUBKEY }) }
       );
 
       expect(res.status).toBe(400);
@@ -101,13 +103,30 @@ describe("POST /api/author/[pubkey]", () => {
     } as unknown as NextRequest;
 
     const res = await POST(request, {
-      params: Promise.resolve({ pubkey: "Author111" }),
+      params: Promise.resolve({ pubkey: VALID_AUTHOR_PUBKEY }),
     });
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
       error: "Missing required fields: auth",
     });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(mockLink).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed author parameters before parsing or downstream work", async () => {
+    const json = vi.fn();
+    const res = await POST({ json } as unknown as NextRequest, {
+      params: Promise.resolve({ pubkey: "not-a-solana-address" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Solana author routes require a valid Solana address",
+    });
+    expect(json).not.toHaveBeenCalled();
     expect(mockVerify).not.toHaveBeenCalled();
     expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
     expect(mockDiscover).not.toHaveBeenCalled();
@@ -159,12 +178,12 @@ describe("POST /api/author/[pubkey]", () => {
   });
 
   it("returns 400 when the selected discovered candidate does not belong to the wallet", async () => {
-    mockVerify.mockReturnValue({ valid: true, pubkey: "Author111" });
+    mockVerify.mockReturnValue({ valid: true, pubkey: VALID_AUTHOR_PUBKEY });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
     mockDiscover.mockResolvedValue([]);
 
-    const { req, params } = makeRequest("Author111", {
-      auth: { pubkey: "Author111" },
+    const { req, params } = makeRequest(VALID_AUTHOR_PUBKEY, {
+      auth: { pubkey: VALID_AUTHOR_PUBKEY },
       selected_registry_asset_pubkey: "Asset111",
     });
 
@@ -173,14 +192,14 @@ describe("POST /api/author/[pubkey]", () => {
   });
 
   it("persists a selected discovered candidate through linkSolanaRegistryIdentity", async () => {
-    mockVerify.mockReturnValue({ valid: true, pubkey: "Author111" });
+    mockVerify.mockReturnValue({ valid: true, pubkey: VALID_AUTHOR_PUBKEY });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
     mockDiscover.mockResolvedValue([
       {
         chainContext: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
         registryAddress: "8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C",
         coreAssetPubkey: "Asset111",
-        ownerWallet: "Author111",
+        ownerWallet: VALID_AUTHOR_PUBKEY,
         operationalWallet: "OpWallet111",
         displayName: "Example Agent",
         rawUpstreamChainLabel: "solana-devnet",
@@ -190,8 +209,8 @@ describe("POST /api/author/[pubkey]", () => {
     ]);
     mockLink.mockResolvedValue({ canonicalAgentId: "canonical-id" });
 
-    const { req, params } = makeRequest("Author111", {
-      auth: { pubkey: "Author111" },
+    const { req, params } = makeRequest(VALID_AUTHOR_PUBKEY, {
+      auth: { pubkey: VALID_AUTHOR_PUBKEY },
       selected_registry_asset_pubkey: "Asset111",
     });
 
@@ -199,7 +218,7 @@ describe("POST /api/author/[pubkey]", () => {
     expect(res.status).toBe(201);
     expect(mockLink).toHaveBeenCalledWith(
       expect.objectContaining({
-        ownerWalletPubkey: "Author111",
+        ownerWalletPubkey: VALID_AUTHOR_PUBKEY,
         registryAddress: "8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C",
         coreAssetPubkey: "Asset111",
         operationalWalletPubkey: "OpWallet111",
