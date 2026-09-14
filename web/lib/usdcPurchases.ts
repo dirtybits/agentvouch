@@ -1520,31 +1520,6 @@ export async function recordAndApplyUsdcPaymentRevocation(
   `;
 }
 
-// Revokes entitlements whose CURRENT backing receipt is this payment (e.g. a
-// Stripe refund or chargeback). If the buyer has since re-purchased through
-// any rail, the entitlement's payment_tx_signature no longer matches and it
-// is deliberately left untouched.
-export async function revokeUsdcEntitlementsByPaymentRef(
-  paymentTxSignature: string,
-  reason: string
-): Promise<Array<{ skill_db_id: string; buyer_pubkey: string }>> {
-  await ensureUsdcPurchaseSchema();
-
-  return await sql()<{
-    skill_db_id: string;
-    buyer_pubkey: string;
-  }>`
-    UPDATE usdc_purchase_entitlements
-    SET
-      revoked_at = NOW(),
-      revoked_reason = ${reason},
-      updated_at = NOW()
-    WHERE payment_tx_signature = ${paymentTxSignature}
-      AND revoked_at IS NULL
-    RETURNING skill_db_id::text AS skill_db_id, buyer_pubkey
-  `;
-}
-
 export async function getX402SettlementEntitlement(
   skillDbId: string,
   paymentRefHash: string
