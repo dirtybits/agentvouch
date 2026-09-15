@@ -101,6 +101,24 @@ describe("/api/agents/[pubkey]/identity", () => {
     expect(mockResolveIdentity).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed public keys before parsing, auth, or updates", async () => {
+    const request = {
+      json: vi.fn(),
+    } as unknown as NextRequest;
+
+    const res = await PATCH(request, {
+      params: Promise.resolve({ pubkey: "not-a-solana-address" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Agent routes require a valid Solana address",
+    });
+    expect(request.json).not.toHaveBeenCalled();
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockUpdateUsername).not.toHaveBeenCalled();
+  });
+
   it("rejects username updates signed by another wallet", async () => {
     mockVerifyWalletSignature.mockReturnValue({
       valid: true,
@@ -108,11 +126,11 @@ describe("/api/agents/[pubkey]/identity", () => {
     });
 
     const res = await PATCH(
-      makeRequest("/api/agents/Wallet111/identity", "PATCH", {
+      makeRequest(`/api/agents/${SOLANA_PUBKEY}/identity`, "PATCH", {
         auth: { pubkey: "OtherWallet" },
         username: "dirtybits",
       }),
-      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
     );
 
     expect(res.status).toBe(403);
@@ -122,7 +140,7 @@ describe("/api/agents/[pubkey]/identity", () => {
   it("updates a username after wallet signature verification", async () => {
     mockVerifyWalletSignature.mockReturnValue({
       valid: true,
-      pubkey: "Wallet111",
+      pubkey: SOLANA_PUBKEY,
     });
     mockUpdateUsername.mockResolvedValue({
       username: "dirtybits",
@@ -130,11 +148,11 @@ describe("/api/agents/[pubkey]/identity", () => {
     });
 
     const res = await PATCH(
-      makeRequest("/api/agents/Wallet111/identity", "PATCH", {
-        auth: { pubkey: "Wallet111" },
+      makeRequest(`/api/agents/${SOLANA_PUBKEY}/identity`, "PATCH", {
+        auth: { pubkey: SOLANA_PUBKEY },
         username: "dirtybits",
       }),
-      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
     );
     const body = await res.json();
 
@@ -142,7 +160,7 @@ describe("/api/agents/[pubkey]/identity", () => {
     expect(body.author_identity.username).toBe("dirtybits");
     expect(mockUpdateUsername).toHaveBeenCalledWith(
       expect.objectContaining({
-        walletPubkey: "Wallet111",
+        walletPubkey: SOLANA_PUBKEY,
         username: "dirtybits",
       })
     );
@@ -155,12 +173,15 @@ describe("/api/agents/[pubkey]/identity", () => {
     "returns the missing-fields 400 for a %s JSON body",
     async (_kind, body) => {
       const res = await PATCH(
-        new NextRequest("http://localhost/api/agents/Wallet111/identity", {
-          method: "PATCH",
-          body,
-          headers: { "Content-Type": "application/json" },
-        }),
-        { params: Promise.resolve({ pubkey: "Wallet111" }) }
+        new NextRequest(
+          `http://localhost/api/agents/${SOLANA_PUBKEY}/identity`,
+          {
+            method: "PATCH",
+            body,
+            headers: { "Content-Type": "application/json" },
+          }
+        ),
+        { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
       );
 
       expect(res.status).toBe(400);
@@ -180,7 +201,7 @@ describe("/api/agents/[pubkey]/identity", () => {
     } as unknown as NextRequest;
 
     const res = await PATCH(request, {
-      params: Promise.resolve({ pubkey: "Wallet111" }),
+      params: Promise.resolve({ pubkey: SOLANA_PUBKEY }),
     });
 
     expect(res.status).toBe(400);
