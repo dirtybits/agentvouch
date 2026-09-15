@@ -27,6 +27,10 @@ const mockDiscover =
     typeof vi.fn
   >;
 
+// Valid base58 Solana address so route-level pubkey validation passes and the
+// tests exercise the auth/trust/discovery layers below it.
+const PUBKEY = "AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg";
+
 function makeRequest(pubkey: string, body: Record<string, unknown> = {}) {
   const req = new NextRequest(
     `http://localhost/api/author/${pubkey}/discover-registry`,
@@ -45,20 +49,42 @@ describe("POST /api/author/[pubkey]/discover-registry", () => {
     vi.clearAllMocks();
   });
 
+  it("rejects malformed pubkeys before auth, trust, or registry lookups", async () => {
+    const res = await POST(
+      new NextRequest(
+        "http://localhost/api/author/not-a-solana-address/discover-registry",
+        {
+          method: "POST",
+          body: JSON.stringify({ auth: { pubkey: "Author111" } }),
+          headers: { "Content-Type": "application/json" },
+        }
+      ),
+      { params: Promise.resolve({ pubkey: "not-a-solana-address" }) }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Solana author routes require a valid Solana address",
+    });
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockVerifyAuthorTrust).not.toHaveBeenCalled();
+    expect(mockDiscover).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["literal null", "null"],
     ["malformed", "{"],
   ])("returns 400 for a %s JSON body", async (_kind, body) => {
     const res = await POST(
       new NextRequest(
-        "http://localhost/api/author/Author111/discover-registry",
+        `http://localhost/api/author/${PUBKEY}/discover-registry`,
         {
           method: "POST",
           body,
           headers: { "Content-Type": "application/json" },
         }
       ),
-      { params: Promise.resolve({ pubkey: "Author111" }) }
+      { params: Promise.resolve({ pubkey: PUBKEY }) }
     );
 
     expect(res.status).toBe(400);
@@ -76,8 +102,8 @@ describe("POST /api/author/[pubkey]/discover-registry", () => {
       pubkey: null,
       error: "Invalid signature",
     });
-    const { req, params } = makeRequest("Author111", {
-      auth: { pubkey: "Author111" },
+    const { req, params } = makeRequest(PUBKEY, {
+      auth: { pubkey: PUBKEY },
     });
     const res = await POST(req, { params });
     expect(res.status).toBe(401);
@@ -85,7 +111,7 @@ describe("POST /api/author/[pubkey]/discover-registry", () => {
 
   it("returns 403 when the viewer wallet does not match the author wallet", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "OtherWallet" });
-    const { req, params } = makeRequest("Author111", {
+    const { req, params } = makeRequest(PUBKEY, {
       auth: { pubkey: "OtherWallet" },
     });
     const res = await POST(req, { params });
@@ -93,27 +119,27 @@ describe("POST /api/author/[pubkey]/discover-registry", () => {
   });
 
   it("returns 403 when the author is not registered on-chain", async () => {
-    mockVerify.mockReturnValue({ valid: true, pubkey: "Author111" });
+    mockVerify.mockReturnValue({ valid: true, pubkey: PUBKEY });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: false });
-    const { req, params } = makeRequest("Author111", {
-      auth: { pubkey: "Author111" },
+    const { req, params } = makeRequest(PUBKEY, {
+      auth: { pubkey: PUBKEY },
     });
     const res = await POST(req, { params });
     expect(res.status).toBe(403);
   });
 
   it("returns discovered candidates for the author wallet", async () => {
-    mockVerify.mockReturnValue({ valid: true, pubkey: "Author111" });
+    mockVerify.mockReturnValue({ valid: true, pubkey: PUBKEY });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
     mockDiscover.mockResolvedValue([
       {
         coreAssetPubkey: "Asset111",
-        ownerWallet: "Author111",
+        ownerWallet: PUBKEY,
       },
     ]);
 
-    const { req, params } = makeRequest("Author111", {
-      auth: { pubkey: "Author111" },
+    const { req, params } = makeRequest(PUBKEY, {
+      auth: { pubkey: PUBKEY },
     });
     const res = await POST(req, { params });
     expect(res.status).toBe(200);

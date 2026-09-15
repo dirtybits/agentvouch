@@ -3,6 +3,8 @@ import { verifyAuthorTrust } from "@/lib/trust";
 import { verifyWalletSignature, type AuthPayload } from "@/lib/auth";
 import { discoverSolanaRegistryCandidatesByWallet } from "@/lib/solanaAgentRegistry";
 import { getErrorMessage } from "@/lib/errors";
+import { isValidChainAddress } from "@/lib/chainAddress";
+import { getConfiguredSolanaChainContext } from "@/lib/chains";
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +12,17 @@ export async function POST(
 ) {
   try {
     const { pubkey } = await params;
+    if (
+      !isValidChainAddress({
+        chainContext: getConfiguredSolanaChainContext(),
+        value: pubkey,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Solana author routes require a valid Solana address" },
+        { status: 400 }
+      );
+    }
     const body = (await request.json().catch(() => null)) ?? {};
     const { auth } = body as { auth: AuthPayload };
 
