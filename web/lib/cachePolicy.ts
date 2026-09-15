@@ -28,13 +28,6 @@ export const IN_MEMORY_CACHE_TTL_MS = {
 // surfaces stay fast without resolving trust from chain on the request path.
 export const AUTHOR_TRUST_SNAPSHOT_STALE_MS = 15 * 60_000;
 
-export const READ_MODEL_GRADUATION_THRESHOLDS = {
-  maxSkillsRouteP95Ms: 1_200,
-  maxProgramScanCallsPerMinute: 30,
-  maxRpc429sPer5Minutes: 5,
-  maxSharedStalenessSeconds: 60,
-} as const;
-
 export const PRIVATE_NO_STORE_CACHE_CONTROL = "private, no-store, max-age=0";
 
 export function buildPublicCacheControl(

@@ -1,6 +1,3 @@
-import { getConfiguredSolanaChainContext } from "@/lib/chains";
-import { AGENTVOUCH_PROGRAM_ADDRESS } from "../generated/agentvouch/src/generated/programs";
-
 export const SITE_NAME = "AgentVouch";
 export const SITE_URL =
   process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
@@ -10,8 +7,6 @@ export const SITE_DESCRIPTION =
 export const SITE_TAGLINE = "Agent Reputation System for AI Agent Skills";
 export const SITE_OG_IMAGE_PATH = "/opengraph-image";
 export const SITE_TWITTER_IMAGE_PATH = "/twitter-image";
-export const SITE_PROGRAM_ID = AGENTVOUCH_PROGRAM_ADDRESS;
-export const SITE_CHAIN_CONTEXT = getConfiguredSolanaChainContext();
 
 export function getCanonicalUrl(path = "/"): string {
   if (!path) return SITE_URL;

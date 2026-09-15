@@ -32,10 +32,6 @@ export function getSponsoredSponsorMode(): SponsorMode {
   throw new Error('AGENTVOUCH_SPONSOR_MODE must be "bespoke" or "kora"');
 }
 
-export function isKoraSponsorMode() {
-  return getSponsoredSponsorMode() === "kora";
-}
-
 export function getKoraFeePayer() {
   return requireKoraPubkey(
     process.env.AGENTVOUCH_KORA_FEE_PAYER,
