@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { sql } from "@/lib/db";
 import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { getErrorMessage } from "@/lib/errors";
@@ -6,7 +7,51 @@ import { getErrorMessage } from "@/lib/errors";
 type CountRow = { count: string };
 type SkillIdRow = { id: string };
 
-export async function POST() {
+// Operator-only endpoint: it writes demo seed rows into the live database.
+// Auth matches /api/github/skills/discover: a Bearer CRON_SECRET, compared in
+// constant time, that fails closed on any deployed Vercel environment
+// (production and preview are both internet-reachable). The endpoint stays
+// open in local development so the local dev flow is unchanged.
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (secret) {
+    return timingSafeStringEqual(
+      request.headers.get("authorization") ?? "",
+      `Bearer ${secret}`
+    );
+  }
+  // No secret configured: fail closed on any deployed Vercel environment.
+  // Preview deployments are internet-reachable, so "not production" is not a
+  // safe reason to skip auth. Only allow the open path in local development.
+  const deployed =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
+  if (deployed) {
+    console.error(
+      "[api/seed] CRON_SECRET is not set in a deployed environment; refusing request."
+    );
+    return false;
+  }
+  console.warn(
+    "[api/seed] CRON_SECRET is not set; running without auth (local development only)."
+  );
+  return true;
+}
+
+export async function POST(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const chainContext = getConfiguredSolanaChainContext();
     const existingRows = await sql()<CountRow>`
