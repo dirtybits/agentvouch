@@ -45,9 +45,3 @@ export function getSkillPaymentFlow({
 export function requiresPurchase(paymentFlow: SkillPaymentFlow): boolean {
   return paymentFlow !== "free";
 }
-
-export function hasUsdcPrice(
-  value: unknown
-): value is string | number | bigint {
-  return normalizeUsdcMicros(value as string | number | bigint | null) !== null;
-}
