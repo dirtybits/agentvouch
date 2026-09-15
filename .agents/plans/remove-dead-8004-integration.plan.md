@@ -12,8 +12,8 @@ todos:
     content: Run focused search, format, lint, typecheck, focused/full web tests, webpack build, and diff checks — format/lint/typecheck/full tests passed; local webpack build remains blocked by missing DATABASE_URL
     status: in_progress
   - id: publish-cleanup-pr
-    content: Create a signed focused pull request and monitor its required checks
-    status: in_progress
+    content: Create a signed focused pull request and monitor its required checks — PR #191 created at https://github.com/dirtybits/agentvouch/pull/191
+    status: completed
 isProject: false
 ---
 
