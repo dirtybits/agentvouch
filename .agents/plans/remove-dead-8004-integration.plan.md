@@ -9,8 +9,8 @@ todos:
     content: Delete the unreferenced web/lib/reputation8004.ts module; retain the direct dependency because npm lockfile regeneration caused unrelated churn
     status: completed
   - id: verify-dead-code-removal
-    content: Run focused search, format, lint, typecheck, focused/full web tests, webpack build, and diff checks — format/lint/typecheck/full tests passed; local webpack build remains blocked by missing DATABASE_URL
-    status: in_progress
+    content: Run focused search, format, lint, typecheck, focused/full web tests, webpack build, and diff checks — local format/lint/typecheck/full tests passed; environment-bound local build blocked by DATABASE_URL, and Vercel build passed
+    status: completed
   - id: publish-cleanup-pr
     content: Create a signed focused pull request and monitor its required checks — PR #191 created at https://github.com/dirtybits/agentvouch/pull/191
     status: completed
@@ -58,3 +58,4 @@ Revert the focused commit to restore the unused module if a consumer outside thi
 - 2026-09-15: Repository-wide source/test/script search found only definitions in `web/lib/reputation8004.ts`; `npm ls 8004-solana --all --omit=dev` showed it only as a direct dependency of `@agentvouch/web`. No open PR exists, and no current or recent branch was found that targets this module.
 - 2026-09-15: Tried standard and lockfile-only npm removal with npm 11.6.1. Both rewrote thousands of unrelated lockfile lines, violating this plan's narrow-scope requirement. Restored `web/package.json` and `package-lock.json`; the PR removes only the unreachable source module.
 - 2026-09-15: `npm run format:check`, `npm run lint:web`, `npm run typecheck`, and full serialized web Vitest passed (138 files, 1,023 tests). `next build --webpack` compiled and typechecked, but exited during sitemap prerender because this checkout has no `DATABASE_URL` in `web/.env.local`; no alternate database credential is available to validate that environment-bound static path.
+- 2026-09-15: PR #191 CI passed: GitHub Actions `contracts` (1m54s) and `test` (1m58s), plus the Vercel deployment/build. Vercel is the repository's real web build gate.
