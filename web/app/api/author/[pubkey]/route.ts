@@ -151,6 +151,18 @@ export async function POST(
 ) {
   try {
     const { pubkey } = await params;
+    if (
+      !isValidChainAddress({
+        chainContext: getConfiguredSolanaChainContext(),
+        value: pubkey,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Solana author routes require a valid Solana address" },
+        { status: 400 }
+      );
+    }
+
     let body: unknown;
     try {
       body = (await request.json()) ?? {};
