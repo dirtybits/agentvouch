@@ -24,6 +24,10 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    if (!id.startsWith(CHAIN_PREFIX) && !isUuidLike(id)) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
+
     let body: unknown;
     try {
       body = (await request.json()) ?? {};
@@ -84,10 +88,6 @@ export async function POST(
         skill_id: pubkey,
         installed_by: verification.pubkey,
       });
-    }
-
-    if (!isUuidLike(id)) {
-      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
     await initializeDatabase();

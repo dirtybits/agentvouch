@@ -76,7 +76,7 @@ describe("POST /api/skills/[id]/install", () => {
   });
 
   it("returns 400 when auth payload is missing", async () => {
-    const { req, params } = makeRequest("some-id", {});
+    const { req, params } = makeRequest(FREE_REPO_SKILL_ID, {});
     const res = await POST(req, { params });
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -94,7 +94,7 @@ describe("POST /api/skills/[id]/install", () => {
       headers: { "Content-Type": "application/json" },
     });
     const res = await POST(req, {
-      params: Promise.resolve({ id: "some-id" }),
+      params: Promise.resolve({ id: FREE_REPO_SKILL_ID }),
     });
 
     expect(res.status).toBe(400);
@@ -113,7 +113,7 @@ describe("POST /api/skills/[id]/install", () => {
       },
     } as unknown as NextRequest;
     const res = await POST(req, {
-      params: Promise.resolve({ id: "some-id" }),
+      params: Promise.resolve({ id: FREE_REPO_SKILL_ID }),
     });
 
     expect(res.status).toBe(400);
@@ -131,7 +131,7 @@ describe("POST /api/skills/[id]/install", () => {
       pubkey: null,
       error: "Invalid signature",
     });
-    const { req, params } = makeRequest("some-id", {
+    const { req, params } = makeRequest(FREE_REPO_SKILL_ID, {
       auth: {
         pubkey: "x",
         signature: "y",
@@ -145,16 +145,18 @@ describe("POST /api/skills/[id]/install", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 
-  it("rejects malformed repo skill ids before database initialization", async () => {
-    mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
+  it("rejects malformed repo skill ids before parsing, signature verification, or database initialization", async () => {
+    const json = vi.fn();
+    const req = { json } as unknown as NextRequest;
 
-    const { req, params } = makeRequest("not-a-uuid", {
-      auth: { pubkey: "Wallet1" },
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "not-a-uuid" }),
     });
-    const res = await POST(req, { params });
 
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(json).not.toHaveBeenCalled();
+    expect(mockVerify).not.toHaveBeenCalled();
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
   });
