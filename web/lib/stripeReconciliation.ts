@@ -197,13 +197,6 @@ async function queryOpenStripeReconciliationItems(
   }));
 }
 
-export async function listOpenStripeReconciliationItems(
-  limit = 100
-): Promise<StripeReconciliationItem[]> {
-  await ensureStripeReconciliationSchema();
-  return queryOpenStripeReconciliationItems(limit);
-}
-
 /** Read-only monitor path: deliberately does not run schema bootstrap DDL. */
 export async function listOpenStripeReconciliationItemsReadOnly(
   limit = 100
