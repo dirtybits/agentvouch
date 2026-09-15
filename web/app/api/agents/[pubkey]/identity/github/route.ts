@@ -4,6 +4,8 @@ import { linkGithubProfileToAgent } from "@/lib/agentIdentity";
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from "@/lib/cachePolicy";
 import { getErrorMessage } from "@/lib/errors";
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
+import { isValidChainAddress } from "@/lib/chainAddress";
+import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { verifyAuthorTrust } from "@/lib/trust";
 
 async function getHasAgentProfile(pubkey: string): Promise<boolean> {
@@ -18,6 +20,17 @@ export async function POST(
 ) {
   try {
     const { pubkey } = await params;
+    if (
+      !isValidChainAddress({
+        chainContext: getConfiguredSolanaChainContext(),
+        value: pubkey,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Agent routes require a valid Solana address" },
+        { status: 400 }
+      );
+    }
     let body: {
       auth?: AuthPayload;
     };

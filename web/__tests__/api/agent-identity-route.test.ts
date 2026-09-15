@@ -198,18 +198,35 @@ describe("/api/agents/[pubkey]/identity/github", () => {
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: false });
   });
 
+  it("rejects malformed public keys before signature or link processing", async () => {
+    const res = await POST_GITHUB(
+      makeRequest("/api/agents/not-a-solana-address/identity/github", "POST", {
+        auth: { pubkey: "not-a-solana-address" },
+      }),
+      { params: Promise.resolve({ pubkey: "not-a-solana-address" }) }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Agent routes require a valid Solana address",
+    });
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockGithubSession).not.toHaveBeenCalled();
+    expect(mockLinkGithub).not.toHaveBeenCalled();
+  });
+
   it("requires a GitHub OAuth session before linking", async () => {
     mockVerifyWalletSignature.mockReturnValue({
       valid: true,
-      pubkey: "Wallet111",
+      pubkey: SOLANA_PUBKEY,
     });
     mockGithubSession.mockReturnValue(null);
 
     const res = await POST_GITHUB(
-      makeRequest("/api/agents/Wallet111/identity/github", "POST", {
-        auth: { pubkey: "Wallet111" },
+      makeRequest(`/api/agents/${SOLANA_PUBKEY}/identity/github`, "POST", {
+        auth: { pubkey: SOLANA_PUBKEY },
       }),
-      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
     );
 
     expect(res.status).toBe(401);
@@ -227,7 +244,7 @@ describe("/api/agents/[pubkey]/identity/github", () => {
     };
     mockVerifyWalletSignature.mockReturnValue({
       valid: true,
-      pubkey: "Wallet111",
+      pubkey: SOLANA_PUBKEY,
     });
     mockGithubSession.mockReturnValue(githubSession);
     mockLinkGithub.mockResolvedValue({
@@ -236,10 +253,10 @@ describe("/api/agents/[pubkey]/identity/github", () => {
     });
 
     const res = await POST_GITHUB(
-      makeRequest("/api/agents/Wallet111/identity/github", "POST", {
-        auth: { pubkey: "Wallet111" },
+      makeRequest(`/api/agents/${SOLANA_PUBKEY}/identity/github`, "POST", {
+        auth: { pubkey: SOLANA_PUBKEY },
       }),
-      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
     );
     const body = await res.json();
 
@@ -247,7 +264,7 @@ describe("/api/agents/[pubkey]/identity/github", () => {
     expect(body.author_identity.githubProfile.login).toBe("dirtybits");
     expect(mockLinkGithub).toHaveBeenCalledWith(
       expect.objectContaining({
-        walletPubkey: "Wallet111",
+        walletPubkey: SOLANA_PUBKEY,
         githubSession,
       })
     );
@@ -258,12 +275,15 @@ describe("/api/agents/[pubkey]/identity/github", () => {
     ["malformed", "{"],
   ])("returns the missing-auth 400 for a %s JSON body", async (_kind, body) => {
     const res = await POST_GITHUB(
-      new NextRequest("http://localhost/api/agents/Wallet111/identity/github", {
-        method: "POST",
-        body,
-        headers: { "Content-Type": "application/json" },
-      }),
-      { params: Promise.resolve({ pubkey: "Wallet111" }) }
+      new NextRequest(
+        `http://localhost/api/agents/${SOLANA_PUBKEY}/identity/github`,
+        {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "application/json" },
+        }
+      ),
+      { params: Promise.resolve({ pubkey: SOLANA_PUBKEY }) }
     );
 
     expect(res.status).toBe(400);
@@ -283,7 +303,7 @@ describe("/api/agents/[pubkey]/identity/github", () => {
     } as unknown as NextRequest;
 
     const res = await POST_GITHUB(request, {
-      params: Promise.resolve({ pubkey: "Wallet111" }),
+      params: Promise.resolve({ pubkey: SOLANA_PUBKEY }),
     });
 
     expect(res.status).toBe(400);
