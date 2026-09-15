@@ -50,18 +50,6 @@ export function isValidListingPriceMicros(micros: number): boolean {
   );
 }
 
-export function formatSolAmount(
-  lamports: number,
-  minimumFractionDigits = 2,
-  maximumFractionDigits = 3
-): string {
-  if (!Number.isFinite(lamports)) return "0.00";
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits,
-    maximumFractionDigits,
-  }).format(fromLamports(lamports));
-}
-
 export function formatUsdcMicros(
   micros: string | number | bigint | null | undefined
 ): string | null {
