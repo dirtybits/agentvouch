@@ -102,7 +102,7 @@ vi.mock("@/lib/skillRouteResolver", async (importOriginal) => {
 });
 
 import { POST } from "@/app/api/skills/route";
-import { PATCH } from "@/app/api/skills/[id]/route";
+import { GET, PATCH } from "@/app/api/skills/[id]/route";
 import { verifyWalletSignature } from "@/lib/auth";
 import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
@@ -515,6 +515,24 @@ describe("POST /api/skills", () => {
     });
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(dbQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/skills/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("rejects malformed encoded IDs before database initialization", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/skills/not-a-skill"),
+      { params: Promise.resolve({ id: "%" }) }
+    );
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });
 
