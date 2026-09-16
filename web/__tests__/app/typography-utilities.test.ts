@@ -7,7 +7,8 @@ describe("semantic typography utilities", () => {
   const cases = [
     ["hover:font-title", "--font-crimson-pro"],
     ["prose-headings:font-display", "--font-crimson-pro"],
-    ["hover:font-sans", "--font-inter"],
+    ["hover:font-body", "--font-inconsolata"],
+    ["hover:font-nav", "--font-inconsolata"],
     ["hover:font-mono", "--font-inconsolata"],
   ] as const;
   let css: string;
@@ -28,5 +29,17 @@ describe("semantic typography utilities", () => {
     expect(start).toBeGreaterThanOrEqual(0);
     const declaration = css.slice(start).match(/font-family:\s*([^;]+);/);
     expect(declaration?.[1]).toContain(`var(${fontVariable})`);
+  });
+
+  it("loads only the two intended families and defaults to the body role", async () => {
+    const layout = await fs.readFile(
+      path.join(process.cwd(), "app/layout.tsx"),
+      "utf8"
+    );
+    expect(layout).toContain(
+      'Crimson_Pro, Inconsolata } from "next/font/google"'
+    );
+    expect(layout).toContain("font-body`}");
+    expect(layout).not.toContain("--font-inter");
   });
 });

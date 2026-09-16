@@ -84,7 +84,7 @@ export default function MarkdownRenderer({
   const variantClass =
     variant === "skill"
       ? [
-          "font-sans text-[13px] leading-6 text-gray-700 dark:text-gray-300",
+          "font-body text-[13px] leading-6 text-gray-700 dark:text-gray-300",
           "prose-headings:font-display prose-headings:font-normal prose-headings:tracking-normal",
           "prose-h1:mt-6 prose-h1:mb-3 prose-h1:text-[22px] prose-h1:leading-tight",
           "prose-h2:mt-6 prose-h2:mb-2 prose-h2:text-[16px] prose-h2:leading-snug",
