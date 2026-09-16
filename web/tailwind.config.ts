@@ -9,7 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-inter)", '"Inter"', "sans-serif"],
+        body: ["var(--font-inconsolata)", '"Inconsolata"', "monospace"],
+        nav: ["var(--font-inconsolata)", '"Inconsolata"', "monospace"],
         title: ["var(--font-crimson-pro)", '"Crimson Pro"', "serif"],
         display: ["var(--font-crimson-pro)", '"Crimson Pro"', "serif"],
         mono: ["var(--font-inconsolata)", '"Inconsolata"', "monospace"],

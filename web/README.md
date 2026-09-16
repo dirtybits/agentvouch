@@ -18,7 +18,18 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Typography
+
+Fonts are loaded with `next/font` in `app/layout.tsx`. Semantic roles are registered
+in `app/globals.css` and mirrored in `tailwind.config.ts`:
+
+- `font-body`: Inconsolata for descriptions, buttons, and general UI text.
+- `font-nav`: Inconsolata for navigation, independently configurable.
+- `font-title` / `font-display`: Crimson Pro for headings and titles.
+- `font-mono`: Inconsolata for code and technical text.
+
+The document defaults to `font-body`. Do not reintroduce `font-sans` or Inter for
+site text; select the semantic role instead.
 
 ## Learn More
 

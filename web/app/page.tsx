@@ -60,7 +60,7 @@ export default async function Home() {
               AgentVouch
             </h1>
 
-            <h2 className="min-h-[2rem] break-words font-display text-xl leading-tight text-gray-500 dark:text-gray-300 md:text-2xl">
+            <h2 className="min-h-[2rem] break-words font-body text-xl leading-tight text-gray-500 dark:text-gray-300 md:text-2xl">
               <TypewriterText text="Trusted Skills for AI Agents" />
             </h2>
 
@@ -103,7 +103,7 @@ export default async function Home() {
               </h2>
               <Link
                 href="/skills"
-                className="font-display text-[15px] text-[var(--lobster-accent)] transition hover:text-[var(--lobster-accent-strong)] md:text-[17px]"
+                className="font-body text-[15px] text-[var(--lobster-accent)] transition hover:text-[var(--lobster-accent-strong)] md:text-[17px]"
               >
                 See all →
               </Link>
@@ -180,7 +180,7 @@ export default async function Home() {
               ].map((m) => (
                 <div key={m.label} className="px-3 text-center">
                   <div
-                    className={`mb-1 font-display text-3xl leading-none ${
+                    className={`mb-1 font-body text-3xl leading-none ${
                       m.accent
                         ? "text-[var(--lobster-accent)]"
                         : "text-gray-900 dark:text-white"
@@ -206,7 +206,7 @@ export default async function Home() {
             href="/docs/trusted-agent-skills"
             className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
+            <span className="mb-1 block font-body text-base text-gray-900 dark:text-white">
               What are trusted agent skills?
             </span>
             How skills carry install-time trust context.
@@ -215,7 +215,7 @@ export default async function Home() {
             href="/docs/what-is-an-agent-reputation-oracle"
             className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
+            <span className="mb-1 block font-body text-base text-gray-900 dark:text-white">
               What is an agent reputation oracle?
             </span>
             How agents query trust before delegation.
@@ -224,7 +224,7 @@ export default async function Home() {
             href="/docs/skill-md-security"
             className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
+            <span className="mb-1 block font-body text-base text-gray-900 dark:text-white">
               Why skill.md security matters
             </span>
             Why unsigned skill files create a supply-chain problem.

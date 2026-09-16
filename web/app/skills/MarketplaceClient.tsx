@@ -781,12 +781,12 @@ export default function MarketplaceClient({
                             public_slug: item.publicSlug,
                             public_author_slug: item.publicAuthorSlug,
                           })}
-                          className="font-title text-sm text-gray-900 hover:text-[var(--sea-accent)] dark:text-white"
+                          className="font-body text-sm text-gray-900 hover:text-[var(--sea-accent)] dark:text-white"
                         >
                           {item.skillName}
                         </Link>
                       ) : (
-                        <span className="font-title text-sm text-gray-900 dark:text-white">
+                        <span className="font-body text-sm text-gray-900 dark:text-white">
                           {item.skillName}
                         </span>
                       )}
@@ -876,7 +876,7 @@ export default function MarketplaceClient({
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 font-sans text-[17px] whitespace-nowrap transition border-b-2 -mb-[2px] ${
+                className={`px-4 py-2 font-body text-[17px] whitespace-nowrap transition border-b-2 -mb-[2px] ${
                   activeTab === tab.key
                     ? "border-[var(--sea-accent)] text-gray-900 dark:text-white"
                     : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"

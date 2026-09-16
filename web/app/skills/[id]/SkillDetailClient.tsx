@@ -2200,7 +2200,7 @@ export default function SkillDetailPage({
   );
 
   return (
-    <main className="font-sans min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
+    <main className="font-body min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors">
       {buyerCardAccessEnabled && (
         <BuyerAccountSessionObserver onSessionChange={setBuyerAuthSessionKey} />
       )}
@@ -2228,7 +2228,7 @@ export default function SkillDetailPage({
                   {skill.name}
                 </h1>
                 {skill.description && (
-                  <p className="font-sans mt-3 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300">
+                  <p className="font-body mt-3 max-w-2xl text-base leading-6 tracking-normal text-gray-600 dark:text-gray-300">
                     {skill.description}
                   </p>
                 )}
@@ -2355,7 +2355,7 @@ export default function SkillDetailPage({
                 </h2>
                 {displaySummaryLine &&
                   displaySummaryLine !== skill.description && (
-                    <p className="font-sans mb-4 text-lg leading-relaxed text-gray-700 dark:text-gray-200">
+                    <p className="font-body mb-4 text-base leading-6 tracking-normal text-gray-700 dark:text-gray-200">
                       {displaySummaryLine}
                     </p>
                   )}
@@ -2407,7 +2407,7 @@ export default function SkillDetailPage({
                   <h2 className="font-display mt-3 text-xl text-gray-900 dark:text-white">
                     Paid content
                   </h2>
-                  <p className="font-sans mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  <p className="font-body mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                     {buyerHasPurchased
                       ? "Purchase verified. Use Sign & Download in the purchase panel to retrieve SKILL.md."
                       : `Complete the ${usdcPriceLabel} purchase, then sign with the buyer wallet to retrieve SKILL.md.`}
@@ -2710,7 +2710,7 @@ export default function SkillDetailPage({
                   <div className="flex items-baseline gap-2">
                     {primaryUsdcPrice ? (
                       <>
-                        <span className="font-display text-3xl font-bold leading-none text-gray-900 dark:text-white">
+                        <span className="font-body text-3xl font-bold leading-none text-gray-900 dark:text-white">
                           {primaryUsdcPrice}
                         </span>
                         <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -2718,11 +2718,11 @@ export default function SkillDetailPage({
                         </span>
                       </>
                     ) : hasLegacySolPrice ? (
-                      <span className="font-display text-2xl font-bold leading-none text-gray-900 dark:text-white">
+                      <span className="font-body text-2xl font-bold leading-none text-gray-900 dark:text-white">
                         Legacy SOL
                       </span>
                     ) : (
-                      <span className="font-display text-3xl font-bold leading-none text-gray-900 dark:text-white">
+                      <span className="font-body text-3xl font-bold leading-none text-gray-900 dark:text-white">
                         Free
                       </span>
                     )}
@@ -3123,7 +3123,7 @@ export default function SkillDetailPage({
               {skill.author_trust ? (
                 <div className="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-gray-200 bg-gray-200 text-center dark:border-gray-800 dark:bg-gray-800">
                   <div className="bg-white px-2 py-3 dark:bg-gray-900">
-                    <div className="font-display text-xl font-bold text-gray-900 dark:text-white">
+                    <div className="font-body text-xl font-bold text-gray-900 dark:text-white">
                       {skill.author_trust.reputationScore ?? 0}
                     </div>
                     <div className="mt-0.5 text-[10px] uppercase tracking-wider text-gray-400">
@@ -3131,7 +3131,7 @@ export default function SkillDetailPage({
                     </div>
                   </div>
                   <div className="bg-white px-2 py-3 dark:bg-gray-900">
-                    <div className="font-display text-xl font-bold text-gray-900 dark:text-white">
+                    <div className="font-body text-xl font-bold text-gray-900 dark:text-white">
                       {skill.author_trust.totalVouchesReceived ?? 0}
                     </div>
                     <div className="mt-0.5 text-[10px] uppercase tracking-wider text-gray-400">
@@ -3139,7 +3139,7 @@ export default function SkillDetailPage({
                     </div>
                   </div>
                   <div className="bg-white px-2 py-3 dark:bg-gray-900">
-                    <div className="font-display text-xl font-bold text-[var(--lobster-accent)]">
+                    <div className="font-body text-xl font-bold text-[var(--lobster-accent)]">
                       {formatUsdcMicros(
                         (skill.author_trust.totalStakeAtRisk ?? 0).toString()
                       ) ?? "0"}
@@ -3176,7 +3176,7 @@ export default function SkillDetailPage({
                 </div>
               ) : isEvmAuthor ? (
                 <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                  This author is identified by a {evmAuthorChainLabel ?? "Base"}
+                  This author is identified by a {evmAuthorChainLabel ?? "Base"}{" "}
                   address. Chain-aware reports and vouching are not enabled for
                   EVM authors yet.
                 </p>

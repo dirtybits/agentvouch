@@ -4,7 +4,8 @@
 
 /* Register semantic fonts with Tailwind v4 so variants work in prose too. */
 @theme inline {
-  --font-sans: var(--font-inter), "Inter", sans-serif;
+  --font-body: var(--font-inconsolata), "Inconsolata", monospace;
+  --font-nav: var(--font-inconsolata), "Inconsolata", monospace;
   --font-title: var(--font-crimson-pro), "Crimson Pro", Georgia, serif;
   --font-display: var(--font-crimson-pro), "Crimson Pro", Georgia, serif;
   --font-mono: var(--font-inconsolata), "Inconsolata", monospace;
@@ -79,10 +80,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.font-sans {
-  font-family: var(--font-inter), "Inter", sans-serif !important;
-}
-
 .font-title,
 .font-display {
   font-family: var(--font-crimson-pro), "Crimson Pro", Georgia, serif !important;
@@ -94,7 +91,7 @@ body {
 
 /* Keep technical content visibly distinct from readable UI copy. */
 .font-mono,
-.font-sans :where(code, pre, kbd, samp) {
+.font-body :where(code, pre, kbd, samp) {
   font-family: var(--font-inconsolata), "Inconsolata", monospace !important;
 }
 

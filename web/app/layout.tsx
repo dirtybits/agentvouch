@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Crimson_Pro, Inconsolata, Inter } from "next/font/google";
+import { Crimson_Pro, Inconsolata } from "next/font/google";
 import "./globals.css";
 import { AppFooter } from "@/components/AppFooter";
 import { AppNavbar } from "@/components/AppNavbar";
@@ -14,11 +14,6 @@ import { BuyerAuthProvider } from "@/components/BuyerAuthProvider";
 const inconsolata = Inconsolata({
   subsets: ["latin"],
   variable: "--font-inconsolata",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
 });
 
 // Display serif for titles and intentional display text.
@@ -51,7 +46,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body
-        className={`${inter.variable} ${inconsolata.variable} ${crimsonPro.variable} font-sans`}
+        className={`${inconsolata.variable} ${crimsonPro.variable} font-body`}
       >
         <BuyerAuthProvider>
           <ThemeProvider
