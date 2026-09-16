@@ -378,17 +378,6 @@ export async function resolveMultipleAuthorDisputeMetrics(
   return metrics;
 }
 
-export async function getAuthorDisputePublicKeysByAuthor(
-  authorPubkey: string,
-  useCache = true
-): Promise<string[]> {
-  const disputes = await getAuthorDisputeAccountsByAuthor(
-    authorPubkey,
-    useCache
-  );
-  return disputes.map((dispute) => dispute.publicKey);
-}
-
 export async function listAuthorDisputeLinks(
   authorDisputePubkey: string,
   useCache = true
@@ -425,10 +414,4 @@ export async function listAuthorDisputeLinks(
       return addressDecoder.decode(data.subarray(40, 72));
     })
     .sort();
-}
-
-export async function listAuthorDisputesByAuthorViaFilter(
-  authorPubkey: string
-): Promise<DecodedAuthorDisputeAccount[]> {
-  return loadAuthorDisputeAccountsByAuthor(authorPubkey);
 }
