@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/errors";
 import { initializeDatabase } from "@/lib/db";
@@ -13,22 +14,39 @@ export const maxDuration = 300;
  * Daily re-sync of mirrored external skills (see lib/mirror/sources.ts).
  * Creates listings for new upstream skills and publishes a new version when an
  * already-mirrored skill changes. Invoked by Vercel Cron (see web/vercel.json).
- * Auth matches /api/cron/refresh-snapshots: a Bearer CRON_SECRET that Vercel
- * Cron sends automatically; fails closed in production when the secret is unset.
+ * Auth matches the operator endpoints: a Bearer CRON_SECRET that Vercel Cron
+ * sends automatically, compared in constant time; fails closed on any deployed
+ * Vercel environment when the secret is unset (previews are internet-reachable,
+ * so "not production" is not a safe reason to skip auth).
  */
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
+}
+
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();
   if (secret) {
-    return request.headers.get("authorization") === `Bearer ${secret}`;
+    return timingSafeStringEqual(
+      request.headers.get("authorization") ?? "",
+      `Bearer ${secret}`
+    );
   }
-  if (process.env.VERCEL_ENV === "production") {
+  const deployed =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
+  if (deployed) {
     console.error(
-      "[cron/mirror-skills] CRON_SECRET is not set in production; refusing request."
+      "[cron/mirror-skills] CRON_SECRET is not set in a deployed environment; refusing request."
     );
     return false;
   }
   console.warn(
-    "[cron/mirror-skills] CRON_SECRET is not set; running without auth (non-production)."
+    "[cron/mirror-skills] CRON_SECRET is not set; running without auth (local development only)."
   );
   return true;
 }

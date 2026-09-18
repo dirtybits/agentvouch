@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -19,22 +20,39 @@ export const maxDuration = 60;
  *
  * Invoked by Vercel Cron (see web/vercel.json). When CRON_SECRET is set, the
  * caller must present it as a Bearer token (Vercel Cron does this
- * automatically). When the secret is missing the endpoint fails closed in
- * production and is only permissive in non-production environments.
+ * automatically), compared in constant time. When the secret is missing the
+ * endpoint fails closed on any deployed Vercel environment — preview
+ * deployments are internet-reachable, so "not production" is not a safe reason
+ * to skip auth. Only the local development path stays open.
  */
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
+}
+
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();
   if (secret) {
-    return request.headers.get("authorization") === `Bearer ${secret}`;
+    return timingSafeStringEqual(
+      request.headers.get("authorization") ?? "",
+      `Bearer ${secret}`
+    );
   }
-  if (process.env.VERCEL_ENV === "production") {
+  const deployed =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
+  if (deployed) {
     console.error(
-      "[cron/refresh-snapshots] CRON_SECRET is not set in production; refusing request."
+      "[cron/refresh-snapshots] CRON_SECRET is not set in a deployed environment; refusing request."
     );
     return false;
   }
   console.warn(
-    "[cron/refresh-snapshots] CRON_SECRET is not set; running without auth (non-production)."
+    "[cron/refresh-snapshots] CRON_SECRET is not set; running without auth (local development only)."
   );
   return true;
 }
