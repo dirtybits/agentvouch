@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: publish-pr
     content: "Commit the focused change, push it, open a pull request, and inspect CI status"
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
@@ -46,7 +46,7 @@ Reject syntactically malformed `txHash` and `purchaseId` values in `POST /api/sk
 - `npm run typecheck --workspace @agentvouch/web`
 - `git diff --check`
 
-**2026-09-19 verification:** focused paid-report tests passed (9 tests); full web suite passed (138 files, 1,027 tests); Prettier, web ESLint, TypeScript, and `git diff --check` passed. `next build --webpack` compiled and completed TypeScript, but static prerendering failed at `/sitemap.xml` because this checkout has no `DATABASE_URL` in `web/.env.local`; no build artifact was accepted as a pass.
+**2026-09-19 verification:** focused paid-report tests passed (9 tests); full web suite passed (138 files, 1,027 tests); Prettier, web ESLint, TypeScript, and `git diff --check` passed. `next build --webpack` compiled and completed TypeScript, but static prerendering failed at `/sitemap.xml` because this checkout has no `DATABASE_URL` in `web/.env.local`; no build artifact was accepted as a pass. PR #197 was opened and its required checks passed: `contracts` (1m26s), `test` (1m46s), and Vercel deployment.
 
 ## Rollout
 Normal PR/Vercel rollout. Valid requests continue into the existing exact on-chain verifier; malformed public requests fail earlier with HTTP 400.
