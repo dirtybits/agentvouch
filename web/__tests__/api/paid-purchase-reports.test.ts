@@ -119,6 +119,28 @@ describe("POST /api/skills/[id]/paid-reports/verify", () => {
       verificationMocks.verifyAndIndexBasePaidPurchaseReport
     ).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { txHash: "not-a-transaction-hash", purchaseId: PURCHASE_ID },
+    { txHash: TX_HASH, purchaseId: "not-a-purchase-id" },
+  ])(
+    "rejects malformed present identifiers before database initialization",
+    async (body) => {
+      const response = await POST(request(body), {
+        params: Promise.resolve({ id: SKILL_ID }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "txHash and purchaseId must be 32-byte hex values",
+      });
+      expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
+      expect(dbMocks.sql).not.toHaveBeenCalled();
+      expect(
+        verificationMocks.verifyAndIndexBasePaidPurchaseReport
+      ).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("GET /api/skills/[id]/paid-reports", () => {

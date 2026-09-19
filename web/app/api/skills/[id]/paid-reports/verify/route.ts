@@ -7,6 +7,7 @@ import { initializeDatabase, sql } from "@/lib/db";
 import { isUuidLike } from "@/lib/skillUrls";
 
 const PRIVATE_NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
+const HEX_32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 type VerifyPaidReportBody = {
   txHash?: unknown;
@@ -62,6 +63,12 @@ export async function POST(
   if (!txHash || !purchaseId) {
     return NextResponse.json(
       { error: "txHash and purchaseId are required" },
+      { status: 400, headers: PRIVATE_NO_STORE_HEADERS }
+    );
+  }
+  if (!HEX_32_PATTERN.test(txHash) || !HEX_32_PATTERN.test(purchaseId)) {
+    return NextResponse.json(
+      { error: "txHash and purchaseId must be 32-byte hex values" },
       { status: 400, headers: PRIVATE_NO_STORE_HEADERS }
     );
   }
