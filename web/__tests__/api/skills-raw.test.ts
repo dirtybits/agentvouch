@@ -382,6 +382,94 @@ describe("GET /api/skills/[id]/raw", () => {
     fetchSpy.mockRestore();
   });
 
+  it("does not fetch internal URLs from a free chain-only listing (SSRF)", async () => {
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: {
+        skillUri:
+          "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+        priceUsdcMicros: 0n,
+      },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("secret-metadata"));
+
+    const { req, params } = makeRequest(
+      "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+    );
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).toContain("Skill URI fetch rejected");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("does not fetch localhost or private-range skill URIs from paid listings (SSRF)", async () => {
+    for (const skillUri of [
+      "http://127.0.0.1:8080/admin",
+      "http://[::ffff:127.0.0.1]/admin",
+      "http://10.0.0.5/internal",
+      "file:///etc/passwd",
+    ]) {
+      mockFetchOnChainSkillListing.mockReset();
+      mockFetchOnChainSkillListing.mockResolvedValue({
+        publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+        data: {
+          skillUri,
+          priceUsdcMicros: 0n,
+        },
+      });
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("internal-content"));
+
+      const { req, params } = makeRequest(
+        "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+      );
+      const res = await GET(req, { params });
+
+      expect(res.status, skillUri).toBe(500);
+      expect(await res.text(), skillUri).toContain("Skill URI fetch rejected");
+      expect(fetchSpy, skillUri).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("rejects signed chain-only downloads when the listing skill_uri is internal (SSRF)", async () => {
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: {
+        skillUri: "http://localhost:3000/api/skills",
+        priceUsdcMicros: 1000000n,
+      },
+    });
+    mockVerifySig.mockReturnValue({ valid: true, pubkey: "BuyerPubkey1" });
+    mockBuildMsg.mockReturnValue("correct-message");
+    mockHasPurchase.mockResolvedValue(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("internal-content"));
+
+    const auth = validAuthHeader(
+      "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+    );
+    const { req, params } = makeRequest(
+      "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      {
+        "x-agentvouch-auth": auth,
+      }
+    );
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).toContain("Skill URI fetch rejected");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
   it("returns 404 when skill not found", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([]);
     mockSql.mockReturnValue(dbQuery);
