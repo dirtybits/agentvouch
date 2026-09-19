@@ -3,6 +3,7 @@ import { getFileForVersion } from "@/lib/skillStorage";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
+import { resolveSafeFetchUrl } from "@/lib/safeFetch";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -47,7 +48,15 @@ function serveSkillContent(
 }
 
 async function fetchSkillUriContent(skillUri: string) {
-  const res = await fetch(skillUri);
+  // Listings are permissionless and the author controls `skill_uri` on-chain, so
+  // the URI is untrusted input. Resolve it through the public-URL guard before
+  // fetching — otherwise this route is an SSRF (cloud metadata, localhost,
+  // private ranges) and the body would be returned to the requester.
+  const safe = resolveSafeFetchUrl(skillUri);
+  if (!safe.ok) {
+    throw new Error(`Skill URI fetch rejected: ${safe.reason}`);
+  }
+  const res = await fetch(safe.url);
   if (!res.ok) {
     throw new Error(`Skill URI fetch failed with status ${res.status}`);
   }
@@ -116,7 +125,10 @@ export async function GET(
   try {
     const { id } = await params;
     if (id.startsWith(CHAIN_PREFIX)) {
-      return handleChainOnlyRaw(request, id);
+      // Await (not bare return) so rejections from handleChainOnlyRaw — e.g. the
+      // skill_uri SSRF guard or an on-chain fetch failure — are caught below and
+      // answered as a structured 500 instead of escaping the handler.
+      return await handleChainOnlyRaw(request, id);
     }
 
     const access = await resolveSkillAccess(request, id);
