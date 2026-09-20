@@ -109,7 +109,7 @@ import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { initializeDatabase, sql } from "@/lib/db";
 import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
-import { getOnChainUsdcPrice } from "@/lib/onchain";
+import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import {
   MAX_SKILL_DESCRIPTION_LENGTH,
@@ -135,6 +135,8 @@ const mockPinSkillContent = pinSkillContent as unknown as ReturnType<
 >;
 const mockUpsertLocalAgentIdentity =
   upsertLocalAgentIdentity as unknown as ReturnType<typeof vi.fn>;
+const mockFetchOnChainSkillListing =
+  fetchOnChainSkillListing as unknown as ReturnType<typeof vi.fn>;
 const mockGetOnChainUsdcPrice = getOnChainUsdcPrice as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -533,6 +535,19 @@ describe("GET /api/skills/[id]", () => {
     await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed chain-only listing addresses before database or RPC work", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/skills/chain-not-a-solana-address"),
+      { params: Promise.resolve({ id: "chain-not-a-solana-address" }) }
+    );
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockFetchOnChainSkillListing).not.toHaveBeenCalled();
   });
 });
 
