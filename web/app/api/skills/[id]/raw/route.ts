@@ -3,6 +3,7 @@ import { getFileForVersion } from "@/lib/skillStorage";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
+import { resolveSafeFetchUrl } from "@/lib/safeFetch";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -47,11 +48,32 @@ function serveSkillContent(
 }
 
 async function fetchSkillUriContent(skillUri: string) {
-  const res = await fetch(skillUri);
-  if (!res.ok) {
-    throw new Error(`Skill URI fetch failed with status ${res.status}`);
+  // Validate the author-controlled URL and every redirect before fetching it.
+  // This blocks literal internal targets; DNS-based bypasses remain separate.
+  let target = skillUri;
+  for (let redirects = 0; ; redirects += 1) {
+    if (redirects > 5) {
+      throw new Error("Skill URI fetch rejected: too many redirects");
+    }
+    const safe = resolveSafeFetchUrl(target);
+    if (!safe.ok) {
+      throw new Error(`Skill URI fetch rejected: ${safe.reason}`);
+    }
+    const res = await fetch(safe.url, { redirect: "manual" });
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get("location");
+      await res.body?.cancel();
+      if (!location) {
+        throw new Error("Skill URI fetch rejected: redirect has no location");
+      }
+      target = new URL(location, safe.url).href;
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(`Skill URI fetch failed with status ${res.status}`);
+    }
+    return res.text();
   }
-  return res.text();
 }
 
 async function handleChainOnlyRaw(request: NextRequest, id: string) {
@@ -116,7 +138,10 @@ export async function GET(
   try {
     const { id } = await params;
     if (id.startsWith(CHAIN_PREFIX)) {
-      return handleChainOnlyRaw(request, id);
+      // Await (not bare return) so rejections from handleChainOnlyRaw — e.g. the
+      // skill_uri SSRF guard or an on-chain fetch failure — are caught below and
+      // answered as a structured 500 instead of escaping the handler.
+      return await handleChainOnlyRaw(request, id);
     }
 
     const access = await resolveSkillAccess(request, id);
