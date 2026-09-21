@@ -48,19 +48,32 @@ function serveSkillContent(
 }
 
 async function fetchSkillUriContent(skillUri: string) {
-  // Listings are permissionless and the author controls `skill_uri` on-chain, so
-  // the URI is untrusted input. Resolve it through the public-URL guard before
-  // fetching — otherwise this route is an SSRF (cloud metadata, localhost,
-  // private ranges) and the body would be returned to the requester.
-  const safe = resolveSafeFetchUrl(skillUri);
-  if (!safe.ok) {
-    throw new Error(`Skill URI fetch rejected: ${safe.reason}`);
+  // Validate the author-controlled URL and every redirect before fetching it.
+  // This blocks literal internal targets; DNS-based bypasses remain separate.
+  let target = skillUri;
+  for (let redirects = 0; ; redirects += 1) {
+    if (redirects > 5) {
+      throw new Error("Skill URI fetch rejected: too many redirects");
+    }
+    const safe = resolveSafeFetchUrl(target);
+    if (!safe.ok) {
+      throw new Error(`Skill URI fetch rejected: ${safe.reason}`);
+    }
+    const res = await fetch(safe.url, { redirect: "manual" });
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get("location");
+      await res.body?.cancel();
+      if (!location) {
+        throw new Error("Skill URI fetch rejected: redirect has no location");
+      }
+      target = new URL(location, safe.url).href;
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(`Skill URI fetch failed with status ${res.status}`);
+    }
+    return res.text();
   }
-  const res = await fetch(safe.url);
-  if (!res.ok) {
-    throw new Error(`Skill URI fetch failed with status ${res.status}`);
-  }
-  return res.text();
 }
 
 async function handleChainOnlyRaw(request: NextRequest, id: string) {

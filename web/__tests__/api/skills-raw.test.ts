@@ -377,9 +377,93 @@ describe("GET /api/skills/[id]/raw", () => {
       "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
     );
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://agentvouch.xyz/smoke/v02fresh.md"
+      "https://agentvouch.xyz/smoke/v02fresh.md",
+      { redirect: "manual" }
     );
     fetchSpy.mockRestore();
+  });
+
+  it.each([
+    "http://127.0.0.1/admin",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://localhost./admin",
+    "file:///etc/passwd",
+  ])("rejects redirects to blocked targets: %s", async (location) => {
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: { skillUri: "https://example.com/start", priceUsdcMicros: 0n },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location } })
+      );
+    try {
+      const { req, params } = makeRequest(
+        "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+      );
+      const res = await GET(req, { params });
+      expect(res.status).toBe(500);
+      expect(await res.text()).toContain("Skill URI fetch rejected");
+      expect(fetchSpy).toHaveBeenCalledExactlyOnceWith(
+        "https://example.com/start",
+        { redirect: "manual" }
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("follows a validated relative redirect to public skill content", async () => {
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: { skillUri: "https://example.com/start", priceUsdcMicros: 0n },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(null, { status: 307, headers: { location: "/skill.md" } })
+      )
+      .mockResolvedValueOnce(new Response("# Public skill"));
+    try {
+      const { req, params } = makeRequest(
+        "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+      );
+      const res = await GET(req, { params });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("# Public skill");
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        "https://example.com/skill.md",
+        { redirect: "manual" }
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("bounds redirect loops before making another request", async () => {
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: { skillUri: "https://example.com/start", priceUsdcMicros: 0n },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        async () =>
+          new Response(null, { status: 302, headers: { location: "/start" } })
+      );
+    try {
+      const { req, params } = makeRequest(
+        "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF"
+      );
+      const res = await GET(req, { params });
+      expect(res.status).toBe(500);
+      expect(await res.text()).toContain("too many redirects");
+      expect(fetchSpy).toHaveBeenCalledTimes(6);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("does not fetch internal URLs from a free chain-only listing (SSRF)", async () => {

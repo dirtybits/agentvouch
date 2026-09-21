@@ -9,8 +9,8 @@
 // every numeric spelling of an address into its canonical host form) and only allows
 // `http:` / `https:` targets whose normalized host is not a loopback, link-local,
 // private, CGNAT, or otherwise reserved address. It is a host-based blocklist: it
-// does NOT defend against DNS rebinding through attacker-controlled public domains —
-// a resolution-time guard is a follow-up if that threat model becomes in scope.
+// does NOT validate DNS results: hostnames resolving to private addresses and DNS
+// rebinding remain separate gaps. Callers must also validate every redirect target.
 //
 // Pure and dependency-free so it stays usable in route handlers, tests, and any
 // future fetch site.
@@ -52,7 +52,7 @@ export function resolveSafeFetchUrl(
     };
   }
 
-  const host = parsed.hostname.toLowerCase();
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
   if (!host) {
     return { ok: false, reason: "missing host" };
   }

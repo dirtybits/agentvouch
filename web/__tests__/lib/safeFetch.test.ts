@@ -55,7 +55,12 @@ describe("resolveSafeFetchUrl", () => {
   });
 
   it("rejects localhost hostnames", () => {
-    for (const uri of ["http://localhost/", "http://foo.localhost/secret"]) {
+    for (const uri of [
+      "http://localhost/",
+      "http://foo.localhost/secret",
+      "http://localhost./secret",
+      "http://foo.localhost./secret",
+    ]) {
       const result = resolveSafeFetchUrl(uri);
       expect(result.ok, uri).toBe(false);
       if (!result.ok) expect(result.reason).toBe("loopback hostname");
