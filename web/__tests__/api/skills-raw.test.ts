@@ -348,6 +348,18 @@ describe("GET /api/skills/[id]/raw", () => {
     });
   });
 
+  it("rejects malformed chain-only listing addresses before RPC or database work", async () => {
+    const { req, params } = makeRequest("chain-not-a-solana-address");
+
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(mockFetchOnChainSkillListing).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("proxies chain-only signed downloads through the raw API", async () => {
     mockFetchOnChainSkillListing.mockResolvedValue({
       publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
