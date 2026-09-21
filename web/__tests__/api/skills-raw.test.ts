@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
+// These route tests cover access control and redirect orchestration. DNS and
+// socket pinning are exercised independently in publicUrlFetch.test.ts.
+vi.mock("@/lib/publicUrlFetch.server", () => ({
+  fetchPublicUrl: (url: string) => fetch(url, { redirect: "manual" }),
+}));
+
 const buyerAccessMocks = vi.hoisted(() => ({
   isBuyerCardAccessServerEnabled: vi.fn(),
   getBuyerSession: vi.fn(),

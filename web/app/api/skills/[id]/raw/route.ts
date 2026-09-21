@@ -4,6 +4,7 @@ import { fetchOnChainSkillListing } from "@/lib/onchain";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
 import { resolveSafeFetchUrl } from "@/lib/safeFetch";
+import { fetchPublicUrl } from "@/lib/publicUrlFetch.server";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -49,7 +50,7 @@ function serveSkillContent(
 
 async function fetchSkillUriContent(skillUri: string) {
   // Validate the author-controlled URL and every redirect before fetching it.
-  // This blocks literal internal targets; DNS-based bypasses remain separate.
+  // Each hop also validates DNS answers and connects only to a pinned public IP.
   let target = skillUri;
   for (let redirects = 0; ; redirects += 1) {
     if (redirects > 5) {
@@ -59,7 +60,7 @@ async function fetchSkillUriContent(skillUri: string) {
     if (!safe.ok) {
       throw new Error(`Skill URI fetch rejected: ${safe.reason}`);
     }
-    const res = await fetch(safe.url, { redirect: "manual" });
+    const res = await fetchPublicUrl(safe.url);
     if ([301, 302, 303, 307, 308].includes(res.status)) {
       const location = res.headers.get("location");
       await res.body?.cancel();
