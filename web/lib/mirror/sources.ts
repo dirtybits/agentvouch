@@ -58,23 +58,6 @@ export const MIRROR_SOURCES: MirrorSource[] = [
   },
 ];
 
-export function publisherIdentityKey(source: MirrorSource): string {
-  return `github:${source.githubId}`;
-}
-
-export function sourceRepoUrl(source: MirrorSource): string {
-  return `https://github.com/${source.owner}/${source.repo}`;
-}
-
-export function getMirrorSourceByKey(key?: string | null): MirrorSource | null {
-  if (!key) return null;
-  return (
-    MIRROR_SOURCES.find(
-      (source) => source.key.toLowerCase() === key.toLowerCase()
-    ) ?? null
-  );
-}
-
 export function getMirrorSources(keys?: string[]): MirrorSource[] {
   if (!keys || keys.length === 0) return MIRROR_SOURCES;
   const want = new Set(keys.map((k) => k.toLowerCase()));

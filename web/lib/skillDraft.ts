@@ -14,7 +14,6 @@ export const MAX_SKILL_UPLOAD_BYTES = 8 * 1024 * 1024;
 // user-facing upload path.
 export const MIRROR_MAX_SKILL_TREE_FILES = 512;
 export const MIRROR_MAX_SKILL_TREE_BYTES = 8 * 1024 * 1024;
-export const MIRROR_MAX_SKILL_UPLOAD_BYTES = 12 * 1024 * 1024;
 export const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 export const RESERVED_SKILL_TAGS = new Set(["mirror"]);
 export const MAX_SKILL_TAGS = 5;
