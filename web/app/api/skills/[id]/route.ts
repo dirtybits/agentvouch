@@ -205,6 +205,12 @@ export async function GET(
     } catch {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
+    if (
+      id.startsWith(CHAIN_PREFIX) &&
+      !isAddress(id.slice(CHAIN_PREFIX.length))
+    ) {
+      return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    }
     await initializeDatabase();
     const { searchParams } = request.nextUrl;
     const includeTrust = searchParams.get("include") !== "none";
