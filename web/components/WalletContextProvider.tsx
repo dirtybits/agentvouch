@@ -261,7 +261,6 @@ const AgentVouchChainWalletContext =
 export const useAgentVouchWallet = () => useContext(AgentVouchWalletContext);
 export const useAgentVouchWalletSigner = () =>
   useContext(AgentVouchWalletSignerContext);
-export const useBasePasskeyWallet = () => useContext(BasePasskeyWalletContext);
 export const useChainWallet = () => useContext(AgentVouchChainWalletContext);
 
 const ENDPOINT =
