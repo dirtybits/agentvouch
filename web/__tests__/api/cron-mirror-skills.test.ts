@@ -50,9 +50,8 @@ describe("GET /api/cron/mirror-skills — auth gate", () => {
     vi.unstubAllEnvs();
   });
 
-  it("succeeds without a secret in non-production", async () => {
+  it("succeeds without a secret in local development", async () => {
     vi.stubEnv("CRON_SECRET", "");
-    vi.stubEnv("VERCEL_ENV", "preview");
     const res = await GET(request());
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -67,6 +66,15 @@ describe("GET /api/cron/mirror-skills — auth gate", () => {
     const res = await GET(request());
     expect(res.status).toBe(401);
     expect(mockSyncMirrorSkills).not.toHaveBeenCalled();
+  });
+
+  it("fails closed in a deployed preview when CRON_SECRET is unset", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const res = await GET(request());
+    expect(res.status).toBe(401);
+    expect(mockSyncMirrorSkills).not.toHaveBeenCalled();
+    expect(mockSyncConnectedRepos).not.toHaveBeenCalled();
   });
 
   it("rejects requests without the bearer token when a secret is set", async () => {
@@ -86,7 +94,6 @@ describe("GET /api/cron/mirror-skills — auth gate", () => {
 
   it("returns 500 when sync throws", async () => {
     vi.stubEnv("CRON_SECRET", "");
-    vi.stubEnv("VERCEL_ENV", "preview");
     mockSyncMirrorSkills.mockRejectedValueOnce(new Error("GitHub is down"));
     const res = await GET(request());
     expect(res.status).toBe(500);
@@ -97,14 +104,12 @@ describe("GET /api/cron/mirror-skills — auth gate", () => {
 
   it("POST also works (Vercel Cron supports POST)", async () => {
     vi.stubEnv("CRON_SECRET", "");
-    vi.stubEnv("VERCEL_ENV", "preview");
     const res = await POST(request({}, "POST"));
     expect(res.status).toBe(200);
   });
 
   it("returns 500 and ok:false when mirror has errors", async () => {
     vi.stubEnv("CRON_SECRET", "");
-    vi.stubEnv("VERCEL_ENV", "preview");
     mockSyncMirrorSkills.mockResolvedValue({
       outcomes: [
         {

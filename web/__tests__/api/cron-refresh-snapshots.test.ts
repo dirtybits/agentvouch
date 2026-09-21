@@ -52,9 +52,8 @@ describe("GET /api/cron/refresh-snapshots", () => {
     vi.unstubAllEnvs();
   });
 
-  it("shares one agent scan across both refreshes (non-production, no secret)", async () => {
+  it("shares one agent scan across both refreshes (local dev, no secret)", async () => {
     vi.stubEnv("CRON_SECRET", "");
-    vi.stubEnv("VERCEL_ENV", "preview");
     const res = await GET(request());
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -70,6 +69,16 @@ describe("GET /api/cron/refresh-snapshots", () => {
   it("fails closed in production when no secret is configured", async () => {
     vi.stubEnv("CRON_SECRET", "");
     vi.stubEnv("VERCEL_ENV", "production");
+    const res = await GET(request());
+    expect(res.status).toBe(401);
+    expect(mockScanAgentProfiles).not.toHaveBeenCalled();
+    expect(mockRefreshMetrics).not.toHaveBeenCalled();
+    expect(mockRefreshTrust).not.toHaveBeenCalled();
+  });
+
+  it("fails closed in a deployed preview when no secret is configured", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    vi.stubEnv("VERCEL_ENV", "preview");
     const res = await GET(request());
     expect(res.status).toBe(401);
     expect(mockScanAgentProfiles).not.toHaveBeenCalled();
