@@ -57,6 +57,9 @@ const FREE_REPO_SKILL_ID = "11111111-1111-4111-8111-111111111111";
 const PAID_REPO_SKILL_ID = "22222222-2222-4222-8222-222222222222";
 const UNLINKED_PAID_REPO_SKILL_ID = "33333333-3333-4333-8333-333333333333";
 const MISSING_REPO_SKILL_ID = "44444444-4444-4444-8444-444444444444";
+const CHAIN_FREE_SKILL_ID =
+  "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF";
+const CHAIN_PAID_SKILL_ID = "chain-11111111111111111111111111111111";
 
 function makeRequest(id: string, body: Record<string, unknown> = {}) {
   const req = new NextRequest(`http://localhost/api/skills/${id}/install`, {
@@ -161,10 +164,27 @@ describe("POST /api/skills/[id]/install", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed chain-only listing addresses before parsing, signature verification, or database initialization", async () => {
+    const json = vi.fn();
+    const req = { json } as unknown as NextRequest;
+
+    const res = await POST(req, {
+      params: Promise.resolve({ id: "chain-not-a-solana-address" }),
+    });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(json).not.toHaveBeenCalled();
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockOnChain).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("returns 200 for free chain-prefixed skill", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
     mockOnChain.mockResolvedValue({ priceUsdcMicros: "0", author: "Author1" });
-    const { req, params } = makeRequest("chain-ABC123", {
+    const { req, params } = makeRequest(CHAIN_FREE_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -181,7 +201,7 @@ describe("POST /api/skills/[id]/install", () => {
       priceUsdcMicros: "1000000",
       author: "Author1",
     });
-    const { req, params } = makeRequest("chain-DEF456", {
+    const { req, params } = makeRequest(CHAIN_PAID_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -196,7 +216,7 @@ describe("POST /api/skills/[id]/install", () => {
     });
     mockHasOnChainPurchase.mockResolvedValue(true);
 
-    const { req, params } = makeRequest("chain-DEF456", {
+    const { req, params } = makeRequest(CHAIN_PAID_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
@@ -208,7 +228,7 @@ describe("POST /api/skills/[id]/install", () => {
   it("returns 404 for missing chain-prefixed skill", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: "Wallet1" });
     mockOnChain.mockResolvedValue(null);
-    const { req, params } = makeRequest("chain-NOPE", {
+    const { req, params } = makeRequest(CHAIN_PAID_SKILL_ID, {
       auth: { pubkey: "Wallet1" },
     });
     const res = await POST(req, { params });
