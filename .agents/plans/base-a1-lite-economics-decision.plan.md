@@ -25,6 +25,14 @@ isProject: false
 
 # Proposed Decision Memo: Base Variant of Protocol Requirement A1 — Lite Economics
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This is a historical or completed-work record. Its original decisions, checkboxes, and evidence are preserved below. Do not treat it as fresh launch approval; use the current roadmap and launch requirements linked from the guide.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 > **Status: SUPERSEDED — 2026-07-10.** Retained as the historical record of the EIP-170 size
 > crisis; **do not implement from this memo.** Its central premise — that code size forces an
 > economics cut — was refuted by measurement: an external-library (delegatecall) extraction gets

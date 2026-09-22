@@ -1,17 +1,21 @@
 ---
-title: AgentVouch — Entity Relationships
+title: AgentVouch records and their relationships
 ---
 
 erDiagram
 
+    %% Names and field types below match technical records; they are not deployment evidence.
+    %% Read docs/PLAIN_LANGUAGE_GUIDE.md for the money flow and launch requirements.
+    %% Only descriptions were clarified; entity IDs, fields, enum values, and relationships are unchanged.
+
     REPUTATION-CONFIG {
-        pubkey  authority           "admin / arbitrator"
-        u64     min_vouch_stake_usdc_micros
-        u64     dispute_bond_usdc_micros
-        u64     min_paid_listing_price_usdc_micros
-        u64     min_author_bond_for_free_listing_usdc_micros
-        u8      slash_percentage
-        i64     cooldown_period
+        pubkey  authority           "administrator and report reviewer"
+        u64     min_vouch_stake_usdc_micros "smallest backing deposit; 1000000 units = 1 USDC"
+        u64     dispute_bond_usdc_micros "deposit required to submit a report"
+        u64     min_paid_listing_price_usdc_micros "smallest permitted paid price"
+        u64     min_author_bond_for_free_listing_usdc_micros "author deposit required for free listings"
+        u8      slash_percentage "percentage of backing deducted after the required decision"
+        i64     cooldown_period "waiting period before the next permitted action"
         u64     stake_weight
         u64     vouch_weight
         u64     dispute_penalty
@@ -19,32 +23,32 @@ erDiagram
     }
 
     AGENT-PROFILE {
-        pubkey  authority           "owner wallet"
-        string  metadata_uri        "off-chain (IPFS)"
-        u64     reputation_score    "computed on-chain"
+        pubkey  authority           "wallet that controls this record"
+        string  metadata_uri        "stored outside the blockchain using IPFS"
+        u64     reputation_score    "calculated by the blockchain program"
         u32     total_vouches_received
         u32     total_vouches_given
-        u64     total_vouch_stake_usdc_micros
-        u64     author_bond_usdc_micros
+        u64     total_vouch_stake_usdc_micros "total USDC backing received"
+        u64     author_bond_usdc_micros "USDC deposited by the author"
         u32     disputes_won
         u32     disputes_lost
         i64     registered_at
     }
 
     VOUCH {
-        pubkey  voucher
-        pubkey  vouchee
-        u64     stake_usdc_micros   "USDC locked in PDA vault"
+        pubkey  voucher "backer who made the deposit"
+        pubkey  vouchee "author receiving the backing"
+        u64     stake_usdc_micros   "USDC held in a program-controlled account"
         enum    status              "Active | Revoked | Slashed"
-        u64     cumulative_revenue_usdc_micros
+        u64     cumulative_revenue_usdc_micros "sales revenue received over time"
         i64     last_payout_at
         i64     created_at
     }
 
     DISPUTE {
         pubkey  vouch
-        pubkey  challenger
-        string  evidence_uri        "off-chain (IPFS)"
+        pubkey  challenger "person who submitted the report"
+        string  evidence_uri        "stored outside the blockchain using IPFS"
         enum    status              "Open | Resolved"
         enum    ruling              "SlashVoucher | Vindicate"
         i64     created_at
@@ -54,12 +58,12 @@ erDiagram
     AUTHOR-DISPUTE {
         u64     dispute_id
         pubkey  author
-        pubkey  challenger
+        pubkey  challenger "person who submitted the report"
         enum    reason              "MaliciousSkill | FraudulentClaims | FailedDelivery | Other"
         string  evidence_uri
-        u32     backing_vouch_count_snapshot
-        u32     linked_vouch_count
-        u64     bond_amount_usdc_micros
+        u32     backing_vouch_count_snapshot "number of backing deposits recorded for this report"
+        u32     linked_vouch_count "number of backing deposits linked to this record"
+        u64     bond_amount_usdc_micros "USDC deposited for the report"
         enum    status              "Open | Resolved"
         enum    ruling              "Upheld | Dismissed"
     }

@@ -9,7 +9,7 @@ todos:
     content: Add cancel_author_dispute_resolution that lets config authority clear pending proposals without moving funds or clearing locks
     status: pending
   - id: execution
-    content: Add execute_author_dispute_resolution that enforces timelock, moves dispute/author bond funds, and preserves A1 slashing state
+    content: "Add execute_author_dispute_resolution that enforces timelock, moves dispute/author's backing deposit funds, and preserves A1 slashing state"
     status: pending
   - id: author-bond-serialization
     content: Update open_author_dispute to reject overlapping author-bond-exposing disputes while open_author_disputes is nonzero
@@ -26,7 +26,17 @@ todos:
 isProject: false
 ---
 
-# AgentVouch Protocol Requirement A2, Stage S3 — Governed Dispute Resolution
+<a id="agentvouch-protocol-requirement-a2-stage-s3--governed-dispute-resolution"></a>
+
+# AgentVouch Protocol Requirement A2, Stage S3 — Report review with approval and waiting-period rules
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers report-review rules or buyer-refund accounting. The reference code A2 names related work; the launch-requirements table decides which parts block the first release.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 ## Goal
 
@@ -66,11 +76,13 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
 ## Implementation Steps
 
 1. Factor shared validation from `resolve_author_dispute`.
+
    - Preserve PDA and account relationship checks from the current resolver path.
-   - Keep token mint, token owner, vault authority, treasury vault, dispute bond vault, author bond vault, listing, and settlement validations.
+   - Keep token mint, token owner, vault authority, treasury vault, dispute bond vault, author's backing deposit vault, listing, and settlement validations.
    - Avoid copying token movement into `propose`.
 
 2. Implement `propose_author_dispute_resolution`.
+
    - Accounts should include `author_dispute`, `author_profile`, `skill_listing`, optional/remaining `listing_settlement` for paid disputes, `config`, and `resolver_authority: Signer`.
    - Require `resolver_authority.key() == config.resolver_authority`.
    - Require `author_dispute.status == Open`.
@@ -93,6 +105,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Emit `AuthorDisputeResolutionProposed`.
 
 3. Implement `cancel_author_dispute_resolution`.
+
    - Accounts: pending `author_dispute`, `config`, `config_authority: Signer`, plus listing/settlement accounts only if needed for validation.
    - Require `config_authority.key() == config.config_authority`.
    - Require `status == ResolutionProposed`.
@@ -104,6 +117,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Emit `AuthorDisputeResolutionCancelled`.
 
 4. Implement `execute_author_dispute_resolution`.
+
    - Executor can be permissionless after maturity.
    - Require:
      - `status == ResolutionProposed`
@@ -117,7 +131,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
      - Set final `ruling`, `resolved_at`, and `status = Resolved`.
    - Upheld free `AuthorBondOnly` branch:
      - Return challenger dispute-bond principal.
-     - Slash author bond if present.
+     - Slash author's backing deposit if present.
      - Pay capped challenger reward from the author-bond slash.
      - Route residual slash to protocol reserve/treasury accounting.
      - Do not create refund pool and do not slash vouchers.
@@ -125,25 +139,27 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Upheld paid financial branch:
      - Financial only when `liability_scope == AuthorBondThenVouchers` and `purchase.is_some()`.
      - Return challenger dispute-bond principal.
-     - Slash author bond if present.
-     - Transfer paid author-bond slash into the disputed listing's author proceeds vault.
+     - Slash author's backing deposit if present.
+     - Transfer paid author-bond slash into the disputed listing's author's sales earnings vault.
      - Increment `listing_settlement.bond_slashed_deposit_usdc_micros`.
      - If linked vouches exist, enter `SlashingVouchers` and keep locks.
      - If no linked vouches, keep locks until S4 `create_refund_pool` consumes the refund path or finalizes a zero-capacity terminal case.
    - Upheld paid no-purchase branch:
      - Reputation-only in A2 v1.
-     - No voucher slashing, no refund pool, no challenger reward.
+     - No deducting backers' deposited USDC, no refund pool, no challenger reward.
      - Clear locks and resolve.
    - Emit `AuthorDisputeResolutionExecuted`.
 
 5. Disable or replace legacy `resolve_author_dispute`.
+
    - Preferred: keep the instruction as a compatibility wrapper that fails with `UseGovernedResolutionFlow`.
    - Do not leave an instant config-authority bypass.
    - Update tests and generated clients accordingly.
 
 6. Serialize author-bond exposure in `open_author_dispute`.
+
    - Reject new author disputes when `author_profile.open_author_disputes > 0`.
-   - This applies because the author bond is profile-level shared collateral.
+   - This applies because the author's backing deposit is profile-level shared collateral.
    - Do not rely on listing locks, because free disputes have no paid listing settlement lock.
 
 7. Update `slash_dispute_vouches`.
@@ -158,7 +174,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
 - A bad pending proposal has an on-chain cancel remedy before execution.
 - Canceled proposals cannot execute.
 - Permissionless execution is only a liveness mechanism after the timelock.
-- Paid no-purchase disputes cannot collide with voucher-slashing or refund-pool branches.
+- Paid no-purchase disputes cannot collide with deducting backers' deposited USDC or refund-pool branches.
 - A1 `SlashingVouchers` semantics remain intact for purchase-attached paid disputes with linked positions.
 
 ## Tests
@@ -173,7 +189,7 @@ Add or update tests in `tests/agentvouch-usdc-disputes.ts` and `tests/agentvouch
 - Re-propose after cancel and execute after timelock succeeds.
 - Config timelock/slash/reward changes after proposal do not alter pending proposal execution.
 - Dismissed branch sends dispute bond to treasury and clears locks.
-- Free upheld branch returns principal, pays capped reward from author bond slash, reserves residual, creates no refund pool.
+- Free upheld branch returns principal, pays capped reward from author's backing deposit slash, reserves residual, creates no refund pool.
 - Paid purchase-attached branch with active vouches enters `SlashingVouchers`.
 - Paid purchase-attached branch with no active vouches keeps locks for S4 refund creation.
 - Paid no-purchase branch resolves reputation-only even with active vouches.

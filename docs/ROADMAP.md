@@ -1,5 +1,13 @@
 # AgentVouch Roadmap
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document says what work comes next. Deployment records, not roadmap wording, establish what is installed and enabled.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequencing and strategy decisions; it complements, not duplicates:
 
 - `docs/USDC_NATIVE_MIGRATION.md` — the M0–M15 migration milestones (historical record once complete)
@@ -9,6 +17,9 @@ Forward plan from `v0.2.0` (USDC-native devnet) onward. This doc carries sequenc
 Update this doc when sequencing or strategy changes, not for task-level progress.
 
 Last reviewed: 2026-07-08.
+
+Milestone names clarified: 2026-09-10. Requirement codes remain cross-references, not task names.
+This wording update does not change sequencing, launch status, or required approvals.
 
 > **Update 2026-07-06: the Base default flip happened.** Phase 8a (PR #74) made Base Sepolia the
 > default new-user writable path behind the Solana rollback env — the "reversible commit point"
@@ -21,42 +32,57 @@ Last reviewed: 2026-07-08.
 
 ## Phase A: Mainnet Release Candidate Hardening
 
-Blocks Base mainnet. This section records sequencing only; the canonical gate status is the
+Blocks Base mainnet. This section records sequencing only; the canonical Check and approval status is the
 `docs/MAINNET_READINESS.md` Base gate table.
 
-### AgentVouch Protocol Requirement A1 — Voucher Slashing (P0.1)
+<a id="agentvouch-requirement-a1---deduct-staked-usdc-after-upheld-buyer-reports"></a>
 
-Base launch gate: port the Solana A1 downside mechanism to the Base v1 candidate before the Phase 9
-security review. Plans: `.agents/plans/base-a1-voucher-slashing-port.plan.md` and historical
-Solana spec `.agents/plans/a1-voucher-slashing.plan.md`. Status: see the readiness table.
+### AgentVouch Requirement A1 - Deduct USDC deposited as backing After Upheld Buyer Reports
 
-### AgentVouch Protocol Requirement A2 — Governed Dispute Resolution (P0.2)
+An upheld report is one the resolver decides is valid. This requirement makes an endorser's
+USDC deposited as backing subject to deductions after an upheld paid-purchase report. The protocol calls these
+deductions **deducting backers' deposited USDC**. On Base, settlement deducts from the author's bond first, then
+eligible endorsers' stakes, to fund a limited credit for the buyer who filed the report. This is
+not a guaranteed full refund.
 
-Full-mainnet gate: governed dispute resolution. Capped founder-operated alpha may defer this only
-if the readiness Launch Trust Bar passes. Plans: `.agents/plans/a2-dispute-governance-v1.plan.md`
-and `.agents/plans/a2-s*.plan.md`. Status: see the readiness table.
+Base launch gate: deploy and test this mechanism before completing the Base trust security
+review (migration Phase 9). Plans: `.agents/plans/base-a1-voucher-slashing-port.plan.md` and
+historical Solana spec `.agents/plans/a1-voucher-slashing.plan.md`. The Base deployment and buyer
+activation plan is `.agents/plans/base-paid-report-activation-sepolia.plan.md`.
+Status: see the readiness table. Original audit reference: P0.1.
 
-### AgentVouch Protocol Requirement A3 — Emergency Pause (P0.3)
+### AgentVouch Requirement A2 - Replace Founder-Only Report Decisions With Governed Review
 
-Base launch gate: pause must be live, custody-approved, and smoke-tested on the release-candidate
+Full-mainnet gate: report review with approval and waiting-period rules. First small release with founder-reviewed reports and limits on customer money may defer this only
+if the readiness Minimum buyer-protection requirements passes. Plans: `.agents/plans/a2-dispute-governance-v1.plan.md`
+and `.agents/plans/a2-s*.plan.md`. Status: see the readiness table. Original audit reference: P0.2.
+
+### AgentVouch Requirement A3 - Pause New Activity While Keeping Claims Open
+
+Base launch gate: pause must be live, custody-approved, and checked with a basic functional test on the release-candidate
 deployment. Plan: `.agents/plans/a3-emergency-pause.plan.md`; Base status is in readiness.
+Original audit reference: P0.3.
 
-### AgentVouch Protocol Requirement A4 — Refund and Restitution Reserve (P0.4)
+<a id="agentvouch-requirement-a4---limit-buyer-credits-and-assign-unused-funds"></a>
+
+### AgentVouch Requirement A4 - Limit Amounts owed to buyers and Assign Unused Funds
 
 Base launch gate: founder decision on bounded refund reserve/backstop policy and dispute-derived
 residual ownership. No standalone plan exists yet; status and open decision live in readiness.
+Original audit reference: P0.4.
 
-### AgentVouch Protocol Requirement A5 — Test and Security Review (P1)
+### AgentVouch Requirement A5 - Test Complete Flows and Review Contract Security
 
 Base launch gate: full local/forge/live-smoke evidence plus internal and external security review
-after the complete A1 mechanism exists. Status: see the readiness table and the Phase 9 plan. The
+after the buyer-report and stake-deduction mechanism exists. Status: see the readiness table and
+the Phase 9 plan. Original audit reference: P1. The
 publish-time scanner eval discipline (`evals/skill-scan/`: unsafe recall is the north-star metric;
 every production miss becomes a dataset case, holdout first) continues alongside — see the
 skill-scan section in `AGENTS.md`.
 
 ## Phase B: Mainnet Launch
 
-Run the Base Mainnet Gate Table in `docs/MAINNET_READINESS.md`. Nothing here overrides it.
+Run the Base real-money launch requirements in `docs/MAINNET_READINESS.md`. Nothing here overrides it.
 
 ## Phase C: Post-Mainnet Protocol Direction
 
@@ -105,21 +131,23 @@ Current x402 bridge follow-up for the RC path:
 - Prove the full bridge path: buyer auth message, x402 requirement generation, facilitator verify/settle, settlement vault credit, backend `settle_x402_purchase`, purchase PDA creation, entitlement recording, and raw download.
 - Record the required env, settlement authority custody, facilitator config, monitoring, rollback, and any failure/reconciliation steps in the production runbook before treating x402 bridge as release-candidate-ready.
 
-### Payment rail sequencing — 2026-07-01
+<a id="payment-rail-sequencing--2026-07-01"></a>
+
+### Payment method sequencing — 2026-07-01
 
 Three commerce lanes, in priority order (details in `docs/BASE_X402_PAYMENT_RAIL_SPEC.md`, `docs/STRIPE_FEASIBILITY.md`, `docs/STRIPE_MPP_POLICY.md`):
 
-1. **Protocol-visible commerce** (preferred): direct Solana USDC `purchase_skill`, Base USDC purchases, and protocol-listed x402. Only these fund voucher rewards, author proceeds escrow, and dispute/refund state. With Base as the canonical-chain frontrunner, Base Lane B (EIP-3009 in-contract) is the preferred agent rail.
+1. **Protocol-visible commerce** (preferred): direct Solana USDC `purchase_skill`, Base USDC purchases, and protocol-listed x402. Only these fund backers' revenue shares, author's sales earnings escrow, and dispute/refund state. With Base as the canonical-chain frontrunner, Base Lane B (EIP-3009 in-contract) is the preferred agent rail.
 2. **Card-funded early sales**: Stripe MPP mints a wallet-bound off-chain entitlement (`stripe-mpp-offchain`) so humans can buy now. Never counted as protocol settlement; excluded from purchase metrics, voucher yield, and refund state. Excluded on Base protocol listings until chain-qualified card entitlements exist.
 3. **Future smart-account UX**: Base smart-account/paymaster work carries the wallet-abstraction bet; it does not make Stripe a settlement ledger.
 
-Before Stripe Tier 2, choose the graduation model (card on-ramp to protocol settlement vs. parallel MPP marketplace vs. limited early-sales rail) — see the decision list in `docs/STRIPE_FEASIBILITY.md`.
+Before Stripe Tier 2, choose the plan for moving beyond the first card-payment trial (card on-ramp to protocol settlement vs. parallel MPP marketplace vs. limited early-sales rail) — see the decision list in `docs/STRIPE_FEASIBILITY.md`.
 
 ### Base full-logic POC
 
 Base remains the strongest expansion candidate for a USDC/x402-native AgentVouch lane, but it should be tested as a **port by spec**, not a migration by transpilation. The plan lives in `.agents/plans/base-full-logic-poc.plan.md`.
 
-Status 2026-06-22: PR #44 reached the Phase 4.5 interim gate. Phases 0-4 are implemented in isolated Foundry code under `contracts/base-poc` with 65/65 tests, including direct purchases, author proceeds, voucher rewards, and two x402 lanes. The interim memo is `docs/BASE_POC_INTERIM.md`.
+Status 2026-06-22: PR #44 reached the Phase 4.5 interim gate. Phases 0-4 are implemented in isolated Foundry code under `contracts/base-poc` with 65/65 tests, including direct purchases, author's sales earnings, backers' revenue shares, and two x402 lanes. The interim memo is `docs/BASE_POC_INTERIM.md`.
 
 **Decision update 2026-06-25: the x402/Coinbase distribution bet has been chosen.** Base is now the **frontrunner to become the canonical chain — not yet written in stone** (the reversible commit point is the Phase 8 default-chain flip in the port plan). Execution is a `ChainAdapter` seam-swap port under the existing `web/` app, not a rewrite: `.agents/plans/base-port-chain-adapter.plan.md`. Progress: Phase 1 (seam), Phase 2a + 2b-design (SolanaAdapter behind the seam; reads/writes split into `ChainAdapter`/`ChainWallet`), and Phase 3a (BaseAdapter reads, live-verified against the deployed Sepolia contract) are done; Phase 3b (first Base render in `/skills`), Phase 4 (wallet), and Phase 5 (writes + agent x402) remain. Decided 2026-06-25: **Phase 4** uses Coinbase Smart Wallet **passkey** for the MVP, with **wagmi/MetaMask injected as a roadmapped follow-on** (MetaMask's distribution warrants it; reconsider if it balloons the wallet work); **Phase 5** uses **on-chain identity** via `AgentVouchEvm.registerAgent`/`getProfile`. Solana stays implemented and dormant behind the seam, not deleted. The x402 rev-split comparison that informed the bet is `docs/X402_REVSPLIT_BASE_VS_SOLANA.md`.
 
@@ -166,7 +194,7 @@ Sequencing:
 1. Stabilize public OpenAPI/agent-facing API contracts and keep `web/public/skill.md` current.
 2. Land Kora-sponsored purchase and/or x402 bridge readiness for paid protocol-listed skills, including a live devnet bridge smoke if the x402 path is enabled.
 3. Build local read-only/free-install MCP wrapper over existing modules.
-4. Add paid-install orchestration with explicit spend caps and no remote key custody.
+4. Add paid-install orchestration with explicit spend caps and no remote control and storage of signing keys.
 5. Only after the above, consider a hosted read-only AgentVouch MCP endpoint for discovery/trust.
 
 This belongs near the MCP/connector expansion strategy: AgentVouch should both list/vet MCP servers as marketplace objects and provide MCP tools that let agents query AgentVouch trust before installing or paying.

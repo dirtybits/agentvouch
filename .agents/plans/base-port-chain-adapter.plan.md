@@ -18,7 +18,7 @@ todos:
     content: "Phase 5 DONE 2026-07-01 via PR #67. Base ChainWallet writes (register/list/buy), Base purchase verification, Base listing persistence, EVM author/profile identity, chain-qualified purchase groundwork, and EIP-3009 x402 settlement are merged. Live Base write smoke is now a Phase 5/9 follow-up with CDP paymaster env present; it still needs a Base fixture/funded passkey wallet run. See sub-plan .agents/plans/base-port-chain-adapter-phase-5.plan.md."
     status: completed
   - id: db-multichain
-    content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch rehearsal, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
+    content: "Phase 6 DONE 2026-07-01. Multichain DB hardening landed via PR #69 and post-merge DB gate: EVM listing identity indexes, additive chain-qualified receipt/entitlement lookup coverage, Base/Solana raw-access separation, activity/dashboard chain-aware reads, disposable Neon branch practice run, live guarded migrate on agentvouch-postgres main, and production API smoke. Legacy (skill_db_id, buyer_pubkey) entitlement PK intentionally remains until a later multi-EVM phase. See sub-plan .agents/plans/base-port-chain-adapter-phase-6.plan.md and [[neon-db-two-projects]]."
     status: completed
   - id: address-type-sweep
     content: "Phase 7 DONE 2026-07-02 via PR #73. Chain-aware address helpers, explorer links, EVM buyer API boundaries, storage/display normalization split, behavioral tests, import guards, and browser smoke for one Solana + one Base listing surface all landed. See .agents/plans/base-port-chain-adapter-phase-7.plan.md."
@@ -27,15 +27,23 @@ todos:
     content: "Phase 8 (8a) DONE 2026-07-02 via PR #74. Base Sepolia (eip155:84532) is the default new-user writable path behind the single rollback env NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana; EVM publisher auth (ERC-1271/6492) and Base paid publish through the ChainWallet seam landed with it. Solana remains selectable; legacy trust/default row fallbacks stay Solana. Base mainnet was never part of Phase 8. See .agents/plans/base-port-chain-adapter-phase-8a.plan.md."
     status: completed
   - id: verify-e2e
-    content: "Phase 9 IN PROGRESS. Part A live smokes are recorded in the phase-9 plan: Base default-path human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive + Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base Sepolia v1 candidate (`0x5992…B7d1`, `base-v1-candidate`) and recorded vouch/report browser smokes. RE-SCOPED 2026-07-06: full A1 voucher-slashing port to the Base v1 candidate approved as Phase 9b-2 — dedicated plan .agents/plans/base-a1-voucher-slashing-port.plan.md — landing BEFORE the 9c security review. Still open: A1 implementation, remaining self-stake/proceeds trust-write smoke, ownership/custody sign-off, internal review, and external security review. See .agents/plans/base-port-chain-adapter-phase-9.plan.md."
+    content: "Phase 9 IN PROGRESS. Part A checks against the deployed system are recorded in the phase-9 plan: Base default-path human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive + Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base Sepolia v1 candidate (`0x5992…B7d1`, `base-v1-candidate`) and recorded vouch/report browser smokes. RE-SCOPED 2026-07-06: full A1 deducting backers' deposited USDC port to the Base v1 candidate approved as Phase 9b-2 — dedicated plan .agents/plans/base-a1-voucher-slashing-port.plan.md — landing BEFORE the 9c security review. Still open: A1 implementation, remaining self-stake/proceeds trust-write smoke, ownership/custody sign-off, internal review, and external security review. See .agents/plans/base-port-chain-adapter-phase-9.plan.md."
     status: in_progress
   - id: base-mainnet-cutover
-    content: "Phase 10. Dedicated blocked gate plan: .agents/plans/base-port-chain-adapter-phase-10.plan.md. Cut over to Base mainnet only after Phase 9 v1 trust/security gates, mainnet deploy/RPC/USDC/paymaster, custody policy, runbook, and real-funds smoke evidence exist."
+    content: "Phase 10. Dedicated blocked gate plan: .agents/plans/base-port-chain-adapter-phase-10.plan.md. Cut over to Base mainnet only after Phase 9 v1 trust/security gates, mainnet deploy/RPC/USDC/paymaster, policy for holding and using signing keys, runbook, and real-funds smoke evidence exist."
     status: pending
 isProject: false
 ---
 
 # Solana → Base Port via a ChainAdapter Seam
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document uses technical identifiers so operators can find the matching code. The guide explains those identifiers in plain language.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 > **Status note (2026-07-08):** Phase 1–8 sections are Completed/Historical — do not edit except
 > corrections. Current Base launch gate status lives in `docs/MAINNET_READINESS.md`; this umbrella
@@ -69,7 +77,7 @@ but off by default.
   address-type generalization; flip default to Base.
 - **Out of scope:** UI redesign (keep as-is — it is chain-agnostic), ~~disputes/slashing
   (deferred — see [[mvp-ship-minimal-bias]])~~ **(deferral superseded 2026-07-06 for Base v1:
-  the full A1 voucher-slashing port is approved — see the 2026-07-06 sequencing note and
+  the full A1 deducting backers' deposited USDC port is approved — see the 2026-07-06 sequencing note and
   `.agents/plans/base-a1-voucher-slashing-port.plan.md`)**, deleting Solana code, archiving
   `web/`, Base **mainnet** cutover (the POC contract is Sepolia — see Open questions).
 
@@ -558,16 +566,16 @@ A1-port sub-plan (9b-2, added 2026-07-06):
 
 - **Goal:** prove Base Sepolia default E2E, then close the Base trust/mainnet-readiness gap before
   Phase 10.
-- **Status (2026-07-08):** Part A live smokes are recorded in the phase-9 plan: Base default-path
+- **Status (2026-07-08):** Part A checks against the deployed system are recorded in the phase-9 plan: Base default-path
   human purchase/raw download, agent x402 settlement, and Solana regression. 9b-1 (report primitive
   plus Base trust reads) merged via PR #78; PR #79 closed static ops gaps; PR #85 deployed the Base
   Sepolia v1 candidate, pointed local/dev/preview envs at it, and recorded vouch/report browser
-  smokes. 9b-2 (full A1 voucher-slashing port) was approved 2026-07-06 and must land before the 9c
+  smokes. 9b-2 (full A1 deducting backers' deposited USDC port) was approved 2026-07-06 and must land before the 9c
   security review. Remaining: A1 implementation, remaining self-stake/proceeds trust-write smoke,
   ownership/custody sign-off, internal review, and external security review.
 - **Done when:** Base human flow (passkey, register/list/buy, raw download, gas sponsorship
   evidence) and agent x402 both pass; Solana regression passes when selected; the Base v1 trust
-  layer (vouch/author bond/founder-resolved reports **plus the 9b-2 voucher-slashing port**),
+  layer (vouch/author's backing deposit/founder-resolved reports **plus the 9b-2 deducting backers' deposited USDC port**),
   ownership policy, and security review are complete enough to unblock a future mainnet plan.
 
 ### Phase 10 — `base-mainnet-cutover` [blocked]
@@ -619,7 +627,7 @@ retained, just dormant. Per-phase: revert that phase's single PR.
   MVP (POC-proven, gas-free). wagmi/MetaMask injected = roadmapped follow-on, reconsidered if it
   proves too much lifting; not in the MVP.
   **UPDATE 2026-07-07:** MetaMask injected **buyer** support landed via PR #83
-  (`.agents/plans/base-metamask-erc7702-wallet.plan.md` — live smoke still pending there). Two
+  (`.agents/plans/base-metamask-erc7702-wallet.plan.md` — check against the deployed system still pending there). Two
   tracked follow-ons, deliberately NOT new phases here: MetaMask author-write parity
   (register/list) is a pending todo in that plan; Base trust **writes** (vouch, author-bond
   self-stake, openReport) need a reviewed `ChainWallet` seam extension and are tracked in the

@@ -12,10 +12,10 @@ todos:
     content: "COMPLETED 2026-07-07: `/api/x402/supported` and unauthenticated raw access for `efa82c9d-fcc1-47d6-8145-780bd9388783` advertise `eip155:84532`, payment flow `base-x402-purchase-skill`, Base Sepolia native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, listing id `0x9987077f66345ab282f7698aa90b486787fe3043f880d9f18556bca5ec2fd89e`, contract `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`, EIP-3009 `receiveWithAuthorization`, revision `1`, and amount `1000000`. Live settlement used plain EOA agent `0xAf1c1553009E269Ed6860220bCa0D588016cd2DB` and dedicated relayer `0x10ED5FBf22359edfd52Ad066f76CF2fD8181d0d8` through `/api/x402/settle`. Settlement tx `0xfba67b3793f7c518694ae9d793264aaf7a3db84468538b7255b77e50b1078b1c` succeeded in block `43847771`; x402 payment ref `452776e254ab20a752ca126757d84308b3f24ad69983208acf0d7b139f980615`; EVM purchase id `0xcf7cbe3e55c964334cb3f010368423852c6f75733314a9d3eeba5b753b05687f`. Duplicate `/api/x402/settle` retry returned `200` with `existing: true`. DB receipt `ae965090-6d59-44e8-a7e0-50339053f746` and entitlement are chain-qualified (`buyer_chain_context=eip155:84532`, `amount_micros=1000000`, `payment_flow=base-x402-purchase-skill`, `protocol_version=base-poc-v0`). Balance deltas around the settlement block: agent USDC `5 -> 4`, agent ETH `0 -> 0`, relayer ETH `0.007 -> 0.006998384970588198`. Unsigned raw still returns Base x402 `402`; signed `X-AgentVouch-Auth` raw download for the x402 buyer returned `200` with `SKILL.md`."
     status: completed
   - id: smoke-solana-regression
-    content: "COMPLETED 2026-07-07: Solana direct purchase/raw-download regression passed with non-author buyer `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou` buying `Kora Paid Test Alpha` (`81977f9c-c6e4-40fc-bf8e-5b7f77468487`) from author `asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw`. On-chain listing `Ba7E2UuEVRWXdX2y8nrRjYiAHRH1s3yehwBZfj4bUVtJ`, revision `0`, price `1000000`; purchase tx `4wnwUwaUtAaDdJnLiHQjhTKo78APp5oE6kV16HcbvpNPsUDdWwuEvWPpTK5mci47BJ5JG44BXJEMP3DsKAmeHZJc` confirmed at slot `474702171`, purchase PDA `2Zyg6X3GJTfHrMTpGFNxyaYCy8LnxK98Bd4UbF2CK8H9`. Buyer USDC moved `56030000 -> 55030000`; author proceeds vault `600000 -> 1200000`; author reward vault `1700000 -> 2100000`. `/api/skills/{id}/purchase/verify` returned `200`; DB receipt `14bf89c5-d014-463b-be21-37823d5205cf` and entitlement are recorded with `payment_flow=direct-purchase-skill`, `chain_context=solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`, `protocol_version=v0.2.0`, `listing_revision=0`, settlement PDA `5LR4YmGSKKUsndwwZNzHKhQzecyBwQkdKaUShEtasKtk`. Unsigned raw stayed `402`; signed `X-AgentVouch-Auth` raw download returned `200` and `SKILL.md`. Sponsored/Kora checkout remains a separate follow-up unless Solana is re-promoted."
+    content: "COMPLETED 2026-07-07: Solana direct purchase/raw-download regression passed with non-author buyer `dmt4CBeNrF6iMV793zfJGiAAqVK9C9bifdL9cvqNTou` buying `Kora Paid Test Alpha` (`81977f9c-c6e4-40fc-bf8e-5b7f77468487`) from author `asuavUDGmrVHr4oD1b4QtnnXgtnEcBa8qdkfZz7WZgw`. On-chain listing `Ba7E2UuEVRWXdX2y8nrRjYiAHRH1s3yehwBZfj4bUVtJ`, revision `0`, price `1000000`; purchase tx `4wnwUwaUtAaDdJnLiHQjhTKo78APp5oE6kV16HcbvpNPsUDdWwuEvWPpTK5mci47BJ5JG44BXJEMP3DsKAmeHZJc` confirmed at slot `474702171`, purchase PDA `2Zyg6X3GJTfHrMTpGFNxyaYCy8LnxK98Bd4UbF2CK8H9`. Buyer USDC moved `56030000 -> 55030000`; author's sales earnings vault `600000 -> 1200000`; author reward vault `1700000 -> 2100000`. `/api/skills/{id}/purchase/verify` returned `200`; DB receipt `14bf89c5-d014-463b-be21-37823d5205cf` and entitlement are recorded with `payment_flow=direct-purchase-skill`, `chain_context=solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`, `protocol_version=v0.2.0`, `listing_revision=0`, settlement PDA `5LR4YmGSKKUsndwwZNzHKhQzecyBwQkdKaUShEtasKtk`. Unsigned raw stayed `402`; signed `X-AgentVouch-Auth` raw download returned `200` and `SKILL.md`. Sponsored/Kora checkout remains a separate follow-up unless Solana is re-promoted."
     status: completed
   - id: scope-base-v1-trust-layer
-    content: "COMPLETED 2026-07-06 via PR #78: the MVP Base trust primitive was scoped and implemented as author reports/disputes — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE, reporter USDC bond, forfeitReporterBond dismissal anti-griefing lever, upheld slash bounded to min(authorBond, reportBond), vouch/revoke + author bond preserved from the POC, and live Base trust reads for marketplace rows. Remaining ownership/custody, bounty-routing, snapshot-vs-live scale, UI, deploy/runbook, and audit work is tracked under implement-and-audit-base-v1 plus Phase 10 gates."
+    content: "COMPLETED 2026-07-06 via PR #78: the MVP Base trust primitive was scoped and implemented as author reports/disputes — PROTOCOL_VERSION=base-v1-candidate, openReport/resolveReport under RESOLVER_ROLE, reporter USDC bond, forfeitReporterBond dismissal anti-griefing lever, upheld slash bounded to min(authorBond, reportBond), vouch/revoke + author's backing deposit preserved from the POC, and live Base trust reads for marketplace rows. Remaining ownership/custody, bounty-routing, snapshot-vs-live scale, UI, deploy/runbook, and audit work is tracked under implement-and-audit-base-v1 plus Phase 10 gates."
     status: completed
   - id: implement-and-audit-base-v1
     content: "IN PROGRESS 2026-07-08: implementation portion completed for the first 9b slice — reports primitive + live Base trust on /skills implemented and gated; Bugbot follow-ups fixed EVM identity retention, revision-scanned Base purchase repair, walletless EVM publish rejection, chain-context purchase verification, and signed Base listing PATCH. Follow-up branch synced Deploy.s.sol + ui/src/abi.ts, documented Base v1 candidate ops/security gates, added docs/BASE_DEPLOY.md, confirmed forge CI already exists, fixed Base detail API/page live trust, fixed Base paid-detail copy, and added the reviewed ChainWallet trust-write seam plus Base author-page vouch/report routing. Base Sepolia v1 deploy/env pointer/vouch/report smoke passed on the new contract. STILL OPEN before Phase 9 can close: remaining live Base trust-write smoke for self-stake/proceeds actions, ownership/custody sign-off, internal review, and external security review."
@@ -25,10 +25,18 @@ isProject: false
 
 # Phase 9 - Base E2E And Minimal Trust V1
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers the Base reporting, backing-deposit, and payment features needed before launch. Completed code and deployed features are tracked separately.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 After Phase 8a makes Base Sepolia the default, prove the default path actually works end-to-end and
-close the strategic gap Claude flagged on 2026-07-02: Base has the cleaner payment rail, but the
+close the strategic gap Claude flagged on 2026-07-02: Base has the cleaner payment method, but the
 defensible AgentVouch moat is stake-backed trust. Phase 9 therefore has two gates:
 
 1. Base Sepolia E2E proof: human passkey purchase, agent x402 purchase, raw download, and targeted
@@ -65,7 +73,7 @@ In scope:
   - raw download redemption.
 - Targeted Solana regression if Solana remains selectable.
 - Base v1 trust-layer scope and implementation plan:
-  - vouch/revoke and author bond as visible trust inputs.
+  - vouch/revoke and author's backing deposit as visible trust inputs.
   - founder/admin-resolved author reports/disputes as the minimum dispute surface.
   - trust snapshot or live-read path for Base authors in marketplace/detail pages.
   - ownership/key policy and security review gate.
@@ -75,7 +83,7 @@ Out of scope:
 - Base mainnet default flip. That is still Phase 10 and remains blocked until this plan's v1/security
   gates pass.
 - Solana-specific listing-linked voucher allocation/refund-pool parity. The clean-break Base A1
-  author-bond-first, author-wide voucher-slashing mechanism is merged source; deployment and
+  author-bond-first, author-wide deducting backers' deposited USDC mechanism is merged source; deployment and
   activation are owned by `.agents/plans/base-paid-report-activation-sepolia.plan.md`.
 - Removing Solana.
 - Multi-EVM support beyond Base Sepolia/mainnet planning.
@@ -96,12 +104,12 @@ Out of scope:
 - Follow-ups carried from the a2a reviews: wire `forge test --root contracts/base-poc` into CI
   before 9c closeout; decide reporter-bounty vs treasury routing for upheld slashes before
   mainnet; close the snapshot-vs-live Base trust question before Phase 10 traffic (live per-author
-  RPC reads on `/skills` are plan-sanctioned for Sepolia only); Part A live smokes untouched.
+  RPC reads on `/skills` are plan-sanctioned for Sepolia only); Part A checks against the deployed system untouched.
 - 2026-07-06 post-merge review of PR #78 (`a6e7727`): the plan ledger should treat the Base trust
   layer scoping item as complete. PR #78 did complete the MVP author-report shape, contract events,
   Base trust read path, and security hardening fixes for the slice. It did not complete Phase 9 as a
   whole: live Base E2E smokes, x402 evidence, Solana regression, report/vouch UI, deploy-script/ABI
-  sync, forge CI, ownership/custody policy, runbook updates, and external security review remain
+  sync, forge CI, ownership/policy for holding and using signing keys, runbook updates, and external security review remain
   open gates.
 - 2026-07-06 follow-up branch `ops/base-port-phase-9-followup`: closed the static/ops gaps that did
   not need live secrets — `Deploy.s.sol` now initializes the Base v1 candidate config explicitly,
@@ -188,7 +196,7 @@ Out of scope:
   `Ba7E2UuEVRWXdX2y8nrRjYiAHRH1s3yehwBZfj4bUVtJ`, revision `0`, price `1000000`; purchase tx
   `4wnwUwaUtAaDdJnLiHQjhTKo78APp5oE6kV16HcbvpNPsUDdWwuEvWPpTK5mci47BJ5JG44BXJEMP3DsKAmeHZJc`
   confirmed at slot `474702171`, purchase PDA `2Zyg6X3GJTfHrMTpGFNxyaYCy8LnxK98Bd4UbF2CK8H9`.
-  Balance/vault deltas: buyer USDC `56030000 -> 55030000`, author proceeds vault
+  Balance/vault deltas: buyer USDC `56030000 -> 55030000`, author's sales earnings vault
   `600000 -> 1200000`, author reward vault `1700000 -> 2100000` (60/40 split path still alive).
   The first API retry used a mistyped UUID (`...40ce...`) and correctly returned `404`; rerun with
   the actual DB id (`...40fc...`) returned `/api/skills/{id}/purchase/verify` `200`, recorded receipt
@@ -197,7 +205,7 @@ Out of scope:
   `protocol_version=v0.2.0`, `listing_revision=0`, settlement PDA
   `5LR4YmGSKKUsndwwZNzHKhQzecyBwQkdKaUShEtasKtk`). Unsigned raw stayed `402` direct-purchase
   required; signed `X-AgentVouch-Auth` returned `200` with `Content-Disposition:
-  attachment; filename="SKILL.md"` and first bytes `# Kora Paid Test Skill Alpha`. Sponsored/Kora
+attachment; filename="SKILL.md"` and first bytes `# Kora Paid Test Skill Alpha`. Sponsored/Kora
   checkout was not exercised and remains separate unless Solana is re-promoted.
 - 2026-07-07 `implement-and-audit-base-v1` web trust-write seam slice: extended
   `web/lib/adapters/types.ts` with Phase 9 trust-write methods (`depositAuthorBond`,
@@ -228,14 +236,14 @@ Out of scope:
   Sepolia contract. The web wallet adapter now preflights deployed bytecode before author-report
   approval/call and fails closed with a clear "Base author reports are not deployed..." message.
   Browser verification on `localhost:3000` confirmed the clear deployment-gate message appears and
-  no wallet approval is attempted. Base report live smoke remains open until a report-enabled Base
+  no wallet approval is attempted. Base report check against the deployed system remains open until a report-enabled Base
   v1 candidate is deployed and `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS` points at it.
 - 2026-07-08 Base v1 deploy prep: added `docs/BASE_DEPLOY.md` as the Base Sepolia counterpart to
   the Solana `docs/DEPLOY.md` runbook and linked it from `docs/PRODUCTION_RUNBOOK.md`. The runbook
   records the old configured contract's missing `openReport(address,string)` selector, the exact
   preflight/build/dry-run/broadcast/post-deploy/env-pointer/report-smoke commands, the fresh-state
   actor setup caveat, and paymaster allowlist failure mode. Local verification: `forge test --root
-  contracts/base-poc -vv` passed 75/75; deploy dry-run against Base Sepolia simulated a fresh
+contracts/base-poc -vv` passed 75/75; deploy dry-run against Base Sepolia simulated a fresh
   `AgentVouchEvm` address `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`, USDC
   `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, admin `0x191370b682924527c1A5fD6B484A4BC37460CA30`,
   `config initialized: true`, chain `84532`, and estimated required ETH `0.000067132626`.
@@ -255,7 +263,7 @@ Out of scope:
   contract until the report smoke and fresh-vs-existing Base listing strategy are signed off. The
   first fresh-contract vouch attempt exposed a real Base passkey trust-write bug: the wallet called
   `vouch` before the fresh contract had a profile for the reporter, causing `NotRegistered()`. The
-  Base passkey trust-write seam now calls `ensureBaseAgentRegistered` before author bond deposits,
+  Base passkey trust-write seam now calls `ensureBaseAgentRegistered` before author's backing deposit deposits,
   vouches, and author reports; targeted `__tests__/lib/baseWallet.test.ts` passed 13/13. Browser
   retry on `localhost:3000` with funded passkey reporter `0x3B63a88B203183802f4c815e870b5D1fFa73C779`
   succeeded: reporter registration tx `0x55f589fc30c7f53727160e429f58582f67f0d361e9ce3e920eea9da4b2eee1bc`
@@ -276,7 +284,7 @@ Out of scope:
   `43857874`. `getAuthorReport(1)` returns the expected reporter, author, evidence URI, status
   open, and `5000000` USDC micros report bond. Target author profile now shows one open report;
   reporter balance is `26000000` USDC micros and the contract holds `6000000` USDC micros
-  (`1 USDC` vouch stake + `5 USDC` report bond). The public RPC refused a wider log query over
+  (`1 USDC` backing deposit + `5 USDC` report bond). The public RPC refused a wider log query over
   2,000 blocks, so event lookup used a bounded latest-minus-1500 block range as documented in the
   Base deploy runbook.
 - 2026-07-12 Base Sepolia backed x402 split smoke: the v1 candidate at
@@ -290,7 +298,7 @@ Out of scope:
   `0x0e6ad7f0de85878f7101ec9472d11ff3303393b16766739174bebed942fd1fc8` for listing
   `0x4949b04c41373363c3a3717584d370399771b93b8cdb8831e568a48848651b2b`. Independent receipt
   verification through `base-sepolia-rpc.publicnode.com` proved `600_000` micros in settlement
-  author proceeds and `400_000` micros in the author-wide unclaimed voucher pool. The agent
+  author's sales earnings and `400_000` micros in the author-wide unclaimed voucher pool. The agent
   balance was `4 -> 3` test USDC and remained at zero ETH. `sepolia.base.org` lagged the just-mined
   block, so final evidence used the documented publicnode read endpoint. This proves the deployed
   v1 contract's backed Lane-B split, but not a DB/raw-download/API settlement because this
@@ -306,7 +314,7 @@ Out of scope:
   same exact-USDC-approval plus `vouch` UserOp used by the passkey UI:
   `0x63b34d3240b4e3c38dad85a80c0ad96a650d69e89a7cc7d21754c82e644a8c48`. Transaction
   `0x27d66de00f1be685a5170d2d8497bc0a1a0902446ba7ed315f70aa581855cf43` emitted the expected
-  `Vouched` event and moved voucher USDC from `4 -> 3`, vouch stake from `0 -> 1`, and voucher ETH
+  `Vouched` event and moved voucher USDC from `4 -> 3`, backing deposit from `0 -> 1`, and voucher ETH
   from `0 -> 0`. Browser verification on `localhost:3003/author/0x1913...CA30` rendered “Vouch for
   this Author” and the connected author backing as `2 USDC`. The UI write is passkey-only today:
   MetaMask/injected wallets deliberately reject Base vouching; this smoke does not make that path
@@ -337,17 +345,17 @@ Out of scope:
   Paid-report client work, fresh linked paused deployment, lifecycle smoke, activation, and rollback
   are owned by `.agents/plans/base-paid-report-activation-sepolia.plan.md`. This merge does not close
   the remaining Phase 9 custody, external-review/human-acceptance, monitoring, or live-smoke gates.
-- 2026-07-31 current-state correction: Base A1 no longer defers voucher slashing or uses the removed
-  `TREASURY_ROLE`. The merged lifecycle is author-bond-first plus author-wide voucher slashing with
-  pull-only excess for the immutable restitution recipient. Slash percentage, recipient, custody,
-  external review/risk acceptance, and live Sepolia activation evidence remain human-gated in the
+- 2026-07-31 current-state correction: Base A1 no longer defers deducting backers' deposited USDC or uses the removed
+  `TREASURY_ROLE`. The merged lifecycle is author-bond-first plus author-wide deducting backers' deposited USDC with
+  pull-only excess for the immutable recipient of remaining funds. Slash percentage, recipient, custody,
+  external review/written acceptance of specified risks, and live Sepolia activation evidence remain human-gated in the
   activation plan; this historical Phase 9 ledger does not reopen the mechanism choice.
 
 ## Part A - Base Sepolia E2E Proof
 
 ### Preflight
 
-Verify these before running live smokes:
+Verify these before running checks against the deployed system:
 
 - `BASE_SEPOLIA_RPC_URL` / `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` points at a reliable archive-capable
   Base Sepolia endpoint.
@@ -449,7 +457,7 @@ v1 spec should include:
   - event set sufficient for indexers and web snapshots
 - Defer unless explicitly approved:
   - Solana-specific listing-linked voucher allocation/refund-pool parity; Base A1 author-wide
-    voucher slashing is merged and activation-gated
+    deducting backers' deposited USDC is merged and activation-gated
   - refund-pool machinery beyond existing purchase/refund guarantees
   - protocol fee extraction
   - upgradeable proxy complexity
@@ -458,7 +466,7 @@ v1 spec should include:
 
 Before mainnet:
 
-- Replace EOA admin with multisig or a documented custody policy.
+- Replace EOA admin with multisig or a documented policy for holding and using signing keys.
 - Document roles:
   - DEFAULT_ADMIN_ROLE
   - CONFIG_ROLE
@@ -588,12 +596,12 @@ Security/mainnet gate evidence:
 
 ## Blockers And Open Questions
 
-- The Base A1 mechanism choice is closed: upheld paid-purchase reports slash author bond first and
+- The Base A1 mechanism choice is closed: upheld paid-purchase reports slash author's backing deposit first and
   then author-wide voucher stake. The remaining founder decision is the exact testnet slash
   percentage and activation/custody inputs in the Base paid-report activation plan.
 - Is the Base v1 contract a fresh non-upgradeable deploy or a proxy? Current recommendation: fresh
   non-upgradeable v1 unless ops requirements force upgradeability.
-- What is the mainnet admin custody target: multisig, hardware-wallet EOA plus timelock, or another
+- What is the mainnet control of administrator signing keys target: multisig, hardware-wallet EOA plus timelock, or another
   policy? This must be decided before Phase 10.
 - Should Base trust snapshots be cached in `author_trust_snapshots` or served live with short TTL?
   Marketplace scalability probably needs snapshots, but live reads are acceptable for early Sepolia

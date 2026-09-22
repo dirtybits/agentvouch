@@ -28,6 +28,14 @@ isProject: false
 
 # Base Port of AgentVouch Protocol Requirement A1 — Paid-Purchase Voucher Slashing
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This is a historical or completed-work record. Its original decisions, checkboxes, and evidence are preserved below. Do not treat it as fresh launch approval; use the current roadmap and launch requirements linked from the guide.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Source of truth
 
 This is the sole executable plan for branch `a2a/base-a1-voucher-slashing-port-20260709`. It was consolidated on 2026-07-12 from the final operator-approved decisions.

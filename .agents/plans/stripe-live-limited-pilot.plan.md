@@ -9,7 +9,7 @@ todos:
     content: Add the buyer allowlist, durable reservation and amount-fee-net ledger, and atomic GMV/completed-payment caps on top of the shipped live-key skill allowlist and unit ceiling.
     status: completed
   - id: prove-external-activation-gates
-    content: Record merchant-of-record/customer-facing identity, payout and tax/KYC ownership, publish and verify the Vercel WAF rule, and prove production webhook/schema/monitoring readiness.
+    content: "Record business responsible for the card sale/customer-facing identity, payout and tax/KYC ownership, publish and verify the Vercel WAF rule, and prove production webhook/schema/monitoring readiness."
     status: pending
   - id: deploy-disclosure-dormant
     content: Deploy the versioned checkout recourse acknowledgement and public docs with all card flags off, then browser-verify the exact production copy and disabled route.
@@ -28,11 +28,19 @@ isProject: true
 
 # Stripe Limited Live Walletless-Purchase Pilot
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> Card payments and blockchain USDC purchases are different payment methods. A card payment does not automatically create blockchain refunds, backing rewards, or purchase records.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 Run a deliberately small live-card pilot for signed-in Google/email buyers while keeping card
 commerce visibly and technically separate from AgentVouch protocol settlement. The pilot must be
-bounded by server-enforced buyer and skill scope, per-charge and aggregate exposure caps, durable
+bounded by server-enforced buyer and skill scope, per-charge and combined limits on customer money, durable
 gross/fee/net accounting, a verified edge rate limit, versioned buyer acknowledgement, and an
 immediate checkout kill switch.
 
@@ -44,8 +52,8 @@ payment remain real-funds actions requiring separate explicit human approval.
 A card payment grants only an account-scoped off-chain marketplace access grant. It creates:
 
 - no Solana purchase PDA, Base purchase id, x402 settlement, or protocol receipt;
-- no protocol author proceeds or voucher rewards;
-- no eligibility to open a bonded paid Report, trigger voucher slashing, or claim buyer credit;
+- no protocol author's sales earnings or backers' revenue shares;
+- no eligibility to open a bonded paid Report, trigger deducting backers' deposited USDC, or claim amount owed to the buyer;
 - no protocol refund pool or on-chain buyer-recourse claim.
 
 Card refunds and payment disputes are handled off-chain by the marketplace operator. Protocol USDC
@@ -125,10 +133,10 @@ remains the path for protocol-visible settlement and recourse.
 ### Out of scope
 
 - Base mainnet enablement or any change to the intentional `eip155:8453` rejection.
-- Fiat-to-USDC conversion, on-chain settlement, protocol receipts, author proceeds, voucher yield,
-  paid Reports, voucher slashing, or buyer credit for card payments.
+- Fiat-to-USDC conversion, on-chain settlement, protocol receipts, author's sales earnings, voucher yield,
+  paid Reports, deducting backers' deposited USDC, or amount owed to the buyer for card payments.
 - Stripe Connect, automated author payouts, or any payout before the founder chooses a model.
-- Legal, tax, KYC, sanctions, geographic, reserve, or merchant-of-record conclusions inferred by
+- Legal, tax, KYC, sanctions, geographic, reserve, or business responsible for the card sale conclusions inferred by
   code or by this plan.
 - Broad production availability, legacy live wallet-bound checkout, unallowlisted buyers/listings,
   subscriptions, coupons, multiple currencies, or stored-card billing.
@@ -140,7 +148,7 @@ Every `REQUIRED` value must be replaced by a dated decision, named owner, and ev
 
 | Decision                                                                                                                             | Recorded value                                                                  | Owner / approver | Evidence     | Status |
 | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | ---------------- | ------------ | ------ |
-| Graduation model                                                                                                                     | Limited early-sales rail is the proposed scope; founder acceptance **REQUIRED** | **REQUIRED**     | **REQUIRED** | open   |
+| Plan for moving beyond the first card-payment trial                                                                                  | Limited early-sales rail is the proposed scope; founder acceptance **REQUIRED** | **REQUIRED**     | **REQUIRED** | open   |
 | Merchant of record / legal seller identity shown on site, Checkout, receipt, and support surfaces                                    | **REQUIRED**                                                                    | **REQUIRED**     | **REQUIRED** | open   |
 | Customer support name, channel, hours/SLA, refund policy, and card-statement descriptor                                              | **REQUIRED**                                                                    | **REQUIRED**     | **REQUIRED** | open   |
 | Eligible author/listing criteria, exact skill UUID allowlist, and author consent                                                     | **REQUIRED**                                                                    | **REQUIRED**     | **REQUIRED** | open   |
@@ -157,7 +165,7 @@ Every `REQUIRED` value must be replaced by a dated decision, named owner, and ev
 | Webhook/reconciliation on-call owner and checkout kill authority                                                                     | **REQUIRED**                                                                    | **REQUIRED**     | **REQUIRED** | open   |
 | Real-card canary buyer, skill, charge, success criteria, and refund/no-refund choice                                                 | **REQUIRED**                                                                    | **REQUIRED**     | **REQUIRED** | open   |
 
-Stripe's marketplace guidance says merchant-of-record identity, funds control, customer disclosure,
+Stripe's marketplace guidance says business responsible for the card sale identity, funds control, customer disclosure,
 loss responsibility, payouts, and tax/KYC obligations depend on the selected model. Record a real
 decision; do not treat these sources or this plan as legal/tax advice:
 
@@ -237,7 +245,7 @@ intended `agentvouch-postgres` project.
 - Rehearse additive bootstrap, caps, lifecycle, reconciliation, monitor, and rollback against a
   disposable copy of the intended production database.
 - Complete every founder decision and external gate in this plan, including exact scope values,
-  WAF proof, merchant-of-record/tax/payout/support ownership, and monitoring/on-call evidence.
+  WAF proof, business responsible for the card sale/tax/payout/support ownership, and monitoring/on-call evidence.
 - Keep the source stop gate false until that evidence is reviewed in a separate activation change.
 
 ## External Vercel WAF Gate
@@ -422,7 +430,7 @@ Behavioral acceptance requires evidence that:
 ## Stop Conditions
 
 - Any required founder decision is blank, ambiguous, or lacks a named owner/evidence.
-- Merchant-of-record/customer-facing seller identity or payout/tax/KYC responsibility is unresolved.
+- Business responsible for the card sale/customer-facing seller identity or payout/tax/KYC responsibility is unresolved.
 - Card copy is not deployed exactly at the decision point or the accepted version is absent from
   live Stripe metadata.
 - Live scope, buyer/skill allowlist, unit cap, payment cap, aggregate cap, ledger, or migration

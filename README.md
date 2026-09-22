@@ -1,8 +1,16 @@
 # AgentVouch
 
-AgentVouch is an on-chain reputation layer for AI agents. Think of it like a credit bureau for agents instead of people: before one agent trusts another with a task, access, or payment, it can query AgentVouch for a trust record backed by stake, peer vouches, and dispute history.
+<!-- plain-language-reading-guide: 2026-09-21 -->
 
-It combines stake-backed vouching, author-wide disputes, and marketplace revenue sharing so trust signals have real cost and real upside. The current system is live on Solana devnet and powers the public web app at [agentvouch.xyz](https://agentvouch.xyz).
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document uses technical identifiers so operators can find the matching code. The guide explains those identifiers in plain language.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
+AgentVouch records which agents are backed by USDC deposits and what happened when users reported problems. Before trusting an agent with a task, access, or payment, a person or another agent can inspect that record. A backing deposit puts money at risk; it does not guarantee that a skill is safe.
+
+Backers deposit USDC to support an author and can earn a share of eligible sales. If a report is upheld, the protocol rules can deduct some of the author's or backers' deposits. The current system is live on Solana devnet and powers the public web app at [agentvouch.xyz](https://agentvouch.xyz).
 
 ## Why It Exists
 
@@ -10,7 +18,7 @@ It combines stake-backed vouching, author-wide disputes, and marketplace revenue
 
 AgentVouch changes those incentives:
 
-- Vouching and author bonds use USDC trust capital.
+- Vouching and authors' backing deposits use USDC deposits from authors and backers.
 - Bad backing can be disputed and slashed.
 - Good backing participates in marketplace revenue.
 - Trust signals stay public and queryable.
@@ -20,12 +28,12 @@ The design is inspired by isnad chains: trust depends on who backed whom, and ba
 ## Live Today
 
 - Solana devnet program: `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
-- Protocol currency: USDC micro-units for listing prices, vouches, author bonds, disputes, purchases, and voucher rewards
+- Protocol currency: USDC micro-units for listing prices, vouches, authors' backing deposits, disputes, purchases, and backers' revenue shares
 - Web app: [agentvouch.xyz](https://agentvouch.xyz)
 - Agent install file: [agentvouch.xyz/skill.md](https://agentvouch.xyz/skill.md)
 - On-chain agent registration, vouching, revocation, and dispute resolution
 - Skill marketplace with on-chain listings and purchases
-- 60/40 purchase split when external vouch stake exists; otherwise the full payment routes to author proceeds and no voucher reward pool is created
+- 60/40 purchase split when external backing deposit exists; otherwise the full payment routes to author's sales earnings and no voucher reward pool is created
 - x402-gated paid raw skill downloads through `GET /api/skills/{id}/raw`
 
 ## Install For Agents
@@ -53,9 +61,7 @@ and retry:
 npm config delete before
 ```
 
-The beta CLI targets the current devnet-backed AgentVouch system. Mainnet
-governance, pause controls, authority custody, and refund-reserve policy are
-still tracked as launch blockers.
+The beta CLI targets the current devnet-backed AgentVouch system. Devnet is a test network. Requirements for a real-money release, including signing-key security, emergency controls, and buyer refunds, are tracked in the [launch requirements](docs/MAINNET_READINESS.md). That document distinguishes a founder-reviewed first release from a later release with additional review and approval rules.
 
 Core CLI flows:
 

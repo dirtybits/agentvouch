@@ -3,7 +3,7 @@ name: a3-emergency-pause
 overview: "Implement roadmap A3 / readiness P0.3: make the existing paused flag and pause_authority operational with a small set_paused instruction, tests, generated clients, and runbook updates."
 todos:
   - id: design-lock
-    content: Lock the A3-lite pause policy: paused blocks new risk and purchases, while safe exits stay allowed unless a handler can worsen protocol exposure
+    content: "Lock the A3-lite pause policy: paused blocks new risk and purchases, while safe exits stay allowed unless a handler can worsen protocol exposure"
     status: completed
   - id: set-paused-instruction
     content: Add set_paused gated by config.pause_authority, emit PauseStateChanged, and register the instruction in mod.rs/lib.rs
@@ -28,16 +28,24 @@ isProject: false
 
 # AgentVouch Protocol Requirement A3 — Emergency Pause
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers the emergency stop for new activity and the payments that must remain available. The reference code A3 names that work.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
-Turn AgentVouch's existing `ReputationConfig.paused` flag into a real emergency brake before a capped mainnet alpha. A `pause_authority` signer can pause or unpause the protocol, risky new activity stops while paused, and safe exit/claim paths remain available when they do not increase exposure.
+Turn AgentVouch's existing `ReputationConfig.paused` flag into a real emergency brake before a capped mainnet alpha. A `pause_authority` signer can pause or unpause the protocol, risky new activity stops while paused, and safe exit/ways to collect payments remain available when they do not increase exposure.
 
 Design target as of 2026-06-18:
 
 1. **A3-lite, not full governance.** Ship a narrow `set_paused(paused: bool)` instruction. Authority rotation and richer governance remain A2 or later governance work.
 2. **Pause blocks new risk.** Creating new protocol exposure should fail while paused.
 3. **Pause should avoid trapping buyer/user claims.** Buyer refund claims and voucher revenue claims stay open.
-4. **Pause preserves author-side recovery collateral.** Author proceeds and author-bond withdrawals stay blocked while paused because they can drain funds needed during incident response.
+4. **Pause preserves author-side recovery collateral.** Author's sales earnings and author-bond withdrawals stay blocked while paused because they can drain funds needed during incident response.
 5. **Pause authority is explicit.** Only `config.pause_authority` can toggle the flag.
 6. **The current guards become real.** Existing `require!(!config.paused, ...)` checks stop being dead code once `set_paused` exists.
 
@@ -132,12 +140,14 @@ Decision locked 2026-06-19: `claim_purchase_refund` should be allowed while paus
 ## Implementation Steps
 
 1. **Lock the pause policy in tests first.**
+
    - Buyer refund claims stay allowed.
    - Voucher revenue claims stay allowed.
-   - Author proceeds and author-bond withdrawals stay blocked until unpaused.
+   - Author's sales earnings and author-bond withdrawals stay blocked until unpaused.
    - Document the reason: paused mode preserves recovery collateral during incident response.
 
 2. **Add `set_paused`.**
+
    - Accounts:
      - mutable `config` PDA, seeds `[b"config"]`
      - `pause_authority: Signer`
@@ -147,29 +157,32 @@ Decision locked 2026-06-19: `claim_purchase_refund` should be allowed while paus
    - Emit `PauseStateChanged { config, pause_authority, paused, timestamp }`.
 
 3. **Register the instruction.**
+
    - Add `pub mod set_paused;` and `pub use set_paused::*;` in `instructions/mod.rs`.
    - Add `pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()>` in `lib.rs`.
 
 4. **Audit pause guards.**
+
    - Keep guards on new-risk paths listed as blocked.
    - Add missing guards only for risky paths that lack them.
    - Remove or intentionally keep guards on exit paths according to the design decision.
    - Keep x402 bridge fail-closed behavior aligned with on-chain `settle_x402_purchase`.
 
 5. **Add tests.**
+
    - Test unauthorized pause fails.
    - Test `pause_authority` can pause and unpause.
    - Test idempotent pause/unpause.
    - Test at least one representative blocked flow from each risk family:
      - listing creation/update
-     - author bond deposit
+     - author's backing deposit deposit
      - vouch/link
      - direct purchase
      - x402 settlement if test scaffolding exists
      - open dispute
    - Test safe exits according to the locked policy:
-     - author proceeds withdrawal or explicitly documented blocked behavior
-     - author bond withdrawal
+     - author's sales earnings withdrawal or explicitly documented blocked behavior
+     - author's backing deposit withdrawal
      - vouch revoke
      - voucher revenue claim
      - purchase refund claim
@@ -177,6 +190,7 @@ Decision locked 2026-06-19: `claim_purchase_refund` should be allowed while paus
    - Test `web/lib/x402ProtocolBridge.ts` fail-closed behavior if the web suite already has bridge tests.
 
 6. **Regenerate IDL and clients.**
+
    - Run Anchor build.
    - Sync `target/idl/agentvouch.json` to `web/agentvouch.json`.
    - Run `npm run generate:client`.
@@ -202,7 +216,7 @@ Decision locked 2026-06-19: `claim_purchase_refund` should be allowed while paus
 10. Paused blocks direct purchase.
 11. Paused blocks x402 settlement or the bridge fails before transaction construction.
 12. Paused blocks opening a new author dispute.
-13. Paused blocks author proceeds withdrawal.
+13. Paused blocks author's sales earnings withdrawal.
 14. Paused blocks author-bond withdrawal.
 15. Paused still allows vouch revoke when no open dispute exists.
 16. Paused still allows voucher revenue claim.
@@ -254,4 +268,4 @@ The smoke should include at minimum: set paused true, prove a purchase or vouch 
 
 - `withdraw_author_proceeds` and `withdraw_author_bond` are deliberately blocked while paused to preserve recovery collateral. If a later incident response policy wants author-side exits during pause, update the runbook and tests first.
 - Operator setup: production `pause_authority` should not be an ordinary hot wallet for a mainnet alpha.
-- A3 does not solve A2 dispute governance or A4 reserve automation. It only adds the brake pedal needed to launch a tightly capped alpha more safely.
+- A3 does not solve A2 dispute governance or A4 reserve automation. It only adds the brake pedal needed to launch a tightly first small release with limits on customer money more safely.
