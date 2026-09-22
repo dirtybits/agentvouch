@@ -722,7 +722,7 @@ ListingVouchPosition: seeds = ["listing_vouch_position", skill_listing, vouch] (
 
 When a skill is purchased on-chain:
 
-- If external backing deposit is active, **60%** goes to the skill author and **40%** is split among vouchers by stake weight
+- If external backing deposits (**external vouch stake**) are active, **60%** goes to the skill author and **40%** is split among vouchers by stake weight
 - If no external backing deposit is active, including author self-stake only or zero backing, the full payment goes to author's sales earnings and no voucher reward pool is created
 - No protocol fees
 
