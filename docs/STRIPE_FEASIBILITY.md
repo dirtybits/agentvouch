@@ -1,5 +1,13 @@
 # Stripe / Web2 Payments — Feasibility Note (WIP)
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./PLAIN_LANGUAGE_GUIDE.md).
+>
+> Card payments and blockchain USDC purchases are different payment methods. A card payment does not automatically create blockchain refunds, backing rewards, or purchase records.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 Status: **implemented in test mode; production disabled**. The Tier 1
 off-chain-access path supports signed-in Google/email buyer accounts plus the
 legacy signed-wallet path, but nothing here makes card checkout
@@ -11,12 +19,14 @@ The question splits into two very different problems:
 
 1. **Gate access to a paid skill behind a card payment** — _easy_
    (a few days). Prototyped here.
-2. **Preserve AgentVouch's on-chain economics** (author proceeds escrow +
+2. **Preserve AgentVouch's on-chain economics** (author's sales earnings escrow +
    the 60/40 author/voucher reward split, disputes, refunds) **through a
-   fiat rail** — _hard_ (weeks), and partly a business/compliance decision
+   payment method using traditional currency** — _hard_ (weeks), and partly a business/compliance decision
    rather than an engineering one. **Not** prototyped — only specified.
 
-## Payment Rail Decision — 2026-07-01
+<a id="payment-rail-decision--2026-07-01"></a>
+
+## Payment method Decision — 2026-07-01
 
 Base/USDC/x402 changes the Stripe scope, not the Stripe value. AgentVouch
 should keep Stripe MPP as a card-funded acquisition path for buyers and
@@ -28,7 +38,7 @@ Current positioning:
 
 - **Preferred protocol path:** direct USDC `purchase_skill` and the
   protocol-listed x402 bridge. These paths can create `Purchase` PDA state,
-  fund author proceeds, fund voucher rewards, and preserve dispute/refund
+  fund author's sales earnings, fund backers' revenue shares, and preserve dispute/refund
   semantics.
 - **Base path:** Base is the active smart-account/x402 workstream. It can make
   agent-native USDC payments feel closer to web2 checkout, especially through
@@ -39,11 +49,11 @@ Current positioning:
   settlement unless a later fiat -> USDC -> on-chain settlement design is
   approved and implemented.
 
-Before Tier 2, choose one graduation model:
+Before Tier 2, choose one plan for moving beyond the first card-payment trial:
 
 1. **Card on-ramp to protocol settlement:** Stripe collects card payment,
    operator converts net proceeds to USDC, then settles through the protocol
-   path before the sale counts toward author proceeds, voucher rewards, or
+   path before the sale counts toward author's sales earnings, backers' revenue shares, or
    protocol refund state.
 2. **Parallel MPP marketplace:** Stripe Connect or operator payouts handle
    author payment off-chain. Sales remain visibly separate from protocol
@@ -146,8 +156,8 @@ Does **not** (deliberately out of scope — these are the Tier 2/3 hard parts):
   entitlement, partial refunds are durably queued, and a genuinely new payment
   can re-mint. The read-only operator monitor surfaces unresolved items;
   partial-refund decisions and dispute-won reinstatement are still manual.
-- The durable live-pilot amount/fee/net ledger and atomic exposure caps are
-  implemented but dormant. Disposable-database rehearsal, fee/net monitoring,
+- The durable live-pilot amount/fee/net ledger and atomic limits on money at risk are
+  implemented but dormant. Disposable-database practice run, fee/net monitoring,
   and every founder/external gate remain stop conditions before activation.
 
 ## The hard parts (Tier 2 / Tier 3)
@@ -174,8 +184,8 @@ reconciliation.
 ### Obstacle 3 — The economics are the product, and they're on-chain + atomic
 
 Today a `purchase_skill` is one Solana transaction that atomically splits
-60% to the per-listing author proceeds escrow and 40% to the listing reward
-vault (or 100% to author escrow when no external vouch stake exists), with
+60% to the per-listing author's sales earnings escrow and 40% to the listing reward
+vault (or 100% to author escrow when no external backing deposit exists), with
 disputes/slashing/refunds enforced by the Anchor program
 (`programs/agentvouch/`). Stripe gives fiat in a platform account with T+2
 settlement and chargeback risk. Preserving the model requires:
@@ -200,12 +210,12 @@ and settled on-chain. Worth an explicit product decision before Tier 2.
 
 ## Rough effort
 
-| Scope                                                                  | Effort                            | Notes                                                                                      |
-| ---------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| Stripe -> wallet/account-scoped access only (implemented in test mode) | shipped                           | refund/dispute revocation and reconciliation shipped; production policy remains open       |
-| + Google/email card buyers                                             | shipped                           | opaque account, Clerk session, access grants, and walletless download                      |
-| + author fiat payouts                                                  | +1-2 weeks                        | Stripe Connect, onboarding, KYC, off-chain 60/40 accounting                                |
-| + preserve on-chain economics                                          | several weeks + design/compliance | fiat->USDC, treasury-pushed settlement, voucher rewards, dispute/chargeback reconciliation |
+| Scope                                                                  | Effort                            | Notes                                                                                              |
+| ---------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Stripe -> wallet/account-scoped access only (implemented in test mode) | shipped                           | refund/dispute revocation and reconciliation shipped; production policy remains open               |
+| + Google/email card buyers                                             | shipped                           | opaque account, Clerk session, access grants, and walletless download                              |
+| + author fiat payouts                                                  | +1-2 weeks                        | Stripe Connect, onboarding, KYC, off-chain 60/40 accounting                                        |
+| + preserve on-chain economics                                          | several weeks + design/compliance | fiat->USDC, treasury-pushed settlement, backers' revenue shares, dispute/chargeback reconciliation |
 
 ## Open product questions (answer before Tier 2)
 

@@ -25,6 +25,14 @@ isProject: false
 
 # AgentVouch Protocol Requirement A2, Stage S5 — Clients, Test, and Readiness
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers report-review rules or buyer-refund accounting. The reference code A2 names related work; the launch-requirements table decides which parts block the first release.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 Make the implemented A2 program usable and auditable outside Anchor tests: generated clients line up with the IDL, web/operator surfaces use the governed flow, CLI and smoke scripts understand new roles and program-computed refunds, and readiness docs match deployed devnet evidence.
@@ -65,6 +73,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
 ## Implementation Steps
 
 1. Regenerate Anchor and curated clients.
+
    - Run `NO_DNA=1 anchor build`.
    - Copy `target/idl/agentvouch.json` to `web/agentvouch.json`.
    - Run `npm run generate:client`.
@@ -82,6 +91,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Confirm generated `programs/agentvouch.ts` remains excluded if that is still the local curated-client pattern.
 
 2. Update web data/status helpers.
+
    - In `web/lib/authorDisputes.ts`, add `ResolutionProposed` labels and active-status behavior.
    - Preserve memcmp offsets or update them intentionally if S1 moved layout fields.
    - In `web/hooks/useReputationOracle.ts`, replace one-shot resolution calls with explicit propose/cancel/execute callbacks.
@@ -90,6 +100,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Expose proposal timestamps, executable timestamp, snapshots, refund preview, and reward preview where operator surfaces need them.
 
 3. Update dashboard/operator UI.
+
    - Replace Upheld/Dismiss immediate buttons with propose actions for the resolver.
    - Show pending proposal state when `ResolutionProposed`.
    - Show cancel action for config authority.
@@ -98,11 +109,13 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Keep copy concise and operational; this is an admin/operator surface, not a marketing page.
 
 4. Update CLI compatibility.
+
    - Rebuild type imports from `web/agentvouch.json` and `target/types/agentvouch`.
    - If the CLI exposes no dispute commands, verify it still builds and that program/config types compile.
    - If operator commands are added, keep them devnet-only and explicit about resolver/config/treasury roles.
 
 5. Update smoke script.
+
    - Replace one-shot resolve with:
      - propose
      - optionally cancel and re-propose in the A2 smoke path
@@ -117,6 +130,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Log proposal/executable timestamps, slash snapshots, `bond_slashed_deposit_usdc_micros`, reserve amounts, and tx signatures.
 
 6. Update docs only when true.
+
    - `docs/ROADMAP.md`: mark A2 implementation status and any sequencing changes.
    - `docs/MAINNET_READINESS.md`: move A2 from plan/design to implemented/devnet-live only after evidence exists.
    - `docs/PRODUCTION_RUNBOOK.md`: add authority policy, proposal/cancel/execute runbook, treasury sweep policy, monitoring events, and incident response for bad pending resolutions.

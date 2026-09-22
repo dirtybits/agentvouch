@@ -3,7 +3,7 @@ name: base-port-chain-adapter-phase-10
 overview: "BLOCKED gate plan: cut the AgentVouch default over to Base mainnet (eip155:8453) only after the Phase 9 v1 trust/security gates and mainnet contract/RPC/USDC/paymaster prerequisites all exist."
 todos:
   - id: confirm-phase10-prerequisites
-    content: Confirm every blocking row in the docs/MAINNET_READINESS.md Base Mainnet Gate Table has recorded evidence before any code change.
+    content: "Confirm every blocking row in the docs/MAINNET_READINESS.md Base real-money launch requirements has recorded evidence before any code change."
     status: pending
   - id: parameterize-base-chain-modules
     content: Introduce a configured-Base-chain seam (analogous to getConfiguredSolanaChainContext) and sweep the currently inventoried 31 Sepolia-pinned non-test Base modules (14 hard-import viem's baseSepolia chain object) — chain context/id literals, contract/USDC/RPC/explorer constants, evmAuth verification RPC, x402 routes, and paid-report surfaces — so Base Sepolia vs mainnet is env-selected, not hardcoded. Re-count before implementation; this is the bulk of the Phase 10 code work.
@@ -22,9 +22,17 @@ isProject: false
 
 # Phase 10 - Base Mainnet Cutover [BLOCKED]
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers preparation for Base mainnet, the real-money network. It does not itself authorize that launch.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Status
 
-**BLOCKED.** Do not start this plan until the Base Mainnet Gate Table in
+**BLOCKED.** Do not start this plan until the Base real-money launch requirements in
 `docs/MAINNET_READINESS.md` has the required recorded evidence for the chosen launch tier. Any code
 that enables `eip155:8453` before then is a stop-the-line bug (see the Phase 8a plan). This file
 used to be drafted as "Phase 8b," but was renamed on 2026-07-02 so the roadmap reads in dependency
@@ -53,7 +61,7 @@ Solana stays selectable; the Phase 8a env rollback seam keeps working as the eme
 ## Gate Pointer (all required before starting)
 
 The canonical go/no-go checklist is the
-`docs/MAINNET_READINESS.md` **Base Mainnet Gate Table**. Do not duplicate those rows here; this
+`docs/MAINNET_READINESS.md` **Base real-money launch requirements**. Do not duplicate those rows here; this
 plan starts only after every Base-alpha-blocking row needed for the chosen launch tier has recorded
 evidence there. Phase 10 then implements the cutover mechanics below.
 

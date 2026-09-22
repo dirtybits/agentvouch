@@ -25,6 +25,14 @@ isProject: false
 
 # AgentVouch Protocol Requirement A2, Stage S1 — State Layout and Events
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers report-review rules or buyer-refund accounting. The reference code A2 names related work; the launch-requirements table decides which parts block the first release.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 Land the A2 account/interface shape first so later agents can implement authority governance, proposed resolutions, refund accounting, and clients without repeatedly changing account sizes. This slice should compile and regenerate the IDL, but it should not implement the new settlement behavior yet.
@@ -58,6 +66,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
 ## Implementation Steps
 
 1. Update `ReputationConfig`.
+
    - Add `resolver_authority: Pubkey`.
    - Add `resolution_timelock_seconds: i64`.
    - Add `pending_config_authority: Option<Pubkey>` for the S2 two-step config handoff.
@@ -69,6 +78,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Keep `authority` as legacy/inert metadata. Do not add new authorization checks against `authority`.
 
 2. Update `AuthorDispute`.
+
    - Append `AuthorDisputeStatus::ResolutionProposed` to preserve existing enum encodings.
    - Append pending-resolution fields after the current fields, so existing memcmp assumptions such as author offset do not move:
      - `proposed_ruling: Option<AuthorDisputeRuling>`
@@ -84,6 +94,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Do not rename `ruling` or `resolved_at`; S3 will decide when those final fields are set.
 
 3. Update `ListingSettlement`.
+
    - Add `bond_slashed_deposit_usdc_micros: u64` next to `slashed_deposit_usdc_micros`.
    - Keep the two buckets distinct:
      - `slashed_deposit_usdc_micros` is voucher-slash money.
@@ -92,6 +103,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Do not mix author-bond slash into the voucher bucket.
 
 4. Update `initialize_config`.
+
    - Add `resolver_authority` and `resolution_timelock_seconds` inputs, or default resolver to `config_authority` only if the caller omits it through a local helper wrapper.
    - Initialize `pending_config_authority = None`.
    - Initialize `reserved_treasury_usdc_micros = 0`.
@@ -99,11 +111,13 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Preserve existing split, slash, mint, and chain-context validation.
 
 5. Update scripts and tests helpers.
+
    - In `tests/helpers/agentvouchUsdc.ts`, add `resolverAuthority` to `TestContext` if separate from `configAdmin`.
    - Update helper calls around `initializeConfig`.
    - Update config init scripts and smoke scripts so devnet initialization does not silently assign the wrong resolver authority.
 
 6. Add events in `events.rs`.
+
    - `AuthorDisputeResolutionProposed`
    - `AuthorDisputeResolutionCancelled`
    - `AuthorDisputeResolutionExecuted`

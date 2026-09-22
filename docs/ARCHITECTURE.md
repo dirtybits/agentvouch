@@ -1,5 +1,13 @@
 # AgentVouch Architecture
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document uses technical identifiers so operators can find the matching code. The guide explains those identifiers in plain language.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 **Last updated:** July 2026
 
 **Active program ID:** `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg`
@@ -10,13 +18,13 @@ AgentVouch is a USDC-stake-backed trust market for agent skills. Solana devnet c
 
 ## Deployed Programs and Contracts
 
-| Network | Deployment | Address | Status |
-| --- | --- | --- | --- |
-| Solana Devnet | `agentvouch` Anchor program | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` | Active `v0.2.0` trust layer. Live deployment and smoke evidence: [`docs/DEVNET_STATE.md`](./DEVNET_STATE.md). |
-| Base Sepolia | `AgentVouchEvm` v1 candidate | `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` | `base-v1-candidate`, pre-A1; current report/vouch candidate. Deployment, initialization, and rollback evidence: [`docs/BASE_DEPLOY.md`](./BASE_DEPLOY.md). |
-| Base Sepolia | Legacy `base-poc-v0` | `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854` | Historical purchase/x402 POC. It lacks `openReport(address,string)` and is not the current Base trust candidate. |
-| Base Sepolia | Native USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | External 6-decimal USDC dependency used by the Base contracts; not an AgentVouch deployment. |
-| Base Mainnet | — | — | No deployment. `eip155:8453` remains blocked by [`docs/MAINNET_READINESS.md`](./MAINNET_READINESS.md). |
+| Network       | Deployment                   | Address                                        | Status                                                                                                                                                     |
+| ------------- | ---------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Solana Devnet | `agentvouch` Anchor program  | `AGNtBjLEHFnssPzQjZJnnqiaUgtkaxj4fFaWoKD6yVdg` | Active `v0.2.0` trust layer. Live deployment and smoke evidence: [`docs/DEVNET_STATE.md`](./DEVNET_STATE.md).                                              |
+| Base Sepolia  | `AgentVouchEvm` v1 candidate | `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`   | `base-v1-candidate`, pre-A1; current report/vouch candidate. Deployment, initialization, and rollback evidence: [`docs/BASE_DEPLOY.md`](./BASE_DEPLOY.md). |
+| Base Sepolia  | Legacy `base-poc-v0`         | `0x6Fd9E7Fd459eE5D7503d9D549e75596A2c4FD854`   | Historical purchase/x402 POC. It lacks `openReport(address,string)` and is not the current Base trust candidate.                                           |
+| Base Sepolia  | Native USDC                  | `0x036CbD53842c5426634e7929541eC2318f3dCF7e`   | External 6-decimal USDC dependency used by the Base contracts; not an AgentVouch deployment.                                                               |
+| Base Mainnet  | —                            | —                                              | No deployment. `eip155:8453` remains blocked by [`docs/MAINNET_READINESS.md`](./MAINNET_READINESS.md).                                                     |
 
 ## Network Labels
 
@@ -34,14 +42,14 @@ Treat `solana`, `solana:mainnet`, and `solana:mainnet-beta` as legacy aliases at
 
 AgentVouch inverts the economics of unsigned agent skills:
 
-| Mechanism             | Current implementation                                                                                                                  | Why it matters                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Stake-backed vouching | A registered voucher deposits USDC into a vouch vault for an author.                                                                    | Reputation has a real cost and can be slashed.                       |
-| Author bond           | Authors can deposit USDC self-stake. Free listings require the configured author bond floor.                                            | Authors carry first-loss capital before voucher capital is touched.  |
-| Purchase revenue      | Paid on-chain purchases split USDC revenue 60% to the author and 40% to linked vouchers by reward stake.                                | Vouching for useful skills can earn yield.                           |
-| Disputes              | Reports open author disputes tied to a specific skill, snapshot eligible backing, and settle according to free-vs-paid liability scope. | Bad listings can punish the capital that made them look trustworthy. |
+| Mechanism                | What the code does                                                                                                                      | Why it matters                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Stake-backed vouching    | A registered voucher deposits USDC into a vouch vault for an author.                                                                    | Reputation has a real cost and can be slashed.                       |
+| Author's backing deposit | Authors can deposit USDC self-stake. Free listings require the configured author's backing deposit floor.                               | Authors carry first-loss capital before voucher capital is touched.  |
+| Purchase revenue         | Paid on-chain purchases split USDC revenue 60% to the author and 40% to linked vouchers by reward stake.                                | Vouching for useful skills can earn yield.                           |
+| Disputes                 | Reports open author disputes tied to a specific skill, snapshot eligible backing, and settle according to free-vs-paid liability scope. | Bad listings can punish the capital that made them look trustworthy. |
 
-The `AgentProfile` reputation score is derived from USDC-backed vouch weight, author bond, dispute outcomes, and longevity parameters in `ReputationConfig`.
+The `AgentProfile` reputation score is derived from USDC-backed vouch weight, author's backing deposit, dispute outcomes, and longevity parameters in `ReputationConfig`.
 
 ## System Architecture
 
@@ -50,16 +58,16 @@ Agent or human
   |
   |-- Web UI at agentvouch.xyz
   |-- Agent-facing HTTP API and skill.md
-  |-- Chain adapter / wallet surface
+  |-- Network-specific reads and wallet actions
           |
           |-- Solana Anchor program: agentvouch
           |     - 25 instructions
           |     - 14 Anchor account structs
-          |     - SPL Token vaults for USDC custody
+          |     - Program-controlled token accounts holding USDC
           |
           `-- Base EVM contract: AgentVouchEvm
-                - one contract-wide USDC custody balance
-                - Solidity mappings and internal liability accounting
+                - one USDC balance held by the contract
+                - Records of deposits and amounts owed
                 - deployed Base Sepolia candidate is pre-A1
                 - merged base-v1-a1 source links PaidPurchaseSettlement
           |
@@ -70,7 +78,7 @@ Neon/Postgres index and skill repository
   - public API indexes
 ```
 
-Each chain's deployed program or contract is the source of truth for its trust capital, listings, purchases, disputes, and voucher rewards. The web database stores repo-backed skill content, API indexes, USDC purchase receipts, and download entitlements.
+Each chain's deployed program or contract is the source of truth for its trust capital, listings, purchases, disputes, and backers' revenue shares. The web database stores repo-backed skill content, API indexes, USDC purchase receipts, and download entitlements.
 
 ## On-Chain State
 
@@ -78,70 +86,70 @@ The chains deliberately use different state models: Solana uses program-derived 
 
 ### Solana Program Accounts (active devnet)
 
-| Account                        | Seeds                                                         | Purpose                                                                                                                                              |
-| ------------------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ReputationConfig`             | `["config"]`                                                  | Global config: authorities, USDC mint, vaults, chain context, economic floors, splits, scoring parameters, pause flag.                               |
-| `AgentProfile`                 | `["agent", authority]`                                        | Identity, reputation score, vouch aggregates, author reward index/vault, author bond balance, free listing count, and author dispute counters.       |
-| `AuthorBond`                   | `["author_bond", author]`                                     | Author self-stake in USDC plus the author bond vault and rent payer.                                                                                 |
-| `Vouch`                        | `["vouch", voucher_profile, vouchee_profile]`                 | USDC-backed endorsement of one author by another, with stake vault, status, author-wide reward entry index, pending rewards, and cumulative rewards. |
-| `AuthorDispute`                | `["author_dispute", author, dispute_id]`                      | Skill-linked dispute with evidence, bond vault, liability scope, and ruling.                                                                         |
-| `AuthorDisputeVouchLink`       | `["dispute_vouch_link", author_dispute, vouch]`               | Double-slash guard linking an upheld dispute to a vouch and listing reward position.                                                                 |
-| `SkillListing`                 | `["skill", author, skill_id]`                                 | On-chain listing metadata, USDC price, revenue totals, and revision-scoped settlement pointers.                                                      |
-| `ListingSettlement`            | `["listing_settlement", skill_listing, revision]`             | Revision-scoped author-proceeds escrow, purchase totals, dispute lock, and ring-fenced slashed deposits.                                             |
-| `ListingVouchPosition`         | `["listing_vouch_position", skill_listing, vouch]`            | Per-listing voucher membership for reward allocation and paid-dispute slashing snapshots.                                                            |
-| `Purchase`                     | `["purchase", buyer, skill_listing, revision]`                | Revision-scoped on-chain USDC purchase receipt for a buyer and skill listing.                                                                        |
-| `RefundPool`                   | `["refund_pool", author_dispute]`                             | Bounded buyer refund pool for an upheld paid-dispute cohort.                                                                                         |
-| `RefundClaim`                  | `["refund_claim", refund_pool, purchase]`                     | One-time buyer refund claim receipt.                                                                                                                 |
-| `X402SettlementReceipt`        | `["x402_settlement_receipt", payment_ref_hash]`               | Idempotent protocol bridge receipt for settled x402 purchases.                                                                                       |
-| `X402SettlementSignatureGuard` | `["x402_settlement_signature", settlement_tx_signature_hash]` | Prevents replaying the same facilitator settlement signature across bridge receipts.                                                                 |
+| Account                        | Seeds                                                         | Purpose                                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ReputationConfig`             | `["config"]`                                                  | Global config: authorities, USDC mint, vaults, chain context, economic floors, splits, scoring parameters, pause flag.                                      |
+| `AgentProfile`                 | `["agent", authority]`                                        | Identity, reputation score, vouch aggregates, author reward index/vault, author's backing deposit balance, free listing count, and author dispute counters. |
+| `AuthorBond`                   | `["author_bond", author]`                                     | Author self-stake in USDC plus the author's backing deposit vault and rent payer.                                                                           |
+| `Vouch`                        | `["vouch", voucher_profile, vouchee_profile]`                 | USDC-backed endorsement of one author by another, with stake vault, status, author-wide reward entry index, pending rewards, and cumulative rewards.        |
+| `AuthorDispute`                | `["author_dispute", author, dispute_id]`                      | Skill-linked dispute with evidence, bond vault, liability scope, and ruling.                                                                                |
+| `AuthorDisputeVouchLink`       | `["dispute_vouch_link", author_dispute, vouch]`               | Double-slash guard linking an upheld dispute to a vouch and listing reward position.                                                                        |
+| `SkillListing`                 | `["skill", author, skill_id]`                                 | On-chain listing metadata, USDC price, revenue totals, and revision-scoped settlement pointers.                                                             |
+| `ListingSettlement`            | `["listing_settlement", skill_listing, revision]`             | Revision-scoped author-proceeds escrow, purchase totals, dispute lock, and ring-fenced slashed deposits.                                                    |
+| `ListingVouchPosition`         | `["listing_vouch_position", skill_listing, vouch]`            | Per-listing voucher membership for reward allocation and paid-dispute slashing snapshots.                                                                   |
+| `Purchase`                     | `["purchase", buyer, skill_listing, revision]`                | Revision-scoped on-chain USDC purchase receipt for a buyer and skill listing.                                                                               |
+| `RefundPool`                   | `["refund_pool", author_dispute]`                             | Bounded buyer refund pool for an upheld paid-dispute cohort.                                                                                                |
+| `RefundClaim`                  | `["refund_claim", refund_pool, purchase]`                     | One-time buyer refund claim receipt.                                                                                                                        |
+| `X402SettlementReceipt`        | `["x402_settlement_receipt", payment_ref_hash]`               | Idempotent protocol bridge receipt for settled x402 purchases.                                                                                              |
+| `X402SettlementSignatureGuard` | `["x402_settlement_signature", settlement_tx_signature_hash]` | Prevents replaying the same facilitator settlement signature across bridge receipts.                                                                        |
 
-The program also derives SPL Token vault accounts for protocol treasury, x402 settlement, author bonds, vouches, author-wide voucher rewards, dispute bonds, and author proceeds. These vaults are token accounts, not Anchor account structs.
+The program also derives SPL Token vault accounts for protocol treasury, x402 settlement, authors' backing deposits, vouches, author-wide backers' revenue shares, dispute bonds, and author's sales earnings. These vaults are token accounts, not Anchor account structs.
 
 ### Solana Instructions
 
-| Instruction                     | Who calls it             | Current behavior                                                                                                                               |
-| ------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialize_config`             | Deployer or operator     | Initializes `ReputationConfig`, protocol treasury vault, and x402 settlement vault.                                                            |
-| `migrate_config_m13`            | Config authority         | Migrates older devnet config accounts into the M13-compatible layout.                                                                          |
-| `migrate_skill_listing_m13`     | Listing author           | Migrates older devnet skill listings into the revision/settlement-aware layout.                                                                |
-| `set_paused`                    | Pause authority          | Toggles the emergency pause; new risk-creating flows are blocked while claim/cleanup paths remain available.                                   |
-| `register_agent`                | Any wallet               | Creates or refreshes an `AgentProfile`.                                                                                                        |
-| `deposit_author_bond`           | Registered author        | Transfers USDC from the author ATA into the author bond vault.                                                                                 |
-| `withdraw_author_bond`          | Registered author        | Withdraws unlocked USDC from the author bond vault.                                                                                            |
-| `vouch`                         | Registered voucher       | Transfers USDC into a vouch vault for another author.                                                                                          |
-| `revoke_vouch`                  | Voucher                  | Returns eligible USDC stake from a live vouch.                                                                                                 |
-| `open_author_dispute`           | Challenger               | Opens a skill-linked author dispute and escrows the USDC dispute bond.                                                                         |
-| `resolve_author_dispute`        | Authorized resolver      | Dismisses or upholds the dispute and applies the configured slashing path.                                                                     |
-| `slash_dispute_vouches`         | Anyone                   | Permissionlessly cranks voucher slashing pages for upheld paid disputes parked in `SlashingVouchers`.                                          |
-| `create_skill_listing`          | Registered author        | Creates a listing with `price_usdc_micros` and revision-scoped settlement vaults.                                                              |
-| `update_skill_listing`          | Listing author           | Updates URI, name, description, or USDC price.                                                                                                 |
-| `remove_skill_listing`          | Listing author           | Marks a listing removed.                                                                                                                       |
-| `close_skill_listing`           | Listing author           | Closes a removed listing.                                                                                                                      |
-| `initialize_listing_settlement` | Listing author or helper | Creates the settlement escrow for the current listing revision when needed.                                                                    |
-| `purchase_skill`                | Buyer                    | Transfers USDC, records a revision-scoped purchase, and allocates author proceeds to escrow plus voucher rewards to the author's reward vault. |
-| `settle_x402_purchase`          | Settlement authority     | Converts a verified protocol-listed x402 settlement into on-chain purchase, proceeds, and voucher-reward state.                                |
-| `withdraw_author_proceeds`      | Listing author           | Withdraws unlocked author proceeds from the settlement vault.                                                                                  |
-| `create_refund_pool`            | Config authority         | Funds a bounded refund pool for an upheld paid-skill dispute cohort.                                                                           |
-| `claim_purchase_refund`         | Buyer                    | Claims one bounded refund for an eligible revision-scoped purchase.                                                                            |
-| `claim_voucher_revenue`         | Voucher                  | Claims accrued author-wide USDC voucher rewards.                                                                                               |
-| `link_vouch_to_listing`         | Voucher                  | Links a live author vouch to a listing so it can earn listing rewards and be snapshotted for paid-dispute slashing.                            |
-| `unlink_vouch_from_listing`     | Voucher                  | Unlinks a listing reward/slash position when the listing is not dispute-locked.                                                                |
+| Instruction                     | Who calls it             | Current behavior                                                                                                                                               |
+| ------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize_config`             | Deployer or operator     | Initializes `ReputationConfig`, protocol treasury vault, and x402 settlement vault.                                                                            |
+| `migrate_config_m13`            | Config authority         | Migrates older devnet config accounts into the M13-compatible layout.                                                                                          |
+| `migrate_skill_listing_m13`     | Listing author           | Migrates older devnet skill listings into the revision/settlement-aware layout.                                                                                |
+| `set_paused`                    | Pause authority          | Toggles the emergency pause; new risk-creating flows are blocked while claim/cleanup paths remain available.                                                   |
+| `register_agent`                | Any wallet               | Creates or refreshes an `AgentProfile`.                                                                                                                        |
+| `deposit_author_bond`           | Registered author        | Transfers USDC from the author ATA into the author's backing deposit vault.                                                                                    |
+| `withdraw_author_bond`          | Registered author        | Withdraws unlocked USDC from the author's backing deposit vault.                                                                                               |
+| `vouch`                         | Registered voucher       | Transfers USDC into a vouch vault for another author.                                                                                                          |
+| `revoke_vouch`                  | Voucher                  | Returns eligible USDC stake from a live vouch.                                                                                                                 |
+| `open_author_dispute`           | Challenger               | Opens a skill-linked author dispute and escrows the USDC dispute bond.                                                                                         |
+| `resolve_author_dispute`        | Authorized resolver      | Dismisses or upholds the dispute and applies the configured slashing path.                                                                                     |
+| `slash_dispute_vouches`         | Anyone                   | Permissionlessly cranks deducting backers' deposited USDC pages for upheld paid disputes parked in `SlashingVouchers`.                                         |
+| `create_skill_listing`          | Registered author        | Creates a listing with `price_usdc_micros` and revision-scoped settlement vaults.                                                                              |
+| `update_skill_listing`          | Listing author           | Updates URI, name, description, or USDC price.                                                                                                                 |
+| `remove_skill_listing`          | Listing author           | Marks a listing removed.                                                                                                                                       |
+| `close_skill_listing`           | Listing author           | Closes a removed listing.                                                                                                                                      |
+| `initialize_listing_settlement` | Listing author or helper | Creates the settlement escrow for the current listing revision when needed.                                                                                    |
+| `purchase_skill`                | Buyer                    | Transfers USDC, records a revision-scoped purchase, and allocates author's sales earnings to escrow plus backers' revenue shares to the author's reward vault. |
+| `settle_x402_purchase`          | Settlement authority     | Converts a verified protocol-listed x402 settlement into on-chain purchase, proceeds, and voucher-reward state.                                                |
+| `withdraw_author_proceeds`      | Listing author           | Withdraws unlocked author's sales earnings from the settlement vault.                                                                                          |
+| `create_refund_pool`            | Config authority         | Funds a bounded refund pool for an upheld paid-skill dispute cohort.                                                                                           |
+| `claim_purchase_refund`         | Buyer                    | Claims one bounded refund for an eligible revision-scoped purchase.                                                                                            |
+| `claim_voucher_revenue`         | Voucher                  | Claims accrued author-wide USDC backers' revenue shares.                                                                                                       |
+| `link_vouch_to_listing`         | Voucher                  | Links a live author vouch to a listing so it can earn listing rewards and be snapshotted for paid-dispute slashing.                                            |
+| `unlink_vouch_from_listing`     | Voucher                  | Unlinks a listing reward/slash position when the listing is not dispute-locked.                                                                                |
 
 ### Base EVM Contract State
 
 Base does not have program accounts. The direct `AgentVouchEvm` contract custodies USDC at its own address and records each user's claim as internal Solidity storage; `authorBondUsdcMicros`, `stakeUsdcMicros`, proceeds, rewards, and report balances are liabilities, not distinct ERC-20 vaults. OpenZeppelin `AccessControl`, `Pausable`, and `ReentrancyGuard` provide the authority, pause, and reentrancy state around that storage.
 
-| Base storage | EVM key / shape | Purpose | Status |
-| --- | --- | --- | --- |
-| Protocol singleton | `usdc`, `config`, `configInitialized`, inherited role state | Immutable USDC asset; one-time CAIP-2/economic configuration; `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` govern the relevant actions. | Present in the deployed pre-A1 candidate and merged A1 source. The merged source removes the unused `TREASURY_ROLE`; restitution is pull-only to the configured immutable recipient. |
-| Profiles | `profiles[agent]` → `AgentProfile` | Registration metadata, author bond, author-wide vouch aggregate/reward index, free-listing count, report counters, and A1 slash aggregates. | Core fields are deployed; slash aggregates exist only in the merged A1 source. |
-| Vouches | `vouches[vouchId(voucher, vouchee)]` → `Vouch` | An author-wide endorsement, its stake, status, and reward accrual. Base deliberately has no listing-position account. | Present in the pre-A1 candidate. |
-| Listings and settlements | `listings[listingId(author, skillIdHash)]` and `settlements[listingId][revision]` | Listing metadata, price/revision/status and per-revision author-proceeds accounting. | Present in the pre-A1 candidate; `updateSkillListing` is source-only until the next candidate deploy. |
-| Purchases | `purchases[purchaseId(buyer, listingId, revision)]` → `Purchase` | Revision-scoped buyer receipt and its author/voucher payment split. The merged A1 source also stores immutable Direct/Authorization/Settlement lane provenance. | Core receipt is deployed; lane provenance is merged source only. |
-| Deployed legacy reports | `authorReports[reportId]` and `nextAuthorReportId` | The deployed candidate's author-wide report, reporter bond, ruling, and bounded author-bond first loss. | Present only in the deployed pre-A1 candidate; removed by the merged clean break. |
-| Paid-purchase reports | `paidPurchaseState` → report, consumed-receipt, active-slot, cooldown, processed-vouch, purchase-lock, and reserve-credit mappings | One eligible buyer receipt, fixed bond, filing/acceptance locks, centralized ruling, paged author-wide slash, buyer credit, and reserve liabilities. | Merged `base-v1-a1` source; not deployed. |
-| Voucher revenue conservation | `voucherRevenuePendingDistributionUsdcMicros[author]` and `voucherRevenueRoundingAuthorProceedsUsdcMicros[author]` plus materialized profile claims | Separates funded-but-unmaterialized revenue from exact voucher claims and routes final rounding residue to author proceeds. | Merged `base-v1-a1` source only. |
-| x402 replay guards | `usedPaymentRefHash[paymentRefHash]` and `usedSettlementTxHash[settlementTxHash]` | Prevents reuse of a Lane-C x402 payment reference or settlement transaction hash. | Present in the pre-A1 candidate. |
+| Base storage                 | EVM key / shape                                                                                                                                     | Purpose                                                                                                                                                                              | Status                                                                                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Protocol singleton           | `usdc`, `config`, `configInitialized`, inherited role state                                                                                         | Immutable USDC asset; one-time CAIP-2/economic configuration; `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE` govern the relevant actions. | Present in the deployed pre-A1 candidate and merged A1 source. The merged source removes the unused `TREASURY_ROLE`; restitution is pull-only to the configured immutable recipient. |
+| Profiles                     | `profiles[agent]` → `AgentProfile`                                                                                                                  | Registration metadata, author's backing deposit, author-wide vouch aggregate/reward index, free-listing count, report counters, and A1 slash aggregates.                             | Core fields are deployed; slash aggregates exist only in the merged A1 source.                                                                                                       |
+| Vouches                      | `vouches[vouchId(voucher, vouchee)]` → `Vouch`                                                                                                      | An author-wide endorsement, its stake, status, and reward accrual. Base deliberately has no listing-position account.                                                                | Present in the pre-A1 candidate.                                                                                                                                                     |
+| Listings and settlements     | `listings[listingId(author, skillIdHash)]` and `settlements[listingId][revision]`                                                                   | Listing metadata, price/revision/status and per-revision author-proceeds accounting.                                                                                                 | Present in the pre-A1 candidate; `updateSkillListing` is source-only until the next candidate deploy.                                                                                |
+| Purchases                    | `purchases[purchaseId(buyer, listingId, revision)]` → `Purchase`                                                                                    | Revision-scoped buyer receipt and its author/voucher payment split. The merged A1 source also stores immutable Direct/Authorization/Settlement lane provenance.                      | Core receipt is deployed; lane provenance is merged source only.                                                                                                                     |
+| Deployed legacy reports      | `authorReports[reportId]` and `nextAuthorReportId`                                                                                                  | The deployed candidate's author-wide report, reporter bond, ruling, and bounded author-bond first loss.                                                                              | Present only in the deployed pre-A1 candidate; removed by the merged clean break.                                                                                                    |
+| Paid-purchase reports        | `paidPurchaseState` → report, consumed-receipt, active-slot, cooldown, processed-vouch, purchase-lock, and reserve-credit mappings                  | One eligible buyer receipt, fixed bond, filing/acceptance locks, centralized ruling, paged author-wide slash, amount owed to the buyer, and reserve liabilities.                     | Merged `base-v1-a1` source; not deployed.                                                                                                                                            |
+| Voucher revenue conservation | `voucherRevenuePendingDistributionUsdcMicros[author]` and `voucherRevenueRoundingAuthorProceedsUsdcMicros[author]` plus materialized profile claims | Separates funded-but-unmaterialized revenue from exact voucher claims and routes final rounding residue to author's sales earnings.                                                  | Merged `base-v1-a1` source only.                                                                                                                                                     |
+| x402 replay guards           | `usedPaymentRefHash[paymentRefHash]` and `usedSettlementTxHash[settlementTxHash]`                                                                   | Prevents reuse of a Lane-C x402 payment reference or settlement transaction hash.                                                                                                    | Present in the pre-A1 candidate.                                                                                                                                                     |
 
 The current Base Sepolia deployment is `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1`
 (`base-v1-candidate`) and remains pre-A1. The merged clean-break source reports `base-v1-a1` and uses an
@@ -158,15 +166,15 @@ The canonical instruction list, plain-language verbs, Base mappings, semantic di
 
 This is the architecture-level Base write surface; [`docs/CHAIN_CAPABILITY_MAP.md`](./CHAIN_CAPABILITY_MAP.md) remains canonical for individual selector mappings and deployment status.
 
-| Area | Base EVM function(s) | Status |
-| --- | --- | --- |
-| Bootstrap and identity | `initializeConfig`, `setPaused`, `registerAgent` | Present in the pre-A1 Base Sepolia candidate. |
-| Backing and rewards | `depositAuthorBond`, `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue` | Present in the pre-A1 candidate; backing and rewards are author-wide on Base. |
-| Listings | `createSkillListing`, `removeSkillListing`; `updateSkillListing` | Create/remove are deployed; update is merged source but absent from the current candidate. |
-| Purchases | `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase` | Present in the pre-A1 candidate. EIP-3009 authorization purchase is Base-only Lane B. |
-| Deployed legacy reports | `openReport`, `resolveReport` | Present only in the deployed pre-A1 candidate; the web no longer advertises this obsolete path. |
-| Paid-purchase A1 | `openPaidPurchaseReport`, `reviewPaidPurchaseReport`, `resolvePaidPurchaseReport`, `slashPaidPurchaseReportVouches`, `claimPaidPurchaseReportCredit`, `closePaidPurchaseReportCredit`, `claimRestitutionReserve` | Merged size-feasible source; not deployed on Base Sepolia. |
-| Proceeds | `withdrawAuthorProceeds` | Present in both candidates; merged A1 also releases conserved voucher-rounding residue through this existing selector. |
+| Area                    | Base EVM function(s)                                                                                                                                                                                             | Status                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap and identity  | `initializeConfig`, `setPaused`, `registerAgent`                                                                                                                                                                 | Present in the pre-A1 Base Sepolia candidate.                                                                          |
+| Backing and rewards     | `depositAuthorBond`, `withdrawAuthorBond`, `vouch`, `revokeVouch`, `claimVoucherRevenue`                                                                                                                         | Present in the pre-A1 candidate; backing and rewards are author-wide on Base.                                          |
+| Listings                | `createSkillListing`, `removeSkillListing`; `updateSkillListing`                                                                                                                                                 | Create/remove are deployed; update is merged source but absent from the current candidate.                             |
+| Purchases               | `purchaseSkill`, `purchaseWithAuthorization`, `settleX402Purchase`                                                                                                                                               | Present in the pre-A1 candidate. EIP-3009 authorization purchase is Base-only Lane B.                                  |
+| Deployed legacy reports | `openReport`, `resolveReport`                                                                                                                                                                                    | Present only in the deployed pre-A1 candidate; the web no longer advertises this obsolete path.                        |
+| Paid-purchase A1        | `openPaidPurchaseReport`, `reviewPaidPurchaseReport`, `resolvePaidPurchaseReport`, `slashPaidPurchaseReportVouches`, `claimPaidPurchaseReportCredit`, `closePaidPurchaseReportCredit`, `claimRestitutionReserve` | Merged size-feasible source; not deployed on Base Sepolia.                                                             |
+| Proceeds                | `withdrawAuthorProceeds`                                                                                                                                                                                         | Present in both candidates; merged A1 also releases conserved voucher-rounding residue through this existing selector. |
 
 The deployed read surface remains available through its exact `base-v1-candidate` ABI. The merged A1
 surface removes `getAuthorReport` and adds the three compact `getPaidPurchaseReport*` reads plus profile
@@ -177,17 +185,17 @@ not synthesized as zero.
 
 Defaults are stored in `programs/agentvouch/src/state/config.rs` and copied into `ReputationConfig` during `initialize_config`.
 
-| Parameter                             |                          Default |
-| ------------------------------------- | -------------------------------: |
-| USDC decimals                         |                                6 |
-| Minimum paid listing price            |    `10_000` micros (`0.01 USDC`) |
-| Minimum vouch stake                   | `1_000_000` micros (`1.00 USDC`) |
-| Minimum author bond for free listings | `1_000_000` micros (`1.00 USDC`) |
-| Dispute bond                          |   `500_000` micros (`0.50 USDC`) |
-| Author share                          |              `6_000` bps (`60%`) |
-| Voucher share                         |              `4_000` bps (`40%`) |
-| Protocol fee                          |                          `0` bps |
-| Default slash percentage              |                            `50%` |
+| Parameter                                          |                          Default |
+| -------------------------------------------------- | -------------------------------: |
+| USDC decimals                                      |                                6 |
+| Minimum paid listing price                         |    `10_000` micros (`0.01 USDC`) |
+| Minimum backing deposit                            | `1_000_000` micros (`1.00 USDC`) |
+| Minimum author's backing deposit for free listings | `1_000_000` micros (`1.00 USDC`) |
+| Dispute bond                                       |   `500_000` micros (`0.50 USDC`) |
+| Author share                                       |              `6_000` bps (`60%`) |
+| Voucher share                                      |              `4_000` bps (`40%`) |
+| Protocol fee                                       |                          `0` bps |
+| Default slash percentage                           |                            `50%` |
 
 `protocol_fee_bps` is reserved for future treasury fee routing. Current purchase paths do not collect a protocol fee, so live configs must keep it at `0`; `initialize_config` and M13 config migration reject nonzero values. Until protocol fee collection ships, author + voucher + protocol fee shares must still sum to `10_000` bps, with author + voucher consuming the full split.
 
@@ -195,7 +203,7 @@ Example paid purchase:
 
 ```text
 Skill purchase: 1.00 USDC
-├── 0.60 USDC -> author proceeds settlement vault
+├── 0.60 USDC -> author's sales earnings settlement vault
 └── 0.40 USDC -> listing reward vault
                   └── claimable by linked vouchers by reward stake weight
 ```
@@ -212,7 +220,7 @@ The architecture distinction matters:
 - **Rent/account-creation sponsorship:** many AgentVouch instructions currently create PDAs or vaults with the user as Anchor `payer`. Fully no-SOL UX requires either bounded rent prefunding or, preferably, explicit `rent_payer` accounts so a Kora/paymaster signer can fund PDA and token-account rent while the user remains the USDC authority.
 - **x402 relationship:** Kora does not replace x402. Kora abstracts Solana transaction cost for protocol instructions; x402 remains the agent-facing HTTP payment envelope for bridge-enabled paid downloads.
 
-Do not update public agent-facing instructions to claim SOL-free operation until the relevant sponsored path has been implemented and smoke-tested.
+Do not update public agent-facing instructions to claim SOL-free operation until the relevant sponsored path has been implemented and checked with a basic functional test.
 
 ## Disputes
 
@@ -232,8 +240,8 @@ entitlements, and historical entitlement compatibility:
 
 1. **Protocol-listed direct purchase**: buyers call `purchase_skill`, then present an `X-AgentVouch-Auth` Ed25519 signature over the canonical download message. The API verifies/records the revision-scoped on-chain `Purchase` PDA before serving raw content.
 2. **Protocol-listed x402 bridge**: when `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED=true`, `/api/skills/{id}/raw` requires initial `X-AgentVouch-Auth`, returns an x402 exact USDC requirement that pays the protocol settlement vault, verifies amount/mint/payer/memo after facilitator settlement, calls `settle_x402_purchase`, and records the entitlement only after on-chain settlement succeeds.
-3. **Wallet-bound Stripe MPP card checkout**: the WIP Stripe path records `payment_flow = "stripe-mpp-offchain"` after a verified card payment and grants access to the wallet that signed checkout auth. It does not create a `Purchase` PDA, fund author proceeds escrow, fund voucher rewards, or create protocol refund state.
-4. **Historical repo-only x402 entitlements**: older direct-author x402 receipts can still re-download with signed auth, but new repo-only paid x402 purchases are disabled because they bypass `Purchase` PDAs, voucher rewards, and refund/dispute state.
+3. **Wallet-bound Stripe MPP card checkout**: the WIP Stripe path records `payment_flow = "stripe-mpp-offchain"` after a verified card payment and grants access to the wallet that signed checkout auth. It does not create a `Purchase` PDA, fund author's sales earnings escrow, fund backers' revenue shares, or create protocol refund state.
+4. **Historical repo-only x402 entitlements**: older direct-author x402 receipts can still re-download with signed auth, but new repo-only paid x402 purchases are disabled because they bypass `Purchase` PDAs, backers' revenue shares, and refund/dispute state.
 
 The x402 bridge path for protocol-listed skills is fail-closed behind the feature flag. Bridge memos carry a deterministic payment-ref hash prefix so they stay inside the stock exact-SVM memo compute budget; buyer/listing/skill/amount/nonce are bound in signed x402 `extra` fields and the full payment-ref hash preimage. Do not put PII or free-form buyer text in memos.
 
@@ -257,9 +265,9 @@ Repo-backed skills keep content and versions in Postgres. Optional on-chain list
 
 ### Built
 
-- USDC-native author bonds, vouches, disputes, listings, purchases, and voucher rewards.
+- USDC-native authors' backing deposits, vouches, disputes, listings, purchases, and backers' revenue shares.
 - First-class author disputes with skill context and backing snapshots.
-- Free listings gated by minimum author bond.
+- Free listings gated by minimum author's backing deposit.
 - 60/40 author/voucher split for paid on-chain purchases.
 - Protocol-listed x402 bridge settlement path, feature-flagged and backed by on-chain receipt/signature idempotency guards.
 - Emergency pause control for risk-creating protocol flows.

@@ -36,6 +36,14 @@ todos:
 
 # AgentVouch Protocol Requirement A1 — Voucher Slashing
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This is a historical or completed-work record. Its original decisions, checkboxes, and evidence are preserved below. Do not treat it as fresh launch approval; use the current roadmap and launch requirements linked from the guide.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 Upheld disputes on paid listings slash the vouchers who linked stake to that listing, making vouching carry real downside (the core stake-backed-reputation mechanism). Slashed funds are ring-fenced for harmed buyers — never withdrawable by the author, never inflating the challenger reward.

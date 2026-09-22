@@ -3,13 +3,13 @@ name: base-paid-report-activation-sepolia
 overview: "Activate the merged base-v1-a1 PaidPurchaseReport mechanism on Base Sepolia through a fresh linked deployment, explicit paused staging, a purchase-bound buyer client, isolated lifecycle smoke, and reversible preview/production cutover—without enabling Base mainnet."
 todos:
   - id: consolidate-go-no-go
-    content: "Consolidate the existing blockers, evidence requirements, role/config checks, monitoring, rollback, and human approvals into one explicit staged Go/No-Go checklist without weakening any gate."
+    content: "Completed 2026-09-07 reconciliation: checked the existing activation gates against current main, separated executable preparation from founder decisions, and preserved deployment-qualified evidence and stage approvals. Plan YAML, reference paths, formatting, and chain-map checks passed."
     status: completed
   - id: lock-activation-inputs
-    content: "Record the approved slash percentage, restitution-reserve recipient, testnet role holders, fallback cranker/monitor owner, external-review or explicit human-acceptance evidence, and the exact Base Sepolia exposure policy before any broadcast."
+    content: "Record the approved slash percentage, restitution-reserve recipient, testnet wallets authorized for each role, fallback cranker/monitor owner, external-review or explicit human-acceptance evidence, and the exact Base Sepolia exposure policy before any broadcast."
     status: pending
   - id: harden-dormant-deploy-sequence
-    content: "Update the Base deploy runbook and rehearsal so the linked facade is deployed uninitialized with ADMIN_ADDRESS separated from the broadcaster, PAUSE_ROLE pauses it before initializeConfig, and initialization completes while paused; prove no configured unpaused interval and no client pointer change."
+    content: "Update the Base deploy runbook and practice run so the linked facade is deployed uninitialized with ADMIN_ADDRESS separated from the broadcaster, PAUSE_ROLE pauses it before initializeConfig, and initialization completes while paused; prove no configured unpaused interval and no client pointer change."
     status: completed
   - id: implement-paid-report-client
     content: "Add a Base-only optional PaidPurchaseReport open/claim wallet capability and exact base-v1-a1 ABI/event handling for Coinbase Smart Wallet and supported injected wallets without reviving the removed general-report API or changing the required cross-chain ChainWallet surface."
@@ -21,7 +21,7 @@ todos:
     content: "Expose the exact deployment-qualified EVM purchase summary and add an additive report index populated only from a verified PaidPurchaseReportOpened event so report status and credit claims recover safely after reload."
     status: completed
   - id: add-operator-smoke-and-monitoring
-    content: "Build a restart-safe Base Sepolia paid-report smoke/operations driver that records linked code hashes, roles/config, deadlines, explicit-block USDC deltas, multi-page crank progress, liabilities, reserve credit, pause state, and machine-readable transaction evidence."
+    content: "Automate local buyer-report, stake-deduction, and tests for collecting buyer payments with restart recovery. Extend the Base Sepolia operations tool to record linked code hashes, roles/config, deadlines, explicit-block USDC deltas, multi-page settlement progress, liabilities, reserve credit, pause state, and machine-readable transaction evidence. Public testnet execution requires separate approval."
     status: in_progress
   - id: deploy-verify-paused-sepolia
     content: "HUMAN GATE — After explicit broadcast approval, deploy and explorer-verify the linked library and fresh facade, stage it initialized and paused with approved roles/config, verify bytecode/linking/selectors, and leave all app env pointers unchanged."
@@ -35,13 +35,172 @@ todos:
 isProject: false
 ---
 
-# Base Paid-Purchase Report Activation — Base Sepolia
+# Base Sepolia - Activate Buyer Reports, Stake Deductions, and Credit Claims
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan concerns buyer reports, deductions from backing deposits, and payments buyers can collect. The reference code A1 names that work; it is not an approval or deployment status.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 ## Goal
 
 Move the merged `base-v1-a1` source from implementation-complete to a fresh, verified, and deliberately activated Base Sepolia deployment. The release must expose only receipt-bound `PaidPurchaseReport` filing, preserve centralized resolver disclosure, prove the complete settlement and exit lifecycle, and remain reversible at the client and pause boundaries.
 
-This plan separates implementation, deployment, configuration, activation, live smoke, and public launch claims. Completing one stage does not imply the next.
+This plan separates implementation, deployment, configuration, activation, check against the deployed system, and public launch claims. Completing one stage does not imply the next.
+
+## Milestone Names - 2026-09-10
+
+Use the work's name in status updates and next-step options. `A1` is the requirement code for
+deducting an endorser's USDC deposited as backing after an upheld paid-purchase report, called **voucher
+slashing** in the protocol. It is not the name of every remaining deployment or test task.
+An upheld report is one the resolver decides is valid. A amount owed to the buyer is an amount the eligible
+buyer can claim; available collateral limits that amount, so it is not a guaranteed full refund.
+
+- **Verify the Base release build and contracts:** refresh the local checks for the exact commit.
+- **Automate local buyer-report, stake-deduction, and tests for collecting buyer payments:** test the full sequence
+  on a disposable local chain, including restart recovery and repeat-transaction rejection.
+- **Inventory existing Base listings and prepare rollback:** record current deployment settings,
+  purchases, balances, and access rights before planning the switch.
+- **Approve testnet settings, control and storage of signing keys, and operating owners:** record the human decisions
+  required before public transactions.
+- **Deploy and configure a paused Base Sepolia contract:** verify the new deployment before use.
+- **Test Base Sepolia reports, stake deductions, and credit claims:** run only the approved
+  isolated test accounts, then pause the contract and reconcile balances.
+- **Verify preview and rollback before shared testnet activation:** test both Base wallet paths
+  and the Solana fallback before changing the shared app.
+
+This is a naming correction only. Stable todo IDs, protocol identifiers, statuses, and all
+separate deployment approvals remain unchanged.
+
+## Activation Blocker Summary - 2026-09-07
+
+Use this summary for the next work; retain the formal gates and historical evidence below.
+GitHub `main` was checked at `bd27a2fa76fead6afa56e2527838aa63ae05e312`. This plan,
+the deployment runbook/state record, and the operations script have no committed differences
+between that revision and the inspected checkout at `86daf0e`. The checkout has separate,
+uncommitted MetaMask smoke notes; they are not a clean release candidate.
+
+The documented pre-A1 contract `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` still
+returned `base-v1-candidate` at Base Sepolia block `46530206` during this review. The A1
+deployment address, transaction, and approvals remain pending in `docs/BASE_SEPOLIA_A1_STATE.md`.
+This contract read does not verify the current Vercel or local app pointer. The July full-suite
+results below remain historical and must be refreshed on the final candidate.
+
+### Work Codex Can Advance Now
+
+1. **Verify the Base release build and contracts.** Use a clean worktree from current `main`, retain the pinned
+   compiler/link profile and Foundry version in `docs/BASE_DEPLOY.md`, and run the full
+   [Verification](#verification) suite plus the local Anvil lifecycle. Record the exact reviewed
+   commit, artifacts, code hashes, and results. Later relevant merges require revalidation.
+2. **Automate local buyer-report, stake-deduction, and tests for collecting buyer payments.**
+   `web/scripts/base-paid-report-e2e-smoke.ts` currently
+   implements read-only `preflight`, `monitor`, and `gate-c-readiness`; its 31-step plan never
+   submits transactions. `add-operator-smoke-and-monitoring` therefore stays `in_progress`.
+   Test purchase, report filing, resolver decisions, stake deductions, and credit claims. Prove
+   restart recovery, rejection of invalid or repeated transactions, and balance reconciliation
+   with disposable Anvil fixtures before a public deployment exists. Keep the
+   existing read-only commands read-only; final signer integration depends on the custody choice
+   below, and public execution requires the exact paused deployment and approved scope.
+3. **Inventory existing Base listings and prepare rollback.** Use read-only inspection to inventory pre-A1 listings,
+   collateral, proceeds, reports, receipts, entitlements, and exits. Capture the effective
+   local/preview/shared contract, RPC, report flag, and paymaster settings. Prepare the rollback
+   tuple and a zero-ETH buyer claim test. The documented candidate is not a substitute for
+   checking `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS`; an absent override still selects the old POC
+   fallback. Complete this inventory and its disposition policy before changing shared pointers.
+
+### Decisions Needed From Andy
+
+| Decision               | Required input                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Slash setting          | Approve `SLASH_PERCENTAGE`, an integer from 1 through 100. The 5 USDC report bond, 60/40 split, lifecycle windows, and absence of a protocol backstop are already locked.                                                                                                                                                 |
+| Addresses and signing  | Supply public addresses/custody references for the broadcaster, distinct staging admin, five final wallets authorized for each role, and immutable recipient of remaining funds (`TREASURY_RECIPIENT`), plus the signing method. Apply the separation rules in `docs/BASE_DEPLOY.md`; no private keys belong in the plan. |
+| Operating owners       | Name the resolver recovery owner, fallback cranker, monitoring/accepted-report alarm owner, and incident commander.                                                                                                                                                                                                       |
+| Test scope and funding | Recommended first scope: isolated Base Sepolia fixtures. Approve the author's backing deposit, at least two backers' deposits, listing price, eligible purchase lane, total test-USDC cap, and test-ETH gas budget. Preview/shared exposure is a later decision.                                                          |
+| Security review        | Provide the external review evidence or explicitly accept the identified risks for the exact Base Sepolia candidate and test scope. Testnet acceptance does not approve mainnet.                                                                                                                                          |
+
+The existing gross test-USDC funding calculation is
+`author bond + sum(voucher stakes) + 3 * (listing price + 5 USDC)` for the upheld,
+rejected, and expiry fixtures. Gas funding is separate. Record final inputs in the existing
+`docs/BASE_SEPOLIA_A1_STATE.md` decision records; this summary supplies no defaults or approval.
+
+### Dependent Release Steps
+
+After release verification and approved inputs, follow these Base Sepolia deployment stages:
+
+1. **Deploy without initialization (Gate B1).** Keep the app on the existing deployment.
+2. **Verify, pause, configure, and transfer roles (Gate B2).** Leave the new contract paused.
+3. **Test buyer reports, stake deductions, and credit claims (Gate C).** Use isolated test
+   accounts. Then pause again and reconcile all balances.
+4. **Verify preview, rollback, and shared testnet activation (Gate D).** Test both Base wallet
+   paths and the Solana fallback before shared Sepolia promotion.
+
+Prepare the exact artifacts and transaction scope before requesting each existing stage
+approval. The `gate-c-readiness` result remains read-only and is not permission to execute.
+
+Public Sepolia expiry uses real deadlines. Local time-warp evidence cannot close that public
+branch, and the smoke must record any outstanding expiry/reconciliation work. No deployment,
+signer access, feature activation, custody change, or Base mainnet enablement is authorized by
+this documentation reconciliation. Existing GO/NO-GO records remain unchanged.
+
+## Candidate Verification Refresh - 2026-09-09
+
+The local candidate-evidence refresh **completed on 2026-09-10**, including the isolated
+database-backed production build. This is not public deployment or release-verification approval
+(Base Sepolia Deployment Gate A).
+GitHub `main` was checked at
+`dcdf4d83caedc375ce9d064989b83c1da9c9767e` and verified in a clean detached worktree at
+`/private/tmp/agentvouch-base-a1-verify-20260909/source`. Dependencies came from the committed
+root, isolated UI, and harness lockfiles using `npm ci`; Node was `v24.18.1`.
+
+- Passed: Forge formatting, 121 contract tests, the accounting invariant (256 runs / 128,000
+  calls), production-profile compilation, runtime/storage/ABI gates, and local Anvil rehearsal.
+- Runtime remains 23,487 bytes for the facade and 5,939 bytes for the linked library; facade
+  headroom is 1,089 bytes below EIP-170 and only 13 bytes below the project soft limit.
+- The local rehearsal emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`: buyer credit
+  15 mock USDC, reserve credit 5 mock USDC, voucher residual 2 mock USDC, terminal state paused.
+  These are disposable local fixtures, not approved public deployment settings or addresses.
+- Passed: chain map, repository formatting, web lint/typecheck, 984 web tests across 135 files,
+  isolated Base UI production build, and harness typecheck.
+- The initial `next build --webpack` compiled and completed TypeScript, then exited 1 while
+  prerendering `/sitemap.xml` because `DATABASE_URL` was deliberately absent. The sitemap's
+  fail-closed ISR behavior was not weakened. The `ox`/`viem` dynamic-dependency and edge-runtime
+  warnings were nonfatal. No production database credentials were loaded to bypass this gate.
+- Existing GitHub `test`/`contracts` checks and the [Vercel status for this exact commit](https://vercel.com/dirtybitsofficials-projects/agentvouch/d3PJAUWgnMcQm3wDxhmffjnwe8Vr)
+  report success; those statuses are separate from the successful local rerun below and do not
+  replace public wallet/lifecycle evidence.
+
+Command logs, artifact hashes, and the verification report are under
+`/private/tmp/agentvouch-base-a1-verify-20260909/`. The source worktree and existing MetaMask
+notes were preserved. No public-chain transaction, signer access, production configuration change, or
+activation occurred. The operator executor todo remains `in_progress`; all existing human
+deployment gates remain pending.
+
+### Database-Backed Build - 2026-09-10
+
+- With explicit user approval, created `test/base-a1-candidate-build-20260910`
+  (`br-aged-salad-afvk7vz9`) from `agentvouch-postgres/main` in project `calm-meadow-36819154`.
+  The build used only the child branch's guarded hostname, not the live parent database.
+- The first database-backed attempt cleared the sitemap error but hit HTTP 429 on the public
+  Solana RPC while prerendering skill pages. Reused the existing server-only `SOLANA_RPC_URL`
+  from the primary checkout; its Helius endpoint's genesis hash confirmed Solana devnet.
+- The unchanged candidate passed `npm exec --workspace @agentvouch/web -- next build --webpack`
+  with exit 0 and **156/156 static pages**. The existing `ox`/`viem` webpack warning and
+  edge-runtime warning remained nonfatal. No test, page, or error handler was bypassed.
+- Build-only env names: `DATABASE_URL`, `SOLANA_RPC_URL`, `NEXT_TELEMETRY_DISABLED`.
+  Credentials stayed in process memory; no `.env.local`, Vercel setting, or public env was
+  changed. A scan of 1,468 public assets/rendered files found no server RPC secret or
+  privileged database-URL pattern.
+- Deleted the temporary branch after the build; a fresh Neon branch listing confirmed its
+  absence and retained the original main and archived Stripe-test branches.
+- Exact command, candidate, target metadata, timing, and exit status are in
+  `web-build-with-db-20260910-rpc.json` and `.log` under the evidence directory above.
+
+The local build blocker is closed. Next: **automate local buyer-report, stake-deduction, and
+credit-claim tests**. The tests must resume after an interruption, reject repeated transactions,
+and reconcile balances. Public custody, economics, review, and stage approvals remain separate.
 
 ## Current State — verified 2026-07-31
 
@@ -105,8 +264,8 @@ This plan may not change the A1 plan’s locked economics or lifecycle:
 - acceptance-time author-wide purchase lock;
 - author-bond-first percentage slash followed by author-wide voucher percentage slash;
 - initiating-buyer-only credit capped at purchase price plus bond return;
-- seven-day funded credit claim window;
-- excess, rejected/dismissed bonds, and expired credits routed to the immutable restitution recipient;
+- seven-day amount set aside for payment claim window;
+- excess, rejected/dismissed bonds, and expired credits routed to the immutable recipient of remaining funds;
 - no reporter reward, keeper reward, proceeds debit, treasury sweep, or protocol backstop.
 
 Any deviation requires explicit operator approval and an amendment to the authoritative A1 plan before implementation.
@@ -120,7 +279,7 @@ Before any Base Sepolia broadcast, record:
 - holders and custody method for `DEFAULT_ADMIN_ROLE`, `CONFIG_ROLE`, `RESOLVER_ROLE`, `SETTLEMENT_ROLE`, and `PAUSE_ROLE`;
 - named resolver recovery owner, fallback cranker, accepted-report age alarm owner, and incident commander;
 - exact compiler, optimizer, `via_ir`, EVM target, metadata, remappings, library link map, and expected code hashes;
-- external security pass or explicit human-recorded testnet risk acceptance;
+- external security pass or explicit human-recorded testnet written acceptance of specified risks;
 - Base Sepolia exposure policy and whether activation is isolated fixtures, preview users, or the shared default;
 - explicit approval for each public-network write phase: deploy/configure, isolated smoke, preview activation, and shared Sepolia promotion.
 
@@ -156,21 +315,21 @@ This roll-up gate contains two separately approved transaction phases: deploy wi
 both phases are complete and the readback evidence passes.
 
 - [ ] Exact Base Sepolia chain ID, RPC, deployer, deployer balance/nonce, USDC address, compiler inputs, library address, predicted facade address, and verification inputs are independently confirmed.
-- [ ] `SLASH_PERCENTAGE`, immutable restitution recipient, final role holders/custody, fallback cranker, monitor owner, incident commander, and exposure policy are approved and recorded.
+- [ ] `SLASH_PERCENTAGE`, immutable recipient of remaining funds, final wallets authorized for each role/custody, fallback cranker, monitor owner, incident commander, and exposure policy are approved and recorded.
 - [ ] Facade and library deploy and verify separately; runtime code hashes and caller link references match the candidate-verification artifacts.
 - [ ] The non-broadcaster admin/role owner pauses before initialization; initialization and ordered role grants/revocations complete while paused; default admin transfers last.
 - [ ] Protocol version, USDC, config, roles, pause state, deployment block, and explorer metadata read back exactly.
 - [ ] Frontend/shared environment pointers and CDP policies remain unchanged; the deployment is described only as deployed, verified, configured, and paused.
 - [ ] Rollback procedure and historical-claim reachability are reviewed against the exact deployed addresses.
-- [ ] Human approver records **GO: isolated smoke** with the allowed fixtures, operators, and exposure cap.
+- [ ] Human approver records **GO: isolated smoke** with the allowed fixtures, operators, and limit on money at risk.
 
-### Base Sepolia Deployment Gate C — Isolated Lifecycle Test
+### Base Sepolia Deployment Gate C - Test Buyer Reports, Stake Deductions, and Credit Claims
 
 - [ ] Only approved fresh fixtures are used; pre-A1 receipts remain ineligible and deployment namespaces do not cross-contaminate.
-- [ ] Purchase → open → review → resolve → multi-page slash → buyer claim → reserve claim → voucher residual reclaim completes with exact events and explicit-block USDC conservation.
+- [ ] Purchase → open → review → resolve → multi-page slash → buyer claim → reserve claim → backer's remaining deposit reclaim completes with exact events and explicit-block USDC conservation.
 - [ ] Rejection, expiry, premature, duplicate, replay, wrong-role, paused, and recipient-failure paths match the locked lifecycle; local-only time-warp branches remain separately identified.
 - [ ] Indexer/report-index recovery, recent-log chunking, restart/resume, accepted-report age, remaining stake, unpaid credit, reserve credit, and fallback-cranker alerts are verified.
-- [ ] Contract is repaused and all reports, slash work, buyer credits, reserve credit, and voucher residuals are reconciled.
+- [ ] Contract is repaused and all reports, slash work, amounts owed to buyers, reserve credit, and voucher residuals are reconciled.
 - [ ] Old-deployment historical reads and Solana purchase/trust regressions pass.
 - [ ] Human approver records **GO: preview activation** and the exact pointer/paymaster changes permitted.
 
@@ -178,16 +337,16 @@ both phases are complete and the readback evidence passes.
 
 - [ ] Preview points only to the verified A1 deployment; Coinbase Smart Wallet and supported injected-wallet filing/claim flows pass through the deployed app.
 - [ ] Frontend, API, DB index, monitoring, explorer metadata, role ownership, and paymaster allowlist all reference the exact deployment identity.
-- [ ] Monitoring and alerting are active for pause, accepted-report age, stuck slash pages, unpaid buyer credit, reserve credit, role/config change, UserOp/RPC failures, and unexpected balance movement.
+- [ ] Monitoring and alerting are active for pause, accepted-report age, stuck slash pages, unpaid amount owed to the buyer, reserve credit, role/config change, UserOp/RPC failures, and unexpected balance movement.
 - [ ] Preview rollback is exercised: pause new exposure, restore the prior commerce pointer, preserve deployment-qualified terminal claims, and retain required buyer sponsorship.
-- [ ] Exposure caps and incident ownership are approved for shared Sepolia; no unresolved liability or unexplained balance remains from preview.
+- [ ] Limits on money at risk and incident ownership are approved for shared Sepolia; no unresolved liability or unexplained balance remains from preview.
 - [ ] Human approver records **GO: shared Sepolia promotion**. This is not Base mainnet approval.
 
 ## Files Expected To Change During Execution
 
 - `contracts/base-poc/script/Deploy.s.sol`: deploy only an uninitialized facade with a distinct non-broadcaster staging admin and verify the exact linked facade/library artifacts.
 - `contracts/base-poc/script/StageA1.s.sol`: pause first, initialize the exact economics while paused, transfer every final role, revoke every staging role, and leave the candidate paused.
-- `contracts/base-poc/script/RehearseA1.s.sol`, `scripts/local-a1-rehearsal.sh`, and deployment tests: prove deploy-uninitialized → pause → initialize-while-paused → verify → role handoff → approved unpause ordering and terminal settlement after re-pause.
+- `contracts/base-poc/script/RehearseA1.s.sol`, `contracts/base-poc/scripts/local-a1-rehearsal.sh`, and deployment tests: prove deploy-uninitialized → pause → initialize-while-paused → verify → role handoff → approved unpause ordering and final report accounting after re-pause.
 - `docs/BASE_DEPLOY.md`: replace the pre-A1-centric broadcast steps with linked A1 dormant deployment, separate activation, verification, and rollback gates.
 - `web/lib/adapters/agentVouchEvmAbi.ts`: expose the exact paid-report reads/events needed by the client without legacy report selectors.
 - `web/lib/adapters/types.ts` plus a focused Base paid-report capability module: add an optional capability/type guard rather than a required method on every `ChainWallet` implementation.
@@ -210,7 +369,7 @@ and 13 USDC immutable references. `StageA1.s.sol` is a separate transaction phas
 target, pauses before initialization, initializes the locked economics with zero reporter reward,
 hands off all roles, revokes default admin last, and leaves the facade paused. The one-command Anvil
 driver broadcast the full sequence and emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`; terminal
-resolution, paginated slashing, 15 USDC buyer credit, 5 USDC reserve credit, and 2 USDC voucher
+resolution, paginated slashing, 15 USDC amount owed to the buyer, 5 USDC reserve credit, and 2 USDC voucher
 residual all completed after re-pause. No Sepolia transaction, client pointer, or paymaster change was
 made.
 
@@ -242,14 +401,14 @@ and public smoke remain pending the separately approved deployment identity and 
 Local verification: 121 Forge tests and 679 web tests passed; format, lint, typecheck, chain-map,
 isolated Base UI build, harness typecheck, and production webpack build passed. The facade is 23,487
 runtime bytes (1,089 bytes EIP-170 headroom; 13 bytes project-soft-limit headroom). The final local
-Anvil rehearsal emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`. No Sepolia transaction,
+Anvil practice run emitted `LOCAL_A1_REHEARSAL_OK` and `LOCAL_A1_DRIVER_OK`. No Sepolia transaction,
 client pointer, feature flag, paymaster policy, or Base mainnet setting changed.
 
 ## Implementation note — 2026-07-31 Base Sepolia Isolated-Lifecycle-Test Decision Preflight
 
 The new read-only `gate-c-readiness` mode validates a complete founder `GO: isolated smoke` record
 against the exact candidate commit, Base Sepolia deployment identity, paused state, every field of
-the deployment-script A1 config, observed resolver/pause role holders, unregistered and role-isolated
+the deployment-script A1 config, observed resolver/pause wallets authorized for each role, unregistered and role-isolated
 fixture profiles, eligible purchase lane, exact test-USDC funding inputs, and approved gross exposure
 cap. It writes a 31-step transaction/evidence plan covering uphold with multi-page slashing,
 rejection, public-time expiry, replay, wrong-role, paused-entry, premature-close, wrong-recipient,
@@ -264,7 +423,7 @@ The mode reports only `READY_FOR_HUMAN_REVIEW` or `BLOCKED`, always with
 into a `GO`. `--apply`, write modes, and secret-bearing arguments still fail closed. The founder
 record in `docs/BASE_SEPOLIA_A1_STATE.md` remains `NO-GO`. A
 write-capable public smoke executor is not safely instantiable until the paused deployment produces
-the exact deployment. The founder must approve the slash, custody, recipient, fixture, exposure cap,
+the exact deployment. The founder must approve the slash, custody, recipient, fixture, limit on money at risk,
 and risk-acceptance inputs. The team must also select a signing integration, fund the fixtures, and
 record a separate isolated lifecycle test write approval. Therefore
 `add-operator-smoke-and-monitoring` remains `in_progress`. No public transaction, client pointer,
@@ -275,7 +434,7 @@ tests 30/30; full web suite 855/855 across 121 files; format, lint, typecheck, c
 UI build, and harness typecheck passed. The production webpack build compiled and then failed during
 static prerender with Next.js `Invariant: Expected workUnitAsyncStorage to have a store`; a clean
 cache retry reproduced it. Foundry was not installed, the size verifier lacked a fresh Forge
-artifact, and the Anvil rehearsal was deliberately skipped under the no-key/no-broadcast boundary.
+artifact, and the Anvil practice run was deliberately skipped under the no-key/no-broadcast boundary.
 These open verification items keep candidate verification and the operator todo incomplete.
 
 ## Implementation note — 2026-07-31 Base Sepolia Candidate-Verification Evidence Refresh
@@ -336,7 +495,7 @@ Rehearse the production-shaped sequence on Anvil chain ID 84532:
    admin remains.
 7. Prove filing, purchases, listings, vouches, and bond mutations remain blocked.
 8. Prove permitted registration/terminal paths have the documented pause behavior.
-9. Unpause from `PAUSE_ROLE` and execute the full A1 rehearsal.
+9. Unpause from `PAUSE_ROLE` and execute the full A1 practice run.
 
 Deployment tooling must reject a zero, missing-code, wrong-code-hash, or wrongly linked library and must not print private keys.
 
@@ -350,7 +509,7 @@ Use a Base-only optional capability with `openPaidPurchaseReport` and `claimPaid
 - admission errors: because consumed-purchase, active-report, and cooldown mappings have no public getters in the frozen ABI, simulate the exact `openPaidPurchaseReport` call and decode its custom error. The event/DB index may improve UX but is never authority for admissibility;
 - submit: exact USDC approval plus `openPaidPurchaseReport`;
 - receipt verification: selected contract address and exact `PaidPurchaseReportOpened` event fields;
-- claim: exact deployment/report state, funded credit, initiating buyer, open deadline, and `PaidPurchaseReportCreditClaimed` receipt verification;
+- claim: exact deployment/report state, amount set aside for payment, initiating buyer, open deadline, and `PaidPurchaseReportCreditClaimed` receipt verification;
 - failure: no fallback to the pre-A1 contract, Solana report path, another deployment, or unsigned server mutation.
 
 Support Coinbase Smart Wallet and any injected-wallet path already capable of the underlying Base purchase. If a wallet cannot sign/send the required transaction safely, show a precise unsupported state rather than routing around the wallet.
@@ -380,7 +539,7 @@ The smoke/operations driver must:
 - create fresh registered buyer, author, and at least two voucher fixtures;
 - create and purchase a fresh paid listing through an eligible lane;
 - use separate fresh eligible receipts for rejection/expiry and accept/uphold branches, prove each consumed receipt cannot reopen, and crank multiple voucher pages for the upheld branch;
-- claim buyer credit, pull reserve credit, reclaim voucher residual, and prove premature/duplicate operations fail;
+- claim amount owed to the buyer, pull reserve credit, reclaim backer's remaining deposit, and prove premature/duplicate operations fail;
 - record transaction hashes, blocks, deadlines, event fields, and USDC balances at explicit block numbers;
 - query recent Base Sepolia logs in chunks of at most 1,999 blocks and resume without double-processing;
 - expose accepted-report age, remaining snapshotted stake, funded/unpaid credit, reserve credit, pause state, and fallback-cranker alerts.
@@ -433,6 +592,7 @@ Before any deployment candidate is approved:
     npm run verify:base-size
     npm run verify:base-a1-paid-report-abi
     npm run verify:chain-map
+    contracts/base-poc/scripts/local-a1-rehearsal.sh
     npm run format:check
     npm run lint --workspace @agentvouch/web
     npm run typecheck --workspace @agentvouch/web
@@ -483,7 +643,7 @@ Keep the new contract paused and unreferenced by the app. Abandoning it requires
 3. Redeploy/promote the prior web artifact.
 4. Keep the new contract and all accrued claims reachable through deployment-qualified buyer claim
    tooling plus operator settlement tooling; verify a zero-ETH Coinbase smart account can still claim.
-5. Reconcile pending reports, crank work, buyer credits, reserve credit, and voucher residuals before declaring rollback complete.
+5. Reconcile pending reports, crank work, amounts owed to buyers, reserve credit, and voucher residuals before declaring rollback complete.
 
 ### After shared Sepolia promotion
 
@@ -496,7 +656,7 @@ Rollback does not authorize reclaiming user liabilities, changing the reserve re
 - Any unresolved A1 deployment input listed above.
 - Facade runtime above the 23,500-byte soft limit or 24,576-byte EIP-170 hard limit.
 - Contract/library code-hash or explorer-verification mismatch.
-- No approved pause/resolver/admin custody or no fallback cranker/monitor owner.
+- No approved pause/resolver/control of administrator signing keys or no fallback cranker/monitor owner.
 - Client or DB state that is keyed only by chain/entity and not the selected contract deployment.
 - No explicit inventory and policy for pre-A1 listings, vouches, bonds, proceeds, open reports, receipts, entitlements, and exit paths before the shared pointer changes.
 - No external security pass and no explicit human-recorded testnet acceptance.

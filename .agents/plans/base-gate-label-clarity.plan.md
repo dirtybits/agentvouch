@@ -16,6 +16,14 @@ isProject: false
 
 # Clarify Base Gate Labels
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This is a historical or completed-work record. Its original decisions, checkboxes, and evidence are preserved below. Do not treat it as fresh launch approval; use the current roadmap and launch requirements linked from the guide.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 Make every Base gate label identify its chain scope, sequence, and topic. Readers must not confuse
@@ -29,7 +37,20 @@ the Base Sepolia deployment stages with the cross-chain AgentVouch protocol requ
 - Out of scope: file names, command names, JSON field names, contract identifiers, environment
   variables, historical transaction evidence, and gate status changes.
 
-## Canonical Labels
+## Current Label Sources - 2026-09-10
+
+The user requested names that explain the work, not only expanded codes or protocol jargon.
+Use `docs/ROADMAP.md` for the current requirement names and
+`.agents/plans/base-paid-report-activation-sepolia.plan.md` for the current deployment and test
+milestone names. For example, the next local task is **Automate local buyer-report,
+stake-deduction, and credit-claim tests**, not "Finish A1".
+
+Those names supersede the list below. The list remains a record of the completed August naming
+pass, not an instruction to restore the old titles. `AGENTS.md` now requires descriptive names
+in future plans, status updates, and next-step options. No requirement status, protocol
+identifier, or deployment approval changed.
+
+## Historical Labels - 2026-08-01
 
 - `Base Sepolia Deployment Gate A — Candidate Verification`
 - `Base Sepolia Deployment Gate B — Paused Deployment`
