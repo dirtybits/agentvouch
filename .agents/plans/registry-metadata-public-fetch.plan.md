@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: verify-and-publish-security-fix
     content: Run focused and web quality gates, then commit, push, open the focused PR, and inspect CI
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
@@ -81,6 +81,15 @@ prerendering `/sitemap.xml` because this checkout has no `DATABASE_URL` /
 `web/.env.local`; no credentials or environment configuration were changed to
 bypass that existing local prerequisite. The production Vercel build remains the
 remote build gate.
+
+### PR closeout (2026-09-22)
+
+Opened [PR #206](https://github.com/dirtybits/agentvouch/pull/206) from
+`fix/guard-registry-metadata-fetch`. GitHub `test` (1m48s), `contracts`
+(1m46s), and Vercel preview all completed successfully; GitHub reported
+`mergeStateStatus: CLEAN`. The signed commit has an SSH `gpgsig` header;
+local signature verification is unavailable only because
+`gpg.ssh.allowedSignersFile` is not configured in this checkout.
 
 ## Rollout
 
