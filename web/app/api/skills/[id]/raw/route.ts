@@ -3,8 +3,7 @@ import { getFileForVersion } from "@/lib/skillStorage";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
-import { resolveSafeFetchUrl } from "@/lib/safeFetch";
-import { fetchPublicUrl } from "@/lib/publicUrlFetch.server";
+import { fetchSkillUriText } from "@/lib/skillUriFetch.server";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -48,35 +47,6 @@ function serveSkillContent(
   });
 }
 
-async function fetchSkillUriContent(skillUri: string) {
-  // Validate the author-controlled URL and every redirect before fetching it.
-  // Each hop also validates DNS answers and connects only to a pinned public IP.
-  let target = skillUri;
-  for (let redirects = 0; ; redirects += 1) {
-    if (redirects > 5) {
-      throw new Error("Skill URI fetch rejected: too many redirects");
-    }
-    const safe = resolveSafeFetchUrl(target);
-    if (!safe.ok) {
-      throw new Error(`Skill URI fetch rejected: ${safe.reason}`);
-    }
-    const res = await fetchPublicUrl(safe.url);
-    if ([301, 302, 303, 307, 308].includes(res.status)) {
-      const location = res.headers.get("location");
-      await res.body?.cancel();
-      if (!location) {
-        throw new Error("Skill URI fetch rejected: redirect has no location");
-      }
-      target = new URL(location, safe.url).href;
-      continue;
-    }
-    if (!res.ok) {
-      throw new Error(`Skill URI fetch failed with status ${res.status}`);
-    }
-    return res.text();
-  }
-}
-
 async function handleChainOnlyRaw(request: NextRequest, id: string) {
   const onChainAddress = id.slice(CHAIN_PREFIX.length);
   const listing = await fetchOnChainSkillListing(onChainAddress);
@@ -92,7 +62,7 @@ async function handleChainOnlyRaw(request: NextRequest, id: string) {
 
   const priceMicros = BigInt(listing.data.priceUsdcMicros);
   if (priceMicros <= 0n) {
-    return serveContent(await fetchSkillUriContent(listing.data.skillUri));
+    return serveContent(await fetchSkillUriText(listing.data.skillUri));
   }
 
   const authHeader = request.headers.get("x-agentvouch-auth");
@@ -111,7 +81,7 @@ async function handleChainOnlyRaw(request: NextRequest, id: string) {
       listing.publicKey
     ).catch(() => false);
     if (entitled) {
-      return serveContent(await fetchSkillUriContent(listing.data.skillUri));
+      return serveContent(await fetchSkillUriText(listing.data.skillUri));
     }
   }
 

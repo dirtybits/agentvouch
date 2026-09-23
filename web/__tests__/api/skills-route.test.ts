@@ -53,6 +53,16 @@ vi.mock("@/lib/onchain", () => ({
   getOnChainUsdcPrice: vi.fn(),
 }));
 
+vi.mock("@/lib/skillUriFetch.server", () => ({
+  fetchSkillUriText: vi.fn(),
+}));
+
+vi.mock("@/lib/purchasePreflight", () => ({
+  createPurchasePreflightContext: vi.fn(),
+  assessPurchasePreflight: vi.fn(),
+  serializePurchasePreflight: vi.fn(),
+}));
+
 const mockVerifyBaseSkillListing = vi.fn();
 const mockVerifyBaseSkillListingRemoved = vi.fn();
 vi.mock("@/lib/baseListingVerification", () => ({
@@ -77,6 +87,7 @@ vi.mock("@/lib/baseListingVerification", () => ({
 
 vi.mock("@/lib/agentIdentity", () => ({
   ensureAgentIdentitySchema: vi.fn(),
+  resolveAgentIdentityByWallet: vi.fn(),
   resolveManyAgentIdentitiesByWallet: vi.fn(),
   upsertLocalAgentIdentity: vi.fn(),
 }));
@@ -110,6 +121,12 @@ import { initializeDatabase, sql } from "@/lib/db";
 import { upsertLocalAgentIdentity } from "@/lib/agentIdentity";
 import { pinSkillContent } from "@/lib/ipfs";
 import { fetchOnChainSkillListing, getOnChainUsdcPrice } from "@/lib/onchain";
+import { fetchSkillUriText } from "@/lib/skillUriFetch.server";
+import {
+  assessPurchasePreflight,
+  createPurchasePreflightContext,
+  serializePurchasePreflight,
+} from "@/lib/purchasePreflight";
 import { getGithubSessionFromRequest } from "@/lib/githubOAuth";
 import {
   MAX_SKILL_DESCRIPTION_LENGTH,
@@ -137,6 +154,15 @@ const mockUpsertLocalAgentIdentity =
   upsertLocalAgentIdentity as unknown as ReturnType<typeof vi.fn>;
 const mockFetchOnChainSkillListing =
   fetchOnChainSkillListing as unknown as ReturnType<typeof vi.fn>;
+const mockFetchSkillUriText = fetchSkillUriText as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockCreatePurchasePreflightContext =
+  createPurchasePreflightContext as unknown as ReturnType<typeof vi.fn>;
+const mockAssessPurchasePreflight =
+  assessPurchasePreflight as unknown as ReturnType<typeof vi.fn>;
+const mockSerializePurchasePreflight =
+  serializePurchasePreflight as unknown as ReturnType<typeof vi.fn>;
 const mockGetOnChainUsdcPrice = getOnChainUsdcPrice as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -523,6 +549,9 @@ describe("POST /api/skills", () => {
 describe("GET /api/skills/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCreatePurchasePreflightContext.mockResolvedValue({});
+    mockAssessPurchasePreflight.mockReturnValue({});
+    mockSerializePurchasePreflight.mockReturnValue({});
   });
 
   it("rejects malformed encoded IDs before database initialization", async () => {
@@ -535,6 +564,49 @@ describe("GET /api/skills/[id]", () => {
     await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
     expect(mockInitializeDatabase).not.toHaveBeenCalled();
     expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("loads free chain detail content through the protected skill URI transport", async () => {
+    const skillUri = "https://skills.example/free-skill.md";
+    mockFetchOnChainSkillListing.mockResolvedValue({
+      publicKey: "4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+      data: {
+        author: "AuthorWallet1111111111111111111111111111111",
+        skillUri,
+        name: "Free chain skill",
+        description: "A public preview",
+        priceUsdcMicros: 0n,
+        totalDownloads: 0n,
+        createdAt: 0n,
+        updatedAt: 0n,
+      },
+    });
+    mockFetchSkillUriText.mockResolvedValue("# Protected preview");
+    const directFetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("detail route must not use global fetch"));
+
+    try {
+      const res = await GET(
+        new NextRequest(
+          "http://localhost/api/skills/chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF?include=none"
+        ),
+        {
+          params: Promise.resolve({
+            id: "chain-4wPBTQtYbE46fLRyRBf43AnQHkmYxzEhGPfeiwbJoGZF",
+          }),
+        }
+      );
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toMatchObject({
+        content: "# Protected preview",
+      });
+      expect(mockFetchSkillUriText).toHaveBeenCalledExactlyOnceWith(skillUri);
+      expect(directFetch).not.toHaveBeenCalled();
+    } finally {
+      directFetch.mockRestore();
+    }
   });
 
   it("rejects malformed chain-only listing addresses before database or RPC work", async () => {
