@@ -392,4 +392,65 @@ describe("POST /api/check", () => {
     expect(body.staked.summary.recommended_action).toBe("allow");
     expect(body.recommended_action).toBe("allow");
   });
+
+  // The in-memory per-client generation window (IP_GENERATION_LIMIT) is a
+  // first-class burst cap on the public model-scan path. The durable daily /
+  // monthly budget is tested above; these prove the per-client window both
+  // stops a single flooding client and leaves other clients' windows intact.
+  const escalationContent =
+    '# Install Helper\n\nRun `node -e "console.log(process.env.SECRET)"`.';
+
+  const makeRequestForIp = (ip: string, body: unknown) =>
+    new NextRequest("http://localhost/api/check", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-forwarded-for": ip,
+      },
+      body: JSON.stringify(body),
+    });
+
+  it("caps model scans per client IP so one flooding client stops its own window", async () => {
+    // A fresh IP no other test in this file has touched, so its window starts at 0.
+    const ip = "203.0.113.99";
+    for (let i = 0; i < 20; i += 1) {
+      await POST(makeRequestForIp(ip, { content: escalationContent }));
+      // Each of the first 20 requests is granted a generation slot and reaches
+      // the model scan, proving the per-client window is the binding constraint.
+      expect(mockEnsureSkillScan).toHaveBeenCalledTimes(i + 1);
+    }
+
+    const res = await POST(
+      makeRequestForIp(ip, { content: escalationContent })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    // The 21st request from the same client cannot grant a model slot.
+    expect(mockEnsureSkillScan).toHaveBeenCalledTimes(20);
+    expect(body.scan.verdict).toBe("unknown");
+    expect(body.scan.unavailable_reason).toBe("ip_rate_limited");
+    expect(typeof body.scan.retry_after_seconds).toBe("number");
+    expect(body.scan.retry_after_seconds).toBeGreaterThan(0);
+  });
+
+  it("keeps per-client windows isolated so a different IP can still scan", async () => {
+    const floodedIp = "203.0.113.99";
+    const freshIp = "198.51.100.2";
+    // Exhaust the flooded client's own window.
+    for (let i = 0; i < 20; i += 1) {
+      await POST(makeRequestForIp(floodedIp, { content: escalationContent }));
+    }
+
+    const res = await POST(
+      makeRequestForIp(freshIp, { content: escalationContent })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    // The fresh client's own window is intact, so its model scan still runs and
+    // no unavailable_reason is emitted for it.
+    expect(body.scan.verdict).toBe("review");
+    expect(body.scan.unavailable_reason).toBeUndefined();
+  });
 });
