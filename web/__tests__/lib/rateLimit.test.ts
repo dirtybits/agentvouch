@@ -101,17 +101,30 @@ describe("checkRateLimit", () => {
 });
 
 describe("clientIpFromRequest", () => {
-  it("prefers the first x-forwarded-for hop", () => {
+  it("prefers the unspoofable x-real-ip over x-forwarded-for", () => {
     const request = new Request("https://agentvouch.xyz/api/keys", {
       headers: {
+        // Leftmost hop is client-prepended (spoofable); x-real-ip wins.
         "x-forwarded-for": "203.0.113.7, 10.0.0.1",
         "x-real-ip": "198.51.100.9",
       },
     });
-    expect(clientIpFromRequest(request)).toBe("203.0.113.7");
+    expect(clientIpFromRequest(request)).toBe("198.51.100.9");
   });
 
-  it("falls back to x-real-ip when x-forwarded-for is absent", () => {
+  it("uses the rightmost x-forwarded-for hop when x-real-ip is absent", () => {
+    const request = new Request("https://agentvouch.xyz/api/keys", {
+      headers: {
+        // 10.0.0.1 is the client's own IP that a flooder prepends as "real";
+        // we key on the rightmost hop instead so one attacker cannot seed a
+        // fresh unique bucket per request.
+        "x-forwarded-for": "203.0.113.7, 10.0.0.1",
+      },
+    });
+    expect(clientIpFromRequest(request)).toBe("10.0.0.1");
+  });
+
+  it("returns x-real-ip when it is present alone", () => {
     const request = new Request("https://agentvouch.xyz/api/keys", {
       headers: { "x-real-ip": "198.51.100.9" },
     });
