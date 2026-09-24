@@ -92,7 +92,11 @@ export function validateRepoCoords(input: {
     return { ok: false, error: "Invalid GitHub repo" };
   }
   const branch = (input.branch || "main").trim();
-  if (!BRANCH_RE.test(branch)) {
+  if (
+    !BRANCH_RE.test(branch) ||
+    branch.split("/").some((segment) => segment === "." || segment === "") ||
+    branch.split("/").includes("..")
+  ) {
     return { ok: false, error: "Invalid branch" };
   }
   return { ok: true, branch };
