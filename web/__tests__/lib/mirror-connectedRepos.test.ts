@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { sanitizeSyncedRepoUrl } from "@/lib/mirror/connectedRepos";
+import {
+  sanitizeSyncedRepoUrl,
+  validateRepoCoords,
+} from "@/lib/mirror/connectedRepos";
 
 describe("sanitizeSyncedRepoUrl", () => {
   it("accepts a well-formed github.com https URL", () => {
@@ -46,6 +49,35 @@ describe("sanitizeSyncedRepoUrl", () => {
 
   it("returns null for empty string", () => {
     expect(sanitizeSyncedRepoUrl("")).toBe(null);
+  });
+});
+
+describe("validateRepoCoords", () => {
+  const repo = { githubOwner: "owner", githubRepo: "repo" };
+
+  it.each(["main", "release/v1.0", "feature/fix-123"])(
+    "accepts the safe branch %s",
+    (branch) => {
+      expect(validateRepoCoords({ ...repo, branch })).toEqual({
+        ok: true,
+        branch,
+      });
+    }
+  );
+
+  it.each([
+    "../victim/repo/main",
+    "main/../x",
+    "/absolute",
+    "main//x",
+    "main/.",
+    ".",
+    "..",
+  ])("rejects the unsafe branch %s", (branch) => {
+    expect(validateRepoCoords({ ...repo, branch })).toEqual({
+      ok: false,
+      error: "Invalid branch",
+    });
   });
 });
 
