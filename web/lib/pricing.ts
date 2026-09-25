@@ -55,11 +55,23 @@ export function formatUsdcMicros(
 ): string | null {
   if (!micros) return null;
   try {
-    const amount = Number(BigInt(micros)) / 1_000_000;
-    return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
-      maximumFractionDigits: 6,
-    }).format(amount);
+    const amount = BigInt(micros);
+    const absoluteAmount = amount < 0n ? -amount : amount;
+    const whole = absoluteAmount / 1_000_000n;
+    const fractionalMicros = absoluteAmount % 1_000_000n;
+    const formattedWhole = new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: 0,
+    }).format(whole);
+    const sign = amount < 0n ? "-" : "";
+
+    if (fractionalMicros === 0n) return `${sign}${formattedWhole}`;
+
+    const fraction = fractionalMicros
+      .toString()
+      .padStart(6, "0")
+      .replace(/0+$/, "")
+      .padEnd(2, "0");
+    return `${sign}${formattedWhole}.${fraction}`;
   } catch {
     return null;
   }
