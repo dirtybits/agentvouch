@@ -14,6 +14,17 @@ describe("site URL helpers", () => {
     );
   });
 
+  it("normalizes all root path forms to the same canonical origin", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://agentvouch.xyz");
+
+    const { SITE_URL, getCanonicalUrl } = await import("@/lib/site");
+
+    expect(getCanonicalUrl()).toBe(SITE_URL);
+    expect(getCanonicalUrl("")).toBe(SITE_URL);
+    expect(getCanonicalUrl("/")).toBe(SITE_URL);
+  });
+
   it("positions AgentVouch as an agent reputation system and skills marketplace", async () => {
     vi.resetModules();
     vi.unstubAllEnvs();
