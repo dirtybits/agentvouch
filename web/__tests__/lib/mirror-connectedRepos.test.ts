@@ -79,6 +79,16 @@ describe("validateRepoCoords", () => {
       error: "Invalid branch",
     });
   });
+
+  it.each([42, {}, []])(
+    "rejects a non-string branch without throwing",
+    (branch) => {
+      expect(validateRepoCoords({ ...repo, branch })).toEqual({
+        ok: false,
+        error: "Invalid branch",
+      });
+    }
+  );
 });
 
 // ---- createConnectedRepo conflict path (INSERT ... ON CONFLICT) ----
