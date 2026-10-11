@@ -36,4 +36,22 @@ describe("fetchBaseAgentVouchProtocolVersion", () => {
     ).rejects.toThrow(/chain id 84532/i);
     expect(client.readContract).not.toHaveBeenCalled();
   });
+
+  it.each([null, 42, "   ", {}, []])(
+    "fails closed when the contract returns an invalid version: %j",
+    async (version) => {
+      const client = {
+        getChainId: vi.fn().mockResolvedValue(84532),
+        readContract: vi.fn().mockResolvedValue(version),
+      };
+
+      await expect(
+        fetchBaseAgentVouchProtocolVersion({
+          contract: "0x5992dD52Ee2015f558D0A690777C55e27b05B7d1",
+          client,
+        })
+      ).rejects.toThrow(/invalid protocol version/i);
+      expect(client.readContract).toHaveBeenCalledTimes(1);
+    }
+  );
 });
