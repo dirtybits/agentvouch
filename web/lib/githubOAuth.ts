@@ -102,7 +102,14 @@ function decodeSignedPayload<T>(
 }
 
 function sanitizeReturnTo(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+  // WHATWG URL resolution treats backslashes as path separators for HTTP(S), so
+  // `/\\attacker.example` would resolve to an external origin at callback time.
+  if (
+    !value ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
     return "/skills/publish";
   }
   return value;
