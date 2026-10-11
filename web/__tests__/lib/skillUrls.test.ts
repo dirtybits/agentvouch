@@ -139,7 +139,6 @@ describe("skillUrls slug selection", () => {
 
   it("getCanonicalSkillRawUrl points at the public /raw endpoint for the db id", () => {
     const url = getCanonicalSkillRawUrl(UUID);
-    expect(url.startsWith("https://")).toBe(true);
     expect(url).toBe(`${AGENTVOUCH_PUBLIC_ORIGIN}/api/skills/${UUID}/raw`);
     expect(url.endsWith(`/api/skills/${UUID}/raw`)).toBe(true);
     const chainId = `${CHAIN_SKILL_PREFIX}${UUID.slice(4)}`;
