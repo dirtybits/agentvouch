@@ -36,6 +36,15 @@ export async function GET(
       ) ?? (isEvmAddress(pubkey) ? BASE_SEPOLIA_CHAIN_CONTEXT : null);
 
     if (requestedChainContext?.startsWith("eip155:")) {
+      // Base Sepolia is the only supported EVM author-read surface. In
+      // particular, do not let a public route advertise Base mainnet before
+      // the Phase 10 readiness gate is complete.
+      if (requestedChainContext !== BASE_SEPOLIA_CHAIN_CONTEXT) {
+        return NextResponse.json(
+          { error: "EVM author routes support Base Sepolia only" },
+          { status: 400 }
+        );
+      }
       if (!isEvmAddress(pubkey)) {
         return NextResponse.json(
           { error: "EVM author routes require a valid EVM address" },

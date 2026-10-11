@@ -10,6 +10,10 @@ vi.mock("@/lib/trust", () => ({
   verifyAuthorTrust: vi.fn(),
 }));
 
+vi.mock("@/lib/baseAuthorTrust", () => ({
+  resolveBaseAuthorTrust: vi.fn(),
+}));
+
 vi.mock("@/lib/solanaAgentRegistry", () => ({
   discoverSolanaRegistryCandidatesByWallet: vi.fn(),
 }));
@@ -25,6 +29,7 @@ vi.mock("@/lib/agentIdentity", () => ({
 
 import { GET, POST } from "@/app/api/author/[pubkey]/route";
 import { verifyWalletSignature } from "@/lib/auth";
+import { resolveBaseAuthorTrust } from "@/lib/baseAuthorTrust";
 import { resolveAuthorTrust, verifyAuthorTrust } from "@/lib/trust";
 import { discoverSolanaRegistryCandidatesByWallet } from "@/lib/solanaAgentRegistry";
 import { listAuthorDisputesByAuthor } from "@/lib/authorDisputes";
@@ -40,6 +45,8 @@ const mockVerifyAuthorTrust = verifyAuthorTrust as unknown as ReturnType<
 const mockResolveAuthorTrust = resolveAuthorTrust as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockResolveBaseAuthorTrust =
+  resolveBaseAuthorTrust as unknown as ReturnType<typeof vi.fn>;
 const mockDiscover =
   discoverSolanaRegistryCandidatesByWallet as unknown as ReturnType<
     typeof vi.fn
@@ -174,6 +181,26 @@ describe("POST /api/author/[pubkey]", () => {
     });
     expect(mockResolveAuthorTrust).not.toHaveBeenCalled();
     expect(mockListAuthorDisputes).not.toHaveBeenCalled();
+    expect(mockResolveIdentity).not.toHaveBeenCalled();
+  });
+
+  it("rejects Base mainnet author reads before trust or identity lookups", async () => {
+    const res = await GET(
+      new NextRequest(
+        "http://localhost/api/author/0x1234567890123456789012345678901234567890?chainContext=eip155:8453"
+      ),
+      {
+        params: Promise.resolve({
+          pubkey: "0x1234567890123456789012345678901234567890",
+        }),
+      }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "EVM author routes support Base Sepolia only",
+    });
+    expect(mockResolveBaseAuthorTrust).not.toHaveBeenCalled();
     expect(mockResolveIdentity).not.toHaveBeenCalled();
   });
 
