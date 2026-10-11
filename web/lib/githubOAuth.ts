@@ -122,10 +122,21 @@ export function createGithubOAuthState(returnTo: string, secret: string) {
 }
 
 export function readGithubOAuthState(request: NextRequest, secret: string) {
-  return decodeSignedPayload<SignedState>(
+  const state = decodeSignedPayload<SignedState>(
     request.cookies.get(GITHUB_OAUTH_STATE_COOKIE)?.value,
     secret
   );
+  // Cookie maxAge only constrains a normal browser. Enforce the OAuth state
+  // lifetime server-side so a copied signed cookie cannot be replayed later.
+  if (
+    !state ||
+    typeof state.createdAt !== "number" ||
+    !Number.isFinite(state.createdAt) ||
+    Date.now() - state.createdAt > STATE_MAX_AGE_SECONDS * 1000
+  ) {
+    return null;
+  }
+  return state;
 }
 
 export function buildGithubAuthorizeUrl(input: {

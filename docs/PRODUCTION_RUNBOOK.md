@@ -1,8 +1,16 @@
 # AgentVouch Production Runbook
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document uses technical identifiers so operators can find the matching code. The guide explains those identifiers in plain language.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 This runbook covers the deployed `agentvouch` web app and the USDC-native `v0.2.0` devnet protocol.
 The near-term mainnet track is Base, but Base remains gated by the Phase 9/10 plans until the
-v1 contract, custody, live smokes, and security review are complete.
+v1 contract, custody, checks against the deployed system, and security review are complete.
 
 ## Production Shape
 
@@ -15,7 +23,7 @@ stays implemented behind the `ChainAdapter` seam as the rollback target via
 `NEXT_PUBLIC_AGENTVOUCH_DEFAULT_CHAIN_CONTEXT=solana`. Base mainnet (`eip155:8453`) is blocked in
 code — `getAdapter()` throws on any non-Sepolia `eip155:*` context.
 
-| Surface                          | Value                                                                      |
+| Feature or action                | Value                                                                      |
 | -------------------------------- | -------------------------------------------------------------------------- |
 | Base Sepolia chain context       | `eip155:84532`                                                             |
 | Base Sepolia contract (selected) | `0x5992dD52Ee2015f558D0A690777C55e27b05B7d1` (`base-v1-candidate`, pre-A1) |
@@ -24,8 +32,8 @@ code — `getAdapter()` throws on any non-Sepolia `eip155:*` context.
 | Solana cluster / chain context   | devnet / `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`                         |
 | Solana devnet USDC mint          | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`                             |
 
-The A1 (voucher-slashing) contract is **merged source, not deployed** — the selected deployment
-above does not route the paid-report selectors. Deployment state and gates:
+The A1 (deducting backers' deposited USDC) contract is **merged source, not deployed** — the selected deployment
+above does not route the contract functions for paid-purchase reports. Deployment state and gates:
 [`BASE_SEPOLIA_A1_STATE.md`](./BASE_SEPOLIA_A1_STATE.md), [`BASE_DEPLOY.md`](./BASE_DEPLOY.md).
 The selected-contract pointer lives in `NEXT_PUBLIC_BASE_AGENTVOUCH_ADDRESS`; if unset, the code
 falls back to the **legacy `base-poc-v0`** address in `web/lib/adapters/baseConstants.ts`, so treat
@@ -42,7 +50,7 @@ buyer-card-access redemption may remain enabled for existing valid grants. A liv
 key additionally requires `AGENTVOUCH_STRIPE_LIVE_MODE_ENABLED=true`; without it, checkout fails
 closed in every environment and the webhook refuses grants whose `livemode` contradicts the
 configured key while still processing refunds and disputes. Do not enable any of these before the
-[Card / Fiat Rail](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26) gates pass.
+[Card payments](./MAINNET_READINESS.md#card--fiat-rail-stripe-2026-07-26) gates pass.
 Live mode also requires complete server-only buyer/skill UUID allowlists, positive unit/gross/
 completed-payment/concurrent-reservation caps, a reservation TTL, and a fee/net reconciliation SLA.
 Reservation TTL must be 31–1440 minutes. The DB stores the exact timestamp sent to Stripe, but uses
@@ -52,7 +60,7 @@ Session normally converges when Stripe signs a completion or `checkout.session.e
 The additive pilot ledger enforces those limits under one transaction advisory lock and keeps gross
 capacity conservative: failures, expiry, refunds, and disputes do not restore it. The current source
 still hard-disables both live session creation and live fulfillment; no environment combination can
-enable real card charges until founder decisions, disposable-database rehearsal, WAF/monitoring
+enable real card charges until founder decisions, disposable-database practice run, WAF/monitoring
 proof, and explicit activation review are complete. Every live key requires WAF acknowledgement,
 including previews. See
 [`stripe-live-limited-pilot.plan.md`](../.agents/plans/stripe-live-limited-pilot.plan.md).
@@ -135,15 +143,15 @@ App checks:
 Protocol checks after program or client changes:
 
 - Register an author.
-- Deposit USDC author bond.
+- Deposit USDC author's backing deposit.
 - Create USDC vouch.
 - Publish a USDC listing.
 - Purchase with `purchase_skill`.
-- Confirm author proceeds land in the listing settlement vault.
-- Withdraw author proceeds with `withdraw_author_proceeds`.
+- Confirm author's sales earnings land in the listing settlement vault.
+- Withdraw author's sales earnings with `withdraw_author_proceeds`.
 - Verify purchase entitlement.
 - Download raw skill with `X-AgentVouch-Auth`.
-- Claim voucher rewards.
+- Claim backers' revenue shares.
 - Open and resolve a small devnet dispute after explicit approval.
 - For an upheld paid dispute, create a small refund pool and claim one buyer refund.
 
@@ -172,7 +180,7 @@ Record the authority pubkeys for each environment before production changes:
 ## Base V1 Candidate Operations
 
 The deployed Base Sepolia contract is a **pre-A1 Base v1 candidate**, not a mainnet release. It reports
-`PROTOCOL_VERSION = "base-v1-candidate"` and includes USDC purchase/x402 flows, author bonds,
+`PROTOCOL_VERSION = "base-v1-candidate"` and includes USDC purchase/x402 flows, authors' backing deposits,
 vouch/revoke, and founder/admin-resolved generic author reports. The merged clean-break A1 source reports
 `base-v1-a1`, removes those generic reports, and adds centrally adjudicated paid-purchase reports through
 an immutably linked settlement library. It is not deployed or approved for broadcast; activation is
@@ -192,7 +200,7 @@ Before any Base mainnet deployment:
    `TREASURY_ROLE` as well.
 3. Keep the x402 relayer as a dedicated low-privilege funded EOA. It must not be the deployer,
    default admin, resolver, treasury, or pause key.
-4. Record role holders, threshold/signers, emergency rotation, and revocation procedure in the
+4. Record wallets authorized for each role, threshold/signers, emergency rotation, and revocation procedure in the
    deployment state doc before promotion.
 5. Run `forge test --root contracts/base-poc` in CI and locally for every contract change.
 6. Run internal review plus an external security pass over every USDC-moving path before Phase 10:
@@ -216,7 +224,7 @@ Base Sepolia smoke evidence to capture before treating Phase 9 as closed:
 
 - Base passkey author register/list userOp or tx hash.
 - Base passkey buyer purchase userOp or tx hash.
-- Buyer ETH delta showing sponsored gas policy worked as intended.
+- Buyer ETH delta showing network fees paid by a sponsor policy worked as intended.
 - Buyer, author, voucher pool, and contract USDC deltas.
 - Receipt and entitlement rows with `buyer_chain_context` / `buyer_address`.
 - Raw download success for the buyer and rejection for a non-buyer.
@@ -226,7 +234,7 @@ Base Sepolia smoke evidence to capture before treating Phase 9 as closed:
 
 ## Emergency Pause
 
-The deployed devnet program includes `set_paused(paused: bool)`, gated by `config.pause_authority`. Treat it as a narrow emergency brake: it stops new protocol exposure while leaving buyer and voucher claim paths open where funds are already allocated.
+The deployed devnet program includes `set_paused(paused: bool)`, gated by `config.pause_authority`. Treat it as a narrow emergency brake: it stops new protocol exposure while leaving buyer and voucher ways to collect payments open where funds are already allocated.
 
 Use pause for suspected protocol bugs, compromised authorities, bad IDL/client deploys, x402 settlement issues, accounting incidents, or any live flow where continued purchases/vouches/listings could widen the blast radius.
 
@@ -234,12 +242,12 @@ Blocked while paused:
 
 - create or update a skill listing
 - initialize a listing settlement
-- deposit or withdraw author bond
+- deposit or withdraw author's backing deposit
 - create a vouch or link a vouch to a listing
 - direct `purchase_skill`
 - protocol `settle_x402_purchase`
 - open a new author dispute
-- withdraw author proceeds
+- withdraw author's sales earnings
 
 Allowed while paused, subject to normal account/status checks:
 
@@ -278,7 +286,7 @@ Rollback: unset `AGENTVOUCH_X402_PROTOCOL_BRIDGE_ENABLED` or set it to `false`, 
 
 ## Settlement And Refund Incidents
 
-- Stuck author withdrawal: confirm the listing settlement is not `locked_by_dispute`, the author proceeds vault holds USDC, and `author_proceeds_lock_seconds` has elapsed.
+- Stuck author withdrawal: confirm the listing settlement is not `locked_by_dispute`, the author's sales earnings vault holds USDC, and `author_proceeds_lock_seconds` has elapsed.
 - Missing purchase entitlement: verify the revision-scoped `Purchase` PDA, `listing_revision`, `settlement_pda`, and `author_proceeds_vault` recorded in `usdc_purchase_entitlements`.
 - Refund claim failure: confirm the purchase belongs to the refund pool revision, the refund claim PDA does not already exist, the claim window is still valid, and the refund vault has remaining USDC.
 - Unclaimed refund funds are not treasury revenue in M13. Do not sweep them without an explicit governance/runbook update.

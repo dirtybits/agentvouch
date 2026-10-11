@@ -5,6 +5,7 @@ import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
 import { resolveSafeFetchUrl } from "@/lib/safeFetch";
 import { fetchPublicUrl } from "@/lib/publicUrlFetch.server";
+import { isAddress } from "@solana/kit";
 import {
   AGENTVOUCH_PROTOCOL_VERSION,
   getAgentVouchChainContext,
@@ -79,6 +80,9 @@ async function fetchSkillUriContent(skillUri: string) {
 
 async function handleChainOnlyRaw(request: NextRequest, id: string) {
   const onChainAddress = id.slice(CHAIN_PREFIX.length);
+  if (!isAddress(onChainAddress)) {
+    return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+  }
   const listing = await fetchOnChainSkillListing(onChainAddress);
   if (!listing) {
     return new NextResponse("Skill not found", { status: 404 });
