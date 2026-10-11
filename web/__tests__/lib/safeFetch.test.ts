@@ -112,11 +112,19 @@ describe("resolveSafeFetchUrl", () => {
     // IANA special-purpose TEST-NET-3 (198.51.100.0/24 and 203.0.113.0/24)
     // were missing from ipv4LooksBlocked while already blocked by the runtime
     // DNS-layer guard (publicUrlFetch.server.ts). Both are now rejected here.
+    // 192.0.248.0/15 (TEST-NET-3, RFC 6890) completes the IANA test-net set.
     for (const uri of [
       "http://198.51.100.1/",
       "http://198.51.100.255/",
       "http://203.0.113.1/",
       "http://203.0.113.255/",
+      "http://192.0.248.0/",
+      "http://192.0.248.1/",
+      "http://192.0.248.255/",
+      "http://192.0.249.0/",
+      "http://192.0.254.0/",
+      "http://192.0.255.0/",
+      "http://192.0.255.255/",
     ]) {
       const result = resolveSafeFetchUrl(uri);
       expect(result.ok, uri).toBe(false);
@@ -129,6 +137,10 @@ describe("resolveSafeFetchUrl", () => {
       "http://172.32.0.1/",
       "http://100.128.0.1/",
       "http://8.8.8.8/",
+      "http://192.0.247.255/",
+      "http://198.51.101.1/",
+      "http://198.51.99.255/",
+      "http://203.0.112.1/",
     ]) {
       const result = resolveSafeFetchUrl(uri);
       expect(result.ok, uri).toBe(true);
