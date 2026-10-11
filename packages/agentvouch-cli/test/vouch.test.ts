@@ -37,18 +37,31 @@ describe("vouch command tree", () => {
 });
 
 describe("parseUsdcAmount", () => {
-  it("accepts positive amounts", () => {
+  it("converts positive amounts to exact micro-USDC", () => {
+    expect(parseUsdcAmount("0.000001")).toBe("1");
     expect(parseUsdcAmount("0.1")).toBe("100000");
     expect(parseUsdcAmount("1")).toBe("1000000");
     expect(parseUsdcAmount("3.5")).toBe("3500000");
+    expect(parseUsdcAmount(" 1.234567 ")).toBe("1234567");
   });
 
-  it("rejects zero, negatives, and non-numeric input", () => {
-    expect(() => parseUsdcAmount("0")).toThrow(/positive USDC amount/);
-    expect(() => parseUsdcAmount("-1")).toThrow(/positive USDC amount/);
-    expect(() => parseUsdcAmount("not-a-number")).toThrow(
-      /positive USDC amount/
-    );
+  it("rejects zero and malformed or over-precise amounts", () => {
+    for (const input of [
+      "0",
+      "0.000000",
+      "-1",
+      "not-a-number",
+      "",
+      "   ",
+      ".1",
+      "1.",
+      "1e2",
+      "1.0000001",
+    ]) {
+      expect(() => parseUsdcAmount(input), input).toThrow(
+        /positive USDC amount/
+      );
+    }
   });
 });
 
