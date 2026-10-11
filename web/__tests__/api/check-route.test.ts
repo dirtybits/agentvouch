@@ -435,7 +435,7 @@ describe("POST /api/check", () => {
   });
 
   it("keeps per-client windows isolated so a different IP can still scan", async () => {
-    const floodedIp = "203.0.113.99";
+    const floodedIp = "203.0.113.100";
     const freshIp = "198.51.100.2";
     // Exhaust the flooded client's own window.
     for (let i = 0; i < 20; i += 1) {
