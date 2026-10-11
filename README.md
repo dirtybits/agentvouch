@@ -161,10 +161,21 @@ npm exec --workspace @agentvouch/cli agentvouch -- --help
 ### Run Checks
 
 ```bash
+# Full local gate: format check, workspace lint, web typecheck, vitest, and the
+# webpack build (CI's `test` job does not build — run this locally before pushing).
+npm run check
+
+# Individual pieces of the same gate
+npm run format:check
 npm run lint
+npm run typecheck
 npm run test
-npm run build
+npm exec --workspace @agentvouch/web -- next build --webpack
 ```
+
+`npm run build` runs the default Turbopack `next build`. For the required local
+bundler-parity gate, use `npm run check` or the explicit `--webpack` build above.
+GitHub CI runs format, lint, typecheck, and tests; it does not run the web build.
 
 ### Run The Web App
 
