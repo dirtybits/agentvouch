@@ -21,7 +21,8 @@ export type SafeFetchUrlResult =
 
 const IPV4_BLOCKLIST_NOTE =
   "0/8, 10/8, 100.64/10 (CGNAT), 127/8, 169.254/16 (link-local + cloud metadata), " +
-  "172.16/12, 192.0.0/24, 192.0.2/24 (TEST-NET), 192.88.99/24 (6to4 relay), 192.168/16, " +
+  "172.16/12, 192.0.0/24, 192.0.2/24 (TEST-NET), 192.88.99/24 (6to4 relay), " +
+  "192.168/16, 198.51.100.0/24 and 203.0.113.0/24 (TEST-NET-3), " +
   "198.18/15 (benchmarking), 224/4 (multicast) and 240/4 (reserved)";
 
 export function resolveSafeFetchUrl(
@@ -104,6 +105,8 @@ function ipv4LooksBlocked(host: string): boolean {
   if (a === 192 && b === 0 && (c === 0 || c === 2)) return true; // TEST-NET-1/2
   if (a === 192 && b === 88 && c === 99) return true; // 192.88.99.0/24 6to4 relay
   if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 51 && c === 100) return true; // 198.51.100.0/24 TEST-NET-3
+  if (a === 203 && b === 0 && c === 113) return true; // 203.0.113.0/24 TEST-NET-3
   if (a >= 224) return true; // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved
   return false;
 }

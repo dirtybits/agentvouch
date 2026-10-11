@@ -108,6 +108,22 @@ describe("resolveSafeFetchUrl", () => {
     }
   });
 
+  it("rejects TEST-NET-3 documentation ranges, matching publicUrlFetch blockedV4", () => {
+    // IANA special-purpose TEST-NET-3 (198.51.100.0/24 and 203.0.113.0/24)
+    // were missing from ipv4LooksBlocked while already blocked by the runtime
+    // DNS-layer guard (publicUrlFetch.server.ts). Both are now rejected here.
+    for (const uri of [
+      "http://198.51.100.1/",
+      "http://198.51.100.255/",
+      "http://203.0.113.1/",
+      "http://203.0.113.255/",
+    ]) {
+      const result = resolveSafeFetchUrl(uri);
+      expect(result.ok, uri).toBe(false);
+      if (!result.ok) expect(result.reason).toContain("IPv4");
+    }
+  });
+
   it("allows IPv4 addresses just outside blocked ranges", () => {
     for (const uri of [
       "http://172.32.0.1/",
