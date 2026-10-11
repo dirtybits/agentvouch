@@ -81,14 +81,17 @@ const BRANCH_RE = /^[A-Za-z0-9._\/-]{1,120}$/;
 export const VERIFICATION_FILE_PATH = ".well-known/agentvouch.json";
 
 export function validateRepoCoords(input: {
-  githubOwner: string;
-  githubRepo: string;
+  githubOwner: unknown;
+  githubRepo: unknown;
   branch?: unknown;
 }): { ok: true; branch: string } | { ok: false; error: string } {
-  if (!OWNER_RE.test(input.githubOwner)) {
+  if (
+    typeof input.githubOwner !== "string" ||
+    !OWNER_RE.test(input.githubOwner)
+  ) {
     return { ok: false, error: "Invalid GitHub owner" };
   }
-  if (!REPO_RE.test(input.githubRepo)) {
+  if (typeof input.githubRepo !== "string" || !REPO_RE.test(input.githubRepo)) {
     return { ok: false, error: "Invalid GitHub repo" };
   }
   const branch =
