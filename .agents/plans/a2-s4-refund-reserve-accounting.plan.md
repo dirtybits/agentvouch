@@ -9,7 +9,7 @@ todos:
     content: Apply buyer-first allocation before capped challenger reward and exclude slash buckets from reward base
     status: pending
   - id: slash-bucket-drain
-    content: Drain bond and voucher slash buckets as refund-only money before eligible author proceeds and prevent author withdrawal
+    content: "Drain bond and voucher slash buckets as refund-only money before eligible author's sales earnings and prevent author withdrawal"
     status: pending
   - id: residual-reserve
     content: Route paid slash residuals above buyer exposure to protocol reserve/treasury accounting with sweep protection
@@ -27,6 +27,14 @@ isProject: false
 ---
 
 # AgentVouch Protocol Requirement A2, Stage S4 — Refund and Reserve Accounting
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers report-review rules or buyer-refund accounting. The reference code A2 names related work; the launch-requirements table decides which parts block the first release.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 ## Goal
 
@@ -64,6 +72,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
 ## Implementation Steps
 
 1. Rewrite refund amount selection.
+
    - Keep `create_refund_pool` permissionless after dispute reaches the correct terminal state.
    - Remove caller-selected `requested_refund_pool_usdc_micros` as the amount source.
    - If an argument remains for client compatibility, treat it as a minimum-output or exact-expected guard that cannot lower the computed amount.
@@ -74,9 +83,10 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Require pool amount is nonzero unless the S3 branch explicitly marks a zero-capacity paid dispute as terminal and lock-clearable.
 
 2. Apply buyer-first challenger reward math.
+
    - Compute the refund pool before challenger reward.
    - If available capacity is less than or equal to buyer exposure, challenger reward is zero.
-   - Reward base is only remaining eligible withdrawable author proceeds after buyer-first allocation.
+   - Reward base is only remaining eligible withdrawable author's sales earnings after buyer-first allocation.
    - Exclude both slash buckets:
      - `slashed_deposit_usdc_micros`
      - `bond_slashed_deposit_usdc_micros`
@@ -84,27 +94,31 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Use floor division in micro-USDC.
 
 3. Move tokens and decrement buckets in an auditable order.
-   - Drain refund-only buckets before author proceeds:
+
+   - Drain refund-only buckets before author's sales earnings:
      - First `bond_slashed_deposit_usdc_micros`.
      - Then voucher `slashed_deposit_usdc_micros`.
-     - Then withdrawable author proceeds.
+     - Then withdrawable author's sales earnings.
    - Decrement every source bucket by exactly the amount consumed.
    - Increment `refunded_author_proceeds_usdc_micros` only for proceeds-funded refunds if the existing accounting expects that semantic.
    - Never make a slash bucket author-withdrawable.
    - Transfer challenger reward only after buyer refund funding is determined.
 
 4. Route residual slash funds.
+
    - Any paid slash bucket amount above buyer exposure routes to protocol reserve/treasury accounting.
    - If using shared treasury vault, transfer residual to `protocol_treasury_vault` and increment `config.reserved_treasury_usdc_micros`.
    - If using a reserve PDA/vault, transfer residual there instead and make S2 sweep rules aware of it.
    - Emit enough event data to reconcile residual source bucket and reserve amount.
 
 5. Clear locks only after accounting is complete.
+
    - Keep `ListingSettlement.locked_by_dispute` and `SkillListing.locked_by_dispute` until the refund pool has been created or a proven zero-capacity/no-purchase branch has finalized.
    - Do not clear locks when an undersized caller argument fails.
    - Do not clear locks if token transfers fail.
 
 6. Add `close_refund_pool`.
+
    - Permissionless after `refund_pool.claim_deadline` has passed.
    - Reject close before deadline.
    - Transfer remaining refund vault balance to protocol reserve/treasury accounting.
@@ -113,6 +127,7 @@ Drafted from `.agents/plans/a2-dispute-governance-v1.plan.md` and source inspect
    - Emit `RefundPoolClosed`.
 
 7. Keep `claim_purchase_refund` compatibility.
+
    - Existing one-claim-per-purchase PDA remains the double-claim guard.
    - Claim amount remains bounded by purchase price, pool cap, and remaining pool.
    - Claim after deadline still fails.
@@ -142,7 +157,7 @@ Add or extend refund/slashing tests:
 - Underfunded paid dispute sends all available capacity to buyer refund and pays zero challenger reward.
 - Fully funded paid dispute funds buyer first, then pays capped challenger reward from remaining eligible proceeds.
 - Voucher slash bucket and author-bond slash bucket are separate and both excluded from reward base.
-- Slash buckets drain before eligible author proceeds.
+- Slash buckets drain before eligible author's sales earnings.
 - Residual slash above buyer exposure routes to reserve/treasury and increments reserved accounting.
 - Author cannot withdraw slash buckets or reserved residuals.
 - Claim before deadline succeeds.

@@ -157,26 +157,6 @@ export function skillListingPda(
   ]);
 }
 
-export function rewardVaultAuthority(
-  program: Program<Agentvouch>,
-  skillListing: PublicKey
-) {
-  return pda(program, [
-    Buffer.from("listing_reward_vault_authority"),
-    skillListing.toBuffer(),
-  ]);
-}
-
-export function rewardVault(
-  program: Program<Agentvouch>,
-  skillListing: PublicKey
-) {
-  return pda(program, [
-    Buffer.from("listing_reward_vault"),
-    skillListing.toBuffer(),
-  ]);
-}
-
 export function listingSettlementPda(
   program: Program<Agentvouch>,
   skillListing: PublicKey,
@@ -464,21 +444,6 @@ export async function createWrongMint(ctx: TestContext) {
     ctx.payer.publicKey,
     null,
     USDC_DECIMALS
-  );
-}
-
-export async function mintToActor(
-  ctx: TestContext,
-  actor: TestActor,
-  amountUsdcMicros: number
-) {
-  await mintTo(
-    ctx.provider.connection,
-    ctx.payer,
-    ctx.usdcMint,
-    actor.usdc,
-    ctx.payer,
-    amountUsdcMicros
   );
 }
 
