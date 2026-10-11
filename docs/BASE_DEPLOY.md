@@ -1,8 +1,20 @@
-# AgentVouch Base Sepolia Voucher-Slashing (A1) Deployment Runbook
+# Base Sepolia - Deploy Buyer Reports, Stake Deductions, and Credit Claims
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document covers installing and checking the updated Base contract on the test network. A successful test-network step does not approve a real-money launch.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 This runbook covers the fresh linked `AgentVouchEvm` `base-v1-a1` candidate. Deployment,
 configuration, smoke, and activation are separate human-gated stages. Completing one does not
 authorize the next.
+
+This release lets an eligible buyer report a paid purchase. If the resolver upholds the report,
+settlement deducts USDC deposited as backing to fund a limited amount owed to the buyer. Endorser stake deductions are
+called "deducting backers' deposited USDC" in protocol requirement A1. The buyer is not guaranteed a full refund.
 
 ## Scope and current state
 
@@ -271,10 +283,10 @@ Success requires `A1_STAGED_PAUSED_OK`. Independently read back:
 
 The deployment is now only **deployed, verified, configured, and paused**. It is not active.
 
-## Base Sepolia Deployment Gate C — Isolated Lifecycle Test
+## Base Sepolia Deployment Gate C - Test Buyer Reports, Stake Deductions, and Credit Claims
 
 The isolated lifecycle test requires a new approval. The approval must name the fixtures, unpause
-signer, resolver, cranker, exposure cap, and monitoring owner. Use fresh Direct or Authorization
+signer, resolver, cranker, limit on money at risk, and monitoring owner. Use fresh Direct or Authorization
 receipts on the new deployment. Lane-C settlement receipts and every pre-A1 receipt are ineligible.
 
 The smoke must record exact transaction/UserOp hashes, blocks, block hashes, events, deadlines,
@@ -282,7 +294,7 @@ multi-page slash progress, and USDC balances at explicit block numbers for:
 
 ```text
 purchase -> open -> review -> resolve -> slash pages
-         -> buyer credit -> reserve credit -> voucher residual
+         -> amount owed to the buyer -> reserve credit -> backer's remaining deposit
 ```
 
 Rejection, expiry, replay, duplicate, wrong-role, wrong-deployment, paused-entry, premature claim,
@@ -307,7 +319,7 @@ Rollback order:
 2. Restore the previous deployment-qualified client pointer.
 3. Preserve direct access and sponsorship for terminal reports and funded buyer claims on the A1
    deployment.
-4. Reconcile reports, remaining slash work, credits, reserve, and residual exits.
+4. Reconcile reports, remaining slash work, credits, reserve, and withdrawals of remaining deposits.
 5. Record the incident and abandoned/paused deployment state; never delete or relabel history.
 
 Do not print or commit private keys. Do not describe a paused deployment as active. Do not enable

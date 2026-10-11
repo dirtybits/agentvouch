@@ -4,6 +4,7 @@ import {
   getConfiguredSolanaChainContext,
   normalizePersistedChainContext,
 } from "@/lib/chains";
+import { fetchPublicUrl } from "@/lib/publicUrlFetch.server";
 
 export interface SolanaRegistryCandidate {
   chainContext: string;
@@ -201,21 +202,33 @@ function toHttpUrl(uri: string): string | null {
 async function readRegistrations(
   agentUri: string | null | undefined
 ): Promise<unknown[]> {
-  const httpUrl = agentUri ? toHttpUrl(agentUri) : null;
-  if (!httpUrl) {
+  let target = agentUri ? toHttpUrl(agentUri) : null;
+  if (!target) {
     return [];
   }
 
   try {
-    const response = await fetch(httpUrl, {
-      headers: { accept: "application/json" },
-    });
-    if (!response.ok) {
-      return [];
-    }
+    for (let redirects = 0; ; redirects += 1) {
+      if (redirects > 5) {
+        return [];
+      }
+      const response = await fetchPublicUrl(target);
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        await response.body?.cancel();
+        if (!location) {
+          return [];
+        }
+        target = new URL(location, target).href;
+        continue;
+      }
+      if (!response.ok) {
+        return [];
+      }
 
-    const payload = await response.json();
-    return Array.isArray(payload?.registrations) ? payload.registrations : [];
+      const payload = await response.json();
+      return Array.isArray(payload?.registrations) ? payload.registrations : [];
+    }
   } catch {
     return [];
   }
