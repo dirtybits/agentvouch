@@ -167,9 +167,9 @@ npm run test
 npm exec --workspace @agentvouch/web -- next build --webpack
 ```
 
-`npm run build` runs the default Turbopack `next build`. For local parity with the
-bundler-parity gate used in CI, prefer `npm run check` or the explicit `--webpack`
-build above.
+`npm run build` runs the default Turbopack `next build`. For the required local
+bundler-parity gate, use `npm run check` or the explicit `--webpack` build above.
+GitHub CI runs format, lint, typecheck, and tests; it does not run the web build.
 
 ### Run The Web App
 
