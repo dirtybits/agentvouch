@@ -54,16 +54,25 @@ export function checkRateLimit(
   };
 }
 
-/** Best-effort client IP for rate-limit keying (proxy headers are spoofable). */
+// Best-effort client IP for rate-limit keying (proxy headers are spoofable).
+//
+// On Vercel, x-real-ip is set by the platform from the true client connection
+// and cannot be spoofed by the caller, so it is checked first. Only when that
+// is absent (local dev / non-Vercel) do we fall back to the rightmost
+// x-forwarded-for hop — the leftmost entries are client-prepended and
+// attacker-controlled, so taking them as "the client IP" lets a flooder seed a
+// fresh, unique bucket per request and dodge per-IP limits. This mirrors the
+// in-repo clientIp() pattern used by /api/check.
 export function clientIpFromRequest(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return (
-    request.headers.get("x-real-ip") ??
-    request.headers.get("x-vercel-forwarded-for") ??
-    "unknown"
-  );
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
+  const hops = request.headers
+    .get("x-forwarded-for")
+    ?.split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (hops && hops.length > 0) return hops[hops.length - 1];
+
+  return request.headers.get("x-vercel-forwarded-for")?.trim() ?? "unknown";
 }
