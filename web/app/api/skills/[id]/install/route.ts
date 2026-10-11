@@ -8,6 +8,7 @@ import { hasUsdcPurchaseEntitlement } from "@/lib/usdcPurchases";
 import { normalizeUsdcMicros } from "@/lib/listingContract";
 import { recordInstallAndDownloadEvent } from "@/lib/skillRawAccess";
 import { isUuidLike } from "@/lib/skillUrls";
+import { isAddress } from "@solana/kit";
 
 const CHAIN_PREFIX = "chain-";
 
@@ -24,7 +25,10 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    if (!id.startsWith(CHAIN_PREFIX) && !isUuidLike(id)) {
+    if (
+      (!id.startsWith(CHAIN_PREFIX) && !isUuidLike(id)) ||
+      (id.startsWith(CHAIN_PREFIX) && !isAddress(id.slice(CHAIN_PREFIX.length)))
+    ) {
       return NextResponse.json({ error: "Skill not found" }, { status: 404 });
     }
 
