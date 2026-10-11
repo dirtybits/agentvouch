@@ -9,7 +9,7 @@ export const SITE_OG_IMAGE_PATH = "/opengraph-image";
 export const SITE_TWITTER_IMAGE_PATH = "/twitter-image";
 
 export function getCanonicalUrl(path = "/"): string {
-  if (!path) return SITE_URL;
+  if (!path || path === "/") return SITE_URL;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${SITE_URL}${normalizedPath}`;

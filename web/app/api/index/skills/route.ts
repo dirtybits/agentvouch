@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { fetchAllIndexedSkills } from "@/lib/indexFeeds";
 import { AGENT_DISCOVERY_SCHEMA_VERSION } from "@/lib/agentDiscovery";
 import { getErrorMessage } from "@/lib/errors";
+import { SITE_URL } from "@/lib/site";
 import { getPublicSkillPath } from "@/lib/skillUrls";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const baseUrl = request.nextUrl.origin;
+    const baseUrl = SITE_URL;
     const skills = await fetchAllIndexedSkills(baseUrl);
 
     return NextResponse.json({

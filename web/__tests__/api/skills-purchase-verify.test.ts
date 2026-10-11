@@ -95,6 +95,22 @@ describe("POST /api/skills/[id]/purchase/verify", () => {
     expect(mockVerifyAndRecordBaseExistingPurchase).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed chain-only listing addresses before parsing or database work", async () => {
+    const json = vi.fn();
+    const res = await POST({ json } as unknown as NextRequest, {
+      params: Promise.resolve({ id: "chain-not-a-solana-address" }),
+    });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Skill not found" });
+    expect(json).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockFetchOnChainSkillListing).not.toHaveBeenCalled();
+    expect(mockVerifyAndRecord).not.toHaveBeenCalled();
+    expect(mockVerifyDirectPurchase).not.toHaveBeenCalled();
+  });
+
   it("records direct purchase entitlements through the shared helper", async () => {
     const skill = {
       id: "00000000-0000-4000-8000-000000000001",

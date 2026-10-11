@@ -15,7 +15,7 @@ todos:
     content: Replace authority-keyed resolve entrypoint with propose_author_dispute_resolution that records ruling, computed refund/reward previews, economic snapshots, and executable timestamp without moving funds
     status: pending
   - id: execute-resolution
-    content: Add cancel_author_dispute_resolution and execute_author_dispute_resolution to enforce cancellable timelock governance, move dispute bonds/author bond slash/refund-first buckets, and preserve A1 voucher-slashing parking semantics
+    content: "Add cancel_author_dispute_resolution and execute_author_dispute_resolution to enforce cancellable timelock governance, move dispute bonds/author's backing deposit slash/refund-first buckets, and preserve A1 deducting backers' deposited USDC parking semantics"
     status: pending
   - id: refund-pool-integration
     content: Update create_refund_pool and add close_refund_pool so refund amounts are program-computed, expired balances have an owner, and slashed deposits/proceeds accounting stays separated
@@ -35,7 +35,17 @@ todos:
 isProject: false
 ---
 
-# AgentVouch Protocol Requirement A2 — Governed Dispute Resolution
+<a id="agentvouch-protocol-requirement-a2--governed-dispute-resolution"></a>
+
+# AgentVouch Protocol Requirement A2 — Report review with approval and waiting-period rules
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This plan covers report-review rules or buyer-refund accounting. The reference code A2 names related work; the launch-requirements table decides which parts block the first release.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 ## Goal
 
@@ -48,14 +58,14 @@ Design target as of 2026-06-17:
 3. **Refund-first routing for paid disputes.** Paid-listing author-bond slash and voucher slashes increase buyer refund capacity before paying a challenger reward. Challenger reward remains capped by config.
 4. **Resolver discretion is bounded.** Refund pool sizing must derive from escrow/proceeds/slashed value and purchase price snapshots, not arbitrary authority input.
 5. **A1 semantics survive.** Upheld paid disputes with active linked positions still park in `SlashingVouchers`, use permissionless `slash_dispute_vouches`, and keep listing/settlement locks until `create_refund_pool` consumes the refund settlement path.
-6. **Free-listing v1 has bounded challenger upside.** `AuthorBondOnly` free-listing disputes have no purchase, settlement, author-proceeds vault, or refund pool. For A2 v1, upheld free-listing author-bond slash returns the challenger's dispute-bond principal, pays a capped challenger reward from the slashed author bond, and routes the residual slash to `protocol_treasury_vault`; A4 can later define a broader reserve/backstop policy.
-7. **Settlement locks remain load-bearing.** For paid disputes, `ListingSettlement.locked_by_dispute` and `SkillListing.locked_by_dispute` must remain set across propose -> timelock -> execute -> slash pages -> refund-pool creation. No author proceeds withdrawal is allowed while a resolution is proposed or pending.
+6. **Free-listing v1 has bounded challenger upside.** `AuthorBondOnly` free-listing disputes have no purchase, settlement, author-proceeds vault, or refund pool. For A2 v1, upheld free-listing author-bond slash returns the challenger's dispute-bond principal, pays a capped challenger reward from the slashed author's backing deposit, and routes the residual slash to `protocol_treasury_vault`; A4 can later define a broader reserve/backstop policy.
+7. **Settlement locks remain load-bearing.** For paid disputes, `ListingSettlement.locked_by_dispute` and `SkillListing.locked_by_dispute` must remain set across propose -> timelock -> execute -> slash pages -> refund-pool creation. No author's sales earnings withdrawal is allowed while a resolution is proposed or pending.
 8. **A2 devnet is a clean break.** A2 changes `ReputationConfig`, `AuthorDispute`, and `ListingSettlement` layouts. Do not stack same-program realloc migrations on top of M13 unless a separate migration design proves compatibility; use a fresh devnet program ID and DB cleanup for A2 implementation/smoke.
 9. **Paid disputes are buyer-first before challenger reward.** For purchase-attached paid disputes, buyer refund exposure is allocated from available capacity before any challenger reward is reserved. Challenger reward can only use remaining eligible proceeds after the buyer-first pool, and paid slash buckets are never author-withdrawable.
 10. **Economic parameters are snapshotted.** Proposal records slash percentage, challenger reward bps/cap, and any other settlement-economic values needed by execute/slash/refund. Settlement recomputes from live token buckets, but uses the dispute snapshots rather than mutable live config.
 11. **Financial branches are mutually exclusive.** A paid dispute is financial only when `liability_scope == AuthorBondThenVouchers` **and** the dispute has an attached verified purchase. Paid no-purchase disputes are reputation-only even if the listing has active reward positions; they do not park in `SlashingVouchers`.
 12. **Refund amount is program-computed.** `create_refund_pool` must compute the buyer-first pool amount from dispute state and settlement buckets. Callers may pay rent/fees, but cannot choose a smaller amount and clear locks.
-13. **Author-bond exposure is serialized.** A2 v1 allows at most one open author-bond-exposing dispute per author profile, because the author bond is one shared pot. Later milestones can relax this with per-dispute reserves or aggregate exposure accounting.
+13. **Author-bond exposure is serialized.** A2 v1 allows at most one open author-bond-exposing dispute per author profile, because the author's backing deposit is one shared pot. Later milestones can relax this with per-dispute reserves or aggregate exposure accounting.
 14. **Dispute residuals are reserve accounting.** Free-listing residual slash, paid slash above buyer exposure, and expired refund-pool balances route to a protocol reserve/treasury path with explicit accounting. Treasury sweep cannot instantly withdraw these funds without the reserve policy required for A4.
 
 ## Scope
@@ -73,7 +83,7 @@ Drafted 2026-06-19 for handoff and parallel branch work:
 
 1. `a2-s1-state-layout.plan.md`: account layout, constants, initializer defaults, and events.
 2. `a2-s2-authority-governance.plan.md`: config setters, two-step config authority handoff, role rotation, and reserve-aware treasury sweep.
-3. `a2-s3-governed-resolution.plan.md`: propose/cancel/execute dispute resolution, author-bond dispute serialization, and snapshot-based voucher slashing.
+3. `a2-s3-governed-resolution.plan.md`: propose/cancel/execute dispute resolution, author-bond dispute serialization, and snapshot-based deducting backers' deposited USDC.
 4. `a2-s4-refund-reserve-accounting.plan.md`: program-computed buyer-first refund pools, residual reserve accounting, and expired refund close.
 5. `a2-s5-clients-smoke-readiness.plan.md`: generated clients, web/CLI/smoke surfaces, clean-break devnet evidence, and readiness docs.
 
@@ -88,7 +98,7 @@ Verified 2026-06-16 against the local worktree:
 - `resolve_author_dispute.rs` currently transfers the dispute bond to the challenger on Upheld and to protocol treasury on Dismissed.
 - `slash_author_bond_if_present` currently transfers author-bond slash directly to the challenger USDC account.
 - A1 added `SlashingVouchers`, paged `slash_dispute_vouches`, `ListingSettlement.slashed_deposit_usdc_micros`, and listing/settlement locks that stay set until `create_refund_pool`.
-- `create_refund_pool.rs` already computes challenger reward only on withdrawable author proceeds and excludes slashed deposits from the reward base.
+- `create_refund_pool.rs` already computes challenger reward only on withdrawable author's sales earnings and excludes slashed deposits from the reward base.
 - Solana/Anchor docs checked through local Solana skills and MCP search on 2026-06-16: Anchor supports account `realloc`, PDA seed/bump constraints, `Clock::get()` for timelock checks, and IDL/client generation should remain product artifacts.
 
 ## Files To Change
@@ -96,6 +106,7 @@ Verified 2026-06-16 against the local worktree:
 ### State
 
 - `programs/agentvouch/src/state/config.rs`
+
   - Add `resolver_authority: Pubkey`.
   - Add `resolution_timelock_seconds: i64` with default `259_200` seconds (72h) for mainnet-RC; tests may initialize a short nonzero value.
   - Add `MIN_RESOLUTION_TIMELOCK_SECONDS` as a hard floor for config setters, and store `resolution_executable_at` at proposal time so later config changes cannot shorten a pending proposal.
@@ -104,6 +115,7 @@ Verified 2026-06-16 against the local worktree:
   - Update `LEN` and initialization defaults.
 
 - `programs/agentvouch/src/state/author_dispute.rs`
+
   - Add pending-resolution fields, likely:
     - `proposed_ruling: Option<AuthorDisputeRuling>`
     - `computed_refund_pool_preview_usdc_micros: u64` as an advisory preview only; source of truth is recomputation at settlement from live buckets and snapshotted economics.
@@ -126,6 +138,7 @@ Verified 2026-06-16 against the local worktree:
 ### Instructions
 
 - Add `instructions/propose_author_dispute_resolution.rs`
+
   - Accounts: `author_dispute`, `author_profile`, `skill_listing`, optional `listing_settlement`, `config`, `resolver_authority: Signer`.
   - Require `resolver_authority == config.resolver_authority`.
   - Require dispute is `Open`.
@@ -135,10 +148,11 @@ Verified 2026-06-16 against the local worktree:
   - Do **not** move tokens or mutate author reputation counters.
   - For Dismissed, computed refund and reward previews must be zero.
   - For Upheld paid disputes with an attached verified purchase, compute preview amounts by formula; see "Refund Formula".
-  - For Upheld paid disputes without an attached verified purchase, require proposed refund and proposed reward to be zero in A2 v1. This path is reputation-only and must not enter voucher slashing or create a refund pool until an A4/indexer-backed affected-buyer scope exists.
+  - For Upheld paid disputes without an attached verified purchase, require proposed refund and proposed reward to be zero in A2 v1. This path is reputation-only and must not enter deducting backers' deposited USDC or create a refund pool until an A4/indexer-backed affected-buyer scope exists.
   - Emit `AuthorDisputeResolutionProposed`.
 
 - Add `instructions/cancel_author_dispute_resolution.rs`
+
   - Accounts: `author_dispute`, `author_profile`, `skill_listing`, optional `listing_settlement`, `config`, `config_authority: Signer`.
   - Require `config_authority == config.config_authority`.
   - Require dispute status `ResolutionProposed`.
@@ -147,6 +161,7 @@ Verified 2026-06-16 against the local worktree:
   - Emit `AuthorDisputeResolutionCancelled`.
 
 - Add `instructions/execute_author_dispute_resolution.rs`
+
   - Accounts mostly mirror current `resolve_author_dispute.rs`, but authority is the executor/payer and need not be resolver if the proposal is already recorded. Decision: permissionless execute after proposal matures, because it lowers liveness risk, with `cancel_*` as the on-chain remedy for bad pending proposals.
   - Require status `ResolutionProposed`, `Clock::get()?.unix_timestamp >= executable_at`, and all proposal fields present.
   - For Dismissed:
@@ -155,7 +170,7 @@ Verified 2026-06-16 against the local worktree:
     - Decrement `open_author_disputes`, increment dismissed count, recompute reputation.
   - For Upheld:
     - Return the challenger's original dispute bond principal first. Reward is separate and capped.
-    - Slash author bond if present. For paid `AuthorBondThenVouchers`, transfer the slash into the disputed listing's author proceeds vault and increment `listing_settlement.bond_slashed_deposit_usdc_micros`. For free `AuthorBondOnly`, compute a capped challenger reward from the author-bond slash, transfer that reward to the challenger, and route the residual slash to `protocol_treasury_vault` because there is no settlement/refund pool.
+    - Slash author's backing deposit if present. For paid `AuthorBondThenVouchers`, transfer the slash into the disputed listing's author's sales earnings vault and increment `listing_settlement.bond_slashed_deposit_usdc_micros`. For free `AuthorBondOnly`, compute a capped challenger reward from the author-bond slash, transfer that reward to the challenger, and route the residual slash to `protocol_treasury_vault` because there is no settlement/refund pool.
     - Increment upheld counters and recompute reputation.
     - If financial paid (`liability_scope == AuthorBondThenVouchers` and `author_dispute.purchase.is_some()`) and linked vouches exist, set status `SlashingVouchers` as A1 does; final `Resolved` remains the last slash page.
     - If purchase-attached paid and no linked vouches, keep locks until `create_refund_pool` consumes the settlement path or explicitly finalizes a zero-capacity path.
@@ -163,13 +178,15 @@ Verified 2026-06-16 against the local worktree:
   - Emit `AuthorDisputeResolutionExecuted`.
 
 - Replace or retain `resolve_author_dispute`
+
   - Keep the public instruction name only as a compatibility wrapper during local/devnet if cheap, but mainnet-RC must prefer explicit `propose_*` / `cancel_*` / `execute_*` entrypoints.
   - If retained, make it fail with a clear `UseGovernedResolutionFlow` error or call propose+execute only when timelock is zero in local tests. Avoid shipping an instant hot-key bypass.
 
 - Add `instructions/update_config.rs` or split into narrow setters
+
   - Gated by `config.config_authority`.
   - Decision: ship a single `update_config` instruction for A2 v1 with explicit optional fields and full invariant checks; split into narrower setters later only if tests or IDL ergonomics demand it.
-  - Update economic values: floors, slash percentage, reward shares, challenger reward bps/cap, author proceeds lock, refund claim window, resolution timelock.
+  - Update economic values: floors, slash percentage, reward shares, challenger reward bps/cap, author's sales earnings lock, refund claim window, resolution timelock.
   - Enforce invariants:
     - shares sum to 10_000
     - `slash_percentage <= 100`
@@ -180,6 +197,7 @@ Verified 2026-06-16 against the local worktree:
   - Emit `ReputationConfigUpdated`.
 
 - Add `instructions/rotate_authorities.rs`
+
   - Gated by `config.config_authority`.
   - Rotate one or more live role pubkeys: config, resolver, treasury, settlement, pause.
   - Do not rotate legacy `config.authority` unless implementation discovers a live authorization path. If that field remains inert metadata, emit and document that it is deprecated/non-authorizing before mainnet-RC.
@@ -194,24 +212,27 @@ Verified 2026-06-16 against the local worktree:
   - Do not sweep dispute residual reserve funds or expired refund funds unless A4 reserve policy has made them sweepable. If these funds share `protocol_treasury_vault`, track `reserved_treasury_usdc_micros` and enforce `sweep_amount <= vault_balance - reserved_treasury_usdc_micros`.
   - Validate mint and token program.
   - Emit `TreasurySwept`.
-  - Do not sweep refund vaults, settlement author proceeds vaults, x402 settlement vault, voucher reward vaults, or author/vouch vaults.
+  - Do not sweep refund vaults, settlement author's sales earnings vaults, x402 settlement vault, voucher reward vaults, or author/vouch vaults.
 
 ### Existing instructions to edit
 
 - `instructions/initialize_config.rs`
+
   - Add `resolver_authority` and `resolution_timelock_seconds` args or default resolver to `config_authority` in local/devnet init.
   - Tests/helpers must pass the new field.
 
 - `instructions/open_author_dispute.rs`
-  - A2 v1 should serialize author-bond exposure: reject a new author dispute when `author_profile.open_author_disputes > 0`. This is intentionally stricter than per-listing locking because the author bond is profile-level shared collateral.
-  - Keep the paid listing/settlement locks for financial paid disputes, but do not rely on them to protect the shared author bond.
+
+  - A2 v1 should serialize author-bond exposure: reject a new author dispute when `author_profile.open_author_disputes > 0`. This is intentionally stricter than per-listing locking because the author's backing deposit is profile-level shared collateral.
+  - Keep the paid listing/settlement locks for financial paid disputes, but do not rely on them to protect the shared author's backing deposit.
 
 - `instructions/create_refund_pool.rs`
+
   - Make `create_refund_pool` executable by anyone after dispute `Resolved`, but it must consume bounded proposal values from `AuthorDispute`. If a payer creates the refund vault, any cranker can pay rent; protocol state determines amounts.
   - Remove caller-selected `requested_refund_pool_usdc_micros` from amount selection. If an argument is retained for backwards-compatible local/devnet wrappers, require it equals the program-computed amount or treat it only as a minimum-acceptable-output/slippage guard that cannot underfund the buyer pool.
   - Compute `refund_pool_amount = min(max_purchase_refund_exposure, available_refund_capacity)` from on-chain state and dispute snapshots. A caller can pay rent/fees, but cannot choose `1` micro-USDC and clear locks when more buyer refund capacity exists.
   - Add `listing_settlement.bond_slashed_deposit_usdc_micros` to pool capacity, drain it as refund-only money, and decrement it on use.
-  - Drain refund-only buckets before withdrawable author proceeds. Recommended ordering: `bond_slashed_deposit_usdc_micros`, then voucher `slashed_deposit_usdc_micros`, then withdrawable proceeds. The exact order is less important than test-proving neither slash bucket can become author-withdrawable or inflate challenger reward.
+  - Drain refund-only buckets before withdrawable author's sales earnings. Recommended ordering: `bond_slashed_deposit_usdc_micros`, then voucher `slashed_deposit_usdc_micros`, then withdrawable proceeds. The exact order is less important than test-proving neither slash bucket can become author-withdrawable or inflate challenger reward.
   - Compute the buyer refund pool before challenger reward. If available capacity is less than the purchase exposure, all available capacity goes to buyer refund and challenger reward is zero.
   - After the buyer-first refund pool is funded, compute capped challenger reward only from remaining eligible proceeds, using the economic snapshots stored on the dispute.
   - Route any residual paid-dispute slash bucket amount that exceeds buyer exposure to protocol treasury/reserve before clearing locks. It must not remain in settlement as author-withdrawable money.
@@ -220,22 +241,26 @@ Verified 2026-06-16 against the local worktree:
     - challenger reward base excludes `slashed_deposit_usdc_micros`
     - challenger reward base also excludes `bond_slashed_deposit_usdc_micros`
     - slashed deposits and bond-slashed deposits are refund-pool-only
-    - withdrawable author proceeds stay separately accounted
+    - withdrawable author's sales earnings stay separately accounted
 
 - `instructions/slash_dispute_vouches.rs`
+
   - No authority changes expected; ensure finalization still leaves locks for `create_refund_pool` if a refund pool is required.
   - If A2 stores refund capacity/proposal fields that depend on voucher slash totals, update finalization to avoid marking a dispute fully settled before refund-pool creation constraints are satisfiable.
   - Use `author_dispute.slash_percentage_snapshot` rather than live `config.slash_percentage`, so slash pages cannot change economics after proposal or between pages.
 
 - Add `instructions/close_refund_pool.rs`
+
   - Permissionless after `refund_pool.expires_at` / `refund_claim_window_seconds` has passed.
   - Transfer unclaimed refund vault balance to protocol reserve/treasury accounting, close the refund vault/account where safe, and emit `RefundPoolClosed`.
   - Must not allow the author to reclaim expired refund funds by default.
 
 - `instructions/migrate_config_m13.rs`
+
   - Do not extend M13 for A2 unless a separate migration plan redesigns same-program compatibility. A2 implementation should use a devnet clean break because `ReputationConfig`, `AuthorDispute`, and `ListingSettlement` all change layout, and the existing M13 migration gates on a moving `ReputationConfig::LEN`.
 
 - `programs/agentvouch/src/lib.rs` and `instructions/mod.rs`
+
   - Register new instruction modules and entrypoints.
 
 - `programs/agentvouch/src/events.rs`
@@ -275,6 +300,7 @@ Residual funds answer: paid slash funds are buyer-refund-first, then capped chal
 ## Implementation Steps
 
 1. **Lock constants and account-layout strategy.**
+
    - Use `DEFAULT_RESOLUTION_TIMELOCK_SECONDS = 259_200` (72h) for mainnet-RC.
    - Define a hard `MIN_RESOLUTION_TIMELOCK_SECONDS` floor for config updates.
    - For local Anchor tests, initialize or set the timelock to a very short nonzero value so early-execute failure and post-delay success are both testable without waiting hours.
@@ -282,11 +308,13 @@ Residual funds answer: paid slash funds are buyer-refund-first, then capped chal
    - Use `ResolutionProposed` status and permissionless execute after timelock, paired with `cancel_author_dispute_resolution` as the on-chain remedy before execution.
 
 2. **Add state and events.**
+
    - Update `ReputationConfig` and `AuthorDispute`.
    - Update initialization and tests helper defaults.
    - Add event structs with enough fields for indexers: dispute, author, proposer/canceller/executor, ruling, executable timestamp, refund amount, reward amount, slash totals.
 
 3. **Add config governance instructions.**
+
    - Implement `update_config` with all invariant checks.
    - Implement `rotate_authorities`.
    - Implement `sweep_treasury`.
@@ -294,6 +322,7 @@ Residual funds answer: paid slash funds are buyer-refund-first, then capped chal
    - Add tests before touching dispute flow so authority invariants are isolated.
 
 4. **Split dispute resolution.**
+
    - Move current validation from `resolve_author_dispute.rs` into shared helpers if it keeps propose/execute small.
    - `propose_*` records only.
    - `cancel_*` clears pending proposal state and returns the dispute to `Open` without moving funds.
@@ -301,12 +330,14 @@ Residual funds answer: paid slash funds are buyer-refund-first, then capped chal
    - Keep A1 `SlashingVouchers` behavior intact.
 
 5. **Route author-bond slash to refund-first capacity.**
+
    - Stop transferring author-bond slash directly to challenger.
-   - Paid disputes: transfer author-bond slash into the disputed listing's author proceeds vault and track it in `bond_slashed_deposit_usdc_micros`.
+   - Paid disputes: transfer author-bond slash into the disputed listing's author's sales earnings vault and track it in `bond_slashed_deposit_usdc_micros`.
    - Free disputes: pay a capped challenger reward from the author-bond slash and transfer only the residual slash to `protocol_treasury_vault`; there is no settlement/refund pool to fund.
    - Document the chosen custody path in readiness docs and tests.
 
 6. **Constrain refund pool creation.**
+
    - Require mature proposal state.
    - Program-compute the refund pool amount from buyer exposure and actual capacity; callers cannot underfund.
    - Apply buyer-first allocation before challenger reward in underfunded cases.
@@ -314,10 +345,12 @@ Residual funds answer: paid slash funds are buyer-refund-first, then capped chal
    - Preserve slashed-deposit first-drain behavior from A1.
 
 7. **Close expired refund pools.**
+
    - Add `close_refund_pool` so expired unclaimed balances have a documented owner and event trail.
    - Route expired balances to protocol reserve/treasury accounting, not to author withdrawals.
 
 8. **IDL and clients.**
+
    - Run `NO_DNA=1 anchor build`.
    - Copy `target/idl/agentvouch.json` to `web/agentvouch.json`.
    - Run `npm run generate:client`.
@@ -335,11 +368,11 @@ Add/extend Anchor tests, likely in `tests/agentvouch-usdc-disputes.ts` plus slas
 1. **Resolver split:** only `resolver_authority` can propose; resolver cannot update config or cancel; `config_authority` can cancel and update config but cannot propose unless it is also the resolver.
 2. **Propose only:** proposal records ruling, computed refund/reward previews, economic snapshots, and executable timestamp; it moves no USDC and mutates no reputation counters.
 3. **Cancel pending proposal:** `config_authority` cancels `ResolutionProposed`, clears proposal fields, returns status to `Open`, leaves funds/locks untouched, and makes later execute fail.
-4. **Timelock and locks:** execution before `executable_at` fails; after clock advance / local validator wait succeeds only if not canceled; author proceeds withdrawal remains blocked during the full proposed/pending window.
+4. **Timelock and locks:** execution before `executable_at` fails; after clock advance / local validator wait succeeds only if not canceled; author's sales earnings withdrawal remains blocked during the full proposed/pending window.
 5. **Dismissed execution:** dispute bond moves to treasury, locks clear, counters/reputation update, no refund pool.
-6. **Upheld free-listing:** author bond slash returns challenger principal, pays only the capped challenger reward, routes residual slash to protocol reserve/treasury accounting, performs no voucher slashing, creates no refund pool, and resolves without `SlashingVouchers`.
+6. **Upheld free-listing:** author's backing deposit slash returns challenger principal, pays only the capped challenger reward, routes residual slash to protocol reserve/treasury accounting, performs no deducting backers' deposited USDC, creates no refund pool, and resolves without `SlashingVouchers`.
 7. **Upheld paid listing with purchase and vouchers:** proposal → execute parks in `SlashingVouchers`; slash pages use snapshot slash percentage; refund pool respects program-computed formula.
-8. **Paid no-purchase with active vouches:** upheld paid dispute without attached purchase is reputation-only even when `active_reward_position_count > 0`; it clears locks without voucher slashing, refund pool creation, or challenger reward.
+8. **Paid no-purchase with active vouches:** upheld paid dispute without attached purchase is reputation-only even when `active_reward_position_count > 0`; it clears locks without deducting backers' deposited USDC, refund pool creation, or challenger reward.
 9. **Buyer-first underfunded paid dispute:** when capacity is below purchase exposure, all capacity goes to the refund pool and challenger reward is zero.
 10. **Caller cannot underfund refund pool:** a permissionless cranker cannot pass `1` micro-USDC or any undersized amount to create a tiny pool and clear locks; the program computes the pool amount.
 11. **Challenger reward cap:** reward never exceeds snapshot bps/cap, pays only after buyer-first refund allocation, and excludes slashed voucher/bond refund buckets.
@@ -424,7 +457,7 @@ Resolved by 2026-06-17 extra review:
 - **Pending status:** `AuthorDisputeStatus::ResolutionProposed` is appended and required by cancel/execute.
 - **Paid refund-first formula:** buyer refund exposure is allocated before challenger reward; reward is zero in underfunded cases.
 - **Program-computed refund pools:** `create_refund_pool` computes the buyer-first refund amount; callers cannot underfund a pool and clear locks.
-- **Paid no-purchase disputes:** reputation-only in A2 v1, even with active listing vouches; no voucher slashing, no refund pool, no challenger reward, and locks clear at resolution.
+- **Paid no-purchase disputes:** reputation-only in A2 v1, even with active listing vouches; no deducting backers' deposited USDC, no refund pool, no challenger reward, and locks clear at resolution.
 - **Residual/expired funds:** residual paid slash funds and expired unclaimed refund-pool balances route to protocol treasury/reserve, never to author withdrawals.
 - **Economic snapshots:** proposal snapshots settlement economics; execute, voucher slash pages, and refund creation use those snapshots instead of live mutable config.
 - **Author-bond concurrency:** A2 v1 serializes author-bond exposure by rejecting new author disputes while `author_profile.open_author_disputes > 0`.

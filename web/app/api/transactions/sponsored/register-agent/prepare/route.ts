@@ -16,11 +16,11 @@ function stringOrNull(value: unknown): string | null {
 }
 
 function bigintishOrNull(value: unknown): string | number | bigint | null {
-  return typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "bigint"
-    ? value
-    : null;
+  if (typeof value === "number") {
+    if (Number.isSafeInteger(value)) return value;
+    throw new Error("Invalid maxSetupFeeUsdcMicros");
+  }
+  return typeof value === "string" || typeof value === "bigint" ? value : null;
 }
 
 export async function POST(request: NextRequest) {

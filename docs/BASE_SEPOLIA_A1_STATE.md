@@ -1,8 +1,20 @@
-# Base Sepolia Voucher-Slashing (A1) Deployment State
+# Base Sepolia - Buyer Report, Stake Deduction, and Credit Claim Deployment Record
+
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](./PLAIN_LANGUAGE_GUIDE.md).
+>
+> This document covers installing and checking the updated Base contract on the test network. A successful test-network step does not approve a real-money launch.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
 
 This is the deployment-qualified evidence record for the proposed `base-v1-a1` paid-purchase report
 release. Unknown or unexecuted fields remain `PENDING`; do not copy evidence from the pre-A1
 deployment.
+
+Protocol requirement A1 covers deductions from endorsers' USDC deposited as backing after upheld buyer
+reports. This record tracks deployment and approval of that mechanism and its limited buyer
+credits. The descriptive titles do not change protocol version `base-v1-a1` or any approval.
 
 ## Release identity
 
@@ -24,34 +36,34 @@ deployment.
 
 ## Approved configuration and authorities
 
-| Field                                      | Value                    |
-| ------------------------------------------ | ------------------------ |
-| Slash percentage                           | `PENDING HUMAN APPROVAL` |
-| Restitution recipient                      | `PENDING HUMAN APPROVAL` |
-| Final default admin and custody            | `PENDING HUMAN APPROVAL` |
-| Config authority and custody               | `PENDING HUMAN APPROVAL` |
-| Resolver and recovery owner                | `PENDING HUMAN APPROVAL` |
-| Settlement authority and custody           | `PENDING HUMAN APPROVAL` |
-| Pause authority and custody                | `PENDING HUMAN APPROVAL` |
-| Fallback cranker                           | `PENDING HUMAN APPROVAL` |
-| Monitor owner / incident commander         | `PENDING HUMAN APPROVAL` |
-| Exposure policy                            | `PENDING HUMAN APPROVAL` |
-| External review or testnet risk acceptance | `PENDING HUMAN APPROVAL` |
+| Field                                                            | Value                    |
+| ---------------------------------------------------------------- | ------------------------ |
+| Slash percentage                                                 | `PENDING HUMAN APPROVAL` |
+| Recipient of remaining funds                                     | `PENDING HUMAN APPROVAL` |
+| Final default admin and custody                                  | `PENDING HUMAN APPROVAL` |
+| Config authority and custody                                     | `PENDING HUMAN APPROVAL` |
+| Resolver and recovery owner                                      | `PENDING HUMAN APPROVAL` |
+| Settlement authority and custody                                 | `PENDING HUMAN APPROVAL` |
+| Pause authority and custody                                      | `PENDING HUMAN APPROVAL` |
+| Fallback cranker                                                 | `PENDING HUMAN APPROVAL` |
+| Monitor owner / incident commander                               | `PENDING HUMAN APPROVAL` |
+| Exposure policy                                                  | `PENDING HUMAN APPROVAL` |
+| External review or testnet written acceptance of specified risks | `PENDING HUMAN APPROVAL` |
 
-### Base Sepolia Deployment Gate C — Isolated Lifecycle Test Inputs
+### Base Sepolia Deployment Gate C - Test Buyer Reports, Stake Deductions, and Credit Claims: Inputs
 
-| Field                                                | Value                           |
-| ---------------------------------------------------- | ------------------------------- |
-| Founder decision / approver / timestamp              | `NO-GO` / `PENDING` / `PENDING` |
-| Exact candidate commit                               | `PENDING`                       |
-| Paused-deployment readback evidence                  | `PENDING`                       |
-| Signing/custody method                               | `PENDING`                       |
-| Fresh author fixture                                 | `PENDING`                       |
-| Fresh upheld/rejected/expiry buyers                  | `PENDING`                       |
-| At least two fresh voucher fixtures and exact stakes | `PENDING`                       |
-| Exact author bond and paid-listing price             | `PENDING`                       |
-| Eligible purchase lane (`Direct` or `Authorization`) | `PENDING`                       |
-| Gross fixture-funding cap                            | `PENDING HUMAN APPROVAL`        |
+| Field                                                 | Value                           |
+| ----------------------------------------------------- | ------------------------------- |
+| Founder decision / approver / timestamp               | `NO-GO` / `PENDING` / `PENDING` |
+| Exact candidate commit                                | `PENDING`                       |
+| Paused-deployment readback evidence                   | `PENDING`                       |
+| Signing/custody method                                | `PENDING`                       |
+| Fresh author fixture                                  | `PENDING`                       |
+| Fresh upheld/rejected/expiry buyers                   | `PENDING`                       |
+| At least two fresh voucher fixtures and exact stakes  | `PENDING`                       |
+| Exact author's backing deposit and paid-listing price | `PENDING`                       |
+| Eligible purchase lane (`Direct` or `Authorization`)  | `PENDING`                       |
+| Gross fixture-funding cap                             | `PENDING HUMAN APPROVAL`        |
 
 The gross fixture-funding calculation is intentionally mechanical and does not choose an exposure
 policy: `author bond + voucher stakes + 3 × (listing price + 5 USDC report bond)`. The approved cap
@@ -63,15 +75,15 @@ claim window, 60/40 purchase split, zero protocol fee, and zero reporter/keeper 
 
 ## Base Sepolia Deployment Decisions
 
-| Deployment stage                                                               | State       | Approval/evidence                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Base Sepolia Deployment Gate A — Candidate Verification                        | **NO-GO**   | The 2026-07-31 evidence refresh passes pinned Foundry format/build/121 tests/size/rehearsal, Forge/client paid-report ABI parity, format/lint/typecheck/chain-map, 867 web tests, UI, harness, and the 151-page production webpack build. Exact candidate commit/review, approved inputs, external review/risk acceptance, rollback review, and human GO remain pending |
-| Base Sepolia Deployment Gate B — Paused Deployment                             | **NO-GO**   | Roll-up stage. Gate B is complete only when Gate B1 and Gate B2 are complete and the readback evidence passes.                                                                                                                                                                                                                                                          |
-| Base Sepolia Deployment Gate B1 — Deploy Without Initialization                | **NO-GO**   | Explicit public-network approval required                                                                                                                                                                                                                                                                                                                               |
-| Base Sepolia Deployment Gate B2 — Verify, Pause, Configure, and Transfer Roles | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                     |
-| Base Sepolia Deployment Gate C — Isolated Lifecycle Test                       | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                     |
-| Base Sepolia Deployment Gate D — Preview and Shared Testnet Activation         | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                     |
-| Base mainnet                                                                   | **BLOCKED** | Outside this release and runbook                                                                                                                                                                                                                                                                                                                                        |
+| Deployment stage                                                                         | State       | Approval/evidence                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Base Sepolia Deployment Gate A — Candidate Verification                                  | **NO-GO**   | The 2026-07-31 evidence refresh passes pinned Foundry format/build/121 tests/size/practice run, Forge/client paid-report ABI parity, format/lint/typecheck/chain-map, 867 web tests, UI, harness, and the 151-page production webpack build. Exact candidate commit/review, approved inputs, external review/written acceptance of specified risks, rollback review, and human GO remain pending |
+| Base Sepolia Deployment Gate B — Paused Deployment                                       | **NO-GO**   | Roll-up stage. Gate B is complete only when Gate B1 and Gate B2 are complete and the readback evidence passes.                                                                                                                                                                                                                                                                                   |
+| Base Sepolia Deployment Gate B1 — Deploy Without Initialization                          | **NO-GO**   | Explicit public-network approval required                                                                                                                                                                                                                                                                                                                                                        |
+| Base Sepolia Deployment Gate B2 — Verify, Pause, Configure, and Transfer Roles           | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                                              |
+| Base Sepolia Deployment Gate C - Test Buyer Reports, Stake Deductions, and Credit Claims | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                                              |
+| Base Sepolia Deployment Gate D — Preview and Shared Testnet Activation                   | **NO-GO**   | Separate explicit approval required                                                                                                                                                                                                                                                                                                                                                              |
+| Base mainnet                                                                             | **BLOCKED** | Outside this release and runbook                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Founder Decision: Base Sepolia Deployment Gate A — Candidate Verification
 
@@ -136,13 +148,13 @@ promotion, or Base mainnet.
 }
 ```
 
-## Founder Decision: Base Sepolia Deployment Gate C — Isolated Lifecycle Test
+## Founder Decision: Base Sepolia Deployment Gate C - Test Buyer Reports, Stake Deductions, and Credit Claims
 
 The isolated lifecycle test remains **NO-GO**. When the paused-deployment stage has produced a fresh
-voucher-slashing (A1) deployment, copy the following record to a non-secret operator JSON file.
+deducting backers' deposited USDC (A1) deployment, copy the following record to a non-secret operator JSON file.
 Replace every `PENDING` value. Do not commit personal custody details. `decision` may become
 `GO: isolated smoke` only after the founder approves the exact commit, deployment, roles,
-risk-acceptance evidence, fixtures, lane, signing method, and exposure cap. Approval for the isolated
+risk-acceptance evidence, fixtures, lane, signing method, and limit on money at risk. Approval for the isolated
 lifecycle test does not approve preview and shared testnet activation or Base mainnet.
 
 ```json
@@ -261,9 +273,9 @@ and explicit-block balance deltas remain future live evidence, not pre-broadcast
   byte facade, 5,939 byte library, frozen storage-layout hash, 11 library references, and 13 USDC
   immutable references. The build emitted existing timestamp and safe-cast lint warnings; no new
   contract diff was introduced.
-- The disposable local Anvil rehearsal on chain ID 84532 passed with
+- The disposable local Anvil practice run on chain ID 84532 passed with
   `LOCAL_A1_REHEARSAL_OK` / `LOCAL_A1_DRIVER_OK`. It reproduced exact expected/actual local linked
-  code hashes, 15 USDC buyer credit, 5 USDC reserve credit, 2 USDC voucher residual, and terminal
+  code hashes, 15 USDC amount owed to the buyer, 5 USDC reserve credit, 2 USDC backer's remaining deposit, and terminal
   liveness while paused. Its standard test mnemonic and transactions remained local and gitignored.
   No public RPC write, public-network deployment, environment change, pointer change, paymaster
   change, feature-flag change, or live-funds action occurred.

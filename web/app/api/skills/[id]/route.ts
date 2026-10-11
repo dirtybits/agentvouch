@@ -62,6 +62,7 @@ import {
   type SkillDetailSnapshot,
 } from "@/lib/skillDetailSnapshot";
 import { upsertResolvedAuthorTrustSnapshot } from "@/lib/trustSnapshots";
+import { fetchSkillUriText } from "@/lib/skillUriFetch.server";
 
 const CHAIN_PREFIX = "chain-";
 const rpc = createSolanaRpc(DEFAULT_SOLANA_RPC_URL);
@@ -270,8 +271,7 @@ export async function GET(
       let content: string | null = null;
       if (chainIsFree && listing.data.skillUri) {
         try {
-          const res = await fetch(listing.data.skillUri);
-          if (res.ok) content = await res.text();
+          content = await fetchSkillUriText(listing.data.skillUri);
         } catch {
           /* best effort */
         }

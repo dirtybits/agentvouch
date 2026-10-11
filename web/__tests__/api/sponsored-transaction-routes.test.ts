@@ -110,6 +110,30 @@ describe("sponsored transaction routes", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects overflowing registration fee caps before preparing a transaction", async () => {
+    const response = await prepareRegistration(
+      new NextRequest(
+        "http://localhost/api/transactions/sponsored/register-agent/prepare",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-For": "198.51.100.6",
+          },
+          body: '{"authorityPubkey":"authority","maxSetupFeeUsdcMicros":1e309}',
+        }
+      )
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid maxSetupFeeUsdcMicros",
+    });
+    expect(
+      transactionMocks.prepareSponsoredRegisterAgent
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects a null registration-submit body before submitting a transaction", async () => {
     const response = await submitRegistration(
       nullJsonRequest(

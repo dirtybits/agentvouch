@@ -31,6 +31,14 @@ isProject: false
 
 # Stripe Limited Preview, Walletless Identity, and Base Compatibility
 
+<!-- plain-language-reading-guide: 2026-09-21 -->
+
+> **Start with the plain-language guide:** [What we are building, money limits, and launch steps](../../docs/PLAIN_LANGUAGE_GUIDE.md).
+>
+> This is a historical or completed-work record. Its original decisions, checkboxes, and evidence are preserved below. Do not treat it as fresh launch approval; use the current roadmap and launch requirements linked from the guide.
+>
+> Language note, 2026-09-21: technical names, approval states, and recorded test or deployment evidence are unchanged. This wording pass did not run new checks.
+
 ## Goal
 
 Move the existing Stripe test-mode prototype toward a deliberately limited preview by making activation explicit, preserving webhook events that need operator action, and providing a read-only operational check. In parallel, define the next identity and Base-access model so card buyers can eventually use AgentVouch without a browser wallet while card sales remain visibly separate from on-chain protocol settlement.
