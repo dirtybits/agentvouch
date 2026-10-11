@@ -11,11 +11,17 @@ import {
 
 type EnvOverrides = Record<string, string | undefined>;
 
-// Save only the keys we touch, and restore each one in the exact original
-// state (present vs deleted) so no test leaks state into another.
+// Isolate all config inputs from the developer's environment, then restore
+// each key's original state so no test leaks state into another.
 function withEnv(overrides: EnvOverrides, fn: () => void): void {
   const snapshot: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(overrides)) {
+  const isolated: EnvOverrides = {
+    AGENTVOUCH_BASE_URL: undefined,
+    AGENTVOUCH_RPC_URL: undefined,
+    ANCHOR_PROVIDER_URL: undefined,
+    ...overrides,
+  };
+  for (const [key, value] of Object.entries(isolated)) {
     snapshot[key] = process.env[key];
     if (value === undefined) {
       delete process.env[key];
