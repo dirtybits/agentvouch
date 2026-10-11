@@ -175,6 +175,17 @@ function makeRawRequest(body: string, headers: Record<string, string>) {
   });
 }
 
+function makeMultipartRequest(fields: Record<string, string>) {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) {
+    form.set(name, value);
+  }
+  return new NextRequest("http://localhost/api/skills", {
+    method: "POST",
+    body: form,
+  });
+}
+
 describe("POST /api/skills", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -364,6 +375,19 @@ describe("POST /api/skills", () => {
       expect(mockPinSkillContent).not.toHaveBeenCalled();
     }
   );
+
+  it("rejects malformed multipart auth JSON before side effects", async () => {
+    const res = await POST(makeMultipartRequest({ auth: "{" }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Multipart field "auth" must be valid JSON',
+    });
+    expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+    expect(mockInitializeDatabase).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPinSkillContent).not.toHaveBeenCalled();
+  });
 
   it("rejects oversized tar_base64 payloads before base64 decoding", async () => {
     const res = await POST(

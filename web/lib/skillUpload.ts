@@ -36,9 +36,18 @@ function assertWholePayloadBase64Size(value: string) {
   }
 }
 
-function parseJsonField(value: FormDataEntryValue | null): unknown {
+function parseJsonField(
+  value: FormDataEntryValue | null,
+  fieldName: string
+): unknown {
   if (typeof value !== "string" || !value.trim()) return undefined;
-  return JSON.parse(value);
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new SkillUploadError(
+      `Multipart field "${fieldName}" must be valid JSON`
+    );
+  }
 }
 
 function getStringField(form: FormData, name: string): string | undefined {
@@ -96,9 +105,9 @@ async function parseMultipart(request: Request): Promise<ParsedSkillUpload> {
     const value = getStringField(form, key);
     if (value !== undefined) body[key] = value;
   }
-  const auth = parseJsonField(form.get("auth"));
+  const auth = parseJsonField(form.get("auth"), "auth");
   if (auth !== undefined) body.auth = auth;
-  const tags = parseJsonField(form.get("tags"));
+  const tags = parseJsonField(form.get("tags"), "tags");
   if (tags !== undefined) body.tags = tags;
 
   let files = await Promise.all(
