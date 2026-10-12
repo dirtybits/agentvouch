@@ -1,7 +1,17 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { mockResolveAgentIdentityByWallet } = vi.hoisted(() => ({
+  mockResolveAgentIdentityByWallet: vi.fn(),
+}));
+
+vi.mock("@/lib/agentIdentity", () => ({
+  resolveAgentIdentityByWallet: mockResolveAgentIdentityByWallet,
+}));
+
 import {
   sanitizeSyncedRepoUrl,
   validateRepoCoords,
+  verifyRepoOwnership,
 } from "@/lib/mirror/connectedRepos";
 
 describe("sanitizeSyncedRepoUrl", () => {
@@ -89,6 +99,84 @@ describe("validateRepoCoords", () => {
       });
     }
   );
+});
+
+describe("verifyRepoOwnership — linked-login public visibility", () => {
+  const repo = {
+    walletPubkey: "WalletA111111111111111111111111111111111111",
+    githubOwner: "someorg",
+    githubRepo: "somerepo",
+    branch: "main",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveAgentIdentityByWallet.mockResolvedValue({
+      githubProfile: { login: "SomeOrg" },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts a linked owner only after unauthenticated GitHub metadata confirms the repo is public", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ private: false }), { status: 200 })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(verifyRepoOwnership(repo)).resolves.toEqual({
+      verified: true,
+      method: "linked-login",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/repos/someorg/somerepo",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/vnd.github+json",
+          "User-Agent": "agentvouch-connect",
+        }),
+      })
+    );
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty(
+      "Authorization"
+    );
+  });
+
+  it.each([
+    [
+      "private",
+      new Response(JSON.stringify({ private: true }), { status: 200 }),
+    ],
+    ["unavailable", new Response(null, { status: 404 })],
+    ["malformed", new Response(JSON.stringify({}), { status: 200 })],
+  ])("rejects a %s linked repository", async (_kind, response) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+    await expect(verifyRepoOwnership(repo)).resolves.toEqual(
+      expect.objectContaining({
+        verified: false,
+        reason: expect.stringContaining("must be public"),
+      })
+    );
+  });
+
+  it("rejects a linked repository when GitHub visibility lookup fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network down"))
+    );
+
+    await expect(verifyRepoOwnership(repo)).resolves.toEqual(
+      expect.objectContaining({
+        verified: false,
+        reason: expect.stringContaining("must be public"),
+      })
+    );
+  });
 });
 
 // ---- createConnectedRepo conflict path (INSERT ... ON CONFLICT) ----
