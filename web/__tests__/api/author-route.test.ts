@@ -204,6 +204,26 @@ describe("POST /api/author/[pubkey]", () => {
     expect(mockResolveIdentity).not.toHaveBeenCalled();
   });
 
+  it("rejects an invalid explicit chain context instead of falling back to Base Sepolia", async () => {
+    const res = await GET(
+      new NextRequest(
+        "http://localhost/api/author/0x1234567890123456789012345678901234567890?chainContext=eip155:999"
+      ),
+      {
+        params: Promise.resolve({
+          pubkey: "0x1234567890123456789012345678901234567890",
+        }),
+      }
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Unsupported chain context",
+    });
+    expect(mockResolveBaseAuthorTrust).not.toHaveBeenCalled();
+    expect(mockResolveIdentity).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when the selected discovered candidate does not belong to the wallet", async () => {
     mockVerify.mockReturnValue({ valid: true, pubkey: VALID_AUTHOR_PUBKEY });
     mockVerifyAuthorTrust.mockResolvedValue({ isRegistered: true });
