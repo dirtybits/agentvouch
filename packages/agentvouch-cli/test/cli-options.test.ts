@@ -68,11 +68,11 @@ describe("parsePage", () => {
     expect(() => parsePage("abc")).toThrow(/Expected a positive page number\./);
   });
 
-  it("truncates via parseInt (documented current behavior)", () => {
-    // parseInt semantics: "9.5" -> 9, "1.9" -> 1, "3x" -> 3.
-    // Assertions pin the current behavior so any future change is deliberate.
-    expect(parsePage("9.5")).toBe(9);
-    expect(parsePage("1.9")).toBe(1);
-    expect(parsePage("3x")).toBe(3);
+  it("rejects fractional and partially numeric page numbers", () => {
+    for (const input of ["9.5", "1.9", "3x", "1e2", "+2", "9007199254740992"]) {
+      expect(() => parsePage(input), input).toThrow(
+        /Expected a positive page number\./
+      );
+    }
   });
 });

@@ -59,8 +59,12 @@ export function parseUsdcListingPrice(value: string): string {
 }
 
 export function parsePage(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error("Expected a positive page number.");
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error("Expected a positive page number.");
   }
   return parsed;
