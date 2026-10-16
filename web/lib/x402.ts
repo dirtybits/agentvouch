@@ -89,9 +89,12 @@ export function generatePaymentRequirement(opts: {
   skillListingAddress: string;
   resourcePath: string;
 }): PaymentRequirement {
-  if (!Number.isFinite(opts.legacySolLamports) || opts.legacySolLamports <= 0) {
+  if (
+    !Number.isSafeInteger(opts.legacySolLamports) ||
+    opts.legacySolLamports <= 0
+  ) {
     throw new Error(
-      "Legacy SOL payment requirements require a positive amount"
+      "Legacy SOL payment requirements require a positive safe integer amount"
     );
   }
   const expirySeconds = 300;
