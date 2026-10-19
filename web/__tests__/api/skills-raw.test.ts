@@ -901,6 +901,26 @@ describe("GET /api/skills/[id]/raw", () => {
     expect(body.error).toContain("Malformed");
   });
 
+  it("returns 400 without verification for a non-object X-AgentVouch-Auth header", async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce([PAID_SKILL]);
+    mockSql.mockReturnValue(dbQuery);
+    mockOnChain.mockResolvedValue({
+      priceUsdcMicros: "100000000",
+      author: "Author1",
+    });
+
+    const { req, params } = makeRequest(PAID_SKILL_ID, {
+      "x-agentvouch-auth": "null",
+    });
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Malformed"),
+    });
+    expect(mockVerifySig).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when signature verification fails", async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce([PAID_SKILL]);
     mockSql.mockReturnValue(dbQuery);
