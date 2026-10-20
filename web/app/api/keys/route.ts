@@ -212,7 +212,18 @@ export async function GET(request: NextRequest) {
     let signedAuth = body?.auth as ApiKeyAuthPayload | undefined;
     if (signedAuthHeader) {
       try {
-        signedAuth = JSON.parse(signedAuthHeader) as ApiKeyAuthPayload;
+        const parsedSignedAuth: unknown = JSON.parse(signedAuthHeader);
+        if (
+          !parsedSignedAuth ||
+          typeof parsedSignedAuth !== "object" ||
+          Array.isArray(parsedSignedAuth)
+        ) {
+          return NextResponse.json(
+            { error: "Malformed X-AgentVouch-Auth header" },
+            { status: 400 }
+          );
+        }
+        signedAuth = parsedSignedAuth as ApiKeyAuthPayload;
       } catch {
         return NextResponse.json(
           { error: "Malformed X-AgentVouch-Auth header" },
