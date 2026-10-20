@@ -99,6 +99,49 @@ export function getBlobArchivePath(treeHash: string): string {
   return `${BLOB_ARCHIVE_PREFIX}/${treeHash}.tar`;
 }
 
+const SANITIZE_MAX_FILENAME_LENGTH = 120;
+
+/**
+ * Produce a filename-safe, header-safe value from a skill file path segment.
+ *
+ * Skill file paths are author-controlled at upload, and the file name is
+ * interpolated into the `Content-Disposition: filename` response header by the
+ * raw-content route. WHATWG `Response`/`Headers` reject CR, LF and NUL (the
+ * raw bytes that terminate a header line), and they also reject bytes above 0xFF
+ * (non-ASCII), either throwing (unhandled -> HTTP 500) or, on tolerant
+ * WHATWG runtimes, allowing raw header injection. This helper strips anything
+ * that could break the header value (CR/LF/NUL, quote and backslash that can
+ * terminate the quoted filename, and control bytes > 0x7F) and caps length.
+ * It is intentionally conservative: legitimate printable names (including
+ * non-ASCII that would survive on some runtimes) are normalized by removing
+ * only the unsafe characters.
+ */
+export function sanitizeFilename(filePath: string): string {
+  if (!filePath) return "SKILL.md";
+  const base = filePath.split("/").at(-1) ?? "";
+  let out = "";
+  for (let i = 0; i < base.length; i += 1) {
+    const cp = base.codePointAt(i) ?? 0;
+    const len = cp > 0xffff ? 2 : 1;
+    const ch = base.slice(i, i + len);
+    // A double quote would terminate the quoted filename value in
+    // Content-Disposition: filename="..."; a backslash is the escape
+    // character in the RFC 7231 quoted-string grammar. Both can be used to
+    // escape or inject the header value, so drop them.
+    if (ch === '"' || ch === "\\") continue;
+    // Node's WHATWG Headers (and tolerant WHATWG runtimes) reject C0/C1
+    // control bytes, DEL (0x7F), and any code point that encodes to bytes
+    // above 0xFF (non-ASCII). Keep only printable ASCII (except the dropped
+    // quote/backslash) and Latin-1 (0xA0-0xFF), which headers accept safely.
+    // (Apostrophe is intentionally kept: it is a normal, legitimate filename
+    // character and is not an escape/terminator char in the header value.)
+    const printable = (cp >= 0x20 && cp <= 0x7e) || (cp >= 0xa0 && cp <= 0xff);
+    if (!printable) continue;
+    out += ch;
+  }
+  return out.trim().slice(0, SANITIZE_MAX_FILENAME_LENGTH) || "SKILL.md";
+}
+
 export function normalizeSkillPath(input: string): string {
   const raw = input.replace(/\\/g, "/").trim();
   if (!raw) throw new Error("File path is required");
