@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFileForVersion } from "@/lib/skillStorage";
+import { getFileForVersion, sanitizeFilename } from "@/lib/skillStorage";
 import { fetchOnChainSkillListing } from "@/lib/onchain";
 import { getConfiguredUsdcMint, hasOnChainPurchase } from "@/lib/x402";
 import { getErrorMessage } from "@/lib/errors";
@@ -30,9 +30,9 @@ function serveContent(
   return new NextResponse(body, {
     headers: {
       "Content-Type": options.contentType ?? "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${
-        filePath.split("/").at(-1)?.replace(/"/g, "") ?? "SKILL.md"
-      }"`,
+      "Content-Disposition": `attachment; filename="${sanitizeFilename(
+        filePath
+      )}"`,
       ...(extraHeaders ?? {}),
     },
   });

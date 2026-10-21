@@ -126,9 +126,13 @@ vi.mock("@/lib/x402ProtocolBridge", () => ({
   validateProtocolX402PaymentPayload: vi.fn().mockReturnValue(null),
 }));
 
-vi.mock("@/lib/skillStorage", () => ({
-  getFileForVersion: vi.fn(),
-}));
+vi.mock("@/lib/skillStorage", async () => {
+  const actual = await vi.importActual("@/lib/skillStorage");
+  return {
+    ...actual,
+    getFileForVersion: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/buyerAuthConfig", () => ({
   isBuyerCardAccessServerEnabled: () =>
@@ -1371,5 +1375,49 @@ describe("GET /api/skills/[id]/raw", () => {
 
     expect(res.status).toBe(402);
     expect(mockHasPurchase).not.toHaveBeenCalled();
+  });
+
+  it("sanitizes Content-Disposition filename when a stored file path is header-hostile", async () => {
+    const dbQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: FREE_SKILL_ID,
+          on_chain_address: null,
+          author_pubkey: "A",
+          skill_id: "s1",
+          name: "SKILL.md",
+          content: SKILL_CONTENT,
+          files: null,
+          storage_backend: "blob",
+          tree_hash: "tree",
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockSql.mockReturnValue(dbQuery);
+    mockGetFileForVersion.mockResolvedValue({
+      // An author-controlled file name that would break a raw header: line
+      // terminators plus a quote that could escape the quoted filename.
+      path: 'SKILL.md\r\nX-Evil: 1"quoted',
+      bytes: Buffer.from(SKILL_CONTENT, "utf8"),
+      contentType: "text/markdown; charset=utf-8",
+    });
+
+    const { req, params } = makeRequest(FREE_SKILL_ID, {}, "scripts/x.mjs");
+    const res = await GET(req, { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SKILL_CONTENT);
+
+    const disposition = res.headers.get("Content-Disposition");
+    // CR/LF/NUL and quote must not survive into the header: WHATWG Headers
+    // reject CR/LF/NUL (throw), and tolerant WHATWG runtimes would otherwise
+    // pass them through as a raw header-injection payload.
+    expect(disposition).toBe('attachment; filename="SKILL.mdX-Evil: 1quoted"');
+    expect(disposition).not.toContain("\r");
+    expect(disposition).not.toContain("\n");
+    expect(disposition).not.toContain("\u0000");
+    expect(disposition).not.toContain('"quoted');
+    expect(disposition).not.toContain("'");
   });
 });
