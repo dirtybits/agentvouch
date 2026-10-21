@@ -446,9 +446,9 @@ export async function validateDownloadAuth(
   skillDbId: string,
   listingAddress?: string | null
 ): Promise<{ buyerPubkey: string } | { response: NextResponse }> {
-  let auth: AuthPayload;
+  let parsed: unknown;
   try {
-    auth = JSON.parse(authHeader);
+    parsed = JSON.parse(authHeader);
   } catch {
     return {
       response: NextResponse.json(
@@ -457,6 +457,17 @@ export async function validateDownloadAuth(
       ),
     };
   }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      response: NextResponse.json(
+        { error: "Malformed X-AgentVouch-Auth header (must be a JSON object)" },
+        { status: 400 }
+      ),
+    };
+  }
+
+  const auth = parsed as AuthPayload;
 
   const verification = isEvmShapedAddress(auth.pubkey)
     ? await verifyEvmWalletSignature(auth)
