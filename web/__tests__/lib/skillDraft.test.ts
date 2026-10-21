@@ -4,6 +4,7 @@ import {
   MAX_SKILL_DESCRIPTION_LENGTH,
   deriveDraftMetadataFromContent,
   normalizeSkillDescription,
+  normalizeSkillTags,
   parseFrontmatter,
   slugify,
 } from "@/lib/skillDraft";
@@ -67,5 +68,55 @@ describe("skillDraft helpers", () => {
     expect(draft.name).toBe("Custom Name");
     expect(draft.skillId).toBe("custom-skill-id");
     expect(draft.description).toBe("Custom description");
+  });
+});
+
+describe("normalizeSkillTags", () => {
+  it("normalizes valid string tags", () => {
+    expect(normalizeSkillTags(["Agent", "A.I.", "  cli  "])).toEqual([
+      "agent",
+      "a-i",
+      "cli",
+    ]);
+  });
+
+  it("caps the number of tags and length of each tag", () => {
+    const many = Array.from({ length: 10 }, (_, i) => `tag${i}`);
+    expect(normalizeSkillTags(many)).toHaveLength(5);
+    expect(normalizeSkillTags(["x".repeat(50)]).length).toBe(1);
+    expect(normalizeSkillTags(["x".repeat(50)])[0].length).toBeLessThanOrEqual(
+      32
+    );
+  });
+
+  it("dedupes case-insensitively and skips reserved/mirror-only tags", () => {
+    expect(normalizeSkillTags(["a", "A", "A!", "mirror"])).toEqual(["a"]);
+  });
+
+  it("drops empty and whitespace-only tags", () => {
+    expect(normalizeSkillTags(["", "   ", "----"])).toEqual([]);
+  });
+
+  it("fails closed by dropping non-string elements instead of coercing them", () => {
+    // Ground-truth: String() of these inputs produces junk ("object-object",
+    // "true", "null", "1-2", "undefined") that would otherwise be stored as tags.
+    expect(
+      normalizeSkillTags([{ x: 1 }, [1, 2], true, 1, null, undefined, {}])
+    ).toEqual([]);
+    expect(normalizeSkillTags([{ a: [1] }, 123.45, false, ""])).toEqual([]);
+  });
+
+  it("keeps valid string tags when mixed with invalid non-string values", () => {
+    expect(normalizeSkillTags(["good", 123, null, { x: 1 }, "bad!"])).toEqual([
+      "good",
+      "bad",
+    ]);
+  });
+
+  it("returns an empty array for a non-array payload", () => {
+    expect(normalizeSkillTags("not-a-list")).toEqual([]);
+    expect(normalizeSkillTags(null)).toEqual([]);
+    expect(normalizeSkillTags(undefined)).toEqual([]);
+    expect(normalizeSkillTags("hello")).toEqual([]);
   });
 });
