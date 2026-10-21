@@ -35,11 +35,13 @@ vi.mock("@/generated/agentvouch/src/generated", () => ({
 
 import { GET } from "@/app/api/dashboard/purchases/route";
 
-function makeRequest(buyer: string) {
+function makeRequest(buyer: string, query = "") {
+  const search = new URLSearchParams({ buyer });
+  for (const [key, value] of new URLSearchParams(query)) {
+    search.set(key, value);
+  }
   return new NextRequest(
-    `http://localhost/api/dashboard/purchases?buyer=${encodeURIComponent(
-      buyer
-    )}`
+    `http://localhost/api/dashboard/purchases?${search.toString()}`
   );
 }
 
@@ -108,6 +110,21 @@ describe("GET /api/dashboard/purchases", () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toContain("buyer");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsupported explicit buyer chain context before Solana lookup", async () => {
+    const res = await GET(
+      makeRequest(
+        "Buyer111111111111111111111111111111111111111",
+        "buyerChainContext=eip155:999"
+      )
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Unsupported buyer chain context",
+    });
     expect(mockSend).not.toHaveBeenCalled();
   });
 
