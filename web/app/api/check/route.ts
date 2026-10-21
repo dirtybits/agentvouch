@@ -130,7 +130,11 @@ async function readBoundedJsonBody(
 
   try {
     const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (parsed === null) {
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
       throw new CheckRequestError("JSON body must be an object", 400);
     }
     return parsed as CheckRequestBody;
