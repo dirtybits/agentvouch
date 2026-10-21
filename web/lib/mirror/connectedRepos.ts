@@ -118,6 +118,31 @@ async function linkedGithubLogin(walletPubkey: string): Promise<string | null> {
   return summary?.githubProfile?.login ?? null;
 }
 
+async function isPublicGithubRepo(
+  githubOwner: string,
+  githubRepo: string
+): Promise<boolean> {
+  try {
+    // Deliberately do not reuse the mirror transport headers here: its optional
+    // server token can read private repositories, while connected-repo content
+    // must be reachable from unauthenticated raw.githubusercontent.com.
+    const res = await fetch(
+      `https://api.github.com/repos/${githubOwner}/${githubRepo}`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "agentvouch-connect",
+        },
+      }
+    );
+    if (!res.ok) return false;
+    const body = (await res.json()) as { private?: unknown };
+    return body.private === false;
+  } catch {
+    return false;
+  }
+}
+
 async function repoVerificationFileMatches(
   githubOwner: string,
   githubRepo: string,
@@ -149,7 +174,13 @@ export async function verifyRepoOwnership(input: {
 }): Promise<OwnershipResult> {
   const login = await linkedGithubLogin(input.walletPubkey);
   if (login && login.toLowerCase() === input.githubOwner.toLowerCase()) {
-    return { verified: true, method: "linked-login" };
+    if (await isPublicGithubRepo(input.githubOwner, input.githubRepo)) {
+      return { verified: true, method: "linked-login" };
+    }
+    return {
+      verified: false,
+      reason: `${input.githubOwner}/${input.githubRepo} must be public and available from GitHub before it can be connected.`,
+    };
   }
 
   if (
