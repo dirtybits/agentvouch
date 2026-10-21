@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Image, { type ImageLoader } from "next/image";
 import { useConnectWallet, useWalletConnectors } from "@solana/connector/react";
-import { ConnectButton } from "@phantom/react-sdk";
+import { PhantomSocialSignInButton } from "./PhantomSocialSignInButton";
 import { FiCheck, FiCopy } from "react-icons/fi";
 import { address, createSolanaRpc } from "@solana/kit";
 import {
@@ -121,7 +121,7 @@ export function ClientWalletButton() {
   const { connect } = useConnectWallet();
   const allConnectors = useWalletConnectors();
   // Phantom embedded appears in this list via additionalWallets; it gets its
-  // own "Sign in with" UI entry below, so exclude it from the extension list.
+  // own social sign-in entry below, so exclude it from the extension list.
   const extensionConnectors = dedupeConnectorsByName(
     allConnectors.filter(
       (c) =>
@@ -418,23 +418,16 @@ export function ClientWalletButton() {
   );
 
   const socialSection = phantomConfigured ? (
-    <div
-      className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800"
-      onPointerDownCapture={() => {
-        // The embedded Phantom control owns its click handler. Clear and
-        // invalidate any restored Base passkey session before it starts so an
-        // explicit Solana choice cannot lose the active-wallet race.
-        void baseWallet.disconnect().catch((error) => {
-          console.error("Failed to switch from Base to Phantom:", error);
-        });
-      }}
-    >
+    <div className="px-4 py-2.5 border-t border-gray-100 dark:border-gray-800">
       <p className="text-xs font-normal text-gray-700 dark:text-gray-300 mb-2">
-        Sign in with
+        Social sign-in
       </p>
       <div className="phantom-connect-wrapper">
-        <ConnectButton fullWidth />
+        <PhantomSocialSignInButton onBeforeOpen={baseWallet.disconnect} />
       </div>
+      <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+        Solana wallet via Phantom
+      </p>
     </div>
   ) : null;
 
@@ -456,12 +449,11 @@ export function ClientWalletButton() {
             </div>
           )}
           {baseSepoliaDefault && baseSection}
-          {socialSection}
 
           {(wallet.phantomInstalled || extensionConnectors.length > 0) && (
             <div className="px-4 py-2.5">
               <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1.5">
-                Browser Extension
+                Solana Browser Extension
               </p>
               {wallet.phantomInstalled && (
                 <button
@@ -518,6 +510,9 @@ export function ClientWalletButton() {
 
           {!wallet.phantomInstalled && extensionConnectors.length === 0 && (
             <div className="px-4 py-2.5">
+              <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1.5">
+                Solana Browser Extension
+              </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 {isMobile()
                   ? "Or open this page in Phantom:"
@@ -593,6 +588,7 @@ export function ClientWalletButton() {
           )}
 
           {!baseSepoliaDefault && baseSection}
+          {socialSection}
         </div>
       )}
     </div>
