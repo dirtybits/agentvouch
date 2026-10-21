@@ -89,6 +89,26 @@ describe("validateRepoCoords", () => {
       });
     }
   );
+
+  it.each([42, {}, []])(
+    "rejects a non-string GitHub owner without coercing it",
+    (githubOwner) => {
+      expect(validateRepoCoords({ ...repo, githubOwner })).toEqual({
+        ok: false,
+        error: "Invalid GitHub owner",
+      });
+    }
+  );
+
+  it.each([42, {}, []])(
+    "rejects a non-string GitHub repo without coercing it",
+    (githubRepo) => {
+      expect(validateRepoCoords({ ...repo, githubRepo })).toEqual({
+        ok: false,
+        error: "Invalid GitHub repo",
+      });
+    }
+  );
 });
 
 // ---- createConnectedRepo conflict path (INSERT ... ON CONFLICT) ----
