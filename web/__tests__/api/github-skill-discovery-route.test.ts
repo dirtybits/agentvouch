@@ -158,4 +158,61 @@ describe("/api/github/skills/discover", () => {
     await expect(res.json()).resolves.toEqual({ error: "Invalid query" });
     expect(mockDiscoverGithubSkills).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      "GET decimal limit",
+      () =>
+        GET(
+          request("http://localhost/api/github/skills/discover?limit=2.5", {
+            headers: { authorization: "Bearer discover-secret" },
+          })
+        ),
+    ],
+    [
+      "GET mixed-character limit",
+      () =>
+        GET(
+          request("http://localhost/api/github/skills/discover?limit=3x", {
+            headers: { authorization: "Bearer discover-secret" },
+          })
+        ),
+    ],
+    [
+      "POST decimal limit",
+      () =>
+        POST(
+          request("http://localhost/api/github/skills/discover", {
+            method: "POST",
+            headers: {
+              authorization: "Bearer discover-secret",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ maxResults: 2.5 }),
+          })
+        ),
+    ],
+    [
+      "POST non-numeric limit",
+      () =>
+        POST(
+          request("http://localhost/api/github/skills/discover", {
+            method: "POST",
+            headers: {
+              authorization: "Bearer discover-secret",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ limit: "three" }),
+          })
+        ),
+    ],
+  ])("rejects a $caseName before GitHub discovery", async (_caseName, send) => {
+    vi.stubEnv("GITHUB_SKILL_DISCOVERY_SECRET", "discover-secret");
+
+    const res = await send();
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Invalid limit" });
+    expect(mockDiscoverGithubSkills).not.toHaveBeenCalled();
+  });
 });
