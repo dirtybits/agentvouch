@@ -20,7 +20,9 @@ export function getBaseX402PayloadFromBody(
   }
 
   const payload = body.paymentPayload ?? body.payload;
-  if (!payload || typeof payload !== "object") return null;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
   return payload as X402PaymentPayload;
 }
 
