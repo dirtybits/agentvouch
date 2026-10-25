@@ -339,36 +339,43 @@ describe("POST /api/agents/[pubkey]/repos — skip_review bypass on connect", ()
     expect(mockSyncConnectedRepo).not.toHaveBeenCalled();
   });
 
-  it("rejects a literal null request body before database or sync work", async () => {
-    mockVerifyConnectAuth.mockReturnValue({
-      ok: false,
-      status: 400,
-      error: "Missing required field: auth",
-    });
+  it.each([
+    ["literal null", "null"],
+    ["array", "[]"],
+    ["scalar", "1"],
+  ])(
+    "normalizes a %s JSON root to the missing-auth contract before database or sync work",
+    async (_kind, body) => {
+      mockVerifyConnectAuth.mockReturnValue({
+        ok: false,
+        status: 400,
+        error: "Missing required field: auth",
+      });
 
-    const res = await connectPost(
-      new NextRequest(`http://localhost/api/agents/${PUBKEY}/repos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "null",
-      }),
-      { params: Promise.resolve({ pubkey: PUBKEY }) }
-    );
+      const res = await connectPost(
+        new NextRequest(`http://localhost/api/agents/${PUBKEY}/repos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        }),
+        { params: Promise.resolve({ pubkey: PUBKEY }) }
+      );
 
-    expect(res.status).toBe(400);
-    await expect(res.json()).resolves.toEqual({
-      error: "Missing required field: auth",
-    });
-    expect(mockVerifyConnectAuth).toHaveBeenCalledWith(
-      undefined,
-      PUBKEY,
-      "connect-repo"
-    );
-    expect(mockInitializeDatabase).not.toHaveBeenCalled();
-    expect(mockVerifyRepoOwnership).not.toHaveBeenCalled();
-    expect(mockCreateConnectedRepo).not.toHaveBeenCalled();
-    expect(mockSyncConnectedRepo).not.toHaveBeenCalled();
-  });
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: "Missing required field: auth",
+      });
+      expect(mockVerifyConnectAuth).toHaveBeenCalledWith(
+        undefined,
+        PUBKEY,
+        "connect-repo"
+      );
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockVerifyRepoOwnership).not.toHaveBeenCalled();
+      expect(mockCreateConnectedRepo).not.toHaveBeenCalled();
+      expect(mockSyncConnectedRepo).not.toHaveBeenCalled();
+    }
+  );
 
   it("ignores skip_review: true and always calls sync with skipReview: false", async () => {
     const res = await connectPost(
