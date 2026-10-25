@@ -471,20 +471,20 @@ Candidate packages (P3):
 
 | ID | Decision | Recommendation | Main alternative | Status |
 | --- | --- | --- | --- | --- |
-| D1 | Can evidence grant `allow`? | No. Evidence can only lower trust or inform | Let strong evidence raise trust | Proposed (keeps the current rule) |
-| D2 | Version identity | Existing `tree_hash` with a written spec, plus archive SHA-256 and upstream commit SHA | A new hash scheme | Proposed |
-| D3 | Case format | `claude plugin eval` layout; import `evals/evals.json`; Harbor later | A custom AgentVouch format | Proposed |
-| D4 | Where runs happen | GitHub Actions; stdlib Python orchestrator outside npm workspaces; separate run and sign jobs; never on fork PRs | Vercel Sandbox started from the web app (good later for on-demand runs) | Proposed |
-| D5 | What P2 may run | First-party and allowlisted publishers only; community skills wait for P4 | Run everything from day one | Proposed |
-| D6 | Report signing | in-toto Statement in DSSE, Ed25519 key in a GitHub environment, public keys in `.well-known`, hash-chained log | Sigstore keyless now (no key custody, but a new verification dependency) | Proposed |
-| D7 | Holdouts | Private repo, public hash commitments, quarterly rotation, reveal retired cases | Public cases only | Proposed |
-| D8 | Trust rollup | New signals are display-only until P5 | Feed `recommended_action` now | Proposed |
-| D9 | Curation | AgentVouch is the only curator in v1; 2 to 4 skills per package; pinned; policy plus human review; no payments, no stake | Open curation | Proposed |
-| D10 | Distribution order | CLI first, then the Claude Code marketplace URL, then a Git mirror | Git mirror first (reaches Codex and the skills CLI sooner, weaker pins) | Proposed |
-| D11 | Licensing | Host only permissive licenses (existing gate plus repo-root and frontmatter fallback, deny wins); reference mode for all others | Host anything with attribution | Proposed |
-| D12 | Revocation reach | Yank and delist; leave `forceRemoveDeletedPlugins` off until the owner decides | Turn it on at launch | Open (Q4) |
-| D13 | Spend | Hard caps per run (`--max-cost-usd`) and per month (`eval_budget_counters`) | No cap | Open (Q5) |
-| D14 | Chain | No on-chain change. On-chain anchoring later; the ERC-8004 Validation Registry on Base Sepolia is the main candidate | Anchor now | Proposed |
+| D1 | Can evidence grant `allow`? | No. Evidence can only lower trust or inform | Let strong evidence raise trust | Approved 2026-10-25 |
+| D2 | Version identity | Existing `tree_hash` with a written spec, plus archive SHA-256 and upstream commit SHA | A new hash scheme | Approved 2026-10-25 |
+| D3 | Case format | `claude plugin eval` layout; import `evals/evals.json`; Harbor later | A custom AgentVouch format | Approved 2026-10-25 |
+| D4 | Where runs happen | GitHub Actions; stdlib Python orchestrator outside npm workspaces; separate run and sign jobs; never on fork PRs | Vercel Sandbox started from the web app (good later for on-demand runs) | Approved 2026-10-25 |
+| D5 | What P2 may run | First-party and allowlisted publishers only; community skills wait for P4 | Run everything from day one | Approved 2026-10-25 |
+| D6 | Report signing | in-toto Statement in DSSE, Ed25519 key in a GitHub environment, public keys in `.well-known`, hash-chained log | Sigstore keyless now (no key custody, but a new verification dependency) | Approved 2026-10-25 |
+| D7 | Holdouts | Private repo, public hash commitments, quarterly rotation, reveal retired cases | Public cases only | Approved 2026-10-25 |
+| D8 | Trust rollup | New signals are display-only until P5 | Feed `recommended_action` now | Approved 2026-10-25 |
+| D9 | Curation | AgentVouch is the only curator in v1; 2 to 4 skills per package; pinned; policy plus human review; no payments, no stake | Open curation | Approved 2026-10-25 |
+| D10 | Distribution order | CLI first, then the Claude Code marketplace URL, then a Git mirror | Git mirror first (reaches Codex and the skills CLI sooner, weaker pins) | Approved 2026-10-25 |
+| D11 | Licensing | Host only permissive licenses (existing gate plus repo-root and frontmatter fallback, deny wins); reference mode for all others | Host anything with attribution | Approved 2026-10-25 |
+| D12 | Revocation reach | Yank and delist; leave `forceRemoveDeletedPlugins` off until the owner decides | Turn it on at launch | Open (Q4); stays off until the owner decides |
+| D13 | Spend | Hard caps per run (`--max-cost-usd`) and per month (`eval_budget_counters`) | No cap | Decided 2026-10-25: no model spending yet; mock runs only |
+| D14 | Chain | No on-chain change. On-chain anchoring later; the ERC-8004 Validation Registry on Base Sepolia is the main candidate | Anchor now | Approved 2026-10-25 |
 
 ## Phases
 
@@ -631,4 +631,6 @@ Each phase is one or more small PRs off current `main`. P3 and later need their 
 - 2026-10-24 (`p1-tree-hash-spec`, branch `feat/skill-tree-hash-spec`): Added `docs/SKILL_TREE_HASH.md`, 10 vectors plus 9 invalid paths in `packages/agentvouch-protocol/test-vectors/tree-hash.json`, the stdlib Python reference `tree_hash_reference.py` (it produced the expected values), and `web/__tests__/lib/treeHashVectors.test.ts`. Production `computeTreeHash` and the Python reference agree on every vector. Mutation check: locale-aware sorting, code point sorting, and NFC path normalization each fail the vectors. The CLI half of Done-when lands with `p1-cli-verify`, so this todo stays in progress.
 - 2026-10-24 (`p1-hash-sweep`): Added `web/lib/treeHashAudit.ts` (pure audit, the SELECT-only query builder, behavioral tests) and `web/scripts/tree-hash-sweep.ts` (`npm run db:tree-hash-sweep`). The sweep reads the database and Blob storage directly. It does not use the public download routes, because they record download events. It also checks that `skill_versions.content`, which `/raw` serves for `SKILL.md`, equals `SKILL.md` in the stored tree. It has not run on production yet: it needs `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` from the owner's environment.
 - 2026-10-24: New finding: upload does not reject a tree where one path is also a folder of another path (`docs` and `docs/a.md`). Such a tree cannot be written to disk. The sweep reports it as `path_conflict`. The fix moved into `p1-cli-verify`.
+- 2026-10-25: PR 1 opened as #262 (`feat/skill-tree-hash-spec`). CI (`test`, `contracts`) and the Vercel preview build passed.
+- 2026-10-25: Owner answers. The owner runs the production sweep on their Mac. The owner reviews and merges every PR. No evaluation model spending yet (D13): P2 code is built and tested with mock runs only, so the "one real run" part of `p2-eval-runner` waits for a budget. Recommended defaults approved for D1-D11 and D14. D12 (auto-uninstall) stays off. Still open: Q2 (v1 default is AgentVouch-only results), Q3, Q4, Q8.
 - 2026-10-24: New finding (not yet seen in data): `ingestTarArchive` enforces the upload limits (200 files, 5 MB), but mirror sync stores trees up to 512 files and 8 MB. `/raw?path=` and `/zip` read stored trees through it, so they would fail for a mirrored tree above the upload limits; `/archive` would not. The sweep reports such versions as `files_unavailable` with the limit message. If the production sweep finds any, fix the reader to accept the limits the tree was stored with.
