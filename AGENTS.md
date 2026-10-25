@@ -19,6 +19,7 @@ This file is the operating manual for any model working in this repo. `CLAUDE.md
   - Cross-chain instruction/capability parity and source-vs-deployment status: `docs/CHAIN_CAPABILITY_MAP.md`.
   - Chain seam interfaces: `web/lib/adapters/types.ts`.
   - Agent-facing product contract: `web/public/skill.md` (canonical served file; keep in sync after protocol/product changes; do not create a duplicate root `SKILL.md`).
+  - Skill version identity (tree hash `agentvouch-tree-v1`), the file manifest, and client download checks: `docs/SKILL_TREE_HASH.md`. Its vectors (`packages/agentvouch-protocol/test-vectors/tree-hash.json`) must keep passing in web, CLI, and the Python reference; never change v1 in place.
 
 ## 1. Session start checklist
 
