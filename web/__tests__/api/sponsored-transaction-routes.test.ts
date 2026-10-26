@@ -22,21 +22,91 @@ import { POST as submitPurchase } from "@/app/api/transactions/sponsored/purchas
 import { POST as prepareRegistration } from "@/app/api/transactions/sponsored/register-agent/prepare/route";
 import { POST as submitRegistration } from "@/app/api/transactions/sponsored/register-agent/submit/route";
 
-function nullJsonRequest(path: string, clientIp: string) {
+function jsonRequest(path: string, clientIp: string, body: string) {
   return new NextRequest(`http://localhost${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Forwarded-For": clientIp,
     },
-    body: "null",
+    body,
   });
+}
+
+function nullJsonRequest(path: string, clientIp: string) {
+  return jsonRequest(path, clientIp, "null");
 }
 
 describe("sponsored transaction routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  it.each([
+    ["array", "[]"],
+    ["number", "1"],
+    ["string", '"unexpected"'],
+  ])(
+    "rejects a non-object %s body before any sponsored transaction work",
+    async (_shape, body) => {
+      const purchasePrepareResponse = await preparePurchase(
+        jsonRequest(
+          "/api/transactions/sponsored/purchase/prepare",
+          "198.51.100.20",
+          body
+        )
+      );
+      expect(purchasePrepareResponse.status).toBe(400);
+      await expect(purchasePrepareResponse.json()).resolves.toEqual({
+        error: "buyerPubkey and listingAddress are required",
+      });
+
+      const purchaseSubmitResponse = await submitPurchase(
+        jsonRequest(
+          "/api/transactions/sponsored/purchase/submit",
+          "198.51.100.21",
+          body
+        )
+      );
+      expect(purchaseSubmitResponse.status).toBe(400);
+      await expect(purchaseSubmitResponse.json()).resolves.toEqual({
+        error: "signedTransaction is required",
+      });
+
+      const registrationPrepareResponse = await prepareRegistration(
+        jsonRequest(
+          "/api/transactions/sponsored/register-agent/prepare",
+          "198.51.100.22",
+          body
+        )
+      );
+      expect(registrationPrepareResponse.status).toBe(400);
+      await expect(registrationPrepareResponse.json()).resolves.toEqual({
+        error: "authorityPubkey is required",
+      });
+
+      const registrationSubmitResponse = await submitRegistration(
+        jsonRequest(
+          "/api/transactions/sponsored/register-agent/submit",
+          "198.51.100.23",
+          body
+        )
+      );
+      expect(registrationSubmitResponse.status).toBe(400);
+      await expect(registrationSubmitResponse.json()).resolves.toEqual({
+        error: "signedTransaction is required",
+      });
+
+      expect(transactionMocks.prepareSponsoredPurchase).not.toHaveBeenCalled();
+      expect(transactionMocks.submitSponsoredPurchase).not.toHaveBeenCalled();
+      expect(
+        transactionMocks.prepareSponsoredRegisterAgent
+      ).not.toHaveBeenCalled();
+      expect(
+        transactionMocks.submitSponsoredRegisterAgent
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects a null purchase-prepare body before preparing a transaction", async () => {
     const response = await preparePurchase(
