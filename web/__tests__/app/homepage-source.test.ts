@@ -10,7 +10,9 @@ describe("homepage source", () => {
     );
 
     expect(source).toContain("loadLandingPayload()");
-    expect(source).toContain("loadMarketplaceBrowseSnapshot({ pageSize: 3 })");
+    expect(source).toContain("loadMarketplaceBrowseSnapshot({");
+    expect(source).toContain("pageSize: FEATURED_SKILL_CANDIDATE_POOL");
+    expect(source).toContain("selectFeaturedSkills(");
     expect(source).not.toContain("/api/landing");
     expect(source).not.toContain("/api/skills?sort=trusted");
     expect(source).not.toContain("fetchHomepageJson");

@@ -9,6 +9,11 @@ import {
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import { loadLandingPayload } from "@/lib/landingPayload";
+import {
+  FEATURED_SKILL_CANDIDATE_POOL,
+  FEATURED_SKILL_LIMIT,
+  selectFeaturedSkills,
+} from "@/lib/featuredSkills";
 import { loadMarketplaceBrowseSnapshot } from "@/lib/marketplaceBrowse";
 import { formatUsdcMicros } from "@/lib/pricing";
 import {
@@ -38,9 +43,14 @@ export default async function Home() {
         console.error("Failed to load homepage metrics:", error);
         return null;
       }),
-    loadMarketplaceBrowseSnapshot({ pageSize: 3 }),
+    loadMarketplaceBrowseSnapshot({
+      pageSize: FEATURED_SKILL_CANDIDATE_POOL,
+    }),
   ]);
-  const featuredSkills = skillsSnapshot?.skills ?? [];
+  const featuredSkills = selectFeaturedSkills(
+    skillsSnapshot?.skills ?? [],
+    FEATURED_SKILL_LIMIT
+  );
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
