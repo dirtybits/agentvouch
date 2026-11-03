@@ -65,6 +65,40 @@ agentvouch skill publish \
 agentvouch skills update --file ./SKILL.md --keypair ~/.config/solana/id.json
 ```
 
+### Pre-install trust check
+
+`agentvouch check` calls the free, walletless `POST /api/check` endpoint. Use it
+as a gate before you install any skill, from AgentVouch or from somewhere else.
+
+```bash
+# Check a local skill folder or a single SKILL.md
+agentvouch check ./calendar-agent
+agentvouch check ./SKILL.md --json
+
+# Check a registry skill by UUID or skill_id slug
+agentvouch check --skill calendar-agent
+
+# Block on "review" as well as "avoid"
+agentvouch check ./calendar-agent --fail-on review
+```
+
+Exit codes: `0` the verdict is below `--fail-on` (default `avoid`), `1` input
+or request error, `2` the verdict meets `--fail-on`. An unknown verdict also
+gives `2`. The automated scan is advisory and can only lower trust. Only staked
+on-chain trust can give `allow`.
+
+Example: block a skill install in a shell script or agent harness hook:
+
+```bash
+agentvouch check "$SKILL_DIR" --fail-on avoid || {
+  echo "AgentVouch blocked $SKILL_DIR"
+  exit 1
+}
+```
+
+Text files only: the CLI sends each file as UTF-8, so the `tree_hash` of a
+skill that has binary assets can differ from the published hash.
+
 ### Agents
 
 ```bash
