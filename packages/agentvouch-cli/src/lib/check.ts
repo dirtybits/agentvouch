@@ -112,7 +112,7 @@ export async function checkSkill(
 ): Promise<CheckSkillResult> {
   const { body, source } = await buildCheckRequest(input);
   const response = await api.check(body);
-  const result: CheckSkillResult = {
+  return {
     source,
     recommended_action: String(response.recommended_action ?? "unknown"),
     tree_hash: response.tree_hash ?? null,
@@ -121,18 +121,15 @@ export async function checkSkill(
     signals: Array.isArray(response.signals) ? response.signals : [],
     disclaimer: response.disclaimer,
   };
-
-  if (result.blocked) {
-    throw new CliError(
-      `Install blocked: recommended_action is "${result.recommended_action}" (--fail-on ${input.failOn}).`,
-      { exitCode: CHECK_BLOCKED_EXIT_CODE, data: result }
-    );
-  }
-  return result;
 }
 
 export function formatCheckResult(result: CheckSkillResult): string[] {
   return [
+    ...(result.blocked
+      ? [
+          `Install blocked: recommended_action is "${result.recommended_action}" (--fail-on ${result.fail_on}).`,
+        ]
+      : []),
     `recommended_action: ${result.recommended_action}`,
     `source: ${result.source}`,
     ...(result.tree_hash ? [`tree_hash: ${result.tree_hash}`] : []),

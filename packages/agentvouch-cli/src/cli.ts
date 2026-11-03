@@ -16,6 +16,7 @@ import {
   formatSkillSummary,
 } from "./lib/format.js";
 import {
+  CHECK_BLOCKED_EXIT_CODE,
   checkSkill,
   formatCheckResult,
   parseCheckFailOn,
@@ -255,8 +256,8 @@ export function buildProgram(): Command {
         ) => {
           await runCommand(
             options,
-            async () =>
-              checkSkill(
+            async () => {
+              const result = await checkSkill(
                 new AgentVouchApiClient(resolveBaseUrl(options.baseUrl)),
                 {
                   target: targetPath,
@@ -264,7 +265,12 @@ export function buildProgram(): Command {
                   hash: options.hash,
                   failOn: options.failOn,
                 }
-              ),
+              );
+              // A blocked verdict is a result, not an error: print it to stdout
+              // like any other verdict so a hook can parse it on exit code 2.
+              if (result.blocked) process.exitCode = CHECK_BLOCKED_EXIT_CODE;
+              return result;
+            },
             formatCheckResult
           );
         }

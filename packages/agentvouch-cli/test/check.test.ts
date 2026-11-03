@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildProgram } from "../src/cli.js";
 import {
   buildCheckRequest,
   CHECK_BLOCKED_EXIT_CODE,
@@ -163,16 +164,18 @@ describe("checkSkill", () => {
     expect(result.signals).toHaveLength(1);
   });
 
-  it("throws a CliError with the blocked exit code", async () => {
+  it("returns a blocked verdict as a result instead of throwing", async () => {
     mockCheckResponse({ recommended_action: "avoid", tree_hash: null });
-    const error = await checkSkill(
+    const result = await checkSkill(
       new AgentVouchApiClient("https://agentvouch.xyz"),
       { skill: "bad", failOn: "avoid" }
-    ).catch((e: unknown) => e);
+    );
 
-    expect(error).toBeInstanceOf(CliError);
-    expect((error as CliError).exitCode).toBe(CHECK_BLOCKED_EXIT_CODE);
-    expect((error as CliError).data).toMatchObject({ blocked: true });
+    expect(result).toMatchObject({
+      blocked: true,
+      recommended_action: "avoid",
+      fail_on: "avoid",
+    });
   });
 
   it("surfaces API errors as exit code 1", async () => {
@@ -185,5 +188,90 @@ describe("checkSkill", () => {
     expect(error).toBeInstanceOf(CliError);
     expect((error as CliError).exitCode).toBe(1);
     expect((error as CliError).message).toMatch(/tree_hash not found/);
+  });
+});
+
+describe("agentvouch check command output", () => {
+  beforeEach(() => {
+    process.exitCode = 0;
+  });
+
+  afterEach(() => {
+    process.exitCode = 0;
+    vi.restoreAllMocks();
+  });
+
+  async function runCheck(args: string[], body: unknown, status = 200) {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), { status })
+    );
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    await buildProgram().parseAsync([
+      "node",
+      "agentvouch",
+      "check",
+      ...args,
+      "--base-url",
+      "https://agentvouch.xyz",
+    ]);
+    return {
+      stdout: stdout.mock.calls.map((call) => String(call[0])),
+      stderr: stderr.mock.calls.map((call) => String(call[0])),
+    };
+  }
+
+  it("prints a blocked --json result to stdout and exits 2", async () => {
+    const { stdout, stderr } = await runCheck(["--skill", "bad", "--json"], {
+      recommended_action: "avoid",
+      tree_hash: "h1",
+    });
+
+    expect(stderr).toEqual([]);
+    expect(JSON.parse(stdout.join("\n"))).toMatchObject({
+      recommended_action: "avoid",
+      blocked: true,
+      fail_on: "avoid",
+      tree_hash: "h1",
+    });
+    expect(process.exitCode).toBe(CHECK_BLOCKED_EXIT_CODE);
+  });
+
+  it("prints a blocked text result with its signals to stdout and exits 2", async () => {
+    const { stdout, stderr } = await runCheck(["--skill", "bad"], {
+      recommended_action: "avoid",
+      tree_hash: null,
+      signals: [
+        { id: "scan", label: "Scan", status: "fail", detail: "unsafe content" },
+      ],
+    });
+
+    expect(stderr).toEqual([]);
+    expect(stdout[0]).toMatch(/^Install blocked: .*"avoid".*--fail-on avoid/);
+    expect(stdout).toContain("[fail] Scan: unsafe content");
+    expect(process.exitCode).toBe(CHECK_BLOCKED_EXIT_CODE);
+  });
+
+  it("exits 0 for a verdict below --fail-on", async () => {
+    const { stdout, stderr } = await runCheck(["--skill", "ok", "--json"], {
+      recommended_action: "review",
+      tree_hash: null,
+    });
+
+    expect(stderr).toEqual([]);
+    expect(JSON.parse(stdout.join("\n"))).toMatchObject({ blocked: false });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("keeps request errors on stderr with exit code 1", async () => {
+    const { stdout, stderr } = await runCheck(
+      ["--hash", "zzz", "--json"],
+      { error: "tree_hash not found" },
+      404
+    );
+
+    expect(stdout).toEqual([]);
+    expect(stderr.join("\n")).toMatch(/tree_hash not found/);
+    expect(process.exitCode).toBe(1);
   });
 });

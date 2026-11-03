@@ -87,6 +87,10 @@ or request error, `2` the verdict meets `--fail-on`. An unknown verdict also
 gives `2`. The automated scan is advisory and can only lower trust. Only staked
 on-chain trust can give `allow`.
 
+The verdict prints to stdout for exit codes `0` and `2`, so a hook can read
+`--json` output when an install is blocked. Errors (exit code `1`) print to
+stderr.
+
 Example: block a skill install in a shell script or agent harness hook:
 
 ```bash
