@@ -108,4 +108,30 @@ describe.each([
     expect(mocks.completeX402SettlementAttempt).not.toHaveBeenCalled();
     expect(mocks.failX402SettlementAttempt).not.toHaveBeenCalled();
   });
+
+  it("rejects an array Base payment payload before listing or payment work", async () => {
+    const response = await handler(
+      request(
+        JSON.stringify({
+          skillDbId: "11111111-1111-4111-8111-111111111111",
+          paymentPayload: [],
+        })
+      )
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing skillDbId or Base payment payload",
+    });
+    expect(mocks.authenticateRequest).toHaveBeenCalledOnce();
+    expect(mocks.verifyPaymentProof).not.toHaveBeenCalled();
+    expect(mocks.verifyBaseX402PaymentPayload).not.toHaveBeenCalled();
+    expect(mocks.loadBaseX402Skill).not.toHaveBeenCalled();
+    expect(mocks.relayAndRecordBaseX402Purchase).not.toHaveBeenCalled();
+    expect(mocks.hasChainUsdcPurchaseEntitlement).not.toHaveBeenCalled();
+    expect(mocks.getX402SettlementEntitlement).not.toHaveBeenCalled();
+    expect(mocks.claimX402SettlementAttempt).not.toHaveBeenCalled();
+    expect(mocks.completeX402SettlementAttempt).not.toHaveBeenCalled();
+    expect(mocks.failX402SettlementAttempt).not.toHaveBeenCalled();
+  });
 });

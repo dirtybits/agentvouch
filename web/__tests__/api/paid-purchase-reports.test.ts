@@ -74,26 +74,24 @@ describe("POST /api/skills/[id]/paid-reports/verify", () => {
     expect(dbMocks.sql).not.toHaveBeenCalled();
   });
 
-  it("rejects a literal null request body without database initialization", async () => {
-    const response = await POST(
-      new NextRequest(
-        `http://localhost/api/skills/${SKILL_ID}/paid-reports/verify`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "null",
-        }
-      ),
-      { params: Promise.resolve({ id: SKILL_ID }) }
-    );
+  it.each([null, [], 1])(
+    "rejects a non-object request body without database initialization",
+    async (body) => {
+      const response = await POST(request(body), {
+        params: Promise.resolve({ id: SKILL_ID }),
+      });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "txHash and purchaseId are required",
-    });
-    expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
-    expect(dbMocks.sql).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "txHash and purchaseId are required",
+      });
+      expect(dbMocks.initializeDatabase).not.toHaveBeenCalled();
+      expect(dbMocks.sql).not.toHaveBeenCalled();
+      expect(
+        verificationMocks.verifyAndIndexBasePaidPurchaseReport
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   it("passes only the transaction and purchase identity into exact verification", async () => {
     const response = await POST(
