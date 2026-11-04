@@ -20,6 +20,9 @@ function request(url: string, init: NextRequestInit = {}): NextRequest {
 describe("/api/github/skills/discover", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The route forwards GITHUB_TOKEN; a token in the developer or CI shell
+    // must not change the expected call arguments.
+    vi.stubEnv("GITHUB_TOKEN", "");
     mockDiscoverGithubSkills.mockResolvedValue({
       ok: true,
       query: "filename:SKILL.md",
