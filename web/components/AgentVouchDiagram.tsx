@@ -78,7 +78,10 @@ export function AgentVouchDiagram() {
             }}
             onFocus={() => setCarouselPaused(true)}
             onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget))
+              if (
+                !event.currentTarget.contains(event.relatedTarget) &&
+                !event.currentTarget.matches(":hover")
+              )
                 setCarouselPaused(false);
             }}
           >
