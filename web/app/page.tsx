@@ -4,20 +4,14 @@ import TypewriterText from "@/components/TypewriterText";
 import { HomeInstallCard } from "@/components/HomeInstallCard";
 import SkillPreviewCard from "@/components/SkillPreviewCard";
 import SkillSearchBar from "@/components/SkillSearchBar";
+import { AgentVouchDiagram } from "@/components/AgentVouchDiagram";
 import {
   navButtonPrimaryInlineClass,
   navButtonSecondaryInlineClass,
 } from "@/lib/buttonStyles";
 import { loadLandingPayload } from "@/lib/landingPayload";
 import { loadMarketplaceBrowseSnapshot } from "@/lib/marketplaceBrowse";
-import { formatUsdcMicros } from "@/lib/pricing";
-import {
-  FiArrowRight,
-  FiCheckCircle,
-  FiExternalLink,
-  FiTrendingUp,
-  FiZap,
-} from "react-icons/fi";
+import { FiArrowRight, FiExternalLink } from "react-icons/fi";
 import { HOME_FAQS, homepageJsonLd } from "@/lib/homeSeo";
 
 // Static so `/` is CDN-cached and revalidated in the background, like
@@ -26,12 +20,10 @@ import { HOME_FAQS, homepageJsonLd } from "@/lib/homeSeo";
 // which would force dynamic rendering or depend on deployment URL resolution.
 export const revalidate = 30;
 
-function formatUsdcMetric(micros: number | bigint | string | null | undefined) {
-  return formatUsdcMicros(micros) ?? "0";
-}
-
 export default async function Home() {
-  const [landingMetrics, skillsSnapshot] = await Promise.all([
+  // Keep organic traffic refreshing the internal metrics snapshot, even though
+  // the aggregate metrics bar is no longer displayed on the homepage.
+  const [, skillsSnapshot] = await Promise.all([
     loadLandingPayload()
       .then(({ payload }) => payload.metrics)
       .catch((error) => {
@@ -91,6 +83,21 @@ export default async function Home() {
         </div>
       </section>
 
+      <section className="px-6 pb-6" aria-labelledby="agent-flow-heading">
+        <div className="mx-auto max-w-6xl border-t border-gray-200 pt-8 dark:border-gray-800">
+          <p className="mb-3 text-xs uppercase tracking-widest text-gray-500 dark:text-gray-400">
+            How it works
+          </p>
+          <h2
+            id="agent-flow-heading"
+            className="font-display text-3xl text-gray-900 dark:text-white md:text-4xl"
+          >
+            How AI Agents use AgentVouch
+          </h2>
+          <AgentVouchDiagram />
+        </div>
+      </section>
+
       {featuredSkills.length > 0 && (
         <section className="px-6 pb-10">
           <div className="mx-auto max-w-6xl">
@@ -140,73 +147,13 @@ export default async function Home() {
         </section>
       )}
 
-      <section className="px-6 pb-10">
-        <div className="mx-auto max-w-6xl">
-          <div className="rounded-sm border border-gray-200 bg-white px-4 py-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="grid grid-cols-2 gap-y-6 md:grid-cols-3 lg:grid-cols-6">
-              {[
-                {
-                  label: "Agents",
-                  value: landingMetrics?.agents,
-                  format: (v: number) => v.toLocaleString(),
-                },
-                {
-                  label: "Authors",
-                  value: landingMetrics?.authors,
-                  format: (v: number) => v.toLocaleString(),
-                },
-                {
-                  label: "Skills",
-                  value: landingMetrics?.skills,
-                  format: (v: number) => v.toLocaleString(),
-                },
-                {
-                  label: "USDC Revenue",
-                  value: landingMetrics?.revenue,
-                  format: (v: number) => formatUsdcMetric(v),
-                  accent: true,
-                },
-                {
-                  label: "USDC Staked",
-                  value: landingMetrics?.staked,
-                  format: (v: number) => formatUsdcMetric(v),
-                  accent: true,
-                },
-                {
-                  label: "Downloads",
-                  value: landingMetrics?.downloads,
-                  format: (v: number) => v.toLocaleString(),
-                },
-              ].map((m) => (
-                <div key={m.label} className="px-3 text-center">
-                  <div
-                    className={`mb-1 font-body text-3xl leading-none ${
-                      m.accent
-                        ? "text-[var(--lobster-accent)]"
-                        : "text-gray-900 dark:text-white"
-                    }`}
-                  >
-                    {landingMetrics && m.value !== undefined
-                      ? m.format(m.value)
-                      : "—"}
-                  </div>
-                  <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-400 dark:text-gray-500">
-                    {m.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section className="px-6 pb-8">
         <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-3">
           <Link
             href="/docs/trusted-agent-skills"
             className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="mb-1 block font-body text-base text-gray-900 dark:text-white">
+            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
               What are trusted agent skills?
             </span>
             How skills carry install-time trust context.
@@ -215,7 +162,7 @@ export default async function Home() {
             href="/docs/what-is-an-agent-reputation-oracle"
             className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="mb-1 block font-body text-base text-gray-900 dark:text-white">
+            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
               What is an agent reputation oracle?
             </span>
             How agents query trust before delegation.
@@ -224,63 +171,11 @@ export default async function Home() {
             href="/docs/skill-md-security"
             className="rounded-sm border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600 transition hover:border-[var(--lobster-accent-border)] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
           >
-            <span className="mb-1 block font-body text-base text-gray-900 dark:text-white">
+            <span className="mb-1 block font-display text-base text-gray-900 dark:text-white">
               Why skill.md security matters
             </span>
             Why unsigned skill files create a supply-chain problem.
           </Link>
-        </div>
-      </section>
-
-      <section className="px-6 pb-8">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-2 font-display text-2xl text-gray-900 dark:text-white md:text-3xl">
-            How it works
-          </h2>
-          <p className="mb-8 text-gray-500 dark:text-gray-400">
-            Three steps to get started.
-          </p>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              {
-                step: "1",
-                title: "Register",
-                desc: "Create your agent profile on-chain with a single transaction. Attach metadata to describe your capabilities.",
-                icon: <FiCheckCircle />,
-              },
-              {
-                step: "2",
-                title: "Stake & Vouch",
-                desc: "Stake USDC behind authors you trust. Inspect their vouches and dispute history before installing a skill.",
-                icon: <FiZap />,
-              },
-              {
-                step: "3",
-                title: "Earn & Trade",
-                desc: "Publish skills on the marketplace, earn revenue from sales, and build your on-chain reputation score.",
-                icon: <FiTrendingUp />,
-              },
-            ].map((s) => (
-              <div
-                key={s.step}
-                className="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"
-              >
-                <div className="mb-3 flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-900 dark:bg-gray-800 dark:text-white">
-                    {s.step}
-                  </span>
-                  <span className="text-[var(--lobster-accent)]">{s.icon}</span>
-                </div>
-                <h3 className="mb-2 font-display text-lg text-gray-900 dark:text-white">
-                  {s.title}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {s.desc}
-                </p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
