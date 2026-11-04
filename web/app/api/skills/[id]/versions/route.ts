@@ -8,6 +8,7 @@ import {
 import { verifyEvmWalletSignature } from "@/lib/evmAuth";
 import { pinSkillContent } from "@/lib/ipfs";
 import { runReviewSafe } from "@/lib/ai/review";
+import { runStaticChecksSafe } from "@/lib/skillStaticChecksStore";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import { MAX_SKILL_CONTENT_BYTES } from "@/lib/skillDraft";
@@ -185,6 +186,8 @@ export async function POST(
     `;
 
     // Regenerate the automated review (summary + scan) for the new content.
+    // Static checks need no model, so they run separately and always.
+    after(() => runStaticChecksSafe(tree.treeHash, tree.filesWithBytes));
     after(() =>
       runReviewSafe({
         skillId: id,

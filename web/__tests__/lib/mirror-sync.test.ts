@@ -14,6 +14,7 @@ const {
   mockVerifyAuthorTrust,
   mockListActiveConnectedRepos,
   mockUpdateConnectedRepoSyncState,
+  mockRunStaticChecksSafe,
 } = vi.hoisted(() => ({
   mockSqlFn: vi.fn(),
   mockPutBlob: vi.fn(),
@@ -27,6 +28,7 @@ const {
   mockVerifyAuthorTrust: vi.fn(),
   mockListActiveConnectedRepos: vi.fn(),
   mockUpdateConnectedRepoSyncState: vi.fn(),
+  mockRunStaticChecksSafe: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -59,6 +61,10 @@ vi.mock("@/lib/skillRouteResolver", () => ({
 
 vi.mock("@/lib/ai/review", () => ({
   runReviewSafe: mockRunReviewSafe,
+}));
+
+vi.mock("@/lib/skillStaticChecksStore", () => ({
+  runStaticChecksSafe: mockRunStaticChecksSafe,
 }));
 
 vi.mock("@/lib/trust", () => ({
@@ -152,6 +158,25 @@ describe("syncMirrorSkills — change detection", () => {
     expect(mockSqlFn).toHaveBeenCalledTimes(2);
     // Blob was written (writePreparedTreeToBlob uses put)
     expect(mockPutBlob).toHaveBeenCalledOnce();
+  });
+
+  it("runs static checks on a new listing even when the review is skipped", async () => {
+    mockSqlFn
+      .mockResolvedValueOnce([]) // findExistingListing
+      .mockResolvedValueOnce([{ id: "skill-db-id" }]); // INSERT skills + skill_versions CTE
+
+    await syncMirrorSkills({ apply: true, skipReview: true });
+
+    const { prepareSkillTree } = await import("@/lib/skillStorage");
+    const expectedHash = prepareSkillTree(makeSkillFiles()).treeHash;
+    expect(mockRunStaticChecksSafe).toHaveBeenCalledOnce();
+    expect(mockRunStaticChecksSafe.mock.calls[0]?.[0]).toBe(expectedHash);
+    expect(
+      mockRunStaticChecksSafe.mock.calls[0]?.[1].map(
+        (file: { path: string }) => file.path
+      )
+    ).toEqual(["LICENSE", "SKILL.md"]);
+    expect(mockRunReviewSafe).not.toHaveBeenCalled();
   });
 
   it("publishes a new version when the tree hash changed", async () => {

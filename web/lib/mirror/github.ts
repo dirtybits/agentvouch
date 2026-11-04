@@ -256,8 +256,22 @@ export function parseFrontmatter(md: string): {
   name: string;
   description: string;
 } {
+  const fields = parseFrontmatterFields(md) ?? {};
+  return {
+    name: (fields.name || "").trim(),
+    description: (fields.description || "").replace(/\s+/g, " ").trim(),
+  };
+}
+
+/**
+ * Top-level frontmatter fields as strings (a nested map such as `metadata`
+ * reads as ""). Returns null when the file has no frontmatter block.
+ */
+export function parseFrontmatterFields(
+  md: string
+): Record<string, string> | null {
   const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) return { name: "", description: "" };
+  if (!m) return null;
   const lines = m[1].split(/\r?\n/);
   const fields: Record<string, string> = {};
 
@@ -291,10 +305,7 @@ export function parseFrontmatter(md: string): {
     fields[key] = val.trim();
   }
 
-  return {
-    name: (fields.name || "").trim(),
-    description: (fields.description || "").replace(/\s+/g, " ").trim(),
-  };
+  return fields;
 }
 
 // Upstream skill `name` fields are slugs (e.g. `gh-fix-ci`). Turn them into

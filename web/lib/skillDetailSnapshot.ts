@@ -43,6 +43,11 @@ import type { SkillFileTreeEntry } from "@/components/SkillFileTree";
 import type { AuthorTrust } from "@/lib/trust";
 import { SCAN_MODEL } from "@/lib/ai/gateway";
 import { SCAN_RUBRIC_VERSION } from "@/lib/ai/scan";
+import {
+  parseStaticCheckReport,
+  STATIC_CHECKS_VERSION,
+  type StaticCheckReport,
+} from "@/lib/skillStaticChecks";
 import { getAddress as getEvmAddress, isAddress as isEvmAddress } from "viem";
 
 const configuredSolanaChainContext = getConfiguredSolanaChainContext();
@@ -96,6 +101,7 @@ export type SkillDetailSnapshot = {
   storage_backend: string | null;
   has_executable: boolean;
   security_scan: SkillSecurityScan | null;
+  static_checks: StaticCheckReport | null;
   signals: TrustSignal[];
   versions: Array<{
     id: string;
@@ -324,6 +330,7 @@ async function applyLiveBaseTrust(
     signals: buildTrustSignals({
       trust: authorTrust,
       scan: snapshot.security_scan,
+      staticChecks: snapshot.static_checks,
     }),
     purchaseRiskWarning:
       snapshot.price_usdc_micros &&
@@ -390,6 +397,7 @@ async function loadSkillDetailSnapshotUncached(
       latest.created_at AS latest_created_at,
       version_meta.versions,
       COALESCE(version_meta.all_versions_pinned, false) AS all_versions_pinned,
+      static_checks.report AS static_checks_report,
       scan.verdict AS scan_verdict,
       scan.risk AS scan_risk,
       scan.findings AS scan_findings,
@@ -444,6 +452,9 @@ async function loadSkillDetailSnapshotUncached(
       ON scan.tree_hash = latest.tree_hash
       AND scan.rubric_version = ${SCAN_RUBRIC_VERSION}
       AND scan.model = ${SCAN_MODEL}
+    LEFT JOIN skill_static_checks static_checks
+      ON static_checks.tree_hash = latest.tree_hash
+      AND static_checks.checks_version = ${STATIC_CHECKS_VERSION}
     LEFT JOIN author_trust_snapshots ats
       ON ats.wallet_pubkey = s.author_pubkey
       AND ats.chain_context = COALESCE(s.chain_context, ${configuredSolanaChainContext})
@@ -502,6 +513,7 @@ async function loadSkillDetailSnapshotUncached(
         })
       : null);
   const securityScan = buildSecurityScanFromFields(row);
+  const staticChecks = parseStaticCheckReport(row.static_checks_report);
   const allVersionsPinned = Boolean(row.all_versions_pinned);
   const currentCidMatch = row.latest_ipfs_cid === row.ipfs_cid;
   const versions =
@@ -554,7 +566,12 @@ async function loadSkillDetailSnapshotUncached(
     storage_backend: row.latest_storage_backend,
     has_executable: Boolean(row.latest_has_executable),
     security_scan: securityScan,
-    signals: buildTrustSignals({ trust: authorTrust, scan: securityScan }),
+    static_checks: staticChecks,
+    signals: buildTrustSignals({
+      trust: authorTrust,
+      scan: securityScan,
+      staticChecks,
+    }),
     versions,
     author_trust: authorTrust,
     author_trust_summary: authorTrustSummary,

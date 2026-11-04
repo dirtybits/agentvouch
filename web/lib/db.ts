@@ -482,6 +482,18 @@ async function runCoreSchemaDdl() {
     )
   `;
 
+  // Deterministic static checks (web/lib/skillStaticChecks.ts), cached by
+  // content like skill_scans. A new checks_version gets new rows.
+  await db`
+    CREATE TABLE IF NOT EXISTS skill_static_checks (
+      tree_hash VARCHAR(64) NOT NULL,
+      checks_version VARCHAR(32) NOT NULL,
+      report JSONB NOT NULL,
+      checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (tree_hash, checks_version)
+    )
+  `;
+
   await db`
     CREATE TABLE IF NOT EXISTS skill_download_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
