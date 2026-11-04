@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: verify-local
     content: Run the full web gate and a bounded live Jasmine summary and scan smoke
-    status: in_progress
+    status: completed
   - id: connect-hosted
     content: Configure authenticated HTTPS access from Vercel and verify a preview before production activation
     status: in_progress
@@ -61,8 +61,8 @@ Set `AI_PROVIDER=gateway` and redeploy. Existing Gemini identifiers and cached r
 
 ## Blockers
 
-- Hosted inference URL and machine credentials are not configured or verified. The user selected a dedicated Cloudflare-protected API on 2026-11-04.
-- Production scanner quality, Vercel-to-Jasmine reachability, and hosted latency are unverified.
+- Vercel-to-Jasmine inference and hosted latency remain unverified; isolated service deployment is underway.
+- The bounded corpus passed, but benign review text is often speculative. Broader scanner reliability is not established.
 
 ## 2026-11-04 decision checkpoint
 
@@ -73,3 +73,13 @@ The user asked for an explanation of connection options before proceeding. Only 
 The user selected option 1, the protected API, and asked whether the browser chat should move to `jasmine.agentvouch.xyz`. Current DNS shows `agentvouch.xyz` is at Namecheap and `andysustic.com` is already on Cloudflare. Proceed with the originally proposed `jasmine-api.andysustic.com` to avoid expanding scope into a whole-zone DNS migration. The chat hostname question is advice, not authorization to migrate its Access/Turnstile/origin settings. Necessary isolated inference service and tunnel configuration are now in scope; do not restart models or disturb the existing chat route.
 
 Provider code is implemented. Format, workspace lint/typecheck, and all 1,413 web tests across 155 files passed. The live idle-slot preflight passed. One real summary (2.4 s) and three scans (3.6–6.7 s) returned valid JSON. Both malicious fixtures returned `avoid`; the benign fixture returned low-risk `review` with a speculative finding (noisy-clean). Webpack build and the 25-case corpus evaluation remain underway. No hosted configuration or production traffic has changed.
+
+## 2026-11-04 local verification and hosted preparation
+
+The full webpack build passed after configuring a disposable Neon branch and the existing hosted server RPC. Earlier attempts failed on sandbox font DNS, absent database configuration, then a rate limit from the default Solana RPC. No application code was changed to bypass those failures. Existing ox/viem dynamic-dependency and edge-runtime warnings remain.
+
+The unchanged production prompt/schema ran once per case: development 16/16 valid (9/9 unsafe `avoid`, 0/7 benign `avoid`, 6 noisy reviews); holdout 9/9 valid (5/5 unsafe `avoid`, 0/4 benign `avoid`, 3 noisy reviews). No errors or unsafe undercalls. Development p50/p95 was 5.27/11.37 s; holdout 7.53/10.04 s. This is one bounded sample, not a general safety benchmark. Private result artifacts are `/private/tmp/agentvouch-jasmine-dev-20261104.json` and `/private/tmp/agentvouch-jasmine-holdout-20261104.json`.
+
+Created a separate Cloudflare Access application for `jasmine-api.andysustic.com`, with only the dedicated AgentVouch service-token policy, and a separate named tunnel. Stored `JASMINE_CF_ACCESS_CLIENT_ID` and `JASMINE_CF_ACCESS_CLIENT_SECRET` as Vercel Secret values in Production and only this feature branch's Preview environment. The token expires 2027-11-04. Preview also has `AI_PROVIDER`, `JASMINE_BASE_URL`, `JASMINE_MODEL`, and `JASMINE_TIMEOUT_MS`; production provider activation remains pending. An optional App Launcher visibility change was rejected by automatic approval review and was not applied.
+
+Signed commits were rebased onto current main; the dependency commit is now `67a28f38`, implementation `53c0bd1d`. The feature branch is published. The operations service is staged separately in the owning Jasmine repository; existing chat/model services remain outside the change.

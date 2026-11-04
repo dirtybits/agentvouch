@@ -10,16 +10,16 @@ is verified. `AI_PROVIDER=gateway` is the explicit rollback setting.
 These variables belong only in the server environment, never in `NEXT_PUBLIC_*`
 variables or browser code.
 
-| Variable | Purpose |
-| --- | --- |
-| `AI_PROVIDER` | `jasmine` or `gateway`; default `gateway` during rollout |
-| `JASMINE_BASE_URL` | HTTPS inference base ending in `/v1` |
-| `JASMINE_MODEL` | Served alias; default `huihui-qwen3-8-27b-ud-q4-k-xl` |
-| `JASMINE_CF_ACCESS_CLIENT_ID` | Dedicated Cloudflare Access service token ID |
-| `JASMINE_CF_ACCESS_CLIENT_SECRET` | Matching service token secret |
-| `JASMINE_API_KEY` | Optional bearer credential for an alternative protected endpoint |
-| `JASMINE_TIMEOUT_MS` | Per-generation deadline, 1,000–120,000 ms; default 45,000 |
-| `AI_SCAN_MAX_INPUT_BYTES` | Existing scan input setting; Jasmine has a 32 KiB ceiling |
+| Variable                          | Purpose                                                          |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `AI_PROVIDER`                     | `jasmine` or `gateway`; default `gateway` during rollout         |
+| `JASMINE_BASE_URL`                | HTTPS inference base ending in `/v1`                             |
+| `JASMINE_MODEL`                   | Served alias; default `huihui-qwen3-8-27b-ud-q4-k-xl`            |
+| `JASMINE_CF_ACCESS_CLIENT_ID`     | Dedicated Cloudflare Access service token ID                     |
+| `JASMINE_CF_ACCESS_CLIENT_SECRET` | Matching service token secret                                    |
+| `JASMINE_API_KEY`                 | Optional bearer credential for an alternative protected endpoint |
+| `JASMINE_TIMEOUT_MS`              | Per-generation deadline, 1,000–120,000 ms; default 45,000        |
+| `AI_SCAN_MAX_INPUT_BYTES`         | Existing scan input setting; Jasmine has a 32 KiB ceiling        |
 
 Hosted Jasmine requires a service credential and HTTPS. Local development may
 use the existing `http://127.0.0.1:18085/v1` SSH tunnel without a model API key.
@@ -43,7 +43,7 @@ existing scan budget. No database schema migration or bulk rescan is required.
 
 ## Hosted access
 
-The proposed endpoint is `https://jasmine-api.andysustic.com/v1`. This is separate
+The endpoint being provisioned is `https://jasmine-api.andysustic.com/v1`. This is separate
 from the browser chat at `jasmine.andysustic.com`, whose routes do not expose
 native inference. Cloudflare Access must require a service token restricted to
 the inference application. A dedicated tunnel and restricted proxy must forward
@@ -54,6 +54,11 @@ Verified 2026-11-04: `andysustic.com` uses Cloudflare DNS, while `agentvouch.xyz
 uses Namecheap DNS. Moving chat or inference to an AgentVouch hostname would
 require separate DNS work, plus Access/origin/Turnstile changes for browser chat.
 The inference setup does not migrate the chat hostname.
+
+The dedicated Cloudflare service token is stored as a Vercel Secret for Production
+and the `codex/feat/jasmine-ai-provider` Preview branch. Its expiry is 2027-11-04;
+renew it in the protected environment before that date. Production provider
+activation is a separate rollout step after authenticated preview verification.
 
 ## Verification and rollout
 
@@ -101,6 +106,14 @@ Run the full Node 24 web gate. Then verify the hosted endpoint rejects anonymous
 and wrong-token requests and all unlisted routes. Verify a valid structured
 completion and cancellation/deadline behavior. Configure the new variables on a
 Vercel preview and check the deployed scan flow before production activation.
+
+Verified 2026-11-04: format, lint, typecheck, all 1,413 web tests and the webpack
+build passed. The unchanged scanner ran once across all 25 cases: 25 valid
+outputs, 14/14 unsafe `avoid`, 0/11 benign `avoid`, and no errors. Nine benign
+cases still produced speculative review findings. The nine-case holdout alone
+had 5/5 unsafe `avoid`, no benign `avoid`, and a 10.04 s maximum latency.
+These small single-trial results support the integration check, not a general
+claim of scanner reliability.
 
 Rollback by setting `AI_PROVIDER=gateway` and redeploying. Revoke the dedicated
 service token and stop only the new API tunnel/proxy if removing hosted access.
