@@ -52,6 +52,7 @@ sections. If a change spans topics, read each relevant section.
 | Wallets, authentication, sponsored flows, or payments | Companion: signing and payments, chain rules, recorded protocol facts, and live verification. |
 | UI or frontend behavior | Companion: UI rules and design language; product/copy rules for wording or trust displays. |
 | Product claims, economics, or onboarding docs | Companion: product/copy rules and recorded protocol facts. Read [ROADMAP.md](docs/ROADMAP.md) for strategy; [DEVNET_STATE.md](docs/DEVNET_STATE.md) for live Solana evidence. |
+| Skill packages, tree hashes, manifests, or download checks | Read [SKILL_TREE_HASH.md](docs/SKILL_TREE_HASH.md) and companion: skill package integrity. |
 | Skill scanning or evaluations | Companion: recorded protocol facts and testing rules. Preserve the scanner's `review\|avoid` verdict limit; detection tests do not establish resistance to behavioral injection. |
 | Build failures, local startup problems, Git, or plans | Read the matching companion section only when needed. |
 | Presentations | Companion: presentation assets; verify historical counts before reuse. |

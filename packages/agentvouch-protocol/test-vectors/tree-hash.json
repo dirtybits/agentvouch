@@ -1,0 +1,328 @@
+{
+  "schema": "agentvouch.tree-hash-vectors/v1",
+  "algorithm": "agentvouch-tree-v1",
+  "spec": "docs/SKILL_TREE_HASH.md",
+  "notes": "Each file is content_utf8 (text) or content_base64 (raw bytes). Non-ASCII text uses \\u escapes on purpose. To change a vector, edit its inputs, run tree_hash_reference.py --write, review the diff, then run prettier on this file.",
+  "vectors": [
+    {
+      "id": "single-skill-md",
+      "description": "One SKILL.md file. This is also the shape of legacy single-file versions (see the SQL backfill note in the spec).",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": ["SKILL.md"],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8"
+        },
+        "tree_hash": "d8fbcabf71d10a068ea9907c99c1d0741bcacdb1c71140b53be06b6b511c0fd7"
+      }
+    },
+    {
+      "id": "crlf-line-endings",
+      "description": "Same text as single-skill-md with CRLF line endings. Bytes are hashed exactly, so the digest and the tree hash differ.",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\r\nname: hello-world\r\ndescription: Say hello. Use when the user asks for a greeting.\r\n---\r\n\r\n# Hello World\r\n\r\nReply with one short greeting.\r\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": ["SKILL.md"],
+        "file_sha256": {
+          "SKILL.md": "2b1bb32469d392e90645c18f4db6028c0558d44582c4f3ba32403a8be28ac6e3"
+        },
+        "tree_hash": "463cbad467f7cece5959369b3071cdb99503edaa4528dd77100e7734aaeb5ac1"
+      }
+    },
+    {
+      "id": "empty-file",
+      "description": "A zero-byte file. Its digest is the SHA-256 of empty input.",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        },
+        {
+          "path": "assets/empty.txt",
+          "content_utf8": ""
+        }
+      ],
+      "expected": {
+        "sorted_paths": ["SKILL.md", "assets/empty.txt"],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "assets/empty.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "tree_hash": "46f64433798ebd6aac5a0330d73d22b24171dc1a4b8638251573df230578574a"
+      }
+    },
+    {
+      "id": "binary-file",
+      "description": "Bytes that are not valid UTF-8, given as base64. Hash the raw bytes, never decoded text.",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        },
+        {
+          "path": "assets/blob.bin",
+          "content_base64": "AAF/gP8KDQA="
+        }
+      ],
+      "expected": {
+        "sorted_paths": ["SKILL.md", "assets/blob.bin"],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "assets/blob.bin": "1dc70ef8cde6b98f0b511be620f0e95df1385dc17f6078c9d65f15f0791933d7"
+        },
+        "tree_hash": "a2e9d51d29f0db303346e98398bcf488aaf06707483e15f336338bc9ce53a6f6"
+      }
+    },
+    {
+      "id": "ascii-case-order",
+      "description": "Uppercase sorts before lowercase in code unit order. Locale-aware compare (localeCompare, ICU collation) puts references/ and scripts/ first and gives a wrong hash. The shebang script also shows that the executable flag is not part of the hash.",
+      "files": [
+        {
+          "path": "scripts/run.sh",
+          "content_utf8": "#!/bin/sh\necho hello\n"
+        },
+        {
+          "path": "references/api.md",
+          "content_utf8": "# API\n\nGET /hello\n"
+        },
+        {
+          "path": "Zebra.md",
+          "content_utf8": "Zebra notes.\n"
+        },
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": [
+          "SKILL.md",
+          "Zebra.md",
+          "references/api.md",
+          "scripts/run.sh"
+        ],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "Zebra.md": "24157d1dd113d657151458ac4e4ed849340d1636e90edf586134e54211c8f710",
+          "references/api.md": "1a7233bbabbbb08319b1d09499077bdaa2073786f5d0af249ae17e54af580a91",
+          "scripts/run.sh": "bfdeaeb08cffb6a36438bcd12dda25417e3cdd36f1e7e482a2849d539225288b"
+        },
+        "tree_hash": "78edc54824986565c6a7dae6ce39880a265ab8e4d9a7a20618133498377af8b3"
+      }
+    },
+    {
+      "id": "punctuation-and-space-order",
+      "description": "Code unit order of space, '-', '.', '/', and '_' is ' ' < '-' < '.' < '/' < '_'. The file docs.md sorts before the folder docs/.",
+      "files": [
+        {
+          "path": "docs/guide.md",
+          "content_utf8": "Guide.\n"
+        },
+        {
+          "path": "docs/API Guide.md",
+          "content_utf8": "API guide.\n"
+        },
+        {
+          "path": "docs.md",
+          "content_utf8": "Docs.\n"
+        },
+        {
+          "path": "a_b.md",
+          "content_utf8": "underscore\n"
+        },
+        {
+          "path": "a.b.md",
+          "content_utf8": "dot\n"
+        },
+        {
+          "path": "a-b.md",
+          "content_utf8": "dash\n"
+        },
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": [
+          "SKILL.md",
+          "a-b.md",
+          "a.b.md",
+          "a_b.md",
+          "docs.md",
+          "docs/API Guide.md",
+          "docs/guide.md"
+        ],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "a-b.md": "f8359416cedbf4b44bd1cab71b791b4121e3b33748187c530e70207af87c3f39",
+          "a.b.md": "5ddbce254c08372e429a250112c6f4593868687ab01e9a126193e5a83560362b",
+          "a_b.md": "10af960b268d98ed1e95acc1c1d7e9a655b0967acca44fdc4e4af2559ae05ce3",
+          "docs.md": "1fec416078e4d341cce91202bb2cf0416f4a3b84c211838086ef788c8154efd4",
+          "docs/API Guide.md": "bfb61b3d486e71d1113277bf7b856405d02c45f0950cac2bc7f93e87a853e67c",
+          "docs/guide.md": "2e8faaa5c331ce0718e04ada7cce3feaa5b675d2f44bbaf0a56b809a136f7563"
+        },
+        "tree_hash": "5cf2c9d3d70943cce11bb26fe8854589bfdbc7e2a89c2d599ee6d98c9a39616f"
+      }
+    },
+    {
+      "id": "unicode-nfc-path",
+      "description": "Path with \u00e9 as one code point (NFC, U+00E9).",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        },
+        {
+          "path": "notes/caf\u00e9.md",
+          "content_utf8": "Caf\u00e9 notes.\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": ["SKILL.md", "notes/caf\u00e9.md"],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "notes/caf\u00e9.md": "1cb49a2aac2e4cafa0aa32fcafe98194ce3d1f98b7e5dccf9788baccf0b7b8dd"
+        },
+        "tree_hash": "f94ebcd4a905687656d967e833da93f63ba1185c332d95d08dae6f9001b02428"
+      }
+    },
+    {
+      "id": "unicode-nfd-path",
+      "description": "The same visible path as unicode-nfc-path, written as e plus a combining acute accent (NFD, U+0065 U+0301). No Unicode normalization is applied, so the tree hash differs from unicode-nfc-path.",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        },
+        {
+          "path": "notes/cafe\u0301.md",
+          "content_utf8": "Caf\u00e9 notes.\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": ["SKILL.md", "notes/cafe\u0301.md"],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "notes/cafe\u0301.md": "1cb49a2aac2e4cafa0aa32fcafe98194ce3d1f98b7e5dccf9788baccf0b7b8dd"
+        },
+        "tree_hash": "a568adafd0e9917d562a616c4348bf7ce479b3ab2c5f986c6237abd076d7bb9a"
+      }
+    },
+    {
+      "id": "astral-vs-bmp-order",
+      "description": "U+1F600 (code units D83D DE00) sorts before U+FF5E in UTF-16 code unit order, but after it in code point or UTF-8 byte order. Use code unit order.",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        },
+        {
+          "path": "notes/\uff5e.md",
+          "content_utf8": "Fullwidth tilde.\n"
+        },
+        {
+          "path": "notes/\ud83d\ude00.md",
+          "content_utf8": "Smile.\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": [
+          "SKILL.md",
+          "notes/\ud83d\ude00.md",
+          "notes/\uff5e.md"
+        ],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "notes/\ud83d\ude00.md": "80b766b7ddc31cbe62fbd7b38d4cde0b0dd5d9f9cfee610249aa2088bf401c88",
+          "notes/\uff5e.md": "bdbd7ad0693edfd96ba2202d25d05ba56aaa5b6ff30c0ab079be01ecc0b54025"
+        },
+        "tree_hash": "6072afea213178dc29888c4274499d06c9ca95673258f343f79928a52d946c5d"
+      }
+    },
+    {
+      "id": "nested-tree",
+      "description": "Several nested folders with text, code, and JSON files.",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "content_utf8": "---\nname: hello-world\ndescription: Say hello. Use when the user asks for a greeting.\n---\n\n# Hello World\n\nReply with one short greeting.\n"
+        },
+        {
+          "path": "references/guides/setup/linux.md",
+          "content_utf8": "# Linux setup\n\nInstall the tool.\n"
+        },
+        {
+          "path": "scripts/lib/util.py",
+          "content_utf8": "def greet(name):\n    return f\"Hello, {name}!\"\n"
+        },
+        {
+          "path": "assets/templates/report.json",
+          "content_utf8": "{\n  \"title\": \"Report\"\n}\n"
+        }
+      ],
+      "expected": {
+        "sorted_paths": [
+          "SKILL.md",
+          "assets/templates/report.json",
+          "references/guides/setup/linux.md",
+          "scripts/lib/util.py"
+        ],
+        "file_sha256": {
+          "SKILL.md": "7cfd32d4977363dda1f02aee644675610f1e928f3ab60647784f2f4c3fdc5ac8",
+          "assets/templates/report.json": "212b800b433da09a20af7ee21993b5fbed35c20c5a740cefd2a359a10c207f57",
+          "references/guides/setup/linux.md": "4b7b65327eeffd38cc735dc0fd07a1b1f27069e47532825c5314297c514f7a3d",
+          "scripts/lib/util.py": "a55c14346b5c0e11da873793db175efd28d4840a330a5edba18d03d7d7310626"
+        },
+        "tree_hash": "27dd61f18b581e9c6be7cfe78dd7ef2ce7dbb811d55bd7ddac54725abe9bb827"
+      }
+    }
+  ],
+  "invalid_paths": [
+    {
+      "path": "",
+      "reason": "empty path"
+    },
+    {
+      "path": "../escape.md",
+      "reason": "dot segment"
+    },
+    {
+      "path": "a/../b.md",
+      "reason": "dot segment"
+    },
+    {
+      "path": "./a.md",
+      "reason": "dot segment"
+    },
+    {
+      "path": "a/./b.md",
+      "reason": "dot segment"
+    },
+    {
+      "path": "/etc/passwd",
+      "reason": "absolute path"
+    },
+    {
+      "path": "C:/Windows/x.md",
+      "reason": "absolute path with a drive letter"
+    },
+    {
+      "path": "a//b.md",
+      "reason": "empty segment"
+    },
+    {
+      "path": "dir/",
+      "reason": "empty segment (trailing slash)"
+    }
+  ]
+}

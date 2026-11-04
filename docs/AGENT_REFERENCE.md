@@ -46,6 +46,12 @@ Technical safeguards and historical records below are carried from the previous 
 - Skill-scan eval harness (`evals/skill-scan/`, stdlib-only Python, outside npm workspaces): `python3 harness.py --provider mock --judge mock` smokes keyless; production-rubric run is `--provider gateway --prompt scanner_prompt.prod.txt --grading advisory` with `AI_GATEWAY_API_KEY`. Production scanner (`web/lib/ai/scan.ts`, `SCAN_MODEL` = `google/gemini-2.5-flash-lite` via Vercel AI Gateway) returns only `review|avoid` — never allow/safe. North-star metric is unsafe recall; every production miss becomes a dataset case (holdout first); `scanner_prompt.prod.txt` syncs with `scan.ts` by hand.
 - The landing hero uses the Moltbook-style Human/Agent toggle; deeper flows at `/dashboard` and `/docs`.
 
+## Skill package integrity
+
+- [SKILL_TREE_HASH.md](SKILL_TREE_HASH.md) defines skill version identity (`agentvouch-tree-v1`), manifests, and client download checks. Never change v1 in place; changes need a new algorithm version.
+- Keep the shared vectors in `packages/agentvouch-protocol/test-vectors/tree-hash.json` passing in the web implementation, CLI implementation when present, and Python reference. A matching hash proves byte integrity, not safe behavior.
+- The read-only sweep checks stored versions before download enforcement ships. A merged spec or passing vector test does not establish that production data passed the sweep.
+
 ## Contract build steps
 
 - Full local gate for any substantive web change: `npm run format:check`, workspace lint, typecheck, vitest, and `npm exec --workspace @agentvouch/web -- next build --webpack` (webpack explicitly — bundler-parity gate). For docs-only changes, explicitly note the build was skipped.
