@@ -34,6 +34,10 @@ budgets, and `review|avoid` contract remain in force. Schema/transport failures
 propagate to the existing unavailable-scan behavior; they never produce an allow
 verdict or automatically fall back to Gemini.
 
+At publish time, Jasmine runs the advisory scan first and then the summary.
+Each pass remains best-effort. This avoids the two requests competing for the
+single inference permit. The gateway rollback retains parallel generation.
+
 ## Cache behavior
 
 Jasmine results use `jasmine/<served-model-id>` in the existing model cache keys.
@@ -107,13 +111,19 @@ and wrong-token requests and all unlisted routes. Verify a valid structured
 completion and cancellation/deadline behavior. Configure the new variables on a
 Vercel preview and check the deployed scan flow before production activation.
 
-Verified 2026-11-04: format, lint, typecheck, all 1,413 web tests and the webpack
+Verified 2026-11-04: format, lint, typecheck, all 1,418 web tests and the webpack
 build passed. The unchanged scanner ran once across all 25 cases: 25 valid
 outputs, 14/14 unsafe `avoid`, 0/11 benign `avoid`, and no errors. Nine benign
 cases still produced speculative review findings. The nine-case holdout alone
 had 5/5 unsafe `avoid`, no benign `avoid`, and a 10.04 s maximum latency.
 These small single-trial results support the integration check, not a general
 claim of scanner reliability.
+
+Vercel must include files outside its `web/` root directory so the workspace
+lockfile is available. `web/vercel.json` installs from the repository root with
+`npm ci`, matching local verification. A cold deployment with the previous
+isolated `npm install` fetched an incompatible Solana dependency; warmed build
+caches had hidden this configuration issue.
 
 Rollback by setting `AI_PROVIDER=gateway` and redeploying. Revoke the dedicated
 service token and stop only the new API tunnel/proxy if removing hosted access.

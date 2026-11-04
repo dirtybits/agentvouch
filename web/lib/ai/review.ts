@@ -1,5 +1,6 @@
 import { generateSummarySafe } from "@/lib/ai/summarize";
 import { runScanSafe } from "@/lib/ai/scan";
+import { AI_PROVIDER } from "@/lib/ai/gateway";
 import type { SkillFileWithBytes } from "@/lib/skillStorage";
 
 /**
@@ -13,10 +14,12 @@ import type { SkillFileWithBytes } from "@/lib/skillStorage";
  *     heuristic prefilter;
  *   - the summary is a cheap SKILL.md-only read cached by content hash.
  * Merging the call would dilute the security prompt and entangle two different
- * cache keys / cost models, so we keep them separate and just trigger together.
+ * cache keys / cost models, so we keep them separate.
  *
  * Best-effort: each pass already swallows its own errors, and Promise.allSettled
- * guarantees one failing never blocks the other. Intended to run via `after()`.
+ * guarantees one failing never blocks the other. Jasmine runs the scan first
+ * because its API admits one request at a time; the gateway runs both in parallel.
+ * Intended to run via `after()`.
  */
 export async function runReviewSafe(args: {
   skillId: string;
@@ -25,6 +28,16 @@ export async function runReviewSafe(args: {
   files: SkillFileWithBytes[];
   expectedVersion: number;
 }): Promise<void> {
+  if (AI_PROVIDER === "jasmine") {
+    await Promise.allSettled([runScanSafe(args.treeHash, args.files)]);
+    await Promise.allSettled([
+      generateSummarySafe(args.skillId, args.content, {
+        expectedVersion: args.expectedVersion,
+      }),
+    ]);
+    return;
+  }
+
   await Promise.allSettled([
     generateSummarySafe(args.skillId, args.content, {
       expectedVersion: args.expectedVersion,

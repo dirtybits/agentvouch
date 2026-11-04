@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: verify-local
     content: Run the full web gate and a bounded live Jasmine summary and scan smoke
-    status: completed
+    status: in_progress
   - id: connect-hosted
     content: Configure authenticated HTTPS access from Vercel and verify a preview before production activation
     status: in_progress
@@ -83,3 +83,11 @@ The unchanged production prompt/schema ran once per case: development 16/16 vali
 Created a separate Cloudflare Access application for `jasmine-api.andysustic.com`, with only the dedicated AgentVouch service-token policy, and a separate named tunnel. Stored `JASMINE_CF_ACCESS_CLIENT_ID` and `JASMINE_CF_ACCESS_CLIENT_SECRET` as Vercel Secret values in Production and only this feature branch's Preview environment. The token expires 2027-11-04. Preview also has `AI_PROVIDER`, `JASMINE_BASE_URL`, `JASMINE_MODEL`, and `JASMINE_TIMEOUT_MS`; production provider activation remains pending. An optional App Launcher visibility change was rejected by automatic approval review and was not applied.
 
 Signed commits were rebased onto current main; the dependency commit is now `67a28f38`, implementation `53c0bd1d`. The feature branch is published. The operations service is staged separately in the owning Jasmine repository; existing chat/model services remain outside the change.
+
+## 2026-11-04 hosted acceptance and publish scheduling
+
+The isolated API and tunnel are running, with Linux confinement checks and all 15 proxy tests passing. The hostname is published. Anonymous and invalid-token requests using the SDK user agent return HTTP 401 without redirects. Vercel CLI authorization succeeded on retry. The preview inherited the production database; a branch-only secret override now selects the disposable database before scan acceptance testing. CI tests/contracts and the initial preview build passed.
+
+Review found a necessary scheduling change: publish-time `runReviewSafe` launches scan and summary concurrently, but the new API admits only one request. Change only Jasmine's path to scan first, then summary, preserving best-effort continuation after failures; gateway calls remain parallel. Add behavioral regression tests and rerun the web gate before production activation.
+
+The scheduling fix passed five behavioral tests and the full gate: formatting, lint, typecheck, all 1,418 web tests, and webpack build. A cold Vercel redeployment failed because its isolated `web/` build excluded the root lockfile, and `npm install --legacy-peer-deps` fetched newer incompatible Solana dependencies. Earlier Git builds restored a working dependency cache. Include the repository root files in Vercel and use root `npm ci` in `web/vercel.json`; verify a cold hosted build before rollout.
