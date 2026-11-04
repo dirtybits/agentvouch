@@ -1,7 +1,8 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { sql } from "@/lib/db";
-import { SCAN_MODEL, gatewayTags } from "@/lib/ai/gateway";
+import { AI_PROVIDER, SCAN_MODEL } from "@/lib/ai/gateway";
+import { advisoryModelOptions } from "@/lib/ai/provider";
 import { reserveScanBudget, releaseScanBudget } from "@/lib/ai/scanBudget";
 import type { SkillFileWithBytes } from "@/lib/skillStorage";
 import {
@@ -19,17 +20,22 @@ const MAX_FINDINGS = 12;
 // Cap the bytes of file content fed to the model, independent of the much larger
 // upload cap (MAX_SKILL_TREE_BYTES, 5 MB). A 5 MB prompt is ~1-2M tokens, which
 // risks exceeding model context and is unbounded on cost; 512 KB (~130K tokens)
-// keeps the prompt cheap and well within context. Files are included in priority
+// bounds the gateway prompt. Jasmine uses a smaller 32 KB ceiling for its local
+// context and single model slot. Files are included in priority
 // order (SKILL.md, scripts/, references/, other), so truncation drops the
 // least security-relevant content first and sets truncated=true. Env-tunable.
 const CONFIGURED_SCAN_INPUT_BYTES = Number(
   process.env.AI_SCAN_MAX_INPUT_BYTES ?? 512 * 1024
 );
-export const MAX_SCAN_INPUT_BYTES =
+const VALID_SCAN_INPUT_BYTES =
   Number.isFinite(CONFIGURED_SCAN_INPUT_BYTES) &&
   CONFIGURED_SCAN_INPUT_BYTES > 0
     ? CONFIGURED_SCAN_INPUT_BYTES
     : 512 * 1024;
+export const MAX_SCAN_INPUT_BYTES =
+  AI_PROVIDER === "jasmine"
+    ? Math.min(VALID_SCAN_INPUT_BYTES, 32 * 1024)
+    : VALID_SCAN_INPUT_BYTES;
 
 const ScanFindingSchema = z.object({
   severity: z.enum(["low", "medium", "high"]),
@@ -197,7 +203,7 @@ export async function scanSkillTree(
   }
 
   const { object } = await generateObject({
-    model: SCAN_MODEL,
+    ...advisoryModelOptions("skill-scan"),
     schema: ScanSchema,
     system:
       "You are AgentVouch's automated advisory security reviewer for AI agent skills. " +
@@ -209,7 +215,6 @@ export async function scanSkillTree(
       "A single malicious step inside an otherwise useful skill still makes the whole skill avoid — judge the worst behavior, not the average.\n\n" +
       "Return review for clean or merely uncertain content. Never return allow; only staked on-chain trust can grant allow. Keep findings concise.",
     prompt: scanInput.prompt,
-    providerOptions: { gateway: { tags: gatewayTags("skill-scan") } },
   });
 
   return {
