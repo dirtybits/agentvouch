@@ -84,10 +84,7 @@ export default async function Home() {
       </section>
 
       <section className="px-6 pb-6" aria-labelledby="agent-flow-heading">
-        <div className="mx-auto max-w-6xl border-t border-gray-200 pt-8 dark:border-gray-800">
-          <p className="mb-3 text-xs uppercase tracking-widest text-gray-500 dark:text-gray-400">
-            How it works
-          </p>
+        <div className="mx-auto max-w-6xl">
           <h2
             id="agent-flow-heading"
             className="font-display text-3xl text-gray-900 dark:text-white md:text-4xl"
