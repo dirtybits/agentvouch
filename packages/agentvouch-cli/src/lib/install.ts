@@ -4,7 +4,11 @@ import { wrapFetchWithPayment, x402Client, x402HTTPClient } from "@x402/fetch";
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
 import type { AuthPayload } from "@agentvouch/protocol";
 import { CliError } from "./errors.js";
-import { assertWritableOutputPath, writeUtf8File } from "./fs.js";
+import {
+  assertWritableOutputPath,
+  writeBytesFile,
+  writeUtf8File,
+} from "./fs.js";
 import { type SkillRecord, AgentVouchApiClient } from "./http.js";
 import {
   buildInstalledSkillMetadata,
@@ -14,9 +18,17 @@ import {
 import { createDownloadAuthPayload, loadKeypair } from "./signer.js";
 import { AgentVouchSolanaClient } from "./solana.js";
 import {
+  DOWNLOAD_TREE_CAPS,
+  ingestTarArchive,
   isDirectoryLikeOutput,
-  writeTarArchiveToDirectory,
+  type SkillTreeInputFile,
+  writeSkillFilesToDirectory,
 } from "./archive.js";
+import {
+  TreeHashMismatchError,
+  verifySingleFile,
+  verifyTreeFiles,
+} from "./integrity.js";
 
 export interface InstallSkillInput {
   id: string;
@@ -69,23 +81,138 @@ function hasDownloadPayload(
     : download.content !== undefined;
 }
 
-async function writeDownloadOutput(
+type DownloadResult = Awaited<ReturnType<typeof downloadForKind>>;
+
+type VerifiedDownload =
+  | { kind: "archive"; files: SkillTreeInputFile[]; treeHash: string }
+  | { kind: "raw"; bytes: Buffer; treeHash: string };
+
+/**
+ * Stop before any download or payment when the published record has nothing
+ * to check the download against. Otherwise a paid install could take the
+ * payment and then refuse to write the files.
+ */
+function assertDownloadCanBeVerified(
   kind: InstallKind,
-  outputPath: string,
-  download: Awaited<ReturnType<typeof downloadForKind>>
-): Promise<number | null> {
+  skill: SkillRecord,
+  id: string
+) {
+  if (!skill.tree_hash) {
+    throw new CliError(
+      `Skill ${id} has no published tree_hash, so the CLI cannot check the download. Nothing was downloaded or paid.`
+    );
+  }
+  if (
+    kind === "raw" &&
+    !skill.files?.some((file) => file.path === "SKILL.md")
+  ) {
+    throw new CliError(
+      `The published file list for skill ${id} has no entry for SKILL.md, so the CLI cannot check the download. Nothing was downloaded or paid.`
+    );
+  }
+}
+
+/** Check downloaded bytes against the published hashes (docs/SKILL_TREE_HASH.md). */
+function verifyDownloadAgainst(
+  kind: InstallKind,
+  download: DownloadResult,
+  skill: SkillRecord,
+  label: string
+): VerifiedDownload {
   if (kind === "archive") {
     if (!download.archive) {
       throw new CliError("Archive download did not include an archive body.");
     }
-    return writeTarArchiveToDirectory(outputPath, download.archive);
+    const files = ingestTarArchive(download.archive, DOWNLOAD_TREE_CAPS);
+    const treeHash = verifyTreeFiles(
+      files.map((file) => ({ path: file.path, bytes: file.content })),
+      { treeHash: skill.tree_hash, label }
+    );
+    return { kind, files, treeHash };
   }
 
-  if (download.content === undefined) {
+  const bytes =
+    download.bytes ??
+    (download.content !== undefined
+      ? Buffer.from(download.content, "utf8")
+      : undefined);
+  if (!bytes) {
     throw new CliError("Raw download did not include skill content.");
   }
-  await writeUtf8File(outputPath, download.content);
-  return null;
+  const treeHash = verifySingleFile(
+    { path: "SKILL.md", bytes },
+    { treeHash: skill.tree_hash, manifest: skill.files, label }
+  );
+  return { kind, bytes, treeHash };
+}
+
+/**
+ * Verify a download. If it does not match, re-read the skill once: a new version
+ * may have been published between the detail read and the download.
+ */
+async function verifyDownload(
+  api: AgentVouchApiClient,
+  id: string,
+  kind: InstallKind,
+  download: DownloadResult,
+  skill: SkillRecord
+): Promise<{ verified: VerifiedDownload; skill: SkillRecord }> {
+  try {
+    return {
+      verified: verifyDownloadAgainst(kind, download, skill, id),
+      skill,
+    };
+  } catch (error) {
+    if (!(error instanceof TreeHashMismatchError)) throw error;
+    const latest = await api.getSkill(id);
+    if (!latest.tree_hash || latest.tree_hash === skill.tree_hash) throw error;
+    return {
+      verified: verifyDownloadAgainst(kind, download, latest, id),
+      skill: latest,
+    };
+  }
+}
+
+/** Verify, then write the files and the install metadata (not in a dry run). */
+async function completeDownload(
+  context: {
+    api: AgentVouchApiClient;
+    id: string;
+    kind: InstallKind;
+    outputPath: string;
+    dryRun: boolean;
+    skill: SkillRecord;
+  },
+  download: DownloadResult
+): Promise<{ filesWritten: number | null; treeHash: string }> {
+  const { verified, skill } = await verifyDownload(
+    context.api,
+    context.id,
+    context.kind,
+    download,
+    context.skill
+  );
+  if (context.dryRun) {
+    return { filesWritten: null, treeHash: verified.treeHash };
+  }
+
+  let filesWritten: number | null = null;
+  if (verified.kind === "archive") {
+    filesWritten = await writeSkillFilesToDirectory(
+      context.outputPath,
+      verified.files
+    );
+  } else {
+    await writeBytesFile(context.outputPath, verified.bytes);
+  }
+  await writeInstalledSkillMetadata(
+    context.outputPath,
+    buildInstalledSkillMetadata(context.id, skill, {
+      installedFormat: context.kind === "archive" ? "tree" : "file",
+      verifiedTreeHash: verified.treeHash,
+    })
+  );
+  return { filesWritten, treeHash: verified.treeHash };
 }
 
 async function resolveChainSkillContent(
@@ -183,6 +310,8 @@ export async function installSkill(input: InstallSkillInput) {
     };
   }
 
+  assertDownloadCanBeVerified(installKind, skill, input.id);
+
   const signedInitialAuth =
     input.keypairPath && BigInt(skill.price_usdc_micros ?? "0") > 0n
       ? createDownloadAuthPayload(
@@ -197,18 +326,19 @@ export async function installSkill(input: InstallSkillInput) {
     input.id,
     signedInitialAuth ? { auth: signedInitialAuth } : undefined
   );
+  const downloadContext = {
+    api,
+    id: input.id,
+    kind: installKind,
+    outputPath,
+    skill,
+  };
+
   if (initialDownload.ok && hasDownloadPayload(installKind, initialDownload)) {
-    const filesWritten = input.dryRun
-      ? null
-      : await writeDownloadOutput(installKind, outputPath, initialDownload);
-    if (!input.dryRun) {
-      await writeInstalledSkillMetadata(
-        outputPath,
-        buildInstalledSkillMetadata(input.id, skill, {
-          installedFormat: installKind === "archive" ? "tree" : "file",
-        })
-      );
-    }
+    const { filesWritten, treeHash } = await completeDownload(
+      { ...downloadContext, dryRun: !!input.dryRun },
+      initialDownload
+    );
     return {
       ok: true,
       mode: installKind === "archive" ? "free-archive" : "free-raw",
@@ -217,6 +347,7 @@ export async function installSkill(input: InstallSkillInput) {
       metadataPath,
       priceUsdcMicros: skill.price_usdc_micros ?? null,
       filesWritten,
+      treeHash,
       dryRun: !!input.dryRun,
     };
   }
@@ -289,16 +420,9 @@ export async function installSkill(input: InstallSkillInput) {
     });
 
     if (signedDownload.ok && hasDownloadPayload(installKind, signedDownload)) {
-      const filesWritten = await writeDownloadOutput(
-        installKind,
-        outputPath,
+      const { filesWritten, treeHash } = await completeDownload(
+        { ...downloadContext, dryRun: false },
         signedDownload
-      );
-      await writeInstalledSkillMetadata(
-        outputPath,
-        buildInstalledSkillMetadata(input.id, skill, {
-          installedFormat: installKind === "archive" ? "tree" : "file",
-        })
       );
 
       return {
@@ -317,6 +441,7 @@ export async function installSkill(input: InstallSkillInput) {
         listingAddress: null,
         alreadyPurchased: true,
         filesWritten,
+        treeHash,
         dryRun: false,
       };
     }
@@ -358,16 +483,9 @@ export async function installSkill(input: InstallSkillInput) {
       );
     }
 
-    const filesWritten = await writeDownloadOutput(
-      installKind,
-      outputPath,
+    const { filesWritten, treeHash } = await completeDownload(
+      { ...downloadContext, dryRun: false },
       paidDownload
-    );
-    await writeInstalledSkillMetadata(
-      outputPath,
-      buildInstalledSkillMetadata(input.id, skill, {
-        installedFormat: installKind === "archive" ? "tree" : "file",
-      })
     );
 
     return {
@@ -386,6 +504,7 @@ export async function installSkill(input: InstallSkillInput) {
       purchaseTx: paidDownload.paymentResponse?.transaction ?? null,
       alreadyPurchased: !paidDownload.paymentResponse,
       filesWritten,
+      treeHash,
       dryRun: false,
     };
   }
@@ -439,16 +558,9 @@ export async function installSkill(input: InstallSkillInput) {
     );
   }
 
-  const filesWritten = await writeDownloadOutput(
-    installKind,
-    outputPath,
+  const { filesWritten, treeHash } = await completeDownload(
+    { ...downloadContext, dryRun: false },
     signedDownload
-  );
-  await writeInstalledSkillMetadata(
-    outputPath,
-    buildInstalledSkillMetadata(input.id, skill, {
-      installedFormat: installKind === "archive" ? "tree" : "file",
-    })
   );
 
   return {
@@ -466,6 +578,7 @@ export async function installSkill(input: InstallSkillInput) {
     purchaseTx: purchase.tx,
     alreadyPurchased: purchase.alreadyPurchased,
     filesWritten,
+    treeHash,
     dryRun: false,
   };
 }

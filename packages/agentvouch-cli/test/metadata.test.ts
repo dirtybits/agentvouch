@@ -273,3 +273,28 @@ describe("readInstalledSkillMetadata", () => {
     );
   });
 });
+
+describe("tree hash verification fields", () => {
+  it("records the verified hash, algorithm, and time only when verification ran", () => {
+    const verified = buildInstalledSkillMetadata("skill-1", baseSkill(), {
+      verifiedTreeHash: "a".repeat(64),
+    });
+    expect(verified.tree_hash).toBe("a".repeat(64));
+    expect(verified.tree_hash_algorithm).toBe("agentvouch-tree-v1");
+    expect(verified.tree_hash_verified_at).toBe(verified.installed_at);
+
+    const unverified = buildInstalledSkillMetadata("skill-1", baseSkill());
+    expect(unverified.tree_hash_algorithm).toBeUndefined();
+    expect(unverified.tree_hash_verified_at).toBeUndefined();
+  });
+
+  it("reads back metadata that includes the verification fields", async () => {
+    await setTempDir();
+    const skillPath = path.join(tempDir, "SKILL.md");
+    const metadata = buildInstalledSkillMetadata("skill-1", baseSkill(), {
+      verifiedTreeHash: "b".repeat(64),
+    });
+    await writeInstalledSkillMetadata(skillPath, metadata);
+    expect(await readInstalledSkillMetadata(skillPath)).toEqual(metadata);
+  });
+});

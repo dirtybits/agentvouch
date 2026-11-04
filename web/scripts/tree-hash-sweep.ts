@@ -36,7 +36,11 @@
  */
 import { writeFileSync } from "fs";
 import { neon } from "@neondatabase/serverless";
-import { buildArchiveForVersion, ingestTarArchive } from "@/lib/skillStorage";
+import {
+  buildArchiveForVersion,
+  ingestTarArchive,
+  STORED_TREE_READ_CAPS,
+} from "@/lib/skillStorage";
 import {
   buildSweepVersionQuery,
   sweepRowFromVersionRecord,
@@ -133,7 +137,7 @@ async function loadStoredFiles(row: TreeHashSweepRow): Promise<TreeFile[]> {
     tree_hash: row.storedTreeHash,
     storage_backend: row.storageBackend,
   });
-  return ingestTarArchive(archive).map((file) => ({
+  return ingestTarArchive(archive, STORED_TREE_READ_CAPS).map((file) => ({
     path: file.path,
     bytes: Buffer.isBuffer(file.content)
       ? file.content

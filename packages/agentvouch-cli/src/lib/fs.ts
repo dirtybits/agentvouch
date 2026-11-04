@@ -34,3 +34,12 @@ export async function writeUtf8File(
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, contents, "utf8");
 }
+
+/** Write bytes exactly as given (no text decoding or encoding). */
+export async function writeBytesFile(
+  filePath: string,
+  contents: Uint8Array
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, contents);
+}

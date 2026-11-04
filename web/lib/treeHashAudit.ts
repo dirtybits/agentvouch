@@ -7,7 +7,11 @@
 // returns the same SKILL.md bytes as the tree. Spec: docs/SKILL_TREE_HASH.md.
 
 import { createHash } from "crypto";
-import { computeTreeHash, normalizeSkillPath } from "@/lib/skillStorage";
+import {
+  computeTreeHash,
+  findTreePathConflicts,
+  normalizeSkillPath,
+} from "@/lib/skillStorage";
 
 export const TREE_HASH_ALGORITHM = "agentvouch-tree-v1";
 
@@ -167,20 +171,14 @@ export function findTreePathProblems(
     });
   }
 
-  for (const path of seen) {
-    const parts = path.split("/");
-    for (let index = 1; index < parts.length; index += 1) {
-      const prefix = parts.slice(0, index).join("/");
-      if (seen.has(prefix)) {
-        findings.push({
-          code: "path_conflict",
-          path: prefix,
-          detail: `${JSON.stringify(
-            prefix
-          )} is a file and also a folder of ${JSON.stringify(path)}`,
-        });
-      }
-    }
+  for (const conflict of findTreePathConflicts([...seen])) {
+    findings.push({
+      code: "path_conflict",
+      path: conflict.path,
+      detail: `${JSON.stringify(
+        conflict.path
+      )} is a file and also a folder of ${JSON.stringify(conflict.folderOf)}`,
+    });
   }
 
   return findings;

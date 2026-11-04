@@ -624,10 +624,14 @@ async function reconcileSkill(
     return outcome;
   } catch (error) {
     const message = (error as Error).message;
-    // Tree cap violations are deterministic, expected exclusions — not failures.
+    // Tree cap violations and file/folder path conflicts are deterministic,
+    // expected exclusions — not failures.
     if (/exceeds cap of/i.test(message)) {
       outcome.action = "skip";
       outcome.detail = `exceeds marketplace cap: ${message}`;
+    } else if (/is both a file and a folder/i.test(message)) {
+      outcome.action = "skip";
+      outcome.detail = `path conflict: ${message}`;
     } else {
       outcome.action = "error";
       outcome.detail = message;

@@ -1,6 +1,7 @@
 import { CliError } from "./errors.js";
 import { readUtf8File, writeUtf8File } from "./fs.js";
 import type { SkillRecord } from "./http.js";
+import { TREE_HASH_ALGORITHM } from "./integrity.js";
 
 export const INSTALL_METADATA_SCHEMA_VERSION = 1;
 
@@ -18,6 +19,9 @@ export interface InstalledSkillMetadata {
   author_handle?: string | null;
   publisher_tier?: string | null;
   tree_hash?: string | null;
+  /** Set when the CLI checked the downloaded bytes against tree_hash. */
+  tree_hash_algorithm?: string;
+  tree_hash_verified_at?: string;
   historical_sol_price_base_units?: number;
   /**
    * Legacy alias for historical_sol_price_base_units. New installs write the
@@ -37,8 +41,9 @@ export function getInstallMetadataPath(skillFilePath: string): string {
 export function buildInstalledSkillMetadata(
   installedSkillId: string,
   skill: SkillRecord,
-  options: { installedFormat?: "file" | "tree" } = {}
+  options: { installedFormat?: "file" | "tree"; verifiedTreeHash?: string } = {}
 ): InstalledSkillMetadata {
+  const installedAt = new Date().toISOString();
   return {
     schema_version: INSTALL_METADATA_SCHEMA_VERSION,
     installed_with: "agentvouch-cli",
@@ -52,11 +57,17 @@ export function buildInstalledSkillMetadata(
     author_kind: skill.author_kind ?? null,
     author_handle: skill.author_handle ?? null,
     publisher_tier: skill.publisher_tier ?? null,
-    tree_hash: skill.tree_hash ?? null,
+    tree_hash: options.verifiedTreeHash ?? skill.tree_hash ?? null,
+    ...(options.verifiedTreeHash
+      ? {
+          tree_hash_algorithm: TREE_HASH_ALGORITHM,
+          tree_hash_verified_at: installedAt,
+        }
+      : {}),
     historical_sol_price_base_units: skill.price_lamports ?? 0,
     price_usdc_micros: skill.price_usdc_micros ?? null,
     currency_mint: skill.currency_mint ?? null,
-    installed_at: new Date().toISOString(),
+    installed_at: installedAt,
   };
 }
 
@@ -92,6 +103,10 @@ function isInstalledSkillMetadata(
     (typeof candidate.tree_hash === "string" ||
       candidate.tree_hash === null ||
       candidate.tree_hash === undefined) &&
+    (typeof candidate.tree_hash_algorithm === "string" ||
+      candidate.tree_hash_algorithm === undefined) &&
+    (typeof candidate.tree_hash_verified_at === "string" ||
+      candidate.tree_hash_verified_at === undefined) &&
     (typeof candidate.historical_sol_price_base_units === "number" ||
       typeof (candidate as { price_lamports?: unknown }).price_lamports ===
         "number" ||

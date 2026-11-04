@@ -422,6 +422,9 @@ export function buildProgram(): Command {
                 ...(typeof result.filesWritten === "number"
                   ? [`files_written: ${result.filesWritten}`]
                   : []),
+                ...(result.treeHash
+                  ? [`tree_hash_verified: ${result.treeHash}`]
+                  : []),
                 ...(result.dryRun ? ["dry_run: true"] : []),
               ]
             );

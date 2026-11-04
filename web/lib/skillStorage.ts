@@ -10,7 +10,13 @@ import {
   MIRROR_MAX_SKILL_TREE_FILES,
 } from "@/lib/skillDraft";
 
-type TreeCaps = { maxFiles: number; maxBytes: number };
+export type TreeCaps = { maxFiles: number; maxBytes: number };
+
+/** Limits for new uploads (author publish and new versions). */
+const UPLOAD_CAPS: TreeCaps = {
+  maxFiles: MAX_SKILL_TREE_FILES,
+  maxBytes: MAX_SKILL_TREE_BYTES,
+};
 
 export type SkillStorageBackend = "blob" | "inline";
 
@@ -201,10 +207,7 @@ function isExecutablePath(filePath: string, content: Buffer): boolean {
 
 export function normalizeSkillTreeFiles(
   files: SkillTreeInputFile[],
-  caps: TreeCaps = {
-    maxFiles: MAX_SKILL_TREE_FILES,
-    maxBytes: MAX_SKILL_TREE_BYTES,
-  }
+  caps: TreeCaps = UPLOAD_CAPS
 ): Array<SkillTreeInputFile & { path: string; bytes: Buffer }> {
   if (files.length === 0) {
     throw new Error("Skill tree must include SKILL.md");
@@ -257,6 +260,37 @@ export function buildSkillManifest(
     contentType: contentTypeForPath(file.path),
     executable: isExecutablePath(file.path, file.bytes),
   }));
+}
+
+/**
+ * Pairs where one path is also a folder of another path, for example "docs"
+ * and "docs/a.md". Such a tree cannot be written to a file system
+ * (docs/SKILL_TREE_HASH.md, path rules).
+ */
+export function findTreePathConflicts(
+  paths: readonly string[]
+): Array<{ path: string; folderOf: string }> {
+  const seen = new Set(paths);
+  const conflicts: Array<{ path: string; folderOf: string }> = [];
+  for (const filePath of seen) {
+    const parts = filePath.split("/");
+    for (let index = 1; index < parts.length; index += 1) {
+      const prefix = parts.slice(0, index).join("/");
+      if (seen.has(prefix)) {
+        conflicts.push({ path: prefix, folderOf: filePath });
+      }
+    }
+  }
+  return conflicts;
+}
+
+export function assertNoTreePathConflicts(paths: readonly string[]): void {
+  const [conflict] = findTreePathConflicts(paths);
+  if (conflict) {
+    throw new Error(
+      `Skill tree path "${conflict.path}" is both a file and a folder (${conflict.folderOf})`
+    );
+  }
 }
 
 export function computeTreeHash(
@@ -433,7 +467,10 @@ function isZeroBlock(block: Buffer): boolean {
   return block.every((byte) => byte === 0);
 }
 
-export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
+export function ingestTarArchive(
+  bytes: Buffer,
+  caps: TreeCaps = UPLOAD_CAPS
+): SkillTreeInputFile[] {
   const files: SkillTreeInputFile[] = [];
   let offset = 0;
   let totalBytes = 0;
@@ -463,14 +500,12 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
       );
     }
     totalBytes += size;
-    if (files.length + 1 > MAX_SKILL_TREE_FILES) {
-      throw new Error(
-        `Skill tree exceeds cap of ${MAX_SKILL_TREE_FILES} files`
-      );
+    if (files.length + 1 > caps.maxFiles) {
+      throw new Error(`Skill tree exceeds cap of ${caps.maxFiles} files`);
     }
-    if (totalBytes > MAX_SKILL_TREE_BYTES) {
+    if (totalBytes > caps.maxBytes) {
       throw new Error(
-        `Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes`
+        `Skill tree is ${totalBytes} bytes, exceeds cap of ${caps.maxBytes} bytes`
       );
     }
     if (offset + size > bytes.byteLength) {
@@ -520,6 +555,7 @@ export async function putSkillTree(
   caps?: TreeCaps
 ): Promise<SkillTreeStoreResult> {
   const tree = prepareSkillTree(files, caps);
+  assertNoTreePathConflicts(tree.manifest.map((file) => file.path));
   await put(getBlobArchivePath(tree.treeHash), tree.archiveBytes, {
     access: "private",
     allowOverwrite: true,
@@ -534,10 +570,19 @@ const MIRROR_CAPS: TreeCaps = {
   maxBytes: MIRROR_MAX_SKILL_TREE_BYTES,
 };
 
+/**
+ * Stored trees were checked when they were written, against the upload limits
+ * or the larger mirror limits. Read them with the larger limits, so a mirrored
+ * tree above the upload limits stays readable by /raw?path= and /zip.
+ */
+export const STORED_TREE_READ_CAPS: TreeCaps = MIRROR_CAPS;
+
 export function prepareSkillTreeForMirror(
   files: SkillTreeInputFile[]
 ): SkillTreeStoreResult {
-  return prepareSkillTree(files, MIRROR_CAPS);
+  const tree = prepareSkillTree(files, MIRROR_CAPS);
+  assertNoTreePathConflicts(tree.manifest.map((file) => file.path));
+  return tree;
 }
 
 export async function putSkillTreeForMirror(
@@ -602,7 +647,10 @@ export async function getFilesForVersion(
   }
 
   const archive = await buildArchiveForVersion(version);
-  const files = normalizeSkillTreeFiles(ingestTarArchive(archive));
+  const files = normalizeSkillTreeFiles(
+    ingestTarArchive(archive, STORED_TREE_READ_CAPS),
+    STORED_TREE_READ_CAPS
+  );
   return files.map((file) => ({
     path: file.path,
     bytes: file.bytes,
@@ -632,7 +680,10 @@ export async function getFileForVersion(
   }
 
   const archive = await buildArchiveForVersion(version);
-  const files = normalizeSkillTreeFiles(ingestTarArchive(archive));
+  const files = normalizeSkillTreeFiles(
+    ingestTarArchive(archive, STORED_TREE_READ_CAPS),
+    STORED_TREE_READ_CAPS
+  );
   const match = files.find((file) => file.path === filePath);
   if (!match) throw new Error(`Skill file not found: ${filePath}`);
   return {
