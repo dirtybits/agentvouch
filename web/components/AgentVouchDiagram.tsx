@@ -5,11 +5,16 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   FiSearch,
   FiPackage,
+  FiMusic,
+  FiDollarSign,
+  FiTool,
+  FiGitBranch,
   FiArrowRight,
   FiShield,
   FiUsers,
   FiFileText,
 } from "react-icons/fi";
+import { IoGameControllerOutline } from "react-icons/io5";
 import agentvouchLogo from "@/app/agentvouch_logo.svg";
 import styles from "./AgentVouchDiagram.module.css";
 
@@ -19,6 +24,14 @@ const agents = [
   { name: "Cursor", file: "cursor" },
   { name: "Hermes", file: "hermes" },
   { name: "OpenClaw", file: "openclaw" },
+];
+
+const workflows = [
+  { name: "Music Production", icon: FiMusic },
+  { name: "Financial Modeling", icon: FiDollarSign },
+  { name: "Software Development", icon: FiTool },
+  { name: "Game Design", icon: IoGameControllerOutline },
+  { name: "Agent Orchestration", icon: FiGitBranch },
 ];
 
 const QUERY = "(prefers-reduced-motion: reduce)";
@@ -50,11 +63,16 @@ export function AgentVouchDiagram() {
     return () => window.clearInterval(timer);
   }, [reduced, carouselPaused]);
   const [phase, setPhase] = useState(0);
+  const [workflowIndex, setWorkflowIndex] = useState(0);
+  const workflow = workflows[workflowIndex];
+  const WorkflowIcon = workflow.icon;
   useEffect(() => {
     if (reduced) return;
     const started = performance.now();
     const timer = window.setInterval(() => {
-      const time = (performance.now() - started) % 3500;
+      const elapsed = performance.now() - started;
+      const time = elapsed % 3500;
+      setWorkflowIndex(Math.floor(elapsed / 3500) % workflows.length);
       setPhase(time < 1000 ? 0 : time < 2100 ? 1 : 2);
     }, 80);
     return () => window.clearInterval(timer);
@@ -110,7 +128,10 @@ export function AgentVouchDiagram() {
           <h3>Your AI agent</h3>
           <p>Look for trust-enabled skills.</p>
           <div className={styles.query}>
-            <FiSearch /> Find a skill
+            <FiSearch />
+            <span className={styles.workflowLabel} key={workflow.name}>
+              Find a skill for {workflow.name}
+            </span>
           </div>
         </article>
         <div
@@ -128,10 +149,13 @@ export function AgentVouchDiagram() {
           <Image src={agentvouchLogo.src} alt="" width="44" height="44" />
           <p className={styles.eyebrow}>Reputation + discovery</p>
           <h3>AgentVouch</h3>
-          <p>Find skills. Know who stands behind them.</p>
+          <p>
+            Find skills for your workflow. Review their security scans and
+            author reputation.
+          </p>
           <div className={styles.signals}>
             <span>
-              <FiShield /> USDC backing
+              <FiShield /> Economic backing
             </span>
             <span>
               <FiUsers /> Author vouches
@@ -160,9 +184,9 @@ export function AgentVouchDiagram() {
             <div className={styles.backCard} />
             <div className={styles.middleCard} />
             <div className={styles.skill}>
-              <div className={styles.skillTitle}>
-                <FiPackage />
-                <span>Selected skill</span>
+              <div className={styles.skillTitle} key={workflow.name}>
+                <WorkflowIcon aria-hidden="true" />
+                <span>{workflow.name} Workflow</span>
               </div>
               <span>skill.md</span>
               <span>scripts/</span>

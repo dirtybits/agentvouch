@@ -76,6 +76,10 @@
   border-radius: 6px;
   font-size: 12px;
 }
+.query > svg,
+.skillTitle > svg {
+  flex-shrink: 0;
+}
 .signals {
   display: grid;
   gap: 8px;
@@ -350,4 +354,15 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.workflowLabel {
+  min-height: 3lh;
+  display: flex;
+  align-items: center;
+  animation: logoIn 240ms ease-out;
+}
+.skillTitle {
+  min-height: 3lh;
+  animation: logoIn 240ms ease-out;
 }
