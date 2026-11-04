@@ -172,7 +172,6 @@ describe("verifyRepoOwnership — linked-login public visibility", () => {
       new Response(JSON.stringify({ private: true }), { status: 200 }),
     ],
     ["unavailable", new Response(null, { status: 404 })],
-    ["malformed", new Response(JSON.stringify({}), { status: 200 })],
   ])("rejects a %s linked repository", async (_kind, response) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
 
@@ -184,6 +183,29 @@ describe("verifyRepoOwnership — linked-login public visibility", () => {
     );
   });
 
+  it.each([
+    ["rate-limited", new Response(null, { status: 403 })],
+    ["too many requests", new Response(null, { status: 429 })],
+    ["server error", new Response(null, { status: 503 })],
+    ["malformed metadata", new Response(JSON.stringify({}), { status: 200 })],
+    ["null metadata", new Response("null", { status: 200 })],
+    ["invalid JSON", new Response("invalid", { status: 200 })],
+  ])(
+    "asks to retry a %s lookup without accepting the repo",
+    async (_kind, response) => {
+      const fetchMock = vi.fn().mockResolvedValue(response);
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(verifyRepoOwnership(repo)).resolves.toEqual(
+        expect.objectContaining({
+          verified: false,
+          reason: expect.stringContaining("try again"),
+        })
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
+    }
+  );
+
   it("rejects a linked repository when GitHub visibility lookup fails", async () => {
     vi.stubGlobal(
       "fetch",
@@ -193,7 +215,7 @@ describe("verifyRepoOwnership — linked-login public visibility", () => {
     await expect(verifyRepoOwnership(repo)).resolves.toEqual(
       expect.objectContaining({
         verified: false,
-        reason: expect.stringContaining("must be public"),
+        reason: expect.stringContaining("try again"),
       })
     );
   });
