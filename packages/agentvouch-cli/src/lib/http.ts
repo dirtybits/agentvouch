@@ -384,8 +384,36 @@ async function readJsonOrThrow<T>(
   return body as T;
 }
 
+export type CheckRequestBody =
+  | { skill: string }
+  | { tree_hash: string }
+  | { files: Array<{ path: string; content: string }> };
+
+export interface CheckResponse {
+  recommended_action: "allow" | "review" | "avoid" | string;
+  tree_hash: string | null;
+  signals?: TrustSignalRecord[];
+  staked?: unknown;
+  scan?: unknown;
+  disclaimer?: string;
+}
+
 export class AgentVouchApiClient {
   constructor(private readonly baseUrl: string) {}
+
+  /** POST /api/check — free, walletless pre-install trust check. */
+  async check(body: CheckRequestBody): Promise<CheckResponse> {
+    const response = await fetch(this.url("/api/check"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return readJsonOrThrow<CheckResponse>(
+      response,
+      "check skill",
+      (b) => typeof b.recommended_action === "string"
+    );
+  }
 
   url(pathname: string): string {
     return `${this.baseUrl}${pathname}`;

@@ -241,6 +241,24 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
   return toNormalizedFiles(files);
 }
 
+/**
+ * Read a local skill for `agentvouch check`: a single file is treated as
+ * SKILL.md; a folder is collected with the same skip rules and caps as publish.
+ */
+export async function collectSkillTreeFromPath(
+  absolutePath: string,
+  isDirectory: boolean
+): Promise<SkillTreeInputFile[]> {
+  if (!isDirectory) {
+    return toNormalizedFiles([
+      { path: "SKILL.md", content: await readFile(absolutePath) },
+    ]).map(({ path: filePath, bytes }) => ({ path: filePath, content: bytes }));
+  }
+  return toNormalizedFiles(await collectDirectoryFiles(absolutePath)).map(
+    ({ path: filePath, bytes }) => ({ path: filePath, content: bytes })
+  );
+}
+
 export async function prepareSkillUploadFromPath(
   inputPath: string
 ): Promise<PreparedSkillUpload> {
