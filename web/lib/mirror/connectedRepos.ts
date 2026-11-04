@@ -118,6 +118,34 @@ async function linkedGithubLogin(walletPubkey: string): Promise<string | null> {
   return summary?.githubProfile?.login ?? null;
 }
 
+async function getGithubRepoVisibility(
+  githubOwner: string,
+  githubRepo: string
+): Promise<"public" | "not-public" | "unavailable"> {
+  try {
+    // Deliberately do not reuse the mirror transport headers here: its optional
+    // server token can read private repositories, while connected-repo content
+    // must be reachable from unauthenticated raw.githubusercontent.com.
+    const res = await fetch(
+      `https://api.github.com/repos/${githubOwner}/${githubRepo}`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "agentvouch-connect",
+        },
+      }
+    );
+    if (res.status === 404) return "not-public";
+    if (!res.ok) return "unavailable";
+    const body = (await res.json()) as { private?: unknown };
+    if (body.private === false) return "public";
+    if (body.private === true) return "not-public";
+    return "unavailable";
+  } catch {
+    return "unavailable";
+  }
+}
+
 async function repoVerificationFileMatches(
   githubOwner: string,
   githubRepo: string,
@@ -149,7 +177,20 @@ export async function verifyRepoOwnership(input: {
 }): Promise<OwnershipResult> {
   const login = await linkedGithubLogin(input.walletPubkey);
   if (login && login.toLowerCase() === input.githubOwner.toLowerCase()) {
-    return { verified: true, method: "linked-login" };
+    const visibility = await getGithubRepoVisibility(
+      input.githubOwner,
+      input.githubRepo
+    );
+    if (visibility === "public") {
+      return { verified: true, method: "linked-login" };
+    }
+    return {
+      verified: false,
+      reason:
+        visibility === "not-public"
+          ? `${input.githubOwner}/${input.githubRepo} must be public and available from GitHub before it can be connected.`
+          : `Cannot verify ${input.githubOwner}/${input.githubRepo} on GitHub now. Please try again later.`,
+    };
   }
 
   if (
