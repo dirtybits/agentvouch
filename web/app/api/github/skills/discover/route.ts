@@ -43,33 +43,50 @@ function isAuthorized(request: NextRequest): boolean {
   return true;
 }
 
-function parseLimit(value: unknown): number {
-  if (value === null || value === undefined || value === "") {
-    return 10;
+function parseLimit(value: unknown): {
+  maxResults: number;
+  invalid: boolean;
+} {
+  if (value === null || value === undefined) {
+    return { maxResults: 10, invalid: false };
   }
-  if (typeof value !== "string" && typeof value !== "number") {
-    return 10;
+
+  const normalized = typeof value === "string" ? value.trim() : value;
+  if (normalized === "") {
+    return { maxResults: 10, invalid: false };
   }
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 10;
+  if (
+    (typeof normalized !== "string" && typeof normalized !== "number") ||
+    (typeof normalized === "string" && !/^\d+$/.test(normalized))
+  ) {
+    return { maxResults: 10, invalid: true };
   }
-  return Math.max(1, Math.min(25, Math.floor(parsed)));
+
+  const parsed =
+    typeof normalized === "number" ? normalized : Number(normalized);
+  if (!Number.isSafeInteger(parsed)) {
+    return { maxResults: 10, invalid: true };
+  }
+
+  return { maxResults: Math.max(1, Math.min(25, parsed)), invalid: false };
 }
 
 async function paramsFromRequest(request: NextRequest): Promise<{
   query: string | undefined;
   maxResults: number;
   invalidQuery: boolean;
+  invalidLimit: boolean;
 }> {
   if (request.method === "GET") {
     const searchParams = request.nextUrl.searchParams;
+    const limit = parseLimit(
+      searchParams.get("limit") ?? searchParams.get("maxResults")
+    );
     return {
       query: searchParams.get("q") ?? searchParams.get("query") ?? undefined,
-      maxResults: parseLimit(
-        searchParams.get("limit") ?? searchParams.get("maxResults")
-      ),
+      maxResults: limit.maxResults,
       invalidQuery: false,
+      invalidLimit: limit.invalid,
     };
   }
 
@@ -78,10 +95,12 @@ async function paramsFromRequest(request: NextRequest): Promise<{
     unknown
   >;
   const query = body.query !== undefined ? body.query : body.q;
+  const limit = parseLimit(body.maxResults ?? body.limit);
   return {
     query: typeof query === "string" ? query : undefined,
-    maxResults: parseLimit(body.maxResults ?? body.limit),
+    maxResults: limit.maxResults,
     invalidQuery: query !== undefined && typeof query !== "string",
+    invalidLimit: limit.invalid,
   };
 }
 
@@ -91,11 +110,13 @@ async function handle(request: NextRequest) {
   }
 
   try {
-    const { query, maxResults, invalidQuery } = await paramsFromRequest(
-      request
-    );
+    const { query, maxResults, invalidQuery, invalidLimit } =
+      await paramsFromRequest(request);
     if (invalidQuery) {
       return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+    }
+    if (invalidLimit) {
+      return NextResponse.json({ error: "Invalid limit" }, { status: 400 });
     }
     const result = await discoverGithubSkills({
       query,

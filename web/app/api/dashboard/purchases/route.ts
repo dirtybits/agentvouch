@@ -70,10 +70,21 @@ function serializeSkillListingAccount(account: SkillListing) {
 export async function GET(request: NextRequest) {
   try {
     const buyer = request.nextUrl.searchParams.get("buyer");
-    const buyerChainContext = normalizeInputChainContext(
+    const buyerChainContextParam =
       request.nextUrl.searchParams.get("buyerChainContext") ??
-        request.nextUrl.searchParams.get("buyer_chain_context")
+      request.nextUrl.searchParams.get("buyer_chain_context");
+    const buyerChainContext = normalizeInputChainContext(
+      buyerChainContextParam
     );
+    if (buyerChainContextParam?.trim() && !buyerChainContext) {
+      return NextResponse.json(
+        { error: "Unsupported buyer chain context" },
+        {
+          status: 400,
+          headers: { "Cache-Control": PRIVATE_NO_STORE_CACHE_CONTROL },
+        }
+      );
+    }
     // This dashboard view enumerates Solana purchase PDAs from the program. EVM buyers have
     // none by definition, so return an empty result instead of rejecting the wallet (Phase 7);
     // Base purchase history is served from chain-qualified DB entitlements elsewhere.

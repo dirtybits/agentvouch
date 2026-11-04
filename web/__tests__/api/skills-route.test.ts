@@ -386,6 +386,8 @@ describe("POST /api/skills", () => {
   it.each([
     ["malformed JSON", "{", "Request body must be valid JSON"],
     ["a literal null", "null", "Request body must be a JSON object"],
+    ["an array root", "[]", "Request body must be a JSON object"],
+    ["a scalar root", "1", "Request body must be a JSON object"],
   ])(
     "rejects %s upload bodies before side effects",
     async (_label, rawBody, error) => {

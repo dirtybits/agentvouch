@@ -120,6 +120,20 @@ describe("generatePaymentRequirement", () => {
     });
     expect("recipient" in req).toBe(false);
   });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity])(
+    "rejects an invalid lamport amount: %s",
+    (legacySolLamports) => {
+      expect(() =>
+        generatePaymentRequirement({
+          skillId: "x",
+          legacySolLamports,
+          skillListingAddress: "x",
+          resourcePath: "/x",
+        })
+      ).toThrow("positive safe integer amount");
+    }
+  );
 });
 
 describe("hashResource", () => {

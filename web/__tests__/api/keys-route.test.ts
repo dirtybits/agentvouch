@@ -141,6 +141,28 @@ describe("GET /api/keys", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 
+  it.each(["null", "[]", "42", '"auth"'])(
+    "rejects a non-object signed auth header before falling back to bearer credentials: %s",
+    async (signedAuthHeader) => {
+      const response = await GET(
+        new NextRequest("http://localhost/api/keys", {
+          headers: {
+            "X-AgentVouch-Auth": signedAuthHeader,
+            Authorization: "Bearer sk_test",
+          },
+        })
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Malformed X-AgentVouch-Auth header",
+      });
+      expect(mockVerifyWalletSignature).not.toHaveBeenCalled();
+      expect(mockInitializeDatabase).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects wrong action, detached timestamp, and missing nonce before SQL", async () => {
     const wrongAction = authFor("create-key", { keyName: "work" });
     expect((await signedGet(wrongAction)).status).toBe(401);

@@ -71,6 +71,10 @@ describe("pricing", () => {
       expect(isValidListingPriceMicros(Infinity)).toBe(false);
       expect(isValidListingPriceMicros(-Infinity)).toBe(false);
     });
+
+    it("rejects fractional atomic-unit values", () => {
+      expect(isValidListingPriceMicros(10_000.5)).toBe(false);
+    });
   });
 
   describe("isValidListingPriceLamports", () => {
@@ -92,6 +96,11 @@ describe("pricing", () => {
     it("rejects non-finite input", () => {
       expect(isValidListingPriceLamports(NaN, "USDC")).toBe(false);
       expect(isValidListingPriceLamports(Infinity, "SOL")).toBe(false);
+    });
+
+    it("rejects fractional atomic-unit values for both currencies", () => {
+      expect(isValidListingPriceLamports(10_000.5, "USDC")).toBe(false);
+      expect(isValidListingPriceLamports(1_000_000.5, "SOL")).toBe(false);
     });
   });
 

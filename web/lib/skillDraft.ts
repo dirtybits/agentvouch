@@ -82,7 +82,13 @@ export function normalizeSkillTags(tags: unknown): string[] {
   const seen = new Set<string>();
 
   for (const raw of tags) {
-    const tag = String(raw)
+    // Only genuine strings are valid tag input. A malformed payload can pass a
+    // number, boolean, null/undefined, object, or array in the tags slot; those
+    // used to be String()-coerced into meaningless junk tags ("object-object",
+    // "true", "null", "1-2") that would be stored in the database. Fail closed
+    // by dropping non-strings instead.
+    if (typeof raw !== "string") continue;
+    const tag = raw
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")

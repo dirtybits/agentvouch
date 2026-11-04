@@ -29,11 +29,24 @@ export async function GET(
 ) {
   try {
     const { pubkey } = await params;
+    const requestedChainContextInput =
+      request.nextUrl.searchParams.get("chainContext") ??
+      request.nextUrl.searchParams.get("chain_context");
+    const normalizedRequestedChainContext = normalizeInputChainContext(
+      requestedChainContextInput
+    );
+    if (
+      requestedChainContextInput?.trim() &&
+      !normalizedRequestedChainContext
+    ) {
+      return NextResponse.json(
+        { error: "Unsupported chain context" },
+        { status: 400 }
+      );
+    }
     const requestedChainContext =
-      normalizeInputChainContext(
-        request.nextUrl.searchParams.get("chainContext") ??
-          request.nextUrl.searchParams.get("chain_context")
-      ) ?? (isEvmAddress(pubkey) ? BASE_SEPOLIA_CHAIN_CONTEXT : null);
+      normalizedRequestedChainContext ??
+      (isEvmAddress(pubkey) ? BASE_SEPOLIA_CHAIN_CONTEXT : null);
 
     if (requestedChainContext?.startsWith("eip155:")) {
       // Base Sepolia is the only supported EVM author-read surface. In

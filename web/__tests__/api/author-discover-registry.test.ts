@@ -74,6 +74,10 @@ describe("POST /api/author/[pubkey]/discover-registry", () => {
   it.each([
     ["literal null", "null"],
     ["malformed", "{"],
+    ["array", "[]"],
+    ["string scalar", '"string"'],
+    ["number scalar", "42"],
+    ["boolean scalar", "true"],
   ])("returns 400 for a %s JSON body", async (_kind, body) => {
     const res = await POST(
       new NextRequest(

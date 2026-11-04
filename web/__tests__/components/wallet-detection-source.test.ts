@@ -75,7 +75,36 @@ describe("wallet detection source", () => {
     expect(buttonSource).toContain(
       ".then(() => wallet.connectPhantomExtension())"
     );
-    expect(buttonSource).toContain("onPointerDownCapture");
+    expect(buttonSource).toContain("onBeforeOpen={baseWallet.disconnect}");
+  });
+
+  it("keeps both network groups before the social sign-in footer", () => {
+    const menu = buttonSource.slice(buttonSource.lastIndexOf("return ("));
+    const socialIndex = menu.indexOf("{socialSection}");
+
+    expect(socialIndex).toBeGreaterThan(0);
+    for (const marker of [
+      "{baseSepoliaDefault && baseSection}",
+      "Solana Browser Extension",
+      "Get Solflare",
+      "{!baseSepoliaDefault && baseSection}",
+    ]) {
+      const markerIndex = menu.indexOf(marker);
+      expect(markerIndex, marker).toBeGreaterThanOrEqual(0);
+      expect(markerIndex, marker).toBeLessThan(socialIndex);
+    }
+    expect(menu.match(/\{socialSection\}/g)).toHaveLength(1);
+  });
+
+  it("keeps SDK-dependent social sign-in behind the configured provider", () => {
+    const social = buttonSource.slice(
+      buttonSource.indexOf("const socialSection ="),
+      buttonSource.lastIndexOf("return (")
+    );
+    expect(social).toContain("phantomConfigured ? (");
+    expect(social).toContain("<PhantomSocialSignInButton");
+    expect(social).toContain("Solana wallet via Phantom");
+    expect(social).toContain(") : null;");
   });
 
   it("deduplicates extension wallet entries by display name", () => {

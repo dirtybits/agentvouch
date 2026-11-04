@@ -38,14 +38,14 @@ export function isValidListingPriceLamports(
   currency: CurrencyKey = DEFAULT_CURRENCY
 ): boolean {
   return (
-    Number.isFinite(lamports) &&
+    Number.isInteger(lamports) &&
     (lamports === 0 || lamports >= getMinPriceLamports(currency))
   );
 }
 
 export function isValidListingPriceMicros(micros: number): boolean {
   return (
-    Number.isFinite(micros) &&
+    Number.isInteger(micros) &&
     (micros === 0 || micros >= getMinPriceLamports("USDC"))
   );
 }

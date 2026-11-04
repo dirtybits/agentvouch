@@ -20,6 +20,9 @@ function request(url: string, init: NextRequestInit = {}): NextRequest {
 describe("/api/github/skills/discover", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The route forwards GITHUB_TOKEN; a token in the developer or CI shell
+    // must not change the expected call arguments.
+    vi.stubEnv("GITHUB_TOKEN", "");
     mockDiscoverGithubSkills.mockResolvedValue({
       ok: true,
       query: "filename:SKILL.md",
@@ -156,6 +159,63 @@ describe("/api/github/skills/discover", () => {
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({ error: "Invalid query" });
+    expect(mockDiscoverGithubSkills).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "GET decimal limit",
+      () =>
+        GET(
+          request("http://localhost/api/github/skills/discover?limit=2.5", {
+            headers: { authorization: "Bearer discover-secret" },
+          })
+        ),
+    ],
+    [
+      "GET mixed-character limit",
+      () =>
+        GET(
+          request("http://localhost/api/github/skills/discover?limit=3x", {
+            headers: { authorization: "Bearer discover-secret" },
+          })
+        ),
+    ],
+    [
+      "POST decimal limit",
+      () =>
+        POST(
+          request("http://localhost/api/github/skills/discover", {
+            method: "POST",
+            headers: {
+              authorization: "Bearer discover-secret",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ maxResults: 2.5 }),
+          })
+        ),
+    ],
+    [
+      "POST non-numeric limit",
+      () =>
+        POST(
+          request("http://localhost/api/github/skills/discover", {
+            method: "POST",
+            headers: {
+              authorization: "Bearer discover-secret",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ limit: "three" }),
+          })
+        ),
+    ],
+  ])("rejects a $caseName before GitHub discovery", async (_caseName, send) => {
+    vi.stubEnv("GITHUB_SKILL_DISCOVERY_SECRET", "discover-secret");
+
+    const res = await send();
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Invalid limit" });
     expect(mockDiscoverGithubSkills).not.toHaveBeenCalled();
   });
 });

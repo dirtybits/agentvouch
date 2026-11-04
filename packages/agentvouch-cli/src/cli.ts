@@ -15,6 +15,13 @@ import {
   formatSkillList,
   formatSkillSummary,
 } from "./lib/format.js";
+import {
+  CHECK_BLOCKED_EXIT_CODE,
+  checkSkill,
+  formatCheckResult,
+  parseCheckFailOn,
+  type CheckFailOn,
+} from "./lib/check.js";
 import { installSkill } from "./lib/install.js";
 import { runCommand } from "./lib/output.js";
 import {
@@ -59,8 +66,12 @@ export function parseUsdcListingPrice(value: string): string {
 }
 
 export function parsePage(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error("Expected a positive page number.");
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error("Expected a positive page number.");
   }
   return parsed;
@@ -211,6 +222,60 @@ export function buildProgram(): Command {
   const skill = program
     .command("skill")
     .description("Inspect, list, install, and publish skills.");
+
+  addBaseUrlOption(
+    program
+      .command("check")
+      .description(
+        "Pre-install trust check. Exits 2 when the verdict meets --fail-on."
+      )
+      .argument("[path]", "Local SKILL.md file or skill folder to check")
+      .option("--skill <id>", "Registry skill UUID or skill_id slug")
+      .option("--hash <tree_hash>", "Known skill tree hash")
+      .option(
+        "--fail-on <level>",
+        "Block on this verdict or worse: review, avoid, none",
+        parseCheckFailOn,
+        "avoid" as CheckFailOn
+      )
+      .option("--json", "Print structured JSON output")
+      .addHelpText(
+        "after",
+        "\nExamples:\n  agentvouch check ./my-skill\n  agentvouch check ./SKILL.md --fail-on review\n  agentvouch check --skill calendar-agent --json\n\nExit codes:\n  0  verdict is below --fail-on\n  1  request or input error\n  2  verdict meets --fail-on (install should be blocked)\n\nThe automated scan is advisory. Only staked on-chain trust can return allow."
+      )
+      .action(
+        async (
+          targetPath: string | undefined,
+          options: {
+            baseUrl: string;
+            skill?: string;
+            hash?: string;
+            failOn: CheckFailOn;
+            json?: boolean;
+          }
+        ) => {
+          await runCommand(
+            options,
+            async () => {
+              const result = await checkSkill(
+                new AgentVouchApiClient(resolveBaseUrl(options.baseUrl)),
+                {
+                  target: targetPath,
+                  skill: options.skill,
+                  hash: options.hash,
+                  failOn: options.failOn,
+                }
+              );
+              // A blocked verdict is a result, not an error: print it to stdout
+              // like any other verdict so a hook can parse it on exit code 2.
+              if (result.blocked) process.exitCode = CHECK_BLOCKED_EXIT_CODE;
+              return result;
+            },
+            formatCheckResult
+          );
+        }
+      )
+  );
 
   addBaseUrlOption(
     skill

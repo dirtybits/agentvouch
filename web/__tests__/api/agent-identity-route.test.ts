@@ -168,6 +168,8 @@ describe("/api/agents/[pubkey]/identity", () => {
 
   it.each([
     ["literal null", "null"],
+    ["array", "[]"],
+    ["scalar", "1"],
     ["malformed", "{"],
   ])(
     "returns the missing-fields 400 for a %s JSON body",
@@ -293,6 +295,8 @@ describe("/api/agents/[pubkey]/identity/github", () => {
 
   it.each([
     ["literal null", "null"],
+    ["array", "[]"],
+    ["scalar", "1"],
     ["malformed", "{"],
   ])("returns the missing-auth 400 for a %s JSON body", async (_kind, body) => {
     const res = await POST_GITHUB(

@@ -6,6 +6,7 @@ import {
   ingestTarArchive,
   normalizeSkillTreeFiles,
   prepareSkillTree,
+  sanitizeFilename,
 } from "@/lib/skillStorage";
 
 function maliciousTarHeader(name: string, typeflag = "0", size = 0): Buffer {
@@ -136,5 +137,91 @@ describe("skillStorage", () => {
         maliciousTarHeader("assets/big.bin", "0", 2 * 1024 * 1024)
       )
     ).toThrow(/exceeds cap/i);
+  });
+
+  describe("sanitizeFilename", () => {
+    it("passes normal single-byte names through unchanged", () => {
+      expect(sanitizeFilename("SKILL.md")).toBe("SKILL.md");
+      expect(sanitizeFilename("references/README.md")).toBe("README.md");
+      expect(sanitizeFilename("SKILL.md\n")).toBe("SKILL.md");
+      // Only leading/trailing whitespace is trimmed; legitimate internal
+      // whitespace in a filename is preserved.
+      expect(sanitizeFilename("  spaced   .  ")).toBe("spaced   .");
+    });
+
+    it("keeps single-byte Latin-1 supplement characters (0xA0-0xFF)", () => {
+      // U+00E9 is one byte 0xE9 in Latin-1; WHATWG Headers accept bytes <= 0xFF.
+      expect(sanitizeFilename("aéb")).toBe("aéb");
+      expect(sanitizeFilename("a\u00c3b")).toBe("a\u00c3b");
+    });
+
+    it("strips CR, LF, and NUL (WHATWG header line terminators)", () => {
+      expect(sanitizeFilename("SKILL.md\r\nX-Evil: 1")).toBe(
+        "SKILL.mdX-Evil: 1"
+      );
+      expect(sanitizeFilename("SKILL.md\nX-Evil: 1")).toBe("SKILL.mdX-Evil: 1");
+      expect(sanitizeFilename("SKILL.md\x00evil")).toBe("SKILL.mdevil");
+      expect(sanitizeFilename("SKILL.md\rX")).toBe("SKILL.mdX");
+    });
+
+    it("strips other control bytes (TAB, FF, DEL, C1)", () => {
+      expect(sanitizeFilename("a\tx")).toBe("ax");
+      expect(sanitizeFilename("a\bx")).toBe("ax"); // form feed
+      expect(sanitizeFilename("a\x7fx")).toBe("ax");
+      expect(sanitizeFilename("a\x80x")).toBe("ax"); // C1
+      expect(sanitizeFilename("a\x9fx")).toBe("ax"); // C1
+    });
+
+    it("strips non-ASCII multi-byte characters (CJK, emoji)", () => {
+      // WHATWG Headers reject bytes above 0xFF; CJK/emoji are > 0xFF.
+      expect(sanitizeFilename("a\u4e2bx")).toBe("ax");
+      expect(sanitizeFilename("a\ud83d\ude00x")).toBe("ax");
+    });
+
+    it("removes double-quote and backslash (header escape/terminators), keeps apostrophe", () => {
+      // Double quote would terminate the quoted filename value; backslash is
+      // the escape character in the RFC 7231 quoted-string grammar. Both are
+      // dropped. Apostrophe is a normal, legitimate filename character and is
+      // not an escape/terminator in the header value, so it is preserved.
+      expect(sanitizeFilename('bad"name')).toBe("badname");
+      expect(sanitizeFilename("bad'name")).toBe("bad'name");
+      expect(sanitizeFilename("bad\\name")).toBe("badname");
+    });
+
+    it("returns SKILL.md for empty or all-stripped input", () => {
+      expect(sanitizeFilename("")).toBe("SKILL.md");
+      expect(sanitizeFilename("   ")).toBe("SKILL.md");
+      expect(sanitizeFilename("\r\n\t")).toBe("SKILL.md");
+      // A CJK-only name has every code point above 0xFF, so the whole string is
+      // stripped and the SKILL.md fallback kicks in. (Latin-1 like U+00E9 is
+      // a single 0xE9 byte and IS kept, so "a\u4e2b\u00e9\u4e2b\u00e9" -> "aéé".)
+      expect(sanitizeFilename("\u4e2b\u4e2b")).toBe("SKILL.md");
+    });
+
+    it("caps the length at 120", () => {
+      expect(sanitizeFilename("x".repeat(200)).length).toBe(120);
+    });
+
+    it("produces a WHATWG-safe Content-Disposition filename (no header injection)", () => {
+      const adversarial = [
+        "SKILL.md\r\nX-Evil: 1",
+        "SKILL.md\nX-Evil: 1",
+        "SKILL.md\x00evil",
+        'SKILL.md"X-Evil: 1',
+        "a\u4e2b\u00e9\ud83d\ude00b",
+      ];
+      for (const n of adversarial) {
+        const name = sanitizeFilename(n);
+        const value = `attachment; filename="${name}"`;
+        const r = new Response(new Uint8Array(0), {
+          headers: { "Content-Disposition": value },
+        });
+        // The value must survive a WHATWG roundtrip (no throw, unchanged).
+        expect(r.headers.get("Content-Disposition")).toBe(value);
+        // And must never contain a line terminator or quote that could
+        // escape the quoted filename field.
+        expect(name).not.toMatch(/[\r\n\x00"']/);
+      }
+    });
   });
 });
