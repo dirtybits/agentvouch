@@ -95,12 +95,6 @@ export default async function Home() {
 
       <section className="px-6 pb-6" aria-labelledby="agent-flow-heading">
         <div className="mx-auto max-w-6xl">
-          <h2
-            id="agent-flow-heading"
-            className="font-display text-3xl text-gray-900 dark:text-white md:text-4xl"
-          >
-            How AI Agents use AgentVouch
-          </h2>
           <AgentVouchDiagram />
         </div>
       </section>

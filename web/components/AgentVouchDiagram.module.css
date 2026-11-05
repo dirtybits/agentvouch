@@ -3,9 +3,7 @@
   --surface: var(--color-white);
   --muted: var(--color-gray-500);
   --return: var(--color-emerald-600);
-  margin-top: 28px;
-  padding: 28px;
-  border: 1px solid var(--edge);
+  padding: 0 0 8px;
   border-radius: 16px;
   background: var(--color-gray-50);
   color: var(--foreground);
@@ -21,8 +19,9 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
+  align-items: baseline;
+  gap: 12px 24px;
+  font-size: 16px;
   color: var(--muted);
 }
 .status {
@@ -33,7 +32,7 @@
   display: grid;
   grid-template-columns: 1fr 48px 1.15fr 48px 1fr;
   align-items: center;
-  padding: 44px 0 28px;
+  padding: 24px 28px 8px;
 }
 .card {
   min-width: 0;
@@ -180,11 +179,46 @@
   font-size: 12px;
   transition: border-color 125ms;
 }
+.fileTree {
+  margin: 0 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.fileTree li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0 5px 22px;
+}
+.fileTree li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--edge);
+}
+.fileTree li:last-child::before {
+  bottom: 50%;
+}
+.fileTree li::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 14px;
+  border-top: 1px solid var(--edge);
+}
+.fileTree svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
 .skillTitle {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   color: var(--lobster-accent);
 }
 @keyframes outbound {
@@ -221,11 +255,11 @@
 }
 @media (max-width: 767px) {
   .scene {
-    padding: 20px;
+    padding: 0 0 8px;
   }
   .flow {
     grid-template-columns: 1fr;
-    padding-top: 28px;
+    padding: 16px 12px 8px;
   }
   .card {
     padding: 22px;
@@ -255,9 +289,10 @@
     animation-name: up;
   }
   .caption {
-    font-size: 12px;
+    font-size: 14px;
   }
   .status {
+    margin-left: 0;
     min-height: 36px;
   }
   @keyframes down {
@@ -363,6 +398,5 @@
   animation: logoIn 240ms ease-out;
 }
 .skillTitle {
-  min-height: 3lh;
   animation: logoIn 240ms ease-out;
 }
