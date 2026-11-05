@@ -13,6 +13,7 @@ import {
   FiShield,
   FiUsers,
   FiFileText,
+  FiFolder,
 } from "react-icons/fi";
 import { IoGameControllerOutline } from "react-icons/io5";
 import agentvouchLogo from "@/app/agentvouch_logo.svg";
@@ -80,6 +81,12 @@ export function AgentVouchDiagram() {
   return (
     <div className={styles.scene} data-phase={reduced ? "static" : phase}>
       <div className={styles.caption}>
+        <h2
+          id="agent-flow-heading"
+          className="font-display text-3xl text-gray-900 dark:text-white md:text-4xl"
+        >
+          How AI Agents use AgentVouch
+        </h2>
         <span className={styles.status}>
           {reduced ? "Find · Review · Get" : `0${phase + 1} / ${steps[phase]}`}
         </span>
@@ -150,7 +157,7 @@ export function AgentVouchDiagram() {
           <p className={styles.eyebrow}>Reputation + discovery</p>
           <h3>AgentVouch</h3>
           <p>
-            Find skills for your workflow. Review their security scans and
+            Find skills for your workflows. Review their security scans and
             author reputation.
           </p>
           <div className={styles.signals}>
@@ -188,9 +195,20 @@ export function AgentVouchDiagram() {
                 <WorkflowIcon aria-hidden="true" />
                 <span>{workflow.name} Workflow</span>
               </div>
-              <span>skill.md</span>
-              <span>scripts/</span>
-              <span>templates/</span>
+              <ul className={styles.fileTree} aria-label="Skill package files">
+                <li>
+                  <FiFileText aria-hidden="true" />
+                  <span>SKILL.md</span>
+                </li>
+                <li>
+                  <FiFolder aria-hidden="true" />
+                  <span>scripts/</span>
+                </li>
+                <li>
+                  <FiFolder aria-hidden="true" />
+                  <span>templates/</span>
+                </li>
+              </ul>
             </div>
           </div>
         </article>
