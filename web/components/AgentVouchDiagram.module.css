@@ -171,6 +171,8 @@
 .skill {
   position: relative;
   display: grid;
+  align-content: start;
+  min-height: 180px;
   gap: 8px;
   padding: 16px;
   background: var(--surface);
