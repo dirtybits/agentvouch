@@ -48,7 +48,7 @@ export function FeaturedSkillsCarousel({
         opts={{ align: "start", loop: items.length > 1 }}
         aria-label="Featured skills"
       >
-        <CarouselContent>
+        <CarouselContent className="pt-2 pb-4">
           {items.map((item, index) => (
             <CarouselItem
               key={`featured-skill-${index}`}
