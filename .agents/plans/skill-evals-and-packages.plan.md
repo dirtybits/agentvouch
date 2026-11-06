@@ -7,16 +7,16 @@ todos:
     status: in_progress
   - id: p1-tree-hash-spec
     content: "Write docs/SKILL_TREE_HASH.md (the exact tree-hash algorithm, path rules, sort order) with shared test vectors. Done when web computeTreeHash and the new CLI implementation pass the same vectors."
-    status: in_progress
+    status: completed
   - id: p1-hash-sweep
     content: "Add a read-only script that recomputes tree_hash from served bytes for every public skill version and lists mismatches. Done when production shows zero mismatches, or each mismatch has a recorded fix."
     status: in_progress
   - id: p1-cli-verify
     content: "Make agentvouch skill install and update recompute the tree hash after download and stop on mismatch. Also reject trees where a path is both a file and a folder (at upload in normalizeSkillTreeFiles, and at install). Done when tampered-download tests fail the install, clean installs pass, and the CLI passes the shared tree-hash vectors."
-    status: pending
+    status: completed
   - id: p1-version-pinned-reads
     content: "Add a read-only, version-pinned archive download (same entitlement rules as today for paid skills). Done when a runner can fetch version N of a free skill and the bytes match the stored tree_hash."
-    status: pending
+    status: in_progress
   - id: p1-static-checks
     content: "Add deterministic static checks over the full tree (Agent Skills frontmatter rules, hidden Unicode, remote-install instructions, URL inventory, secret patterns), cached by (tree_hash, checks_version) and shown as a display-only signal. Done when each rule has tests and mirrored skills show results."
     status: pending
@@ -635,3 +635,11 @@ Each phase is one or more small PRs off current `main`. P3 and later need their 
 - 2026-10-25: Owner answers. The owner runs the production sweep on their Mac. The owner reviews and merges every PR. No evaluation model spending yet (D13): P2 code is built and tested with mock runs only, so the "one real run" part of `p2-eval-runner` waits for a budget. Recommended defaults approved for D1-D11 and D14. D12 (auto-uninstall) stays off. Still open: Q2 (v1 default is AgentVouch-only results), Q3, Q4, Q8.
 - 2026-10-24: New finding (not yet seen in data): `ingestTarArchive` enforces the upload limits (200 files, 5 MB), but mirror sync stores trees up to 512 files and 8 MB. `/raw?path=` and `/zip` read stored trees through it, so they would fail for a mirrored tree above the upload limits; `/archive` would not. The sweep reports such versions as `files_unavailable` with the limit message. If the production sweep finds any, fix the reader to accept the limits the tree was stored with.
 - 2026-11-04: Refreshed PR #262 against current `main` for the owner's authorized PR review and merge sweep. Resolved the `AGENTS.md` conflict by preserving the short working instructions and adding one task-specific pointer to the tree-hash spec; package integrity details live in `docs/AGENT_REFERENCE.md`. The root is 1,135 words versus 5,295 in this PR's former manual (79% less). Audited all 35 numbered safeguards: 33 are verbatim in the companion and two only replace old section-number references. Both approval-boundary sections are preserved verbatim. Routine tasks do not require reading all reference material. Python passed all 10 vectors and 9 invalid paths; the three focused Vitest suites passed 91 tests. The production sweep remains unrun, and CLI download enforcement remains future work.
+- 2026-11-04 (`p1-cli-verify`, `p1-version-pinned-reads`, branch `feat/cli-tree-hash-verify`, on `main` after #262 was squash-merged as `a5a9798`): Phase 1, second PR.
+  - CLI: new `packages/agentvouch-cli/src/lib/integrity.ts`. `skill install` and `skills update` check every download against the published hashes before they write: a tree download against `tree_hash`, and a single `SKILL.md` against its manifest entry and the manifest against `tree_hash`. On a mismatch the CLI re-reads the skill once (a new version can be published during the download), then stops and writes nothing. The install metadata records `tree_hash_algorithm` and `tree_hash_verified_at`. The CLI passes the shared vectors, so `p1-tree-hash-spec` is done.
+  - Divergence: the CLI also stops before any download or payment when the skill has no published `tree_hash` (or, for one file, no manifest entry). Without this, a paid install could take the payment and then refuse to write.
+  - Server: upload rejects a file/folder path conflict with a 400, and `putSkillTree` rejects it too. Mirror sync skips such a skill with a `path conflict` detail, like a size-limit violation, so one bad upstream skill does not make the daily mirror cron return 500. The new route `/api/skills/{id}/versions/{version}/archive` serves one stored version with the same access rules as `/archive`.
+  - Divergence from the 2026-10-24 note: stored trees are now read with the mirror limits (512 files, 8 MB) without waiting for the sweep, because the fix is small and the CLI download check needs the same limits. The CLI reads downloads with the same limits.
+  - Found and fixed: `downloadRaw` decoded `/raw` with `response.text()`, which drops a leading byte order mark, so a written `SKILL.md` could differ from the published bytes. The CLI now hashes and writes the exact bytes.
+  - Merge gate: merge only after the production sweep (`p1-hash-sweep`) shows zero mismatches, or each mismatch has a recorded fix. `p1-version-pinned-reads` stays in progress until a live fetch of version N of a free skill matches its stored `tree_hash`.
+  - Verified: `format:check`, lint, web and CLI typecheck, web Vitest (166 files, 1,613 tests), CLI Vitest (18 files, 173 tests), and the Python vectors. `next build --webpack` compiled and ran TypeScript, then stopped at the `/sitemap.xml` prerender without `DATABASE_URL`. Not verified: the production sweep, and a live fetch from the new version route.

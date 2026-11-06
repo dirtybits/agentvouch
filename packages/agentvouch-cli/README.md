@@ -103,6 +103,27 @@ agentvouch check "$SKILL_DIR" --fail-on avoid || {
 Text files only: the CLI sends each file as UTF-8, so the `tree_hash` of a
 skill that has binary assets can differ from the published hash.
 
+### Download checks
+
+`skill install` and `skills update` check each download before they write
+anything:
+
+- For a skill folder, the CLI recomputes the tree hash (`agentvouch-tree-v1`,
+  see [docs/SKILL_TREE_HASH.md](https://github.com/dirtybits/agentvouch/blob/main/docs/SKILL_TREE_HASH.md))
+  and compares it with the published `tree_hash`.
+- For a single `SKILL.md`, it compares the file's SHA-256 with the published
+  file list, and checks that list against `tree_hash`.
+- If the skill has no published tree hash, the CLI stops before it downloads or
+  pays.
+- If a check fails after the download, the CLI writes nothing and exits with an
+  error. For a paid skill your access is kept, so you can run the command again.
+- On success, `<path>.agentvouch.json` records `tree_hash`,
+  `tree_hash_algorithm`, and `tree_hash_verified_at`.
+
+Chain-only skills (ids that start with `chain-`) have no tree hash, so the CLI
+cannot check them. A matching hash proves that the bytes did not change. It
+does not prove that the skill is safe.
+
 ### Agents
 
 ```bash

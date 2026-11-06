@@ -210,6 +210,24 @@ describe("syncMirrorSkills — change detection", () => {
     expect(mockPutBlob).not.toHaveBeenCalled();
   });
 
+  it("skips a skill whose tree has a file/folder path conflict, without failing the run", async () => {
+    mockFetchSkillFiles.mockResolvedValue([
+      ...makeSkillFiles(),
+      { path: "docs", content: "a file named docs" },
+      { path: "docs/a.md", content: "a file inside docs/" },
+    ]);
+
+    const result = await syncMirrorSkills({ apply: true, skipReview: true });
+
+    expect(result.counts.skip).toBe(1);
+    expect(result.counts.error).toBe(0);
+    expect(result.outcomes[0]?.detail).toBe(
+      'path conflict: Skill tree path "docs" is both a file and a folder (docs/a.md)'
+    );
+    expect(mockSqlFn).not.toHaveBeenCalled();
+    expect(mockPutBlob).not.toHaveBeenCalled();
+  });
+
   it("dry-run (apply:false) reports create without writing to DB or blob", async () => {
     mockSqlFn.mockResolvedValueOnce([]); // findExistingListing
 

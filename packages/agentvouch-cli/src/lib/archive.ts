@@ -7,9 +7,30 @@ const MAX_SKILL_CONTENT_BYTES = 256 * 1024;
 const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 const MAX_SKILL_TREE_BYTES = 5 * 1024 * 1024;
 const MAX_SKILL_TREE_FILES = 200;
+// AgentVouch stores mirrored trees up to these limits
+// (web/lib/skillDraft.ts MIRROR_MAX_SKILL_TREE_*), so downloads may be this large.
+const MAX_DOWNLOADED_TREE_BYTES = 8 * 1024 * 1024;
+const MAX_DOWNLOADED_TREE_FILES = 512;
 const TAR_BLOCK_SIZE = 512;
 const SKIP_DIRECTORY_NAMES = new Set([".git", "node_modules"]);
 const SKIP_FILE_NAMES = new Set([".DS_Store"]);
+
+export interface TreeCaps {
+  maxFiles: number;
+  maxBytes: number;
+}
+
+/** Limits for trees the CLI publishes. */
+export const UPLOAD_TREE_CAPS: TreeCaps = {
+  maxFiles: MAX_SKILL_TREE_FILES,
+  maxBytes: MAX_SKILL_TREE_BYTES,
+};
+
+/** Limits for trees the CLI downloads. */
+export const DOWNLOAD_TREE_CAPS: TreeCaps = {
+  maxFiles: MAX_DOWNLOADED_TREE_FILES,
+  maxBytes: MAX_DOWNLOADED_TREE_BYTES,
+};
 
 export interface SkillTreeInputFile {
   path: string;
@@ -42,14 +63,15 @@ function normalizeSkillPath(filePath: string): string {
 }
 
 function toNormalizedFiles(
-  files: SkillTreeInputFile[]
+  files: SkillTreeInputFile[],
+  caps: TreeCaps = UPLOAD_TREE_CAPS
 ): Array<SkillTreeInputFile & { bytes: Buffer }> {
   if (files.length === 0) {
     throw new CliError("Skill tree must include SKILL.md.");
   }
-  if (files.length > MAX_SKILL_TREE_FILES) {
+  if (files.length > caps.maxFiles) {
     throw new CliError(
-      `Skill tree has ${files.length} files, exceeds cap of ${MAX_SKILL_TREE_FILES}.`
+      `Skill tree has ${files.length} files, exceeds cap of ${caps.maxFiles}.`
     );
   }
 
@@ -71,9 +93,9 @@ function toNormalizedFiles(
       );
     }
     totalBytes += bytes.byteLength;
-    if (totalBytes > MAX_SKILL_TREE_BYTES) {
+    if (totalBytes > caps.maxBytes) {
       throw new CliError(
-        `Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes.`
+        `Skill tree is ${totalBytes} bytes, exceeds cap of ${caps.maxBytes} bytes.`
       );
     }
 
@@ -196,7 +218,10 @@ function isZeroBlock(block: Buffer): boolean {
   return block.every((byte) => byte === 0);
 }
 
-export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
+export function ingestTarArchive(
+  bytes: Buffer,
+  caps: TreeCaps = UPLOAD_TREE_CAPS
+): SkillTreeInputFile[] {
   const files: SkillTreeInputFile[] = [];
   let offset = 0;
   let totalBytes = 0;
@@ -216,14 +241,12 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
     const filePath = normalizeSkillPath(prefix ? `${prefix}/${name}` : name);
     const size = readOctal(header, 124, 12);
     totalBytes += size;
-    if (files.length + 1 > MAX_SKILL_TREE_FILES) {
-      throw new CliError(
-        `Skill tree exceeds cap of ${MAX_SKILL_TREE_FILES} files.`
-      );
+    if (files.length + 1 > caps.maxFiles) {
+      throw new CliError(`Skill tree exceeds cap of ${caps.maxFiles} files.`);
     }
-    if (totalBytes > MAX_SKILL_TREE_BYTES) {
+    if (totalBytes > caps.maxBytes) {
       throw new CliError(
-        `Skill tree is ${totalBytes} bytes, exceeds cap of ${MAX_SKILL_TREE_BYTES} bytes.`
+        `Skill tree is ${totalBytes} bytes, exceeds cap of ${caps.maxBytes} bytes.`
       );
     }
     if (offset + size > bytes.byteLength) {
@@ -238,7 +261,7 @@ export function ingestTarArchive(bytes: Buffer): SkillTreeInputFile[] {
     offset += (TAR_BLOCK_SIZE - (size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
   }
 
-  return toNormalizedFiles(files);
+  return toNormalizedFiles(files, caps);
 }
 
 /**
@@ -290,12 +313,11 @@ export async function prepareSkillUploadFromPath(
   };
 }
 
-export async function writeTarArchiveToDirectory(
+/** Write files that were already parsed (and checked) to a folder. */
+export async function writeSkillFilesToDirectory(
   outputDir: string,
-  archive: Buffer
+  files: SkillTreeInputFile[]
 ): Promise<number> {
-  const files = ingestTarArchive(archive);
-
   for (const file of files) {
     const targetPath = path.join(outputDir, ...file.path.split("/"));
     await mkdir(path.dirname(targetPath), { recursive: true });
@@ -303,6 +325,16 @@ export async function writeTarArchiveToDirectory(
   }
 
   return files.length;
+}
+
+export async function writeTarArchiveToDirectory(
+  outputDir: string,
+  archive: Buffer
+): Promise<number> {
+  return writeSkillFilesToDirectory(
+    outputDir,
+    ingestTarArchive(archive, DOWNLOAD_TREE_CAPS)
+  );
 }
 
 export function isDirectoryLikeOutput(outputPath: string): boolean {

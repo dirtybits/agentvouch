@@ -193,6 +193,8 @@ export interface DownloadResponse {
   ok: boolean;
   status: number;
   content?: string;
+  /** Exact response bytes for /raw. Hash these, not the decoded text. */
+  bytes?: Buffer;
   archive?: Buffer;
   error?: string;
   requirement?: PaymentRequirement;
@@ -511,10 +513,14 @@ export class AgentVouchApiClient {
       : undefined;
 
     if (response.ok) {
+      // Read bytes, not response.text(): text() drops a leading byte order
+      // mark, which would change the file hash.
+      const bytes = Buffer.from(await response.arrayBuffer());
       return {
         ok: true,
         status: response.status,
-        content: await response.text(),
+        content: bytes.toString("utf8"),
+        bytes,
         paymentResponse,
       };
     }

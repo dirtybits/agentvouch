@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
 import {
+  findTreePathConflicts,
   ingestTarArchive,
   normalizeSkillTreeFiles,
   type SkillTreeInputFile,
@@ -53,6 +54,17 @@ function parseJsonField(
 function getStringField(form: FormData, name: string): string | undefined {
   const value = form.get(name);
   return typeof value === "string" ? value : undefined;
+}
+
+// A path that is also a folder of another path ("docs" and "docs/a.md")
+// cannot be written to disk, so reject the upload with a clear 400.
+function assertUploadHasNoPathConflicts(files: Array<{ path: string }>) {
+  const [conflict] = findTreePathConflicts(files.map((file) => file.path));
+  if (conflict) {
+    throw new SkillUploadError(
+      `Skill tree path "${conflict.path}" is both a file and a folder (${conflict.folderOf})`
+    );
+  }
 }
 
 function decodeBase64(value: string): Buffer {
@@ -133,6 +145,7 @@ async function parseMultipart(request: Request): Promise<ParsedSkillUpload> {
   }
 
   const normalized = normalizeSkillTreeFiles(files);
+  assertUploadHasNoPathConflicts(normalized);
   const skillFile = normalized.find((file) => file.path === "SKILL.md");
   if (!skillFile) throw new Error("Skill tree must include SKILL.md");
   return {
@@ -173,6 +186,7 @@ async function parseJson(request: Request): Promise<ParsedSkillUpload> {
   }
 
   const normalized = normalizeSkillTreeFiles(files);
+  assertUploadHasNoPathConflicts(normalized);
   const skillFile = normalized.find((file) => file.path === "SKILL.md");
   if (!skillFile) throw new Error("Skill tree must include SKILL.md");
   return {

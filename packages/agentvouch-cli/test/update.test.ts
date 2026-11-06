@@ -7,6 +7,18 @@ import { AgentVouchApiClient } from "../src/lib/http.js";
 import { writeInstalledSkillMetadata } from "../src/lib/metadata.js";
 import { AgentVouchSolanaClient } from "../src/lib/solana.js";
 import { updateSkill } from "../src/lib/update.js";
+import { sha256Hex, treeHashFromFiles } from "../src/lib/integrity.js";
+
+/** The manifest and tree hash the API publishes for a one-file skill. */
+function publishedSkillMd(text: string) {
+  const bytes = Buffer.from(text, "utf8");
+  return {
+    files: [
+      { path: "SKILL.md", size: bytes.byteLength, sha256: sha256Hex(bytes) },
+    ],
+    tree_hash: treeHashFromFiles([{ path: "SKILL.md", bytes }]),
+  };
+}
 
 async function createKeypairFile() {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentvouch-cli-"));
@@ -115,6 +127,7 @@ describe("updateSkill", () => {
       on_chain_address: null,
       total_installs: 0,
       price_lamports: 0,
+      ...publishedSkillMd("# updated\n"),
     });
     vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw").mockResolvedValue({
       ok: true,
@@ -180,6 +193,7 @@ describe("updateSkill", () => {
       on_chain_address: "ListingAddr1",
       total_installs: 0,
       price_lamports: 1_000_000,
+      ...publishedSkillMd("# paid updated\n"),
     });
     vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw")
       .mockResolvedValueOnce({
@@ -268,6 +282,7 @@ describe("updateSkill", () => {
       on_chain_address: "ListingAddr1",
       total_installs: 0,
       price_lamports: 1_000_000,
+      ...publishedSkillMd("# paid updated\n"),
     });
     vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw")
       .mockResolvedValueOnce({
@@ -347,6 +362,7 @@ describe("updateSkill", () => {
       on_chain_address: null,
       total_installs: 0,
       price_lamports: 0,
+      ...publishedSkillMd("# adopted\n"),
     });
     vi.spyOn(AgentVouchApiClient.prototype, "downloadRaw").mockResolvedValue({
       ok: true,

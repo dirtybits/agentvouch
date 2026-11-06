@@ -38,7 +38,7 @@ A stored path obeys all of these rules. Upload enforces them (`normalizeSkillPat
 
 AgentVouch stores and hashes path text exactly as it was received, as UTF-8. It applies no Unicode normalization. Two names that look the same can be different paths: `café.md` written with `é` (U+00E9, NFC) and `café.md` written with `e` plus a combining accent (U+0065 U+0301, NFD). They give different tree hashes. Publishers should use NFC names.
 
-**Client rule:** a client must also reject a tree in which one path is a folder of another path, for example `docs` and `docs/a.md`. Such a tree cannot be written to a file system. Upload does not enforce this yet (see [Known gaps](#known-gaps-2026-10-24)).
+**No file/folder conflicts:** a tree must not contain a path that is also a folder of another path, for example `docs` and `docs/a.md`. Such a tree cannot be written to a file system. Upload rejects it with a 400, and mirror sync skips the skill. A tree stored before these checks can still have a conflict; the sweep reports it as `path_conflict`. A client must reject such a tree.
 
 ## Algorithm
 
@@ -113,7 +113,14 @@ The manifest digests are the output of step 1, so the tree hash can be computed 
    - Compute the digest of the downloaded bytes. Compare it with the manifest entry for that path.
    - Compute the tree hash from the manifest digests. Compare it with `tree_hash`.
    - Stop if either check fails.
-4. Record the checked tree hash with the install. The CLI writes it to `<path>.agentvouch.json`.
+4. Record the checked tree hash with the install. The CLI writes it to `<path>.agentvouch.json` with `tree_hash_algorithm` and `tree_hash_verified_at`.
+5. **An older version:** download `/api/skills/{id}/versions/{version}/archive`, and compare with the `tree_hash` of that entry in the `versions` list of `GET /api/skills/{id}`. The response also carries `X-AgentVouch-Tree-Hash` and `X-AgentVouch-Skill-Version` headers. Do not use those headers as the expected value, because they arrive with the bytes they describe.
+
+The `agentvouch` CLI runs steps 1 to 4 on every install and update of a skill that AgentVouch stores:
+
+- It stops before it downloads or pays if the skill has no published `tree_hash`, or (for one file) no manifest entry for that file.
+- If a check fails after the download, it re-reads the skill once, because a new version may have been published during the download. Then it stops without writing anything.
+- Chain-only skills (ids that start with `chain-`) are not stored by AgentVouch and have no tree hash, so the CLI cannot check them.
 
 Note: `/raw` serves `SKILL.md` from `skill_versions.content` for every storage type. The stored tree must therefore hold the same `SKILL.md` bytes. The sweep below checks this.
 
@@ -180,7 +187,7 @@ Finding codes:
 | `missing_manifest`            | The version has no stored manifest                                         |
 | `invalid_manifest`            | The manifest is not an array of valid entries                              |
 | `manifest_tree_hash_mismatch` | The manifest digests give a different tree hash                            |
-| `files_unavailable`           | The stored bytes could not be read: for example a missing Blob archive, or a tree above the upload limits (see Known gaps) |
+| `files_unavailable`           | The stored bytes could not be read (for example, a missing Blob archive)   |
 | `bytes_tree_hash_mismatch`    | The stored bytes give a different tree hash                                |
 | `file_digest_mismatch`        | A file's bytes do not match its manifest digest                            |
 | `file_size_mismatch`          | A file's length does not match its manifest size                           |
@@ -196,9 +203,13 @@ Finding codes:
 
 A change to any step is a new algorithm with a new name, for example `agentvouch-tree-v2`. Stored hashes keep the version that made them. Never change `agentvouch-tree-v1` in place.
 
-## Known gaps (2026-10-24)
+## Known gaps (updated 2026-11-04)
 
-- Upload does not reject a tree where one path is also a folder of another path. The sweep reports such trees as `path_conflict`. The fix is planned with the CLI download check (Phase 1, second PR).
-- The CLI records `tree_hash` but does not check downloads against it yet (Phase 1, second PR).
 - The `/zip` builder sorts entries with `localeCompare`, which depends on the server's ICU data. Zip bytes can differ between servers, so do not pin zip bytes. The tree hash does not depend on archive bytes.
-- The stored-tar reader (`ingestTarArchive`) enforces the upload limits (200 files, 5 MB), but mirror sync stores trees up to 512 files and 8 MB. `/raw?path=` and `/zip` use that reader, so they cannot serve a mirrored tree above the upload limits. The sweep reports such a version as `files_unavailable` with the limit message. `/archive` is not affected, because it serves the stored tar bytes directly.
+
+Fixed in Phase 1, second PR (2026-11-04):
+
+- Upload now rejects a tree where one path is also a folder of another path, and mirror sync skips such a skill.
+- The CLI now checks every download against the published hashes before it writes.
+- Stored trees are now read with the mirror limits (512 files, 8 MB) instead of the upload limits (200 files, 5 MB). Before this, `/raw?path=`, `/zip`, and CLI tree installs failed for a mirrored tree above the upload limits. The CLI also reads downloads with the mirror limits.
+- The CLI now hashes and writes the exact bytes of `/raw` responses. Before, it decoded them as text, which drops a leading byte order mark, so a written `SKILL.md` could differ from the published bytes.
