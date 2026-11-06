@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { initializeDatabase, sql } from "@/lib/db";
 import { runReviewSafe } from "@/lib/ai/review";
+import { runStaticChecksSafe } from "@/lib/skillStaticChecksStore";
 import { putSkillTree } from "@/lib/skillStorage";
 import { parseSkillUploadRequest, SkillUploadError } from "@/lib/skillUpload";
 import {
@@ -1105,7 +1106,9 @@ export async function POST(request: NextRequest) {
     `;
 
     // Auto-generate the skill's automated review (summary + scan) after the
-    // response — publishers never write one.
+    // response — publishers never write one. Static checks need no model, so
+    // they run separately and always.
+    after(() => runStaticChecksSafe(tree.treeHash, tree.filesWithBytes));
     after(() =>
       runReviewSafe({
         skillId: skill.id,

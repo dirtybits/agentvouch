@@ -22,6 +22,11 @@ import {
   type StoredSkillVersionRef,
 } from "@/lib/skillStorage";
 import { MAX_SKILL_TREE_BYTES } from "@/lib/skillDraft";
+import {
+  runStaticChecks,
+  type StaticCheckReport,
+} from "@/lib/skillStaticChecks";
+import { ensureStaticChecks } from "@/lib/skillStaticChecksStore";
 import type { AuthorTrust } from "@/lib/trust";
 import { resolveAuthorTrust } from "@/lib/trust";
 import type { SkillSecurityScan } from "@/lib/securityScan";
@@ -437,11 +442,15 @@ export async function POST(request: NextRequest) {
     let author = explicitAuthor;
     let scanResponse = scanBlock(null);
     let rawScan: SkillSecurityScan | null = null;
+    // Static checks are deterministic and need no model or budget.
+    let staticChecks: StaticCheckReport | null = null;
     let resolvedTreeHash: string | null = treeHash;
 
     if (inputFiles) {
       const tree = prepareSkillTree(inputFiles);
       resolvedTreeHash = tree.treeHash;
+      // Submitted files are checked but not stored.
+      staticChecks = runStaticChecks(tree.filesWithBytes);
       const scan = await resolveScanForFiles({
         request,
         treeHash: tree.treeHash,
@@ -457,6 +466,9 @@ export async function POST(request: NextRequest) {
         resolvedTreeHash = known.tree_hash;
         if (known.tree_hash) {
           const files = await getFilesForVersion(known);
+          staticChecks = await ensureStaticChecks(known.tree_hash, files)
+            .then((result) => result.report)
+            .catch(() => runStaticChecks(files));
           const scan = await resolveScanForFiles({
             request,
             treeHash: known.tree_hash,
@@ -484,6 +496,7 @@ export async function POST(request: NextRequest) {
     const signals = buildTrustSignals({
       trust: staked.response.trust,
       scan: rawScan,
+      staticChecks,
     });
     const recommendedAction = recommendedActionFromSignals(signals);
 
@@ -494,6 +507,7 @@ export async function POST(request: NextRequest) {
         signals,
         staked: staked.response,
         scan: scanResponse,
+        static_checks: staticChecks,
         disclaimer:
           "Automated scans are advisory; absence of findings is not proof of safety. Only staked on-chain trust can grant allow.",
       },

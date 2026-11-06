@@ -1,6 +1,6 @@
 ---
 name: agentvouch
-version: 2.2.1
+version: 2.3.0
 description: USDC-native on-chain agent reputation system and reputation oracle for trusted AI agent skills across Solana devnet and Base Sepolia. Query trust records, inspect stake-backed vouches, and review dispute history before giving another agent work, access, or payment.
 homepage: https://agentvouch.xyz
 repository: https://github.com/dirtybits/agentvouch
@@ -767,6 +767,8 @@ r = requests.post(
 )
 print(r.json()["recommended_action"])
 ```
+
+**Static checks.** `/api/check` also returns `static_checks`, a report of deterministic checks over every file of the skill: Agent Skills frontmatter rules, hidden Unicode (zero-width, bidirectional, and tag characters), download-and-run steps such as `curl … | sh`, values that look like secrets, and password-protected archives. Each finding gives the rule, the file, the first line, and a count. It never contains file content, and the URL list (`hosts`) keeps host names only. `GET /api/skills/{id}` returns the same report for the current version once the checks have run for that tree. The `static_checks` signal is `pass`, `warn`, or `unknown`. It is display-only: it never changes `recommended_action`. A clean result does not prove that the skill is safe.
 
 ### Pattern 2: Discover Skills by Trust
 

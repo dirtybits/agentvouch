@@ -32,6 +32,7 @@ import { pinSkillContent, unpinSkillContent } from "@/lib/ipfs";
 import { buildUniquePublicSkillRoute } from "@/lib/skillRouteResolver";
 import { getConfiguredSolanaChainContext } from "@/lib/chains";
 import { runReviewSafe } from "@/lib/ai/review";
+import { runStaticChecksSafe } from "@/lib/skillStaticChecksStore";
 import { verifyAuthorTrust } from "@/lib/trust";
 import {
   normalizeSkillName,
@@ -427,6 +428,8 @@ async function createListing(
     throw blobErr;
   }
 
+  // Static checks need no model, so they run even when the review is skipped.
+  await runStaticChecksSafe(tree.treeHash, tree.filesWithBytes);
   if (!skipReview) {
     await runReviewSafe({
       skillId: skillDbId,
@@ -540,6 +543,7 @@ async function publishNewVersion(
     );
   }
 
+  await runStaticChecksSafe(tree.treeHash, tree.filesWithBytes);
   if (!skipReview) {
     await runReviewSafe({
       skillId: existing.id,

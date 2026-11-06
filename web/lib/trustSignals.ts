@@ -1,5 +1,10 @@
 import type { AuthorTrust } from "@/lib/trust";
 import type { SkillSecurityScan } from "@/lib/securityScan";
+import {
+  countFindingsBySeverity,
+  type StaticCheckFinding,
+  type StaticCheckReport,
+} from "@/lib/skillStaticChecks";
 
 export type OpenWorldAction = "allow" | "review" | "avoid" | "unknown";
 
@@ -7,6 +12,7 @@ export type TrustSignalStatus = "pass" | "warn" | "fail" | "unknown";
 export type TrustSignalScope = "skill" | "author";
 export type TrustSignalId =
   | "ai_scan"
+  | "static_checks"
   | "vouched"
   | "author_bonded"
   | "registered"
@@ -75,6 +81,63 @@ function aiScanSignal(scan: SkillSecurityScan | null): TrustSignal {
     ...base,
     status: "pass",
     detail: "Advisory scan completed with no concrete findings.",
+  };
+}
+
+const STATIC_CHECK_LABELS: Record<StaticCheckFinding["rule"], string> = {
+  frontmatter: "a SKILL.md format problem",
+  hidden_unicode: "hidden characters",
+  remote_exec: "a download-and-run step",
+  secret: "a possible secret",
+  archive: "a password-protected archive",
+};
+
+function describeStaticFinding(finding: StaticCheckFinding): string {
+  const where = finding.line
+    ? `${finding.path} (line ${finding.line})`
+    : finding.path;
+  return `${STATIC_CHECK_LABELS[finding.rule]} in ${where}`;
+}
+
+// Display-only (plan D8): static checks can warn, but they never produce
+// `fail` and recommendedActionFromSignals does not read them.
+function staticChecksSignal(report: StaticCheckReport | null): TrustSignal {
+  const base = {
+    id: "static_checks" as const,
+    label: "Static checks",
+    scope: "skill" as const,
+  };
+  if (!report) {
+    return {
+      ...base,
+      status: "unknown",
+      detail: "No static checks on record for this skill tree.",
+    };
+  }
+  const counts = countFindingsBySeverity(report);
+  if (counts.medium > 0) {
+    const medium = report.findings.filter(
+      (finding) => finding.severity === "medium"
+    );
+    const shown = medium.slice(0, 3).map(describeStaticFinding);
+    const more = medium.length - shown.length;
+    return {
+      ...base,
+      status: "warn",
+      detail: `Static checks found ${medium.length} issue${
+        medium.length === 1 ? "" : "s"
+      } to review: ${shown.join("; ")}${more > 0 ? `; and ${more} more` : ""}.`,
+    };
+  }
+  return {
+    ...base,
+    status: "pass",
+    detail:
+      counts.low > 0
+        ? `Static checks found no issues to review (${
+            counts.low
+          } SKILL.md format note${counts.low === 1 ? "" : "s"}).`
+        : "Static checks found no issues to review.",
   };
 }
 
@@ -174,11 +237,22 @@ function authorSignals(trust: AuthorTrust | null): TrustSignal[] {
 
 // The transparent checklist: discrete trust signals an agent (or person) can
 // evaluate against its own policy, instead of an opaque single verdict.
+//
+// `staticChecks` is optional: callers that pass it (null means "no checks on
+// record") get the display-only static_checks signal; callers that omit it get
+// the same list as before.
 export function buildTrustSignals(input: {
   trust: AuthorTrust | null;
   scan: SkillSecurityScan | null;
+  staticChecks?: StaticCheckReport | null;
 }): TrustSignal[] {
-  return [aiScanSignal(input.scan), ...authorSignals(input.trust)];
+  return [
+    aiScanSignal(input.scan),
+    ...(input.staticChecks !== undefined
+      ? [staticChecksSignal(input.staticChecks)]
+      : []),
+    ...authorSignals(input.trust),
+  ];
 }
 
 function signalById(

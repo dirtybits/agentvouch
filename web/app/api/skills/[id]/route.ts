@@ -103,6 +103,7 @@ async function applyLiveAuthorTrust(
       signals: buildTrustSignals({
         trust: authorTrust,
         scan: snapshot.security_scan,
+        staticChecks: snapshot.static_checks,
       }),
       purchaseRiskWarning:
         snapshot.price_usdc_micros &&
@@ -149,6 +150,7 @@ async function applyLiveAuthorTrust(
     signals: buildTrustSignals({
       trust: authorTrust,
       scan: snapshot.security_scan,
+      staticChecks: snapshot.static_checks,
     }),
     purchaseRiskWarning:
       snapshot.price_usdc_micros &&
@@ -331,6 +333,8 @@ export async function GET(
           storage_backend: null,
           has_executable: false,
           security_scan: null,
+          // Chain-only skills have no stored tree, so no static checks.
+          static_checks: null,
           signals: buildTrustSignals({ trust: author_trust, scan: null }),
           versions: [],
           author_trust,

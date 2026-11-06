@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { after, NextRequest } from "next/server";
+import { runStaticChecksSafe } from "@/lib/skillStaticChecksStore";
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -11,6 +12,10 @@ vi.mock("next/server", async (importOriginal) => {
 
 vi.mock("@/lib/db", () => ({
   sql: vi.fn(),
+}));
+
+vi.mock("@/lib/skillStaticChecksStore", () => ({
+  runStaticChecksSafe: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", async (importOriginal) => {
@@ -278,8 +283,14 @@ describe("POST /api/skills/[id]/versions", () => {
       "calendar-agent",
       3
     );
-    // One after(): runReviewSafe orchestrates the summary + scan passes.
-    expect(mockAfter).toHaveBeenCalledTimes(1);
+    // Two after() calls: static checks (no model, always) and runReviewSafe
+    // (summary + scan).
+    expect(mockAfter).toHaveBeenCalledTimes(2);
+    await (mockAfter.mock.calls[0]?.[0] as () => Promise<void>)();
+    expect(runStaticChecksSafe).toHaveBeenCalledWith(
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      expect.arrayContaining([expect.objectContaining({ path: "SKILL.md" })])
+    );
     expect(dbQuery).toHaveBeenCalledTimes(3);
 
     const body = await res.json();
